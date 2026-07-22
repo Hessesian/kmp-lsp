@@ -613,7 +613,7 @@ pub(crate) fn dot_completions_for(
         || rt.starts_with("hashmap")
         || rt.starts_with("linkedhashmap")
         || rt.starts_with("sortedmap");
-    let is_nullable = receiver_type.ends_with('?');
+    let is_nullable = receiver_type.is_nullable();
 
     let sources: Vec<&[StdlibEntry]> = if is_string {
         vec![

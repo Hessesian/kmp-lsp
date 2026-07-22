@@ -16,15 +16,15 @@ mod tests;
 
 // ─── re-exports ───────────────────────────────────────────────────────────────
 
-pub(crate) use api::Resolver;
+pub(crate) use api::{Resolver, ReturnType};
 pub(crate) use complete::symbols_from_uri_as_completions_pub;
 #[cfg(test)]
 pub(crate) use complete::{complete_symbol, complete_symbol_with_context, is_annotation_context};
-pub(crate) use hierarchy::walk_hierarchy;
+pub(crate) use hierarchy::{receiver_type_agreement, walk_hierarchy, ReceiverTypeAgreement};
 pub(crate) use import_edit::{already_imported, import_insertion_line, make_import_edit};
 pub(crate) use infer::{
-    infer_receiver_type, infer_receiver_type_at, infer_variable_type_raw, InferenceChain,
-    ReceiverKind, ReceiverType,
+    infer_receiver_type, infer_receiver_type_at, infer_variable_type_from_cst,
+    infer_variable_type_raw, InferenceChain, ReceiverKind, ReceiverType,
 };
 pub(crate) use infer_lines::extract_collection_element_type;
 pub(crate) use resolve::{ensure_file_data, fqns_for_name, resolve_symbol_no_rg};
@@ -35,6 +35,7 @@ pub(crate) use crate::rg::build_rg_pattern;
 #[cfg(test)]
 pub(crate) use complete::{
     complete_bare, complete_dot, is_screaming_snake, match_score, COMPLETION_CAP,
+    MAX_SYNC_JAR_PROMOTIONS_PER_COMPLETION,
 };
 #[cfg(test)]
 use fd::import_file_stems;

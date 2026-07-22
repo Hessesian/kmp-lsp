@@ -5,27 +5,25 @@ use tower_lsp::lsp_types::{
 };
 use tree_sitter::Node;
 
-use crate::indexer::{
-    find_it_element_type_in_lines, find_this_element_type_in_lines, Indexer, LiveDoc, NodeExt,
-};
+use crate::indexer::{find_it_element_type, find_this_element_type, Indexer, LiveDoc, NodeExt};
+use crate::indexer::{CstQuery, ResolveIo};
 use crate::queries::{
-    KIND_CALL_EXPR, KIND_KW_AS, KIND_KW_BY, KIND_KW_CONSTRUCTOR, KIND_KW_GET, KIND_KW_IN,
-    KIND_KW_IS, KIND_KW_SET, KIND_KW_WHERE, KIND_LAMBDA_LIT, KIND_LAMBDA_PARAMS, KIND_NAV_EXPR,
-    KIND_SIMPLE_IDENT, KIND_THIS_EXPR, KIND_TYPE_IDENT, KIND_VAR_DECL,
+    KIND_KW_AS, KIND_KW_BY, KIND_KW_CONSTRUCTOR, KIND_KW_GET, KIND_KW_IN, KIND_KW_IS, KIND_KW_SET,
+    KIND_KW_WHERE, KIND_LAMBDA_LIT, KIND_LAMBDA_PARAMS, KIND_NAV_EXPR, KIND_SIMPLE_IDENT,
+    KIND_THIS_EXPR, KIND_TYPE_IDENT, KIND_VAR_DECL,
 };
-use crate::resolver::infer::{
-    find_field_type_in_class, find_fun_return_type_by_name, find_method_return_type,
-    infer_variable_type,
-};
+use crate::resolver::infer::find_field_type_in_class;
 use crate::Language;
 
 use super::helpers::{
-    is_annotation_reference, is_call_callee, is_declaration_site, is_inside_lambda_parameters,
-    is_named_argument_label, is_navigation_receiver, is_top_level_call_name, is_type_reference,
-    navigation_member_ident, navigation_receiver_node, node_text, push_token, token_position,
+    is_annotation_reference, is_inside_lambda_parameters, is_named_argument_label,
+    is_navigation_receiver, is_top_level_call_name, is_type_reference, node_text, push_token,
     visit_tree,
 };
 use super::{modifier_bit, type_index, RawToken, Source};
+use crate::indexer::{
+    is_call_callee, is_declaration_site, navigation_member_ident, navigation_receiver_node,
+};
 
 /// Walk non-declaration identifiers and resolve them against the index.
 pub(super) fn walk_references(
@@ -41,7 +39,7 @@ pub(super) fn walk_references(
     }
     // Tier 1: direct index lookups (type refs, top-level calls, annotations)
     let mut resolved = Vec::new();
-    walk_kotlin_references(doc.tree.root_node(), src, indexer, &mut resolved);
+    walk_kotlin_references(doc.tree.root_node(), src, indexer, uri, &mut resolved);
     raw.extend(resolved);
 
     // Tier 2: receiver-inferred member coloring
@@ -55,17 +53,18 @@ fn walk_kotlin_references(
     node: Node<'_>,
     src: &Source<'_>,
     indexer: &Indexer,
+    uri: &Url,
     out: &mut Vec<RawToken>,
 ) {
     if is_kotlin_keyword_node(node) {
         push_token(node, type_index(&SemanticTokenType::KEYWORD), 0, src, out);
-    } else if let Some(token_type) = classify_kotlin_reference(node, src.bytes, indexer) {
+    } else if let Some(token_type) = classify_kotlin_reference(node, src.bytes, indexer, uri) {
         push_token(node, token_type, 0, src, out);
     }
     let mut cursor = node.walk();
     if cursor.goto_first_child() {
         loop {
-            walk_kotlin_references(cursor.node(), src, indexer, out);
+            walk_kotlin_references(cursor.node(), src, indexer, uri, out);
             if !cursor.goto_next_sibling() {
                 break;
             }
@@ -87,7 +86,12 @@ fn is_kotlin_keyword_node(node: Node<'_>) -> bool {
     )
 }
 
-fn classify_kotlin_reference(node: Node<'_>, src: &[u8], indexer: &Indexer) -> Option<u32> {
+fn classify_kotlin_reference(
+    node: Node<'_>,
+    src: &[u8],
+    indexer: &Indexer,
+    uri: &Url,
+) -> Option<u32> {
     if !matches!(node.kind(), KIND_SIMPLE_IDENT | KIND_TYPE_IDENT) || is_declaration_site(node) {
         return None;
     }
@@ -100,19 +104,21 @@ fn classify_kotlin_reference(node: Node<'_>, src: &[u8], indexer: &Indexer) -> O
         return None;
     }
 
-    if let Some(token_type) = enum_entry_reference_token(node, src, indexer) {
+    if let Some(token_type) = enum_entry_reference_token(node, src, indexer, uri) {
         return Some(token_type);
     }
 
     if node.kind() == KIND_TYPE_IDENT && is_type_reference(node) {
-        if let Some(resolved) = resolve_symbol_kind(node_text(node, src), indexer, is_type_symbol) {
+        if let Some(resolved) =
+            resolve_symbol_kind(node_text(node, src), indexer, uri, is_type_symbol)
+        {
             return symbol_kind_to_token_type(resolved.kind);
         }
         return Some(type_index(&SemanticTokenType::CLASS));
     }
 
     if is_top_level_call_name(node) {
-        return resolve_symbol_kind(node_text(node, src), indexer, |kind| {
+        return resolve_symbol_kind(node_text(node, src), indexer, uri, |kind| {
             matches!(
                 kind,
                 SymbolKind::CLASS | SymbolKind::STRUCT | SymbolKind::FUNCTION | SymbolKind::METHOD
@@ -122,7 +128,7 @@ fn classify_kotlin_reference(node: Node<'_>, src: &[u8], indexer: &Indexer) -> O
     }
 
     if is_navigation_receiver(node) {
-        return resolve_symbol_kind(node_text(node, src), indexer, |kind| {
+        return resolve_symbol_kind(node_text(node, src), indexer, uri, |kind| {
             kind == SymbolKind::OBJECT
         })
         .map(|_| type_index(&SemanticTokenType::NAMESPACE));
@@ -152,9 +158,13 @@ fn resolve_member_access(
         };
         let is_call = is_call_callee(node);
         let resolved_type = navigation_receiver_node(node)
-            .and_then(|receiver| expression_type(receiver, doc, &src.line_starts, indexer, uri))
+            .and_then(|receiver| {
+                CstQuery::new(receiver, doc, indexer, uri, ResolveIo::IndexOnly)
+                    .expr_type()
+                    .resolved()
+            })
             .and_then(|receiver_type| {
-                member_token_type_for_receiver(indexer, &receiver_type, &member_name)
+                member_token_type_for_receiver(indexer, receiver_type.as_type_str(), &member_name)
             });
         let method_type = type_index(&SemanticTokenType::METHOD);
         let property_type = type_index(&SemanticTokenType::PROPERTY);
@@ -183,19 +193,6 @@ fn resolve_lambda_params(
     uri: &Url,
 ) -> Vec<RawToken> {
     let mut tokens = Vec::new();
-    let lines_arc = indexer.mem_lines_for(uri.as_str());
-    let fallback;
-    let lines: &[String] = match lines_arc.as_deref() {
-        Some(l) => l,
-        None => {
-            fallback = std::str::from_utf8(&doc.bytes)
-                .unwrap_or("")
-                .lines()
-                .map(String::from)
-                .collect::<Vec<_>>();
-            &fallback
-        }
-    };
 
     visit_tree(doc.tree.root_node(), &mut |node| {
         if node.kind() == KIND_LAMBDA_LIT {
@@ -222,7 +219,7 @@ fn resolve_lambda_params(
                 utf16_col: src.col_utf16(node.start_position().row, node.start_position().column)
                     as usize,
             };
-            if find_this_element_type_in_lines(lines, pos, indexer, uri).is_some() {
+            if find_this_element_type(pos, indexer, uri).is_some() {
                 push_token(
                     node,
                     type_index(&SemanticTokenType::KEYWORD),
@@ -249,7 +246,7 @@ fn resolve_lambda_params(
 
         if name == "it" {
             if node.enclosing_lambda_literal().is_some()
-                && find_it_element_type_in_lines(lines, pos, indexer, uri).is_some()
+                && find_it_element_type(pos, indexer, uri).is_some()
             {
                 push_token(
                     node,
@@ -278,90 +275,6 @@ fn resolve_lambda_params(
         }
     });
     tokens
-}
-
-// ─── Type inference helpers ──────────────────────────────────────────────────
-
-fn identifier_type(
-    node: Node<'_>,
-    doc: &LiveDoc,
-    starts: &[usize],
-    indexer: &Indexer,
-    uri: &Url,
-) -> Option<String> {
-    let name = node.utf8_text_owned(&doc.bytes)?;
-    if let Some(inferred) =
-        indexer.infer_lambda_param_type_at(&name, uri, token_position(&doc.bytes, starts, node))
-    {
-        return Some(inferred);
-    }
-    if let Some(inferred) = infer_variable_type(indexer, &name, uri) {
-        return Some(inferred);
-    }
-    if name.starts_with(char::is_uppercase) && has_type_definition(indexer, &name) {
-        return Some(name);
-    }
-    None
-}
-
-fn navigation_expression_type(
-    node: Node<'_>,
-    doc: &LiveDoc,
-    starts: &[usize],
-    indexer: &Indexer,
-    uri: &Url,
-) -> Option<String> {
-    let receiver = navigation_receiver_node(node)?;
-    let member = navigation_member_ident(node)?.utf8_text_owned(&doc.bytes)?;
-    let receiver_type = expression_type(receiver, doc, starts, indexer, uri)?;
-
-    if is_call_callee(node) {
-        return member_return_type(indexer, &receiver_type, &member, uri)
-            .or_else(|| find_fun_return_type_by_name(indexer, &member));
-    }
-
-    find_field_type_in_class(indexer, &receiver_type, &member)
-}
-
-fn call_expression_type(
-    node: Node<'_>,
-    doc: &LiveDoc,
-    starts: &[usize],
-    indexer: &Indexer,
-    uri: &Url,
-) -> Option<String> {
-    let (member, _) = node.call_fn_and_qualifier(&doc.bytes)?;
-    if let Some(callee) = node.child(0).filter(|child| child.kind() == KIND_NAV_EXPR) {
-        if let Some(receiver) = navigation_receiver_node(callee) {
-            if let Some(receiver_type) = expression_type(receiver, doc, starts, indexer, uri) {
-                if let Some(return_type) = member_return_type(indexer, &receiver_type, &member, uri)
-                {
-                    return Some(return_type);
-                }
-            }
-        }
-    }
-    find_fun_return_type_by_name(indexer, &member)
-}
-
-fn expression_type(
-    node: Node<'_>,
-    doc: &LiveDoc,
-    starts: &[usize],
-    indexer: &Indexer,
-    uri: &Url,
-) -> Option<String> {
-    match node.kind() {
-        KIND_SIMPLE_IDENT | KIND_TYPE_IDENT => identifier_type(node, doc, starts, indexer, uri),
-        KIND_THIS_EXPR => indexer.infer_lambda_param_type_at(
-            "this",
-            uri,
-            token_position(&doc.bytes, starts, node),
-        ),
-        KIND_NAV_EXPR => navigation_expression_type(node, doc, starts, indexer, uri),
-        KIND_CALL_EXPR => call_expression_type(node, doc, starts, indexer, uri),
-        _ => None,
-    }
 }
 
 // ─── Symbol resolution helpers ───────────────────────────────────────────────
@@ -413,21 +326,6 @@ fn range_within(inner: &Range, outer: &Range) -> bool {
     start_ok && end_ok
 }
 
-fn has_type_definition(indexer: &Indexer, name: &str) -> bool {
-    indexer.definition_locations(name).into_iter().any(|loc| {
-        indexer
-            .files
-            .get(loc.uri.as_str())
-            .map(|file_data| {
-                file_data
-                    .symbols
-                    .iter()
-                    .any(|symbol| symbol.name == name && is_type_symbol(symbol.kind))
-            })
-            .unwrap_or(false)
-    })
-}
-
 fn matches_receiver_type(extension_receiver: &str, receiver_type: &str) -> bool {
     let receiver_leaf = receiver_type.rsplit('.').next().unwrap_or(receiver_type);
     extension_receiver == receiver_type || extension_receiver == receiver_leaf
@@ -474,8 +372,8 @@ fn extension_member_token_type(
         if let Some(symbol) = file_data.symbols.iter().find(|symbol| {
             symbol.name == member_name
                 && is_member_symbol(symbol.kind)
-                && !symbol.extension_receiver.is_empty()
-                && matches_receiver_type(&symbol.extension_receiver, receiver_type)
+                && !symbol.extension_receiver().is_empty()
+                && matches_receiver_type(symbol.extension_receiver(), receiver_type)
         }) {
             return member_token_type(symbol.kind).or(Some(type_index(&SemanticTokenType::METHOD)));
         }
@@ -496,16 +394,12 @@ fn member_token_type_for_receiver(
         })
 }
 
-fn member_return_type(
+fn enum_entry_reference_token(
+    node: Node<'_>,
+    src: &[u8],
     indexer: &Indexer,
-    receiver_type: &str,
-    member_name: &str,
-    from_uri: &Url,
-) -> Option<String> {
-    find_method_return_type(indexer, receiver_type, member_name, Some(from_uri))
-}
-
-fn enum_entry_reference_token(node: Node<'_>, src: &[u8], indexer: &Indexer) -> Option<u32> {
+    uri: &Url,
+) -> Option<u32> {
     let parent = node.parent()?;
     let navigation = parent.parent()?;
     if parent.kind() != crate::queries::KIND_NAV_SUFFIX || navigation.kind() != KIND_NAV_EXPR {
@@ -513,7 +407,7 @@ fn enum_entry_reference_token(node: Node<'_>, src: &[u8], indexer: &Indexer) -> 
     }
 
     let receiver = navigation.named_child(0)?;
-    let receiver_kind = resolve_symbol_kind(node_text(receiver, src), indexer, |kind| {
+    let receiver_kind = resolve_symbol_kind(node_text(receiver, src), indexer, uri, |kind| {
         kind == SymbolKind::ENUM
     })?;
     let receiver_data = indexer.file_data_for(receiver_kind.uri.as_str())?;
@@ -531,9 +425,10 @@ fn enum_entry_reference_token(node: Node<'_>, src: &[u8], indexer: &Indexer) -> 
 fn resolve_symbol_kind(
     name: &str,
     indexer: &Indexer,
+    from_uri: &Url,
     matches_kind: impl Fn(SymbolKind) -> bool,
 ) -> Option<ResolvedReference> {
-    for location in indexer.definition_locations(name) {
+    for location in indexer.resolve_symbol_no_rg(name, from_uri) {
         let Some(data) = indexer.file_data_for(location.uri.as_str()) else {
             continue;
         };

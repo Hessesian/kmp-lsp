@@ -8,6 +8,7 @@ use tower_lsp::lsp_types::{Location, Position, Range, SymbolKind, Url};
 
 use super::text_utils::{utf16_column, word_byte_offsets};
 use crate::features::traits::{DocumentAccess, ScopeQuery, SearchAccess, SymbolIndex};
+use crate::indexer::{classify_cursor, Indexer, NavigationSource, SymbolRole};
 use crate::rg::RgSearchRequest;
 use crate::StrExt;
 
@@ -31,10 +32,11 @@ pub(crate) async fn find_references_with_qualifier(
     name: &str,
     qualifier: Option<&str>,
     uri: &Url,
-    line: u32,
+    position: Position,
     include_decl: bool,
-    index: &(impl SymbolIndex + DocumentAccess + ScopeQuery + SearchAccess + Send + Sync),
+    index: &Indexer,
 ) -> Vec<Location> {
+    let line = position.line;
     let (parent_class, declared_pkg) =
         resolve_scope_with_qualifier(index, uri, line, name, qualifier);
 
@@ -107,7 +109,33 @@ pub(crate) async fn find_references_with_qualifier(
         );
     }
 
-    locations
+    let query_declaring_type = match classify_cursor(index, uri, position) {
+        Some(symbol) => match &symbol.role {
+            SymbolRole::Declaration { .. } => index.enclosing_class_at(uri, line),
+            SymbolRole::Reference {
+                receiver_type: Some(receiver_type),
+                ..
+            } => Some(receiver_type.clone()),
+            _ => None,
+        },
+        None => None,
+    };
+
+    let verified = crate::features::references_verify::verify_candidates(
+        index,
+        query_declaring_type.as_deref(),
+        locations,
+    );
+    let mut resolved_first: Vec<Location> = Vec::with_capacity(verified.kept.len());
+    let mut name_scanned: Vec<Location> = Vec::new();
+    for source in verified.kept {
+        match source {
+            NavigationSource::CstResolved(location) => resolved_first.push(location),
+            NavigationSource::NameScan(location) => name_scanned.push(location),
+        }
+    }
+    resolved_first.append(&mut name_scanned);
+    resolved_first
 }
 
 // ─── Scope resolution ─────────────────────────────────────────────────────────

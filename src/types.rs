@@ -116,6 +116,15 @@ pub(crate) struct CursorPos {
     pub utf16_col: usize,
 }
 
+impl From<tower_lsp::lsp_types::Position> for CursorPos {
+    fn from(position: tower_lsp::lsp_types::Position) -> Self {
+        CursorPos {
+            line: position.line as usize,
+            utf16_col: position.character as usize,
+        }
+    }
+}
+
 /// The caller's position context, used for visibility filtering and type-param substitution.
 #[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct CallerContext<'a> {
@@ -131,6 +140,67 @@ pub(crate) enum Visibility {
     Internal,
     Protected,
     Private,
+}
+
+/// The rarely-populated ("cold") fields of a [`SymbolEntry`], split out behind a
+/// single `Option<Box<..>>` so the common symbol (which has none of them) pays
+/// only one pointer-sized field instead of four inline `String`/`Vec` headers.
+///
+/// Measurement (see `indexer::memory_probe_tests`): across a 740k-symbol corpus,
+/// 99.1% of symbols have all four of these empty/default simultaneously, so the
+/// boxed allocation is skipped for the vast majority of entries.
+///
+/// Never construct or read these directly on a `SymbolEntry`; go through
+/// [`pack_cold_fields`] on the construction side and the accessor methods
+/// (`type_params()`, `extension_receiver()`, `extension_receiver_type()`,
+/// `doc()`) on the read side, which preserve the prior "empty when absent"
+/// semantics without allocating.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub(crate) struct SymbolColdFields {
+    /// Generic type parameter names extracted from the CST at parse time.
+    /// e.g. `class Foo<T, U>` → `["T", "U"]`.
+    pub type_params: Vec<String>,
+    /// For extension functions: the receiver type name (without generics).
+    /// e.g. `fun MyType.foo()` → `"MyType"`, `fun <T> List<T>.bar()` → `"List"`.
+    pub extension_receiver: String,
+    /// For extension functions: the full receiver type including generics.
+    /// e.g. `fun <T> List<T>.bar()` → `"List<T>"`,
+    ///      `fun <E, S> Flow<ReducedResult<E, S>>.collectState(…)` → `"Flow<ReducedResult<E, S>>"`.
+    /// Empty when the receiver has no generics (in which case `extension_receiver`
+    /// already carries the full type).
+    pub extension_receiver_type: String,
+    /// KDoc / Javadoc text for this symbol.
+    /// Empty for source-indexed symbols (doc is extracted live from `FileData.lines`).
+    /// Populated for JAR-indexed symbols where we have no real source lines.
+    pub doc: String,
+}
+
+/// Pack the four rarely-populated fields into an optional boxed [`SymbolColdFields`].
+///
+/// Returns `None` — allocating no `Box` — when all four are empty/default, which
+/// is the ~99% common case and the entire point of the split. Only symbols that
+/// actually carry generics, an extension receiver, or doc text pay the heap
+/// allocation.
+pub(crate) fn pack_cold_fields(
+    type_params: Vec<String>,
+    extension_receiver: String,
+    extension_receiver_type: String,
+    doc: String,
+) -> Option<Box<SymbolColdFields>> {
+    if type_params.is_empty()
+        && extension_receiver.is_empty()
+        && extension_receiver_type.is_empty()
+        && doc.is_empty()
+    {
+        None
+    } else {
+        Some(Box::new(SymbolColdFields {
+            type_params,
+            extension_receiver,
+            extension_receiver_type,
+            doc,
+        }))
+    }
 }
 
 /// Single symbol definition entry stored in the index.
@@ -159,33 +229,29 @@ pub(crate) struct SymbolEntry {
     /// `(0, 0)` for non-callable symbols or zero-param functions.
     #[serde(default)]
     pub param_counts: (u8, u8),
-    /// Generic type parameter names extracted from the CST at parse time.
-    /// e.g. `class Foo<T, U>` → `["T", "U"]`.
-    /// Empty for non-generic symbols.
-    #[serde(default)]
-    pub type_params: Vec<String>,
-    /// For extension functions: the receiver type name (without generics).
-    /// e.g. `fun MyType.foo()` → `"MyType"`, `fun <T> List<T>.bar()` → `"List"`.
-    /// Empty string for non-extension symbols.
-    #[serde(default)]
-    pub extension_receiver: String,
-    /// For extension functions: the full receiver type including generics.
-    /// e.g. `fun <T> List<T>.bar()` → `"List<T>"`,
-    ///      `fun <E, S> Flow<ReducedResult<E, S>>.collectState(…)` → `"Flow<ReducedResult<E, S>>"`.
-    /// Empty string for non-extension symbols or when the receiver has no generics
-    /// (in which case `extension_receiver` already carries the full type).
-    #[serde(default)]
-    pub extension_receiver_type: String,
     /// Enclosing class/object/interface name (immediate parent only).
     /// `None` for top-level declarations; `Some("ClassName")` for members.
     /// Assigned by `assign_containers()` after extraction.
     #[serde(default)]
     pub container: Option<String>,
-    /// KDoc / Javadoc text for this symbol.
-    /// Empty for source-indexed symbols (doc is extracted live from `FileData.lines`).
-    /// Populated for JAR-indexed symbols where we have no real source lines.
+    /// The four rarely-populated fields (`type_params`, `extension_receiver`,
+    /// `extension_receiver_type`, `doc`), boxed together so the common symbol —
+    /// which has none of them — pays one pointer instead of four inline headers.
+    ///
+    /// Production code accesses this exclusively through the accessor methods
+    /// (`type_params()`, `extension_receiver()`, `extension_receiver_type()`,
+    /// `doc()`) and constructs via [`pack_cold_fields`] — never reads `.cold`
+    /// directly. Memory-profiling code (`indexer::memory_probe_tests`) is a
+    /// sanctioned exception: it inspects `.cold` directly to account for the
+    /// boxed allocation's own size, which is exactly the kind of layout
+    /// measurement the accessors intentionally hide.
+    ///
+    /// NOTE: no `skip_serializing_if` — the on-disk cache uses bincode, a
+    /// non-self-describing format that deserializes fields positionally, so
+    /// conditionally omitting a field would desync the reader. `None` already
+    /// encodes as a single tag byte, so the common case stays compact.
     #[serde(default)]
-    pub doc: String,
+    pub cold: Option<Box<SymbolColdFields>>,
     /// True when the last value parameter is a function type (lambda), meaning the caller
     /// may use trailing-lambda syntax: `foo { }` instead of `foo({ })`.
     #[serde(default)]
@@ -204,6 +270,61 @@ impl SymbolEntry {
     /// multiline declarations). Reduces coupling and avoids repeated deep field access.
     pub(crate) fn selection_start(&self) -> u32 {
         self.selection_range.start.line
+    }
+
+    /// Generic type parameter names extracted from the CST at parse time.
+    /// e.g. `class Foo<T, U>` → `["T", "U"]`. Empty slice for non-generic symbols.
+    pub(crate) fn type_params(&self) -> &[String] {
+        self.cold
+            .as_ref()
+            .map_or(&[], |cold_fields| &cold_fields.type_params)
+    }
+
+    /// For extension functions: the receiver type name (without generics).
+    /// e.g. `fun MyType.foo()` → `"MyType"`. Empty string for non-extension symbols.
+    pub(crate) fn extension_receiver(&self) -> &str {
+        self.cold
+            .as_ref()
+            .map_or("", |cold_fields| &cold_fields.extension_receiver)
+    }
+
+    /// For extension functions: the full receiver type including generics.
+    /// e.g. `fun <T> List<T>.bar()` → `"List<T>"`. Empty string for non-extension
+    /// symbols or when the receiver has no generics.
+    pub(crate) fn extension_receiver_type(&self) -> &str {
+        self.cold
+            .as_ref()
+            .map_or("", |cold_fields| &cold_fields.extension_receiver_type)
+    }
+
+    /// KDoc / Javadoc text for this symbol. Empty for source-indexed symbols
+    /// (doc is extracted live from `FileData.lines`); populated for JAR-indexed
+    /// symbols where we have no real source lines.
+    pub(crate) fn doc(&self) -> &str {
+        self.cold
+            .as_ref()
+            .map_or("", |cold_fields| &cold_fields.doc)
+    }
+
+    /// Mutable access to the boxed cold fields, allocating the box on first use.
+    /// Only needed by test setup that mutates a symbol after construction; the
+    /// production path builds the box up-front via [`pack_cold_fields`].
+    #[cfg(test)]
+    fn cold_mut(&mut self) -> &mut SymbolColdFields {
+        self.cold
+            .get_or_insert_with(|| Box::new(SymbolColdFields::default()))
+    }
+
+    /// Replace the generic type parameter names. Allocates the cold box if absent.
+    #[cfg(test)]
+    pub(crate) fn set_type_params(&mut self, type_params: Vec<String>) {
+        self.cold_mut().type_params = type_params;
+    }
+
+    /// Replace the KDoc / Javadoc text. Allocates the cold box if absent.
+    #[cfg(test)]
+    pub(crate) fn set_doc(&mut self, doc: String) {
+        self.cold_mut().doc = doc;
     }
 }
 
@@ -406,6 +527,190 @@ pub(crate) struct WorkspaceIndexResult {
     /// Written into the on-disk cache so warm-manifest mode is only used when the
     /// cache is a complete snapshot of the workspace.
     pub complete_scan: bool,
+}
+
+// ─── File interning ───────────────────────────────────────────────────────────
+
+/// Index of a file's URI inside a [`FileTable`]. A 4-byte handle that replaces a
+/// per-entry `tower_lsp::Location`'s heap-allocated `Url` in the index maps: the
+/// same file's URI is stored once (in the table) instead of once per symbol.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub(crate) struct FileId(u32);
+
+/// A symbol's location expressed as an interned [`FileId`] plus its range —
+/// 20 bytes, no owned heap — instead of a full `Location` (104 B inline + the
+/// `Url` string on the heap). Convert to a `Location` **only at the LSP
+/// boundary** via [`FileTable::location`]; never store a `Location` back into an
+/// index map.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) struct SymbolLoc {
+    pub(crate) file: FileId,
+    pub(crate) range: Range,
+}
+
+impl SymbolLoc {
+    pub(crate) fn new(file: FileId, range: Range) -> Self {
+        Self { file, range }
+    }
+}
+
+/// Append-only interning table mapping file URIs to [`FileId`]s and back.
+///
+/// `by_id[FileId] == Arc<Url>` for that file; `by_uri[uri] == FileId`. The table
+/// is append-only for the lifetime of an [`crate::indexer::Indexer`]: re-indexing
+/// the same URI returns its existing `FileId` (idempotent), so already-interned
+/// `SymbolLoc`s stay valid across `reset_index_state` (which *retains* library
+/// entries rather than clearing). Growth is bounded by the number of distinct
+/// files seen in a session, so no rebuild/clear is needed — the append-only
+/// invariant is what keeps retained library `SymbolLoc`s from dangling.
+pub(crate) struct FileTable {
+    by_id: std::sync::RwLock<Vec<Arc<tower_lsp::lsp_types::Url>>>,
+    by_uri: dashmap::DashMap<String, FileId>,
+}
+
+impl Default for FileTable {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl FileTable {
+    pub(crate) fn new() -> Self {
+        Self {
+            by_id: std::sync::RwLock::new(Vec::new()),
+            by_uri: dashmap::DashMap::new(),
+        }
+    }
+
+    /// Intern `uri`, returning its stable [`FileId`]. Idempotent: the same URI
+    /// always maps to the same id for the table's lifetime.
+    pub(crate) fn intern(&self, uri: &tower_lsp::lsp_types::Url) -> FileId {
+        if let Some(existing) = self.by_uri.get(uri.as_str()) {
+            return *existing;
+        }
+        // Serialize appends under the id-vec write lock; re-check inside the
+        // critical section so a racing interner cannot allocate a second id for
+        // the same URI.
+        let mut ids = self.by_id.write().unwrap_or_else(|e| e.into_inner());
+        if let Some(existing) = self.by_uri.get(uri.as_str()) {
+            return *existing;
+        }
+        // Fail fast rather than wrap: a truncated id would alias an existing
+        // file and silently corrupt every lookup keyed on it.
+        assert!(
+            u32::try_from(ids.len()).is_ok(),
+            "FileTable overflow: more than u32::MAX distinct files interned"
+        );
+        let id = FileId(ids.len() as u32);
+        ids.push(Arc::new(uri.clone()));
+        self.by_uri.insert(uri.as_str().to_string(), id);
+        id
+    }
+
+    /// The interned `Url` for `id`, or `None` if `id` is not from this table.
+    pub(crate) fn url(&self, id: FileId) -> Option<Arc<tower_lsp::lsp_types::Url>> {
+        self.by_id
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(id.0 as usize)
+            .cloned()
+    }
+
+    /// Build a `tower_lsp::Location` from a [`SymbolLoc`]. This is the ONLY place
+    /// a `Location` is reconstituted from interned index data — the LSP boundary.
+    /// Returns `None` if the [`FileId`] is unknown (should not happen for ids the
+    /// table itself produced).
+    pub(crate) fn location(&self, loc: SymbolLoc) -> Option<tower_lsp::lsp_types::Location> {
+        self.url(loc.file)
+            .map(|url| tower_lsp::lsp_types::Location {
+                uri: (*url).clone(),
+                range: loc.range,
+            })
+    }
+
+    /// Snapshot of all interned `Url`s (cheap `Arc` clones). Used by the memory
+    /// probe to attribute the table's bytes; not on any production path.
+    #[cfg(test)]
+    pub(crate) fn urls_snapshot(&self) -> Vec<Arc<tower_lsp::lsp_types::Url>> {
+        self.by_id.read().unwrap_or_else(|e| e.into_inner()).clone()
+    }
+}
+
+/// Interned identifier for a JAR path, into a [`JarTable`]. Mirrors [`FileId`]/
+/// [`FileTable`] — same double-checked-locking intern, same append-only
+/// growth (JAR identity doesn't change mid-session; reindex rebuilds the
+/// whole table, see Task 11).
+// `dead_code` allowed until Task 2 wires `jar_table` onto `Indexer`.
+#[allow(dead_code)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub(crate) struct JarId(u32);
+
+/// Append-only interning table mapping JAR paths to [`JarId`]s and back.
+/// Mirrors [`FileTable`] precisely, substituting plain path strings for
+/// `Url`s since JAR paths don't need URL parsing.
+// `dead_code` allowed until Task 2 wires `jar_table` onto `Indexer`.
+#[allow(dead_code)]
+pub(crate) struct JarTable {
+    by_id: std::sync::RwLock<Vec<String>>,
+    by_path: dashmap::DashMap<String, JarId>,
+}
+
+impl Default for JarTable {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl JarTable {
+    #[allow(dead_code)]
+    pub(crate) fn new() -> Self {
+        Self {
+            by_id: std::sync::RwLock::new(Vec::new()),
+            by_path: dashmap::DashMap::new(),
+        }
+    }
+
+    /// Intern `path`, returning its stable [`JarId`]. Idempotent and race-safe:
+    /// a fast-path read first, then a double-checked write under the same
+    /// lock `FileTable::intern` uses (see PR #208's review for why this is
+    /// race-free — the re-check happens inside the critical section, so a
+    /// losing concurrent caller observes the winner's id, never mints a
+    /// second one).
+    // `dead_code` allowed until Task 2 wires readers through it.
+    #[allow(dead_code)]
+    pub(crate) fn intern(&self, path: &str) -> JarId {
+        if let Some(existing) = self.by_path.get(path) {
+            return *existing;
+        }
+        // Serialize appends under the id-vec write lock; re-check inside the
+        // critical section so a racing interner cannot allocate a second id for
+        // the same path.
+        let mut ids = self.by_id.write().unwrap_or_else(|e| e.into_inner());
+        if let Some(existing) = self.by_path.get(path) {
+            return *existing;
+        }
+        // Fail fast rather than wrap: a truncated id would alias an existing
+        // jar and silently corrupt every lookup keyed on it.
+        assert!(
+            u32::try_from(ids.len()).is_ok(),
+            "JarTable overflow: more than u32::MAX distinct jars interned"
+        );
+        let id = JarId(ids.len() as u32);
+        ids.push(path.to_owned());
+        self.by_path.insert(path.to_owned(), id);
+        id
+    }
+
+    /// The interned path for `id`, or `None` if `id` is not from this table.
+    // `dead_code` allowed until Task 2 wires readers through it.
+    #[allow(dead_code)]
+    pub(crate) fn path(&self, id: JarId) -> Option<String> {
+        self.by_id
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(id.0 as usize)
+            .cloned()
+    }
 }
 
 #[cfg(test)]

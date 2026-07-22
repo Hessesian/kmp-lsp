@@ -2,9 +2,8 @@
 // Phase 2: Core `resolve_symbol_info` pipeline implementation.
 
 use std::collections::HashMap;
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
-use tower_lsp::lsp_types::{CompletionItem, Position, SymbolKind, Url};
+use tower_lsp::lsp_types::{SymbolKind, Url};
 
 use crate::indexer::doc::extract_doc_comment;
 use crate::indexer::Location;
@@ -12,7 +11,14 @@ use crate::resolver::InferenceChain;
 use crate::types::{CallerContext, FileData, SymbolEntry};
 use crate::LinesExt;
 
-/// Domain-level resolution result. Small, owned data suitable for LSP adapters.
+/// Domain-level resolution result: a **rich, complete** record of a resolved
+/// symbol, owned and suitable for LSP adapters.
+///
+/// The fields are *joined* from the index's separate structs at enrichment time
+/// (`SymbolEntry` → kind/deprecated/container; `FileData` → package) so a
+/// consumer gets everything it needs from one resolve call and never re-fetches
+/// the underlying entry to read one more attribute. Adding a needed attribute
+/// here is preferred over a consumer reaching back into the raw maps.
 pub(crate) struct ResolvedSymbol {
     /// Symbol definition location; only accessed in tests and future callers.
     #[allow(dead_code)]
@@ -28,6 +34,15 @@ pub(crate) struct ResolvedSymbol {
     #[allow(dead_code)]
     pub subst: HashMap<String, String>,
     pub doc: String,
+    /// True when the declaration carries an `@Deprecated` annotation
+    /// (joined from `SymbolEntry::deprecated`). Rendered as a hover marker.
+    pub deprecated: bool,
+    /// Enclosing class/object/interface name, or `None` for a top-level
+    /// declaration (joined from `SymbolEntry::container`).
+    pub container: Option<String>,
+    /// The declaring file's package, or `None` when unpackaged (joined from
+    /// `FileData::package`). With `container`, gives the symbol's qualified home.
+    pub package: Option<String>,
 }
 
 /// Options controlling resolution behaviour and allowed fallbacks.
@@ -124,6 +139,20 @@ pub(crate) trait IndexRead {
     /// Callers that need on-demand indexing must call `ensure_indexed_on_demand()`
     /// before `get_file_data()` (as `build_type_param_subst_impl` does).
     fn ensure_indexed_on_demand(&self, _uri: &str) {}
+
+    /// Materialize an unmaterialized jar-backed completion candidate by FQN
+    /// (`completionItem/resolve` on a stub item — see `DATA_FQN`). Returns
+    /// the item's ready-to-send `detail` (folded with the package when the
+    /// client lacks `labelDetailsSupport`) and its location `data` blob so
+    /// the caller can run the normal doc enrichment. Unbudgeted by design:
+    /// the user selected exactly one candidate, same policy as hover.
+    /// Default: `None` (test stubs; non-jar candidates).
+    fn materialize_completion_candidate(
+        &self,
+        _fqn: &str,
+    ) -> Option<(Option<String>, serde_json::Value)> {
+        None
+    }
 }
 
 /// Read-only workspace surface extending [`IndexRead`].
@@ -135,8 +164,9 @@ pub(crate) trait IndexRead {
 /// does not provide.
 ///
 /// The trait grows only as backend handlers migrate away from direct `Indexer`
-/// access. Current callers use `enclosing_class_at`, `mem_lines_for`,
-/// `completions`, and `is_indexing_in_progress` in addition to definition lookup.
+/// access; until then, capabilities like `enclosing_class_at`, `mem_lines_for`,
+/// `completions`, and `is_indexing_in_progress` are still reached through the
+/// inherent `Indexer` (via `as_indexer`), not this trait.
 pub(crate) trait WorkspaceRead: IndexRead {
     fn as_indexer(&self) -> Option<&super::Indexer> {
         None
@@ -149,35 +179,6 @@ pub(crate) trait WorkspaceRead: IndexRead {
         from_uri: &Url,
     ) -> Vec<Location> {
         self.resolve_locations(name, qualifier, from_uri, true)
-    }
-
-    #[allow(dead_code)]
-    fn enclosing_class_at(&self, uri: &Url, row: u32) -> Option<String> {
-        self.as_indexer()?.enclosing_class_at(uri, row)
-    }
-
-    #[allow(dead_code)]
-    fn mem_lines_for(&self, uri: &str) -> Option<Arc<Vec<String>>> {
-        self.as_indexer()?.mem_lines_for(uri)
-    }
-
-    #[allow(dead_code)]
-    fn completions(
-        &self,
-        uri: &Url,
-        position: Position,
-        snippets: bool,
-    ) -> (Vec<CompletionItem>, bool) {
-        let Some(indexer) = self.as_indexer() else {
-            return (vec![], false);
-        };
-        indexer.completions(uri, position, snippets)
-    }
-
-    #[allow(dead_code)]
-    fn is_indexing_in_progress(&self) -> bool {
-        self.as_indexer()
-            .is_some_and(|indexer| indexer.indexing_in_progress.load(Ordering::Acquire))
     }
 }
 
@@ -401,7 +402,7 @@ fn enrich_symbol<I: IndexRead>(
         if source_doc.is_empty() {
             // JAR/sidecar symbols carry raw doc text (HTML Javadoc for Java
             // libraries) — render it the same way as source-extracted docs.
-            crate::indexer::doc::format_doc_comment(&sym.doc)
+            crate::indexer::doc::format_doc_comment(sym.doc())
         } else {
             source_doc
         }
@@ -417,6 +418,9 @@ fn enrich_symbol<I: IndexRead>(
         signature,
         subst,
         doc,
+        deprecated: sym.deprecated,
+        container: sym.container.clone(),
+        package: data.package.clone(),
     })
 }
 
@@ -502,7 +506,7 @@ fn build_type_param_subst_impl<I: IndexRead>(
     let Some(container_sym) = sym_data.symbols.iter().find(|s| s.name == container_name) else {
         return HashMap::new();
     };
-    if container_sym.type_params.is_empty() {
+    if container_sym.type_params().is_empty() {
         return HashMap::new();
     }
 
@@ -531,7 +535,7 @@ fn build_type_param_subst_impl<I: IndexRead>(
     }
 
     container_sym
-        .type_params
+        .type_params()
         .iter()
         .zip(type_args.iter())
         .map(|(key, value)| (key.clone(), value.clone()))
@@ -582,7 +586,7 @@ fn build_enclosing_class_subst_impl<I: IndexRead>(
                         .symbols
                         .iter()
                         .find(|s| s.name == *base_name)
-                        .map(|s| s.type_params.clone())
+                        .map(|s| s.type_params().to_vec())
                 })
             })
             .unwrap_or_default();
@@ -645,7 +649,7 @@ fn build_enclosing_class_subst_impl<I: IndexRead>(
             else {
                 continue;
             };
-            for (param, arg) in super_sym.type_params.iter().zip(type_args.iter()) {
+            for (param, arg) in super_sym.type_params().iter().zip(type_args.iter()) {
                 result.entry(param.clone()).or_insert_with(|| arg.clone());
             }
         }
@@ -659,11 +663,19 @@ fn build_enclosing_class_subst_impl<I: IndexRead>(
 // but this enables unit tests to use a TestIndex stub.
 impl IndexRead for super::Indexer {
     fn get_definitions(&self, name: &str) -> Option<Vec<Location>> {
+        // Reconstitute each interned `SymbolLoc` into a `Location` at this boundary.
         let mut locs: Vec<Location> = self
             .definitions
             .get(name)
-            .map(|rf| rf.clone())
+            .map(|locations_ref| {
+                locations_ref
+                    .iter()
+                    .filter_map(|symbol_location| self.file_table.location(*symbol_location))
+                    .collect()
+            })
             .unwrap_or_default();
+        let mut unbudgeted = usize::MAX;
+        crate::indexer::jar::ensure_jar_definitions_for(self, name, &mut unbudgeted);
         if let Some(jar_locs) = self.jar_definitions.get(name) {
             locs.extend(jar_locs.iter().cloned());
         }
@@ -675,6 +687,11 @@ impl IndexRead for super::Indexer {
     }
 
     fn get_file_data(&self, uri: &str) -> Option<Arc<FileData>> {
+        // URI-keyed `jar_files` read: deliberately NOT gated by a Tier-2
+        // promotion — there is no URI→name reverse index to promote by. A
+        // URI for a not-yet-materialized JAR misses here (known
+        // limitation); callers may pass any URI, though most arrive via
+        // name-keyed (promoting) lookups.
         self.files
             .get(uri)
             .map(|rf| rf.clone())
@@ -734,6 +751,30 @@ impl IndexRead for super::Indexer {
             .map(|g| g.clone())
             .unwrap_or(crate::indexer::jar_phase::JarPhase::Unavailable)
     }
+
+    fn materialize_completion_candidate(
+        &self,
+        fqn: &str,
+    ) -> Option<(Option<String>, serde_json::Value)> {
+        let (qualifier, leaf) = fqn.rsplit_once('.')?;
+        let mut unbudgeted = usize::MAX;
+        crate::indexer::jar::ensure_jar_definitions_for(self, leaf, &mut unbudgeted);
+        let (detail, data) = crate::resolver::complete::jar_symbol_detail(self, leaf, qualifier)?;
+        let data = data?;
+        let supports_label_details = self
+            .client_label_details_support
+            .load(std::sync::atomic::Ordering::Relaxed);
+        // Mirror `add_cross_package_symbol`'s fold: without labelDetails
+        // support the package hint lives in `detail`, and this resolved
+        // `detail` replaces the stub's package-only one.
+        let detail = match detail {
+            Some(signature) if !supports_label_details => {
+                Some(format!("package {qualifier}\n{signature}"))
+            }
+            other => other,
+        };
+        Some((detail, data))
+    }
 }
 
 impl IndexRead for Arc<super::Indexer> {
@@ -771,6 +812,13 @@ impl IndexRead for Arc<super::Indexer> {
 
     fn jar_phase(&self) -> crate::indexer::jar_phase::JarPhase {
         <super::Indexer as IndexRead>::jar_phase(self.as_ref())
+    }
+
+    fn materialize_completion_candidate(
+        &self,
+        fqn: &str,
+    ) -> Option<(Option<String>, serde_json::Value)> {
+        <super::Indexer as IndexRead>::materialize_completion_candidate(self.as_ref(), fqn)
     }
 }
 

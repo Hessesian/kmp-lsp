@@ -1013,11 +1013,13 @@ fn data_class_copy_not_confused_by_jar_copy() {
         detail: "fun copy(element: E): AbstractList<E>".to_owned(),
         params: "element: E".to_owned(),
         param_counts: (1, 1), // 1 required param
-        type_params: vec!["E".to_owned()],
-        extension_receiver: String::new(),
-        extension_receiver_type: String::new(),
+        cold: crate::types::pack_cold_fields(
+            vec!["E".to_owned()],
+            String::new(),
+            String::new(),
+            String::new(),
+        ),
         container: Some("AbstractList".to_owned()),
-        doc: String::new(),
         trailing_lambda: false,
         deprecated: false,
     }];
@@ -1115,11 +1117,13 @@ fn copy_inside_custom_receiver_lambda_no_false_positive() {
         detail: "fun copy(element: E): AbstractList<E>".to_owned(),
         params: "element: E".to_owned(),
         param_counts: (1, 1),
-        type_params: vec!["E".to_owned()],
-        extension_receiver: String::new(),
-        extension_receiver_type: String::new(),
+        cold: crate::types::pack_cold_fields(
+            vec!["E".to_owned()],
+            String::new(),
+            String::new(),
+            String::new(),
+        ),
         container: Some("AbstractList".to_owned()),
-        doc: String::new(),
         trailing_lambda: false,
         deprecated: false,
     }];
@@ -1332,5 +1336,34 @@ fn qualified_member_method_cross_file_is_diagnosed() {
             .iter()
             .any(|d| d.message.contains("save") && d.message.contains("expected 1")),
         "cross-file member method call must be diagnosed: {diags:?}"
+    );
+}
+
+/// IndexOnly (diagnostics) resolution never triggers JAR materialization — but
+/// when Tier 1 (`jar_bare_names`) knows a same-named candidate exists in a JAR
+/// that hasn't been materialized yet, the workspace-only signature can't be
+/// trusted as the unique candidate. The diagnostic must suppress rather than
+/// risk a false "wrong parameter count" positive.
+#[test]
+fn call_arg_diagnostics_suppresses_when_unmaterialized_jar_has_same_named_candidate() {
+    let (uri, idx, src) = setup(&[(
+        "/Test.kt",
+        "fun main() { Foo(1, 2) }\nfun Foo(a: Int): Unit {}",
+    )]);
+
+    // Simulate: a same-named `Foo` exists in a JAR whose Tier 2 data isn't
+    // materialized yet — Tier 1 knows the name exists, nothing more.
+    let jar_id = idx.jar_table.intern("/fake/other-foo.jar");
+    idx.jar_bare_names
+        .entry("Foo".to_owned())
+        .or_default()
+        .push(jar_id);
+
+    let diags = run_diagnostics(&idx, &uri, &src);
+    assert!(
+        diags.is_empty(),
+        "a same-named candidate in an unmaterialized JAR must suppress the \
+         'wrong parameter count' warning, not let it through as a false \
+         positive; got: {diags:?}"
     );
 }

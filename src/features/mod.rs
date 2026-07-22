@@ -26,6 +26,7 @@ pub(crate) mod implementation;
 pub(crate) mod nullable_call_diagnostics;
 pub(crate) mod on_type_formatting;
 pub(crate) mod references;
+pub(crate) mod references_verify;
 pub(crate) mod rename;
 pub(crate) mod signature_help;
 pub(crate) mod symbols;

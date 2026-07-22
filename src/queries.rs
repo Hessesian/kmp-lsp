@@ -350,6 +350,7 @@ pub(crate) const KIND_IDENTIFIER: &str = "identifier";
 pub(crate) const KIND_SCOPED_IDENT: &str = "scoped_identifier";
 pub(crate) const KIND_CALL_EXPR: &str = "call_expression";
 pub(crate) const KIND_THIS_EXPR: &str = "this_expression";
+pub(crate) const KIND_SUPER_EXPR: &str = "super_expression";
 pub(crate) const KIND_LAMBDA_LIT: &str = "lambda_literal";
 pub(crate) const KIND_LAMBDA_PARAMS: &str = "lambda_parameters";
 pub(crate) const KIND_VALUE_ARG: &str = "value_argument";

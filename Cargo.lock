@@ -846,6 +846,7 @@ dependencies = [
  "tree-sitter-swift-bundled",
  "walkdir",
  "zip",
+ "zstd",
 ]
 
 [[package]]

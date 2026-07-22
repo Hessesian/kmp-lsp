@@ -27,7 +27,10 @@ use tower_lsp::lsp_types::{Location, Url};
 
 use crate::indexer::Indexer;
 
-use super::infer::{infer_field_chain_type, infer_receiver_type};
+use super::infer::{
+    find_fun_return_type_by_name, find_fun_return_type_reachable, find_method_return_type,
+    find_method_return_type_via_supertypes, infer_field_chain_type, infer_receiver_type,
+};
 use super::{ReceiverKind, ReceiverType};
 
 /// An ordered list of **definition** sites (where a symbol is *declared*), best
@@ -43,6 +46,39 @@ impl std::ops::Deref for Definitions {
     type Target = [Location];
     fn deref(&self) -> &Self::Target {
         &self.0
+    }
+}
+
+/// The result type of a call — what a function or method *returns*.
+///
+/// Carried as the **as-written** type text from the signature (the text after
+/// the `:`), with generics and a trailing `?` preserved (e.g. `Flow<Event>`,
+/// `String?`). It is *not* normalized: feed it to [`ReceiverType::from_raw`] when
+/// you need the `raw`/`qualified`/`leaf`/`nullable` breakdown. The newtype exists
+/// so a signature returning `Option<ReturnType>` says "a call's return type",
+/// distinct from a receiver type, a field type, or a bare identifier.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ReturnType(pub String);
+
+impl ReturnType {
+    /// Consume into the owned return-type `String` (for the downstream
+    /// String-typed inference paths that haven't adopted the newtype yet).
+    /// Borrow with `&*` / [`Deref`](std::ops::Deref) when you only need `&str`.
+    pub(crate) fn into_inner(self) -> String {
+        self.0
+    }
+}
+
+impl std::ops::Deref for ReturnType {
+    type Target = str;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl From<ReturnType> for String {
+    fn from(rt: ReturnType) -> Self {
+        rt.0
     }
 }
 
@@ -79,6 +115,39 @@ pub(crate) trait Resolver {
     /// import-aware member lookup; prefer it over reaching into the raw
     /// `definition_locations` map, which is not scope-aware.
     fn resolve_member(&self, member: &str, qualifier: &str, uri: &Url) -> Definitions;
+
+    /// Resolve the [`ReturnType`] of a *free function* `fn_name` called from
+    /// `from_uri`.
+    ///
+    /// Import-aware: binds `fn_name` through the scope chain (imports →
+    /// same-package → star → qualified/jars) and reads the return type of the
+    /// symbol the call actually binds to, falling back to a capped workspace-wide
+    /// by-name lookup only when no in-scope definition is found. Prefer this over
+    /// the raw by-name scan so an unrelated same-named overload in a test file or
+    /// jar can't shadow the real one.
+    ///
+    /// Returns `None` when no definition is found or it has no declared return
+    /// type.
+    fn function_return_type(&self, fn_name: &str, from_uri: &Url) -> Option<ReturnType>;
+
+    /// Resolve the [`ReturnType`] of `method_name` invoked on a receiver whose
+    /// type's base name is `type_name`.
+    ///
+    /// This is the single composite for member resolution: it checks extension
+    /// functions and member functions of the type itself, then walks the type's
+    /// declared supertypes (applying type-argument substitution). When `from_uri`
+    /// is `Some`, extension functions are filtered to those in scope at that file;
+    /// `None` performs an unfiltered global lookup for callers without URI
+    /// context.
+    ///
+    /// Returns `None` when no matching method (own, extension, or inherited) with
+    /// a declared return type is found.
+    fn method_return_type(
+        &self,
+        type_name: &str,
+        method_name: &str,
+        from_uri: Option<&Url>,
+    ) -> Option<ReturnType>;
 }
 
 impl Resolver for Indexer {
@@ -92,5 +161,24 @@ impl Resolver for Indexer {
 
     fn resolve_member(&self, member: &str, qualifier: &str, uri: &Url) -> Definitions {
         Definitions(self.resolve_member_only(member, qualifier, uri))
+    }
+
+    fn function_return_type(&self, fn_name: &str, from_uri: &Url) -> Option<ReturnType> {
+        find_fun_return_type_reachable(self, fn_name, from_uri)
+            .or_else(|| find_fun_return_type_by_name(self, fn_name))
+            .map(ReturnType)
+    }
+
+    fn method_return_type(
+        &self,
+        type_name: &str,
+        method_name: &str,
+        from_uri: Option<&Url>,
+    ) -> Option<ReturnType> {
+        find_method_return_type(self, type_name, method_name, from_uri)
+            .or_else(|| {
+                find_method_return_type_via_supertypes(self, type_name, method_name, from_uri)
+            })
+            .map(ReturnType)
     }
 }

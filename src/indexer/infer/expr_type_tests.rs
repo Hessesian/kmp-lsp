@@ -30,6 +30,19 @@ fn infer(src: &str) -> Option<String> {
     infer_expr_type(expr, &bytes, &TestDeps::new(), &test_url())
 }
 
+/// Parse `fun f() = <expr>` and run `infer_expr_type` with explicit deps.
+fn infer_with_deps(src: &str, deps: &TestDeps) -> Option<String> {
+    let full = format!("fun f() = {src}");
+    let (tree, bytes) = fun_body_expr_node(&full);
+    let root = tree.root_node();
+    let fun_decl = root.child(0)?;
+    let body = (0..fun_decl.child_count())
+        .map(|i| fun_decl.child(i).unwrap())
+        .find(|n| n.kind() == KIND_FUN_BODY)?;
+    let expr = body.child(1)?;
+    infer_expr_type(expr, &bytes, deps, &test_url())
+}
+
 // ─── literals ─────────────────────────────────────────────────────────────────
 
 #[test]
@@ -221,4 +234,83 @@ fn remember_saveable_infers_lambda_result() {
 #[test]
 fn remember_empty_lambda_is_none() {
     assert_eq!(infer("remember { }"), None);
+}
+
+// ─── this_expression ──────────────────────────────────────────────────────────
+
+#[test]
+fn this_expr_empty_deps_returns_none() {
+    // No contextual type registered → infer_this_expr_type returns None without panicking.
+    assert_eq!(infer("this"), None);
+}
+
+#[test]
+fn this_expr_resolves_to_contextual_receiver_type() {
+    // `this` with a registered contextual type → resolves to the receiver class name.
+    let deps = TestDeps::new().with_contextual("file:///tmp/test.kt", "this", "MyReceiver");
+    assert_eq!(
+        infer_with_deps("this", &deps).as_deref(),
+        Some("MyReceiver")
+    );
+}
+
+// ─── identifier / navigation / this kinds (new in Task 1) ─────────────────────
+
+#[test]
+fn infer_expr_type_resolves_simple_identifier() {
+    // `value` where `value: MyType` → "MyType"
+    let deps = TestDeps::new().with_var("file:///tmp/test.kt", "value", "MyType");
+    assert_eq!(infer_with_deps("value", &deps).as_deref(), Some("MyType"));
+}
+
+// ─── has_type_definition branch (Step 0 of Task 3) ───────────────────────────
+
+#[test]
+fn bare_uppercase_ident_with_type_definition_resolves_to_name() {
+    // `Foo` where `Foo` is a known type → "Foo" (companion / static access receiver)
+    let deps = TestDeps::new().with_type("Foo");
+    assert_eq!(infer_with_deps("Foo", &deps).as_deref(), Some("Foo"));
+}
+
+#[test]
+fn bare_uppercase_ident_without_type_definition_returns_none() {
+    // `Foo` where no type definition is registered → None (not a known type name)
+    let deps = TestDeps::new();
+    assert_eq!(infer_with_deps("Foo", &deps).as_deref(), None);
+}
+
+#[test]
+fn lowercase_ident_not_affected_by_has_type_definition() {
+    // `foo` is lowercase — the `has_type_definition` guard is never reached even if
+    // a type named "foo" were registered.
+    let deps = TestDeps::new().with_type("foo");
+    assert_eq!(infer_with_deps("foo", &deps).as_deref(), None);
+}
+
+#[test]
+fn var_type_takes_priority_over_type_definition() {
+    // When `Foo` is declared as a local variable *and* is a known type, the
+    // variable type wins (declared context is more specific).
+    let deps = TestDeps::new()
+        .with_var("file:///tmp/test.kt", "Foo", "Bar")
+        .with_type("Foo");
+    assert_eq!(infer_with_deps("Foo", &deps).as_deref(), Some("Bar"));
+}
+
+#[test]
+fn infer_expr_type_resolves_navigation_chain_receiver() {
+    // `data.field` where `data: Holder` and `Holder.field: Foo` → "Foo"
+    let deps = TestDeps::new()
+        .with_var("file:///tmp/test.kt", "data", "Holder")
+        .with_field("Holder", "field", "Foo");
+    assert_eq!(infer_with_deps("data.field", &deps).as_deref(), Some("Foo"));
+}
+
+#[test]
+fn unknown_identifier_returns_none() {
+    // An unregistered variable → no type known
+    assert_eq!(
+        infer_with_deps("unknown", &TestDeps::new()).as_deref(),
+        None
+    );
 }

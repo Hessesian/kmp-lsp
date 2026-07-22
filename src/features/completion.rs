@@ -18,7 +18,7 @@ use crate::indexer::{
     find_it_element_type, find_named_lambda_param_type, is_lambda_param, last_ident_in,
 };
 use crate::resolver::complete::{
-    complete_symbol, complete_symbol_with_context, is_annotation_context,
+    complete_symbol, complete_symbol_with_context, is_annotation_context, DotReceiver,
 };
 use crate::types::CursorPos;
 
@@ -29,7 +29,9 @@ use super::completion_context::{CompletionContext, ScopeContext};
 use super::traits::CompletionIndex;
 
 // Re-export so callers only need to import from one place.
-pub(crate) use crate::resolver::complete::{DATA_CALLING_URI, DATA_COL, DATA_LINE, DATA_URI};
+pub(crate) use crate::resolver::complete::{
+    DATA_CALLING_URI, DATA_COL, DATA_FQN, DATA_LINE, DATA_URI,
+};
 
 const IT: &str = "it";
 
@@ -67,11 +69,32 @@ pub(crate) fn compute_completions(
 ///
 /// Reads `uri`, `line`, `col`, and optionally `calling_uri` from the item's
 /// custom `data` blob written by the completion pipeline.
+///
+/// A stub item (unmaterialized jar candidate — `DATA_FQN` instead of a
+/// location) is materialized here first: the user selected exactly one
+/// candidate, so this is the LSP-intended place to pay the cost the
+/// list-wide completion pass deliberately skipped (budgets). On success the
+/// stub's `data` is upgraded to the real location and the normal doc
+/// enrichment below runs on it.
 pub(crate) fn resolve_completion_item<I: IndexRead>(
     item: CompletionItem,
     index: &I,
 ) -> CompletionItem {
     let mut item = item;
+    let stub_fqn = item
+        .data
+        .as_ref()
+        .filter(|data| data.get(DATA_URI).is_none())
+        .and_then(|data| data.get(DATA_FQN).and_then(|v| v.as_str()))
+        .map(str::to_owned);
+    if let Some(fqn) = stub_fqn {
+        if let Some((detail, data)) = index.materialize_completion_candidate(&fqn) {
+            if detail.is_some() {
+                item.detail = detail;
+            }
+            item.data = Some(data);
+        }
+    }
     if let Some(ref data) = item.data {
         if let (Some(uri), Some(line)) = (
             data.get(DATA_URI).and_then(|v| v.as_str()),
@@ -97,7 +120,23 @@ pub(crate) fn resolve_completion_item<I: IndexRead>(
                 &ResolveOptions::completion(),
             ) {
                 if !info.signature.is_empty() {
-                    item.detail = Some(info.signature);
+                    // Preserve a folded `package …` header line (added by
+                    // `add_cross_package_symbol` for clients without
+                    // `labelDetailsSupport`) — clients like Helix apply the
+                    // resolved `detail`, and replacing it wholesale would
+                    // erase the package hint the fold exists to provide.
+                    let package_line = item
+                        .detail
+                        .as_deref()
+                        .and_then(|detail| detail.lines().next())
+                        .filter(|line| line.starts_with("package "))
+                        .map(str::to_owned);
+                    item.detail = Some(match package_line {
+                        Some(package_line) if !info.signature.starts_with("package ") => {
+                            format!("{package_line}\n{}", info.signature)
+                        }
+                        _ => info.signature,
+                    });
                 }
                 if !info.doc.is_empty() {
                     item.documentation = Some(Documentation::MarkupContent(MarkupContent {
@@ -142,19 +181,15 @@ pub(crate) fn run_completions(
     }
 
     let annotation_only = is_annotation_context(before, prefix);
-    let lines = index.lines_for(uri).unwrap_or_default();
-    let ctx = CompletionContext::analyse(
-        before_prefix,
-        position,
-        index,
-        uri,
-        lines.as_ref(),
-        annotation_only,
-    );
+    // Only a `.` before the prefix can carry a dot-completion receiver — the
+    // gate spares bare-word completions the speculative reparse inside
+    // `derive_dot_receiver`.
+    let wants_receiver = before_prefix.trim_end().ends_with('.');
+    let ctx = CompletionContext::analyse(position, index, uri, annotation_only, wants_receiver);
 
     if let Some(ref recv) = ctx.receiver {
-        let recv_str = recv.as_str();
-        if ctx.scope.is_scope_receiver(recv_str)
+        let recv_str = recv.text();
+        if matches!(recv, DotReceiver::Scope(_))
             || is_lambda_param(recv_str, before, index, uri, position.line as usize)
         {
             return (
@@ -162,11 +197,7 @@ pub(crate) fn run_completions(
                     index,
                     recv_str,
                     &ctx.scope,
-                    CompletionSite {
-                        before,
-                        position,
-                        uri,
-                    },
+                    CompletionSite { position, uri },
                     snippets,
                     prefix,
                 ),
@@ -242,7 +273,6 @@ fn store_in_cache(
 }
 
 struct CompletionSite<'a> {
-    before: &'a str,
     position: Position,
     uri: &'a Url,
 }
@@ -263,12 +293,10 @@ fn complete_lambda_dot(
         .resolve_receiver(recv)
         .or_else(|| scope.named_param_type(recv))
         .map(str::to_owned)
-        .or_else(|| {
-            resolve_named_lambda_param_type(index, recv, site.before, site.position, site.uri)
-        })
+        .or_else(|| resolve_named_lambda_param_type(index, recv, site.position, site.uri))
         .or_else(|| {
             (recv == IT)
-                .then(|| find_it_element_type(site.before, index, site.uri))
+                .then(|| resolve_it_element_type(index, &site))
                 .flatten()
         })
     else {
@@ -319,20 +347,18 @@ fn line_for_position(index: &Indexer, uri: &Url, line_idx: u32) -> Option<String
 fn resolve_named_lambda_param_type(
     index: &Indexer,
     recv: &str,
-    before: &str,
     position: Position,
     uri: &Url,
 ) -> Option<String> {
-    find_named_lambda_param_type(
-        before,
-        recv,
-        index,
-        uri,
-        CursorPos {
-            line: position.line as usize,
-            utf16_col: position.character as usize,
-        },
-    )
+    find_named_lambda_param_type(recv, CursorPos::from(position), index, uri)
+}
+
+/// Resolve the element type of `it` at the completion site via the CST-first
+/// lambda resolver (same path used for hover/inlay `it` typing), using the
+/// real cursor position so multi-line lambdas resolve like they do on the
+/// hover path rather than via a same-line `rfind('{')` text scan.
+fn resolve_it_element_type(index: &Indexer, site: &CompletionSite<'_>) -> Option<String> {
+    find_it_element_type(CursorPos::from(site.position), index, site.uri)
 }
 
 /// Append members of the implicit receiver inside `with` / `apply` / `run` lambdas.

@@ -102,7 +102,7 @@ fn apply_file_result_updates_index_issue_apply() {
     );
     let locs = idx.definitions.get("TestClass").unwrap();
     assert_eq!(locs.len(), 1);
-    assert_eq!(locs[0].uri, u);
+    assert_eq!(idx.file_table.location(locs[0]).unwrap().uri, u);
 }
 
 /// Re-indexing the same file with new content must remove the old symbol.
@@ -195,7 +195,7 @@ fn apply_workspace_result_includes_cached_files_issue_apply() {
     };
 
     let idx = Indexer::new();
-    idx.apply_workspace_result(&workspace_result);
+    idx.apply_workspace_result(workspace_result);
 
     assert!(
         idx.definitions.contains_key("CachedClass"),
@@ -215,7 +215,7 @@ fn apply_workspace_result_clears_stale_workspace_issue_apply() {
 
     // First workspace: ClassA
     let u1 = uri("/A.kt");
-    idx.apply_workspace_result(&WorkspaceIndexResult {
+    idx.apply_workspace_result(WorkspaceIndexResult {
         files: vec![Indexer::parse_file(&u1, "class ClassA")],
         stats: IndexStats::default(),
         workspace_root: std::path::PathBuf::from("/workspace_a"),
@@ -229,7 +229,7 @@ fn apply_workspace_result_clears_stale_workspace_issue_apply() {
 
     // Second workspace: ClassB only
     let u2 = uri("/B.kt");
-    idx.apply_workspace_result(&WorkspaceIndexResult {
+    idx.apply_workspace_result(WorkspaceIndexResult {
         files: vec![Indexer::parse_file(&u2, "class ClassB")],
         stats: IndexStats::default(),
         workspace_root: std::path::PathBuf::from("/workspace_b"),
@@ -265,7 +265,7 @@ fn apply_workspace_result_mixed_cache_and_parsed_issue_apply() {
     let parsed_result = Indexer::parse_file(&u_parsed, "class ParsedClass");
 
     let idx = Indexer::new();
-    idx.apply_workspace_result(&WorkspaceIndexResult {
+    idx.apply_workspace_result(WorkspaceIndexResult {
         files: vec![cached_result, parsed_result],
         stats: IndexStats {
             cache_hits: 1,
@@ -747,5 +747,56 @@ fn classify_source_set_handles_flavored_kmp_test_sets() {
     assert_eq!(
         classify("file:///p/shared/src/iosTest/kotlin/A.kt"),
         SourceSet::Test
+    );
+}
+
+/// Tier 1 (`jar_bare_names`) names must be offered by bare-word completion
+/// even before the owning JAR is materialized — otherwise completion
+/// silently loses coverage for anything not yet promoted to Tier 2.
+#[test]
+fn rebuild_bare_name_cache_includes_tier1_only_jar_names() {
+    let idx = Indexer::new();
+    let jar_id = idx.jar_table.intern("/fake/lib.jar");
+    idx.jar_bare_names
+        .entry("LazyLibType".to_owned())
+        .or_default()
+        .push(jar_id);
+    idx.bare_names_dirty.store(true, Ordering::Release);
+    idx.rebuild_bare_name_cache();
+    let cache = idx.bare_name_cache.read().unwrap();
+    assert!(
+        cache.contains(&"LazyLibType".to_owned()),
+        "bare-word completion must offer a name that only exists in an \
+         unmaterialized JAR's Tier-1 manifest, not just already-materialized names"
+    );
+}
+
+/// Auto-import must offer a Tier-1-only candidate's real FQN even before its
+/// JAR is materialized — this is the case that categorically cannot be
+/// covered by import-scoped eager promotion (no `ImportEntry` exists yet for
+/// a symbol nobody has imported).
+#[test]
+fn rebuild_importable_fqns_includes_tier1_only_candidates() {
+    let idx = Indexer::new();
+    let jar_id = idx.jar_table.intern("/fake/lib.jar");
+    // Seed both maps exactly as build_jar_manifest (Task 6) would for a
+    // symbol whose manifest entry carries a package: jar_bare_names always,
+    // jar_qualified keyed by the real FQN.
+    idx.jar_bare_names
+        .entry("LazyLibType".to_owned())
+        .or_default()
+        .push(jar_id);
+    idx.jar_qualified
+        .insert("com.fake.lib.LazyLibType".to_owned(), jar_id);
+    idx.bare_names_dirty.store(true, Ordering::Release);
+    idx.rebuild_bare_name_cache(); // calls rebuild_importable_fqns internally
+    let fqns = idx.importable_fqns.read().unwrap();
+    assert!(
+        fqns.get("LazyLibType")
+            .is_some_and(|v| v.contains(&"com.fake.lib.LazyLibType".to_owned())),
+        "auto-import must offer a Tier-1-only candidate's real FQN even \
+         before its JAR is materialized — this is the case that categorically \
+         cannot be covered by import-scoped eager promotion (no ImportEntry \
+         exists yet for a symbol nobody has imported)"
     );
 }

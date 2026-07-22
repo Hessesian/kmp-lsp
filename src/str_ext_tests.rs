@@ -1,5 +1,31 @@
 use super::StrExt;
 
+// ── is_nullable / strip_nullable ─────────────────────────────────────
+
+#[test]
+fn is_nullable_detects_trailing_marker() {
+    assert!("Foo?".is_nullable());
+    assert!(!"Foo".is_nullable());
+}
+
+#[test]
+fn strip_nullable_removes_trailing_marker() {
+    assert_eq!("Foo?".strip_nullable(), "Foo");
+    assert_eq!("Foo".strip_nullable(), "Foo");
+}
+
+#[test]
+fn is_nullable_ignores_trailing_whitespace() {
+    // A trailing-`?` after whitespace still marks the type nullable.
+    assert!("Foo? ".is_nullable());
+}
+
+#[test]
+fn nullable_only_at_the_end_not_inside_generics() {
+    // `Box<String?>` is itself non-nullable — the `?` is on the type argument.
+    assert!(!"Box<String?>".is_nullable());
+}
+
 // ── word_at_utf16_col ────────────────────────────────────────────────
 
 #[test]

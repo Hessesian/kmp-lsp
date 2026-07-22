@@ -16,6 +16,7 @@ use crate::queries::{
     KIND_STATEMENTS, KIND_TYPE_IDENT, KIND_TYPE_TEST, KIND_USER_TYPE, KIND_VAR_DECL,
     KIND_WHEN_CONDITION, KIND_WHEN_ENTRY, KIND_WHEN_EXPR, KIND_WHEN_SUBJECT,
 };
+use crate::StrExt;
 
 /// Memoizes `collect_sealed_members` results within a single `when_diagnostics` pass.
 /// Key: `(sealed_name, parent_uri_string, range)`.
@@ -57,7 +58,7 @@ fn analyze_when<'a>(
 
     let subject_type = resolve_subject_type_from_cst(&when_node, &subject_var, source_bytes)
         .or_else(|| crate::resolver::infer::infer_variable_type(indexer, &subject_var, uri))?;
-    let subject_type = strip_nullable(&subject_type).to_string();
+    let subject_type = subject_type.strip_nullable().to_string();
 
     let (type_kind, members) = resolve_type_members(
         indexer,
@@ -472,10 +473,6 @@ fn extract_subject_identifier(subject_node: &tree_sitter::Node, source: &[u8]) -
         }
     }
     None
-}
-
-fn strip_nullable(type_name: &str) -> &str {
-    type_name.strip_suffix('?').unwrap_or(type_name)
 }
 
 /// Resolve whether the type is an enum, sealed class, or Boolean, and return its members.

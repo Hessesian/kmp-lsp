@@ -25,7 +25,8 @@ fn sorted_subtype_names(idx: &Indexer, supertype: &str) -> Vec<String> {
         .map(|v| {
             v.iter()
                 .filter_map(|loc| {
-                    loc.uri
+                    idx.file_table
+                        .url(loc.file)?
                         .to_file_path()
                         .ok()?
                         .file_stem()
@@ -85,8 +86,8 @@ fn qualified_removed_on_reindex() {
 #[test]
 fn packages_map_populated() {
     let (u, idx) = indexed("/t.kt", "package com.example\nclass Foo");
-    let uris = idx.packages.get("com.example").unwrap();
-    assert!(uris.contains(&u.to_string()));
+    let file_ids = idx.packages.get("com.example").unwrap();
+    assert!(file_ids.contains(&idx.file_table.intern(&u)));
 }
 
 // ── parse_count: verify deduplication ───────────────────────────────────
@@ -411,7 +412,8 @@ super.doIt()
         .map(|v| v.clone())
         .unwrap_or_default();
     assert!(!locs.is_empty(), "Foo must be in definitions");
-    let file = idx.files.get(locs[0].uri.as_str()).unwrap();
+    let foo_uri = idx.file_table.url(locs[0].file).unwrap();
+    let file = idx.files.get(foo_uri.as_str()).unwrap();
     let start_line = locs[0].range.start.line;
     let supers: Vec<String> = file
         .supers
@@ -518,40 +520,25 @@ fn hover_named_param_type_detection() {
 
 // ── trailing-lambda it type (user-defined function) ───────────────────────
 
-#[test]
-fn trailing_lambda_it_from_fun_def() {
-    let src = concat!(
-        "private fun <T : Any> loadProduct(",
-        "key: ProductKey, flow: Flow<ResultState<T>>, ",
-        "map: (ResultState<T>) -> StatefulModel) {\n}\n",
-        "fun use() { loadProduct(k, f) { it.value } }",
-    );
-    let (u, idx) = indexed("/t.kt", src);
-    // `before_brace` as seen by lambda_receiver_type_from_context
-    let before = "loadProduct(k, f) ";
-    let result = lambda_receiver_type_from_context(before, &idx, &u);
-    assert_eq!(
-        result.as_deref(),
-        Some("ResultState"),
-        "trailing lambda it should resolve to ResultState, got: {result:?}"
-    );
-}
+// `trailing_lambda_it_from_fun_def` (text-heuristic twin of the CST
+// `trailing_lambda_it_infer_at_cursor` decoy below) was removed with receiver.rs:
+// the decoy pins the same `loadProduct(...) { it }` → ResultState behavior via the
+// production CST path.
 
 #[test]
 fn nested_lambda_it_type_resolved_through_outer_brace() {
-    // `setState` takes a lambda whose `it` is State.
-    // When `setState { it }` is nested inside an outer lambda body like
-    // `collectState({ setState { it } }, ...)`, the `before_brace` seen by
-    // lambda_receiver_type_from_context is `"    { setState "` — callee has
-    // a leading `{` from the outer lambda.  Must still resolve to State.
-    let src = "package com.example
-fun setState(reducer: (State) -> State) {}
-class State
-";
+    // `setState { it }` nested inside another lambda (`wrap { ... }`): the
+    // ancestor walk must still resolve the inner `it` to `State` from
+    // `setState(reducer: (State) -> State)`, undisturbed by the outer lambda.
+    let src = concat!(
+        "fun setState(reducer: (State) -> State) {}\n",
+        "class State\n",
+        "fun wrap(block: () -> Unit) {}\n",
+        "fun use() { wrap { setState { it } } }\n",
+    );
     let (u, idx) = indexed("/t.kt", src);
-    // before_brace as it arrives from the nested-lambda context
-    let before = "    { setState ";
-    let result = lambda_receiver_type_from_context(before, &idx, &u);
+    let col = "fun use() { wrap { setState { it".len() as u32;
+    let result = idx.infer_lambda_param_type_at("it", &u, Position::new(3, col));
     assert_eq!(
         result.as_deref(),
         Some("State"),
@@ -571,9 +558,10 @@ fn inline_lambda_param_type_detection() {
         "fun use() { reloadableProduct(ProductKey.FAMILY, { isRefresh -> null }) { it } }",
     );
     let (u, idx) = indexed("/t.kt", src);
-    // before_brace = "reloadableProduct(ProductKey.FAMILY, "
-    let before = "reloadableProduct(ProductKey.FAMILY, ";
-    let result = lambda_receiver_type_from_context(before, &idx, &u);
+    // Cursor inside the inline lambda `{ isRefresh -> null }` (2nd arg): its
+    // param `isRefresh` types off `refresher: (Boolean) -> ...`.
+    let col = "fun use() { reloadableProduct(ProductKey.FAMILY, { isRefresh -> ".len() as u32;
+    let result = idx.infer_lambda_param_type_at("isRefresh", &u, Position::new(1, col));
     assert_eq!(
         result.as_deref(),
         Some("Boolean"),
@@ -593,13 +581,16 @@ fn find_last_dot_at_depth_zero_test() {
 
 #[test]
 fn trailing_lambda_method_it_not_confused_by_arg_dot() {
-    // `reloadableProduct(ProductKey.FAMILY) { it }` — trailing lambda,
-    // but the arg `ProductKey.FAMILY` has a dot. Should still resolve via Case B.
-    let src = "fun reloadableProduct(key: ProductKey, map: (ResultState<T>) -> StatefulModel) {}\n";
+    // `reloadableProduct(ProductKey.FAMILY) { it }` — trailing lambda whose call
+    // arg `ProductKey.FAMILY` has a dot; `it` must still resolve to the last
+    // param's lambda input `ResultState`, not be confused by the arg dot.
+    let src = concat!(
+        "fun reloadableProduct(key: ProductKey, map: (ResultState<T>) -> StatefulModel) {}\n",
+        "fun use() { reloadableProduct(ProductKey.FAMILY) { it } }\n",
+    );
     let (u, idx) = indexed("/t.kt", src);
-    // After strip_trailing_call_args: "reloadableProduct"
-    let before = "reloadableProduct(ProductKey.FAMILY) ";
-    let result = lambda_receiver_type_from_context(before, &idx, &u);
+    let col = "fun use() { reloadableProduct(ProductKey.FAMILY) { it".len() as u32;
+    let result = idx.infer_lambda_param_type_at("it", &u, Position::new(1, col));
     assert_eq!(
         result.as_deref(),
         Some("ResultState"),
@@ -607,31 +598,10 @@ fn trailing_lambda_method_it_not_confused_by_arg_dot() {
     );
 }
 
-#[test]
-fn trailing_lambda_it_with_method_call_arg() {
-    // `loadProduct(ProductKey.DEPOSIT, productsUseCases.getDepositAccountData()) { it }`
-    // The second arg is a method call `x.y()` — after stripping outer `(...)` the
-    // callee must be exactly "loadProduct" so Case B fires correctly.
-    let src = concat!(
-        "private fun <T : Any> loadProduct(\n",
-        "    key: ProductKey,\n",
-        "    productFlow: Flow<ResultState<T>>,\n",
-        "    map: (ResultState<T>) -> StatefulModel\n",
-        ") {}\n",
-        "fun use() {\n",
-        "    loadProduct(ProductKey.DEPOSIT, productsUseCases.getDepositAccountData()) { overviewMapper.depositAccToView(it) }\n",
-        "}\n",
-    );
-    let (u, idx) = indexed("/t.kt", src);
-    // Test via lambda_receiver_type_from_context directly.
-    let before = "    loadProduct(ProductKey.DEPOSIT, productsUseCases.getDepositAccountData()) ";
-    let result = lambda_receiver_type_from_context(before, &idx, &u);
-    assert_eq!(
-        result.as_deref(),
-        Some("ResultState"),
-        "loadProduct trailing lambda it type, got: {result:?}"
-    );
-}
+// `trailing_lambda_it_with_method_call_arg` was removed with receiver.rs: it
+// exercised the identical document as the CST `trailing_lambda_it_infer_at_cursor`
+// decoy (loadProduct with a method-call arg + trailing lambda), which pins the
+// `it` → ResultState behavior through the production CST path.
 
 /// `reloadableProduct` has a `(Boolean) -> Flow<T>` param followed by a
 /// `(ResultState<T>) -> Model` trailing lambda.  The `>` in `->` must not
@@ -652,10 +622,11 @@ fn reloadable_product_resultstate_not_boolean() {
         "}\n",
     );
     let (u, idx) = indexed("/t.kt", src);
-    // Trailing lambda: `before_brace` after stripping the inline call args
-    // should resolve `resultState` to `ResultState`, not `Boolean`.
-    let before = "    reloadableProduct(ProductKey.FAMILY, { isRefresh -> null }) ";
-    let result = lambda_receiver_type_from_context(before, &idx, &u);
+    // The trailing lambda's named param `resultState` types off the last param
+    // `map: (ResultState<T>) -> ...` — must be ResultState, not Boolean (the
+    // `>` in `->` must not upset the `<>` depth counter picking the last param).
+    let col = "        resultState".len() as u32;
+    let result = idx.infer_lambda_param_type_at("resultState", &u, Position::new(7, col));
     assert_eq!(
         result.as_deref(),
         Some("ResultState"),
@@ -689,20 +660,9 @@ fn trailing_lambda_it_infer_at_cursor() {
 
 // ── `this` in scope functions ─────────────────────────────────────────────
 
-#[test]
-fn this_in_run_resolves_to_receiver_type() {
-    // `user.run { this.name }` — `this` should infer as `User`
-    let src = "val user: User = User()\nuser.run { this.name }";
-    let (u, idx) = indexed("/t.kt", src);
-    // `before_brace` via lambda_receiver_type_from_context
-    let before = "user.run ";
-    let result = lambda_receiver_type_from_context(before, &idx, &u);
-    assert_eq!(
-        result.as_deref(),
-        Some("User"),
-        "this in obj.run should be User, got: {result:?}"
-    );
-}
+// `this_in_run_resolves_to_receiver_type` (text-heuristic twin) was removed with
+// receiver.rs: `this_infer_lambda_param_type_at` below pins the same
+// `user.run { this }` → User behavior through the production CST path.
 
 #[test]
 fn this_infer_lambda_param_type_at() {
@@ -722,8 +682,8 @@ fn with_scope_function_this_type() {
     // `with(user) { this.name }` — `with` is stdlib, first arg is receiver
     let src = "val user: User = User()\nwith(user) { this.name }";
     let (u, idx) = indexed("/t.kt", src);
-    let before = "with(user) ";
-    let result = lambda_receiver_type_from_context(before, &idx, &u);
+    let col = "with(user) { this".len() as u32;
+    let result = idx.infer_lambda_param_type_at("this", &u, Position::new(1, col));
     assert_eq!(
         result.as_deref(),
         Some("User"),
@@ -958,26 +918,9 @@ fn named_arg_lambda_multi_param_type() {
     );
 }
 
-#[test]
-fn extract_named_arg_name_test() {
-    assert_eq!(
-        super::extract_named_arg_name("  buildingSavings = "),
-        Some("buildingSavings")
-    );
-    assert_eq!(super::extract_named_arg_name("  loan = "), Some("loan"));
-    assert_eq!(super::extract_named_arg_name("  loan="), Some("loan"));
-    // Same-line comma-separated: `, cards = ` — should match
-    assert_eq!(super::extract_named_arg_name(", cards = "), Some("cards"));
-    // Uppercase — should NOT match (constructors, not named args)
-    assert_eq!(super::extract_named_arg_name("  Foo = "), None);
-    // operator — should NOT match
-    assert_eq!(super::extract_named_arg_name("a != "), None);
-    assert_eq!(super::extract_named_arg_name("a <= "), None);
-    // Nested: `(isRefresh = ` — opening `(` before the ident disqualifies
-    assert_eq!(super::extract_named_arg_name("(isRefresh = "), None);
-    // Nested inside call args: `fn(x, isRefresh = ` — still has non-ws prefix
-    assert_eq!(super::extract_named_arg_name("fn(x, isRefresh = "), None);
-}
+// `extract_named_arg_name_test` was removed with `extract_named_arg_name` (swept
+// away as dead once `lambda_receiver_type_named_arg_ml`, its only caller, went with
+// receiver.rs). Named-arg lambda typing is covered by the CST tests below.
 
 // ── LoanReducer-style patterns ────────────────────────────────────────────
 
@@ -1230,7 +1173,10 @@ fn subtypes_index_basic() {
         .subtypes
         .get("IAnimal")
         .expect("should have subtypes for IAnimal");
-    let sub_uris: Vec<_> = subs.iter().map(|l| l.uri.to_string()).collect();
+    let sub_uris: Vec<_> = subs
+        .iter()
+        .filter_map(|l| idx.file_table.url(l.file).map(|u| u.to_string()))
+        .collect();
     assert!(
         sub_uris.contains(&dog_uri.to_string()),
         "Dog should be a subtype"
@@ -1289,12 +1235,15 @@ class Bar : Beta {\n}",
         let names: Vec<_> = alpha
             .iter()
             .filter_map(|l| {
-                idx.files.get(l.uri.as_str()).and_then(|f| {
-                    f.symbols
-                        .iter()
-                        .find(|s| s.selection_range == l.range)
-                        .map(|s| s.name.clone())
-                })
+                idx.file_table
+                    .url(l.file)
+                    .and_then(|url| idx.files.get(url.as_str()))
+                    .and_then(|f| {
+                        f.symbols
+                            .iter()
+                            .find(|s| s.selection_range == l.range)
+                            .map(|s| s.name.clone())
+                    })
             })
             .collect();
         assert!(
@@ -1328,12 +1277,15 @@ data class Error(val msg: String) : StoreState()
     let names: Vec<String> = subs
         .iter()
         .filter_map(|l| {
-            idx.files.get(l.uri.as_str()).and_then(|f| {
-                f.symbols
-                    .iter()
-                    .find(|s| s.selection_range == l.range)
-                    .map(|s| s.name.clone())
-            })
+            idx.file_table
+                .url(l.file)
+                .and_then(|url| idx.files.get(url.as_str()))
+                .and_then(|f| {
+                    f.symbols
+                        .iter()
+                        .find(|s| s.selection_range == l.range)
+                        .map(|s| s.name.clone())
+                })
         })
         .collect();
     assert!(
@@ -1416,12 +1368,15 @@ data class Error(val error: Throwable) : StoreState<Nothing>()
     let names: Vec<String> = subs
         .iter()
         .filter_map(|l| {
-            idx.files.get(l.uri.as_str()).and_then(|f| {
-                f.symbols
-                    .iter()
-                    .find(|s| s.selection_range == l.range)
-                    .map(|s| s.name.clone())
-            })
+            idx.file_table
+                .url(l.file)
+                .and_then(|url| idx.files.get(url.as_str()))
+                .and_then(|f| {
+                    f.symbols
+                        .iter()
+                        .find(|s| s.selection_range == l.range)
+                        .map(|s| s.name.clone())
+                })
         })
         .collect();
     assert!(
@@ -1618,12 +1573,15 @@ return when (this) {
     let names: Vec<String> = subs
         .iter()
         .filter_map(|l| {
-            idx.files.get(l.uri.as_str()).and_then(|f| {
-                f.symbols
-                    .iter()
-                    .find(|s| s.selection_range == l.range)
-                    .map(|s| s.name.clone())
-            })
+            idx.file_table
+                .url(l.file)
+                .and_then(|url| idx.files.get(url.as_str()))
+                .and_then(|f| {
+                    f.symbols
+                        .iter()
+                        .find(|s| s.selection_range == l.range)
+                        .map(|s| s.name.clone())
+                })
         })
         .collect();
     assert!(
@@ -1779,13 +1737,10 @@ fn stale_keys_includes_both_qualified_aliases() {
         range: Default::default(),
         selection_range: Default::default(),
         detail: String::new(),
-        type_params: Vec::new(),
-        extension_receiver: String::new(),
-        extension_receiver_type: String::new(),
+        cold: None,
         container: None,
         params: String::new(),
         param_counts: (0, 0),
-        doc: String::new(),
         trailing_lambda: false,
         deprecated: false,
     };
@@ -1820,13 +1775,10 @@ fn stale_keys_stem_equals_sym_no_alias() {
         range: Default::default(),
         selection_range: Default::default(),
         detail: String::new(),
-        type_params: Vec::new(),
-        extension_receiver: String::new(),
-        extension_receiver_type: String::new(),
+        cold: None,
         container: None,
         params: String::new(),
         param_counts: (0, 0),
-        doc: String::new(),
         trailing_lambda: false,
         deprecated: false,
     };
@@ -2322,9 +2274,10 @@ fn lambda_param_dotted_nested_class_chain() {
         .get("Success")
         .and_then(|locs| {
             for loc in locs.iter() {
-                if let Some(data) = idx.files.get(loc.uri.as_str()) {
+                let url = idx.file_table.url(loc.file)?;
+                if let Some(data) = idx.files.get(url.as_str()) {
                     if let Some(sym) = data.symbols.iter().find(|s| s.name == "Success") {
-                        return Some(sym.type_params.clone());
+                        return Some(sym.type_params().to_vec());
                     }
                 }
             }
@@ -2339,9 +2292,10 @@ fn lambda_param_dotted_nested_class_chain() {
         .get("Optional")
         .and_then(|locs| {
             for loc in locs.iter() {
-                if let Some(data) = idx.files.get(loc.uri.as_str()) {
+                let url = idx.file_table.url(loc.file)?;
+                if let Some(data) = idx.files.get(url.as_str()) {
                     if let Some(sym) = data.symbols.iter().find(|s| s.name == "Optional") {
-                        return Some(sym.type_params.clone());
+                        return Some(sym.type_params().to_vec());
                     }
                 }
             }
@@ -2357,6 +2311,52 @@ fn lambda_param_dotted_nested_class_chain() {
         result.as_deref(),
         Some("FamilyAccount"),
         "lambda param in dotted nested class chain should resolve to FamilyAccount, got: {result:?}"
+    );
+}
+
+#[test]
+fn find_var_type_resolves_a_chained_call_initializer_via_cst_fallback() {
+    // `val local = this.userData` -- a chained (nav_expr) receiver that the
+    // line-based heuristics in infer_variable_type_raw explicitly reject
+    // (parser.rs's nav_expr_receiver_field rejects `this`/`super` receivers).
+    // Only the CST-aware fallback (infer_variable_type_from_cst) can type this.
+    let idx = Indexer::new();
+    let repo_uri = uri("/Repository.kt");
+    idx.index_content(
+        &repo_uri,
+        concat!(
+            "package com.example\n",
+            "data class UserData(val shouldHideOnboarding: Boolean)\n",
+            "class Repository {\n",
+            "    val userData: UserData = TODO()\n",
+            "    fun use() {\n",
+            "        val local = this.userData\n",
+            "        val hasOnboarded = local.shouldHideOnboarding\n",
+            "    }\n",
+            "}\n",
+        ),
+    );
+    idx.store_live_tree(
+        &repo_uri,
+        concat!(
+            "package com.example\n",
+            "data class UserData(val shouldHideOnboarding: Boolean)\n",
+            "class Repository {\n",
+            "    val userData: UserData = TODO()\n",
+            "    fun use() {\n",
+            "        val local = this.userData\n",
+            "        val hasOnboarded = local.shouldHideOnboarding\n",
+            "    }\n",
+            "}\n",
+        ),
+    );
+
+    let var_type = idx.find_var_type("local", &repo_uri);
+    assert_eq!(
+        var_type.as_deref(),
+        Some("UserData"),
+        "find_var_type must resolve a chained (this.userData-style) initializer \
+         via the CST fallback when the line heuristic can't -- got {var_type:?}"
     );
 }
 
@@ -2621,14 +2621,14 @@ fn synthetic_enum_ordinal_field_type() {
 #[test]
 fn synthetic_enum_values_method() {
     let (_, idx) = indexed("/Color.kt", "enum class Color { RED, GREEN, BLUE }");
-    let ty = idx.find_method_return_type_for_type("Color", "values");
+    let ty = idx.find_method_return_type_for_type("Color", "values", &uri("/Color.kt"));
     assert_eq!(ty.as_deref(), Some("Array<Color>"));
 }
 
 #[test]
 fn synthetic_enum_valueof_method() {
     let (_, idx) = indexed("/Color.kt", "enum class Color { RED, GREEN, BLUE }");
-    let ty = idx.find_method_return_type_for_type("Color", "valueOf");
+    let ty = idx.find_method_return_type_for_type("Color", "valueOf", &uri("/Color.kt"));
     assert_eq!(ty.as_deref(), Some("Color"));
 }
 
@@ -3111,10 +3111,12 @@ fn jar_symbol_resolved_via_import() {
         params: String::new(),
         param_counts: (0, 0),
         container: None,
-        extension_receiver: String::new(),
-        extension_receiver_type: String::new(),
-        type_params: vec![],
-        doc: "A ViewModel class".into(),
+        cold: crate::types::pack_cold_fields(
+            vec![],
+            String::new(),
+            String::new(),
+            "A ViewModel class".into(),
+        ),
         trailing_lambda: false,
         deprecated: false,
     };
@@ -3124,10 +3126,10 @@ fn jar_symbol_resolved_via_import() {
     // Populate qualified index — mirrors build_jar_file_data.
     idx.qualified.insert(
         "androidx.lifecycle.ViewModel".into(),
-        Location {
+        idx.intern_location(&Location {
             uri: jar_uri.clone(),
             range: viewmodel_symbol.range,
-        },
+        }),
     );
 
     // JAR definitions
@@ -3302,8 +3304,13 @@ fn find_in_workspace_defs_invariants() {
     let lib = uri("/lib/Lib.kt");
     let ws = uri("/ws/Ws.kt");
     idx.library_uris.insert(lib.as_str().to_owned());
-    idx.definitions
-        .insert("create".to_owned(), vec![mk(&lib), mk(&ws)]);
+    idx.definitions.insert(
+        "create".to_owned(),
+        [mk(&lib), mk(&ws)]
+            .iter()
+            .map(|l| idx.intern_location(l))
+            .collect(),
+    );
     let mut seen: Vec<String> = Vec::new();
     let _: Option<()> = idx.find_in_workspace_defs("create", |loc| {
         seen.push(loc.uri.to_string());
@@ -3319,7 +3326,10 @@ fn find_in_workspace_defs_invariants() {
     let many: Vec<Location> = (0..(MAX_BY_NAME_DEFS + 25))
         .map(|i| mk(&uri(&format!("/ws/F{i}.kt"))))
         .collect();
-    idx.definitions.insert("many".to_owned(), many);
+    idx.definitions.insert(
+        "many".to_owned(),
+        many.iter().map(|l| idx.intern_location(l)).collect(),
+    );
     let mut count = 0usize;
     let _: Option<()> = idx.find_in_workspace_defs("many", |_| {
         count += 1;
@@ -3328,5 +3338,92 @@ fn find_in_workspace_defs_invariants() {
     assert_eq!(
         count, MAX_BY_NAME_DEFS,
         "scan must be capped at MAX_BY_NAME_DEFS"
+    );
+}
+
+#[test]
+fn indexer_has_jar_tier1_fields_initialized_empty() {
+    let idx = Indexer::new();
+    assert_eq!(idx.jar_qualified.len(), 0);
+    assert_eq!(idx.jar_bare_names.len(), 0);
+    assert_eq!(idx.materialized.len(), 0);
+    assert_eq!(idx.materialization_failed.len(), 0);
+    let id = idx.jar_table.intern("/some/path.jar");
+    assert_eq!(idx.jar_table.path(id).as_deref(), Some("/some/path.jar"));
+}
+
+#[test]
+fn find_class_type_params_falls_back_to_jar_indexed_classes() {
+    // Simulates a JAR-provided generic class (e.g. kotlinx.coroutines.flow.Flow<T>)
+    // whose own type parameter is needed for generic substitution elsewhere
+    // (build_type_arg_subst). Before this fix, find_class_type_params only
+    // ever read workspace-indexed classes and always returned an empty Vec
+    // for any JAR-defined one.
+    use crate::types::{FileData, SourceSet, SymbolEntry, Visibility};
+    use std::sync::Arc;
+    use tower_lsp::lsp_types::{Location, Position, Range, Url};
+
+    let jar_uri = Url::parse("jar:file:///lib/fake-flow.jar!/").unwrap();
+    let idx = Indexer::new();
+
+    let range = Range {
+        start: Position {
+            line: 0,
+            character: 0,
+        },
+        end: Position {
+            line: 0,
+            character: 4,
+        },
+    };
+    let flow_symbol = SymbolEntry {
+        name: "Flow".into(),
+        kind: SymbolKind::CLASS,
+        visibility: Visibility::Public,
+        range,
+        selection_range: range,
+        detail: "interface kotlinx.coroutines.flow.Flow<out T>".into(),
+        container: None,
+        params: String::new(),
+        param_counts: (0, 0),
+        cold: crate::types::pack_cold_fields(
+            vec!["T".to_owned()],
+            String::new(),
+            String::new(),
+            "A cold asynchronous data stream".into(),
+        ),
+        trailing_lambda: false,
+        deprecated: false,
+    };
+
+    idx.jar_definitions
+        .entry("Flow".into())
+        .or_default()
+        .push(Location {
+            uri: jar_uri.clone(),
+            range,
+        });
+    idx.jar_files.insert(
+        jar_uri.to_string(),
+        Arc::new(FileData {
+            symbols: vec![flow_symbol],
+            source_set: SourceSet::Library,
+            lines: Arc::new(vec![]),
+            ..Default::default()
+        }),
+    );
+
+    let type_params = idx.find_class_type_params("Flow");
+    assert_eq!(
+        type_params,
+        vec!["T".to_owned()],
+        "must find Flow's own type parameter via the JAR fallback -- got {type_params:?}"
+    );
+
+    // Decoy: a genuinely unknown class (neither workspace nor JAR-indexed)
+    // must still return an empty Vec, not panic or find something spurious.
+    assert!(
+        idx.find_class_type_params("TotallyUnknownClass").is_empty(),
+        "an unindexed class name must return an empty Vec, not panic"
     );
 }

@@ -570,17 +570,14 @@ fn build_workspace_result(
 async fn send_progress_end<R: ProgressReporter>(
     reporter: &R,
     token: &NumberOrString,
-    result: &WorkspaceIndexResult,
+    files_count: usize,
+    cache_hits: usize,
+    files_parsed: usize,
 ) {
     reporter
         .end(
             token,
-            &format!(
-                "Indexed {} files ({} cached, {} parsed)",
-                result.files.len(),
-                result.stats.cache_hits,
-                result.stats.files_parsed
-            ),
+            &format!("Indexed {files_count} files ({cache_hits} cached, {files_parsed} parsed)"),
         )
         .await;
 }
@@ -917,14 +914,16 @@ impl Indexer {
         let root = result.workspace_root.clone();
         let files_parsed = result.stats.files_parsed;
         let complete_scan = result.complete_scan;
-        let result = std::sync::Arc::new(result);
+        // Capture the summary counts the progress-end message needs *before* the
+        // apply task consumes `result` (it now takes ownership so it can move each
+        // file's data into the index instead of cloning it).
+        let files_count = result.files.len();
+        let cache_hits = result.stats.cache_hits;
         let idx = Arc::clone(&self);
-        let result_for_apply = Arc::clone(&result);
-        let apply_ok =
-            tokio::task::spawn_blocking(move || idx.apply_workspace_result(&result_for_apply))
-                .await
-                .map_err(|e| log::error!("apply_workspace_result panicked: {e}"))
-                .is_ok();
+        let apply_ok = tokio::task::spawn_blocking(move || idx.apply_workspace_result(result))
+            .await
+            .map_err(|e| log::error!("apply_workspace_result panicked: {e}"))
+            .is_ok();
         if apply_ok {
             // Always save when a complete scan ran — this trims deleted-file entries from
             // the on-disk cache even when files_parsed == 0 (all cache hits).  Skip only
@@ -943,7 +942,7 @@ impl Indexer {
         // (slow path, no cache) does not keep the progress bar open for minutes.
         drop(guard);
         let token = NumberOrString::String("kmp-lsp/indexing".into());
-        send_progress_end(&*reporter, &token, &result).await;
+        send_progress_end(&*reporter, &token, files_count, cache_hits, files_parsed).await;
         Arc::clone(&self).index_source_paths(root).await;
     }
 

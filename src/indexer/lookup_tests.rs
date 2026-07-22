@@ -272,3 +272,28 @@ fun theAnswer(): Int = 42
         resolved.doc
     );
 }
+
+// ── jar_declaration_scope Tier-1 promotion (Task 8) ─────────────────────────
+
+#[test]
+fn jar_declaration_scope_finds_a_tier1_only_symbol_after_promotion_attempt() {
+    // This test cannot exercise a REAL sidecar promotion without a live
+    // fixture JAR + sidecar process (integration-test territory, out of
+    // scope for this unit test). It instead pins the CONTRACT: calling
+    // jar_declaration_scope on a name that only exists in jar_bare_names
+    // must not panic and must call ensure_jar_materialized (observable via
+    // materialization_failed being populated for the fake jar path, proving
+    // the promotion attempt happened rather than being silently skipped).
+    let idx = Indexer::new();
+    let jar_id = idx.jar_table.intern("/nonexistent/fixture.jar");
+    idx.jar_bare_names
+        .entry("RemoteType".to_owned())
+        .or_default()
+        .push(jar_id);
+    let _ = idx.jar_declaration_scope("RemoteType");
+    assert!(
+        idx.materialization_failed.contains(&jar_id),
+        "jar_declaration_scope must attempt promotion for a Tier-1-only name, \
+         not silently return None without trying"
+    );
+}

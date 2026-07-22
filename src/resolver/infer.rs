@@ -127,7 +127,7 @@ impl ReceiverType {
         // Only a *trailing* `?` makes the outer type nullable. A `?` inside a
         // generic argument (`Box<String?>`) does not — so test the end, not the
         // whole string.
-        let nullable = raw.trim_end().ends_with('?');
+        let nullable = raw.is_nullable();
         let outer = qualified
             .split('.')
             .next()
@@ -213,7 +213,7 @@ pub(crate) fn infer_field_chain_type(
             .rsplit('.')
             .next()
             .unwrap_or(&current)
-            .trim_end_matches('?');
+            .strip_nullable();
         let field_raw = find_field_type_in_class(indexer, class_base, field)?;
         current = field_raw.clone();
         leaf_raw = field_raw;
@@ -415,7 +415,7 @@ fn infer_var_from_rhs_data(
                 .rsplit('.')
                 .next()
                 .unwrap_or(recv_stripped)
-                .trim_end_matches('?');
+                .strip_nullable();
             if let Some(field_type) = find_field_type_in_class(indexer, recv_base, &field) {
                 return Some(field_type);
             }
@@ -428,7 +428,11 @@ fn infer_var_from_rhs_data(
 /// the live tree and infer the initializer's type via `infer_expr_type`. Catches
 /// cases the line-based heuristics miss — notably lambda-result calls like
 /// Compose `remember { Foo() }` (→ `Foo`) and constructor calls.
-fn infer_variable_type_from_cst(indexer: &Indexer, var_name: &str, uri: &Url) -> Option<String> {
+pub(crate) fn infer_variable_type_from_cst(
+    indexer: &Indexer,
+    var_name: &str,
+    uri: &Url,
+) -> Option<String> {
     let doc = indexer.live_doc_or_parse(uri)?;
     let bytes = doc.bytes.as_slice();
     let init = find_prop_initializer(doc.tree.root_node(), bytes, var_name)?;
@@ -621,8 +625,27 @@ fn find_extension_property_type(indexer: &Indexer, prop_name: &str, uri: &Url) -
     }
 
     // Use the reverse index: O(ancestors) instead of O(all_files).
+    // `extension_by_receiver` is Tier-2-only — promote any not-yet-
+    // materialized JAR that Tier 1 says declares an extension on a walked
+    // ancestor BEFORE reading it, or a Tier-1-only extension property (e.g.
+    // `viewModelScope`) is invisible to type inference and chained
+    // completion after it goes dark.
+    //
+    // Zero sidecar-IPC budget, deliberately: this runs INSIDE completion
+    // requests (via receiver-type inference), so giving it its own IPC pool
+    // would double the per-request blocking-IPC cap the completion sites
+    // already spend. Fresh-cache-backed promotions are free regardless
+    // (see `promote_candidates_bounded`), which covers the realistic
+    // warm-cache case; a genuinely uncached JAR's extension property is
+    // promoted by the file-open import promotion (`promote_file_imports`)
+    // or by the completion sites' own budget instead.
+    let mut jar_promotion_budget = 0usize;
     for ancestor in &ancestor_set {
-        let Some(entries) = indexer.extension_by_receiver.get(ancestor) else {
+        let Some(entries) = crate::indexer::jar::extension_entries_for(
+            indexer,
+            ancestor,
+            &mut jar_promotion_budget,
+        ) else {
             continue;
         };
         for entry in entries.iter() {
@@ -769,6 +792,27 @@ pub(crate) fn find_fun_return_type_reachable(
     fn_name: &str,
     uri: &Url,
 ) -> Option<String> {
+    // Promotion MUST happen before `resolve_symbol_no_rg` at this call site —
+    // unlike `find_extension_fn_return_type_scoped` below, where the check
+    // guards a `jar_files` read that happens *after* it in the same function,
+    // here `locations` is produced BY `resolve_symbol_no_rg`, which calls
+    // into `resolve_chain` and reads `jar_definitions` directly in more than
+    // one place upstream (`resolve_via_imports`, and the `NoRg` fallback tail
+    // via `Indexer::lookup_definitions`). If promotion ran after this call
+    // (as it did before this fix), a Tier-1-only candidate would already
+    // have produced an empty `locations` Vec by the time materialization
+    // completed, so the `for loc in &locations` loop below would never see
+    // the freshly-materialized data on THIS call — only a later, separate
+    // call would benefit. Do not move this back below `resolve_symbol_no_rg`.
+    // ZERO sidecar-IPC budget: this runs on latency-critical inference paths
+    // (inlay hints call it once per name in the visible range — unbudgeted
+    // blocking IPC here was observed live as a 22s inlay compute that timed
+    // out every queued request behind it). Fresh-cache-backed promotions are
+    // free and still happen; a genuinely uncached JAR is promoted by the
+    // explicit user actions instead (completion's budget, file-open imports,
+    // hover/goto-def resolution).
+    let mut cache_backed_only = 0usize;
+    crate::indexer::jar::ensure_jar_definitions_for(indexer, fn_name, &mut cache_backed_only);
     let locations = crate::resolver::resolve_symbol_no_rg(indexer, fn_name, uri);
     let mut fallback: Option<String> = None;
     for loc in &locations {
@@ -903,7 +947,29 @@ fn find_extension_fn_return_type_scoped(
     method_name: &str,
     from_uri: &Url,
 ) -> Option<String> {
-    let entries = indexer.extension_by_receiver.get(receiver_base)?;
+    // Promotion MUST happen before the `extension_by_receiver` read below —
+    // `extension_by_receiver` is populated exclusively by Tier-2
+    // materialization (`build_jar_file_data`); Tier 1
+    // (`populate_tier1_from_manifest`) never writes it, only writes
+    // `jar_bare_names`/`jar_qualified`. So for a genuinely Tier-1-only
+    // (not-yet-materialized) extension method, `extension_by_receiver.get`
+    // returns `None` and this function bails out via `?` immediately — before
+    // the promotion check that used to sit later, inside the loop below,
+    // ever ran. That made the inner check unreachable in the real
+    // "needs promotion" case (see `find_fun_return_type_reachable` above for
+    // the same ordering fix applied to a sibling call site). `method_name` —
+    // the extension function's own bare name — is available as a parameter
+    // here and is the correct key into `jar_bare_names`, which
+    // `populate_tier1_from_manifest` populates for every manifest entry
+    // (member and extension functions alike).
+    // ZERO sidecar-IPC budget, same rationale as `find_fun_return_type_reachable`
+    // above: inference runs per-name on latency-critical paths (inlay hints)
+    // — cache-backed promotions stay free, blocking IPC belongs to explicit
+    // user actions.
+    let mut cache_backed_only = 0usize;
+    crate::indexer::jar::ensure_jar_definitions_for(indexer, method_name, &mut cache_backed_only);
+    let entries =
+        crate::indexer::jar::extension_entries_for(indexer, receiver_base, &mut cache_backed_only)?;
     let caller_file_data = indexer.files.get(from_uri.as_str());
     let caller_file_data_ref: Option<&FileData> = caller_file_data.as_deref().map(|v| v.as_ref());
     let caller_package = caller_file_data.as_ref().and_then(|fd| fd.package.as_ref());
@@ -927,6 +993,10 @@ fn find_extension_fn_return_type_scoped(
             return Some(ret);
         }
         // detail may be truncated (120 char limit) — try the source lines.
+        // No promotion check needed here: reaching this `entry` at all means
+        // `extension_by_receiver` already had it, which — per the comment
+        // above `entries` — only happens once Tier-2 materialization has
+        // already populated `jar_files` for this same jar.
         let file_data = indexer
             .files
             .get(&entry.file_uri)
@@ -936,7 +1006,7 @@ fn find_extension_fn_return_type_scoped(
             .iter()
             .find(|s| {
                 s.name == method_name
-                    && s.extension_receiver == receiver_base
+                    && s.extension_receiver() == receiver_base
                     && s.container.is_none()
             })?
             .selection_start() as usize;
@@ -963,7 +1033,7 @@ fn find_extension_fn_return_type_global(
             if !matches!(symbol.kind, SymbolKind::FUNCTION) {
                 continue;
             }
-            if symbol.extension_receiver != receiver_base {
+            if symbol.extension_receiver() != receiver_base {
                 continue;
             }
             if let Some(ret) = extract_return_type_from_detail(&symbol.detail) {
@@ -1020,8 +1090,8 @@ fn find_class_type_params(indexer: &Indexer, class_name: &str) -> Vec<String> {
             let symbol = file_data
                 .symbols
                 .iter()
-                .find(|s| s.name == class_name && !s.type_params.is_empty())?;
-            Some(symbol.type_params.clone())
+                .find(|s| s.name == class_name && !s.type_params().is_empty())?;
+            Some(symbol.type_params().to_vec())
         })
         .unwrap_or_default()
 }

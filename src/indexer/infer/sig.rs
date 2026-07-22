@@ -232,6 +232,10 @@ fn sig_step_import_aware(fn_name: &str, idx: &Indexer, uri: &Url) -> Option<Stri
 /// Step 3 of `find_fun_signature`: JAR fallback. Sidecar symbols carry params in
 /// their `detail` string (e.g. "fun <T> ImmutableList<T>.fastForEach(action: (T) -> Unit)").
 fn sig_step_jar(fn_name: &str, idx: &Indexer) -> Option<String> {
+    // Promote-before-read (zero budget): signature inference runs per-callee
+    // on the inlay/hover hot path — no blocking sidecar IPC here.
+    let mut cache_backed_only = 0usize;
+    crate::indexer::jar::ensure_jar_definitions_for(idx, fn_name, &mut cache_backed_only);
     let jar_locs = idx.jar_definitions.get(fn_name)?;
     for loc in jar_locs.iter() {
         if let Some(file_data) = idx.jar_files.get(loc.uri.as_str()) {
@@ -670,7 +674,10 @@ pub(crate) fn find_method_params_in_class(
     };
     let locations = idx.definitions.get(type_base)?;
     for loc in locations.iter() {
-        let Some(file_data) = idx.files.get(loc.uri.as_str()) else {
+        let Some(url) = idx.file_table.url(loc.file) else {
+            continue;
+        };
+        let Some(file_data) = idx.files.get(url.as_str()) else {
             continue;
         };
         // Verify the class exists (and if qualified, check its own container).
@@ -801,7 +808,7 @@ fn collect_params_from_file(
                 // Member of the receiver type — reachable via the receiver instance,
                 // no import needed.
                 true
-            } else if symbol.container.is_none() && symbol.extension_receiver.as_str() == base {
+            } else if symbol.container.is_none() && symbol.extension_receiver() == base {
                 // Extension function — must be import-reachable (or same package),
                 // just like a top-level function.
                 scope != ResolutionScope::CrossFile
@@ -887,6 +894,12 @@ fn resolve_qualified(call: &CallSite<'_>, qualifier: &str, idx: &Indexer) -> Sig
     // receiver-scoped extension lookup still ran, it could return a `Unique`
     // signature for an extension while ignoring a same-named member of a different
     // arity that Phase 1 would have found — a false param-count diagnostic.
+    // Promote-before-read (zero budget): param-count diagnostics run per call
+    // site — no blocking sidecar IPC here. Promoting before the ubiquity count
+    // also keeps that count accurate for Tier-1-only cache-backed JARs.
+    let mut cache_backed_only = 0usize;
+    crate::indexer::jar::ensure_jar_definitions_for(idx, call.name, &mut cache_backed_only);
+
     if total_definition_count(call.name, idx) > crate::indexer::MAX_BY_NAME_DEFS {
         return SignatureResult::Overloaded;
     }
@@ -897,7 +910,11 @@ fn resolve_qualified(call: &CallSite<'_>, qualifier: &str, idx: &Indexer) -> Sig
     {
         let mut locations: Vec<tower_lsp::lsp_types::Location> = Vec::new();
         if let Some(locs) = idx.definitions.get(call.name) {
-            locations.extend(locs.iter().cloned());
+            // Reconstitute interned `SymbolLoc`s at this boundary.
+            locations.extend(
+                locs.iter()
+                    .filter_map(|sym_loc| idx.file_table.location(*sym_loc)),
+            );
         }
         if let Some(locs) = idx.jar_definitions.get(call.name) {
             locations.extend(locs.iter().cloned());
@@ -918,7 +935,11 @@ fn resolve_qualified(call: &CallSite<'_>, qualifier: &str, idx: &Indexer) -> Sig
     // Always runs — a JAR extension with different arity is an overload,
     // not a replacement. Skipping it would pick the wrong arity from Phase 1.
     {
-        if let Some(entries) = idx.extension_by_receiver.get(receiver_base) {
+        // Atomic promote+read (zero budget) — same policy as Phase 1 above.
+        let mut cache_backed_only = 0usize;
+        if let Some(entries) =
+            crate::indexer::jar::extension_entries_for(idx, receiver_base, &mut cache_backed_only)
+        {
             for entry in entries.iter() {
                 if entry.name != call.name {
                     continue;
@@ -960,6 +981,12 @@ fn resolve_unqualified(call: &CallSite<'_>, idx: &Indexer) -> SignatureResult {
         return build_result(same_file);
     }
 
+    // Promote-before-read (zero budget): param-count diagnostics run per call
+    // site — no blocking sidecar IPC here. Promoting before the ubiquity count
+    // also keeps that count accurate for Tier-1-only cache-backed JARs.
+    let mut cache_backed_only = 0usize;
+    crate::indexer::jar::ensure_jar_definitions_for(idx, call.name, &mut cache_backed_only);
+
     // Ubiquitous name (hundreds of source-JAR overloads of `create`, `loadData`, …):
     // scanning every cross-file definition is a multi-second stall on the diagnostics
     // hot path, and the wide arity envelope would resolve to `Overloaded` regardless —
@@ -978,7 +1005,11 @@ fn resolve_unqualified(call: &CallSite<'_>, idx: &Indexer) -> SignatureResult {
     let mut all: Vec<(String, (u8, u8))> = Vec::new();
     let mut locations: Vec<tower_lsp::lsp_types::Location> = Vec::new();
     if let Some(locs) = idx.definitions.get(call.name) {
-        locations.extend(locs.iter().cloned());
+        // Reconstitute interned `SymbolLoc`s at this boundary.
+        locations.extend(
+            locs.iter()
+                .filter_map(|sym_loc| idx.file_table.location(*sym_loc)),
+        );
     }
     if let Some(locs) = idx.jar_definitions.get(call.name) {
         locations.extend(locs.iter().cloned());

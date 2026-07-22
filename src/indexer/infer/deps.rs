@@ -30,6 +30,24 @@ pub(crate) struct CallableInfo {
     pub extension_receiver_type: String,
 }
 
+/// Outcome of scoping a function-signature search to the file that declares an
+/// outer type (qualified callees like `Outer.Nested(...)`).
+///
+/// Returned by [`InferDeps::find_outer_scoped_fun_params`]. The variants encode
+/// the caller's fallback decision, so an empty candidate list never has to be
+/// disambiguated from "the outer type does not exist".
+#[derive(Debug)]
+pub(crate) enum OuterScopedParams {
+    /// Param texts of every declaration of the function in the outer type's
+    /// defining file (possibly empty). When nothing here matches, the caller
+    /// may still fall back to the global by-name lookup.
+    Candidates(Vec<String>),
+    /// The outer type has no known defining file — any global by-name match
+    /// would come from an unrelated outer type, so the caller must not fall
+    /// back to the global lookup.
+    ForbidGlobalFallback,
+}
+
 /// Minimum dependency surface for pure inference helpers and their lightweight
 /// orchestration layers.
 ///
@@ -105,6 +123,7 @@ pub(crate) trait InferDeps {
         &self,
         _class_name: &str,
         _method_name: &str,
+        _uri: &Url,
     ) -> Option<String> {
         None
     }
@@ -145,6 +164,37 @@ pub(crate) trait InferDeps {
     ) -> Option<String> {
         None
     }
+
+    /// Signatures of `fn_name` scoped to the file that declares the type or
+    /// object `outer`.  Used for qualified callees like
+    /// `Outer.Nested(action = { … })`, where several files may declare
+    /// same-named nested classes and only the one inside `outer` is correct.
+    ///
+    /// The default implementation returns no candidates while keeping the
+    /// global by-name fallback available (test stubs have no file model).
+    /// Overridden by `Indexer`, which also submits `outer` for background
+    /// enrichment when it is not indexed yet.
+    fn find_outer_scoped_fun_params(
+        &self,
+        _outer: &str,
+        _fn_name: &str,
+        _uri: &Url,
+    ) -> OuterScopedParams {
+        OuterScopedParams::Candidates(Vec::new())
+    }
+
+    /// Return `true` when `name` is defined as a type (class, interface, enum,
+    /// object, or struct) somewhere in the workspace index.
+    ///
+    /// Used to distinguish bare type-name receivers (e.g. `Foo.CONSTANT`,
+    /// companion object access) from ordinary variable identifiers: when a
+    /// `simple_identifier` starts with an uppercase letter and this returns
+    /// `true`, the identifier itself is the type string.
+    ///
+    /// The default implementation returns `false`; overridden by `Indexer`.
+    fn has_type_definition(&self, _name: &str) -> bool {
+        false
+    }
 }
 
 // ─── Test stub ───────────────────────────────────────────────────────────────
@@ -171,6 +221,10 @@ pub(crate) struct TestDeps {
     pub method_params: std::collections::HashMap<(String, String), String>,
     /// `fn_name` → callable info (type params + extension receiver type)
     pub callable_infos: std::collections::HashMap<String, CallableInfo>,
+    /// `(uri_str, name)` → contextual type (for `this`, `it`, named lambda params)
+    pub contextual_types: std::collections::HashMap<(String, String), String>,
+    /// Type names that have a type definition (class/interface/enum/object/struct).
+    pub type_names: std::collections::HashSet<String>,
 }
 
 #[cfg(test)]
@@ -185,6 +239,8 @@ impl TestDeps {
             method_return_types: std::collections::HashMap::new(),
             method_params: std::collections::HashMap::new(),
             callable_infos: std::collections::HashMap::new(),
+            contextual_types: std::collections::HashMap::new(),
+            type_names: std::collections::HashSet::new(),
         }
     }
 
@@ -263,6 +319,24 @@ impl TestDeps {
         self
     }
 
+    /// Register `name` → `type_name` as a contextual type for `uri`.
+    ///
+    /// Used to stub `find_contextual_type` for `this`, `it`, and named lambda
+    /// parameters without needing position (line/col) matching in unit tests.
+    pub(crate) fn with_contextual(mut self, uri: &str, name: &str, type_name: &str) -> Self {
+        self.contextual_types
+            .insert((uri.to_string(), name.to_string()), type_name.to_string());
+        self
+    }
+
+    /// Register `name` as a known type definition (class / interface / enum /
+    /// object / struct).  Stubs `has_type_definition` for unit tests that need
+    /// the bare-uppercase-identifier branch in `infer_ident_type`.
+    pub(crate) fn with_type(mut self, name: &str) -> Self {
+        self.type_names.insert(name.to_string());
+        self
+    }
+
     /// Register `fn_name` → callable info for generic extension function tests.
     #[allow(dead_code)]
     pub(crate) fn with_callable_info(
@@ -312,6 +386,7 @@ impl InferDeps for TestDeps {
         &self,
         class_name: &str,
         method_name: &str,
+        _uri: &Url,
     ) -> Option<String> {
         self.method_return_types
             .get(&(class_name.to_string(), method_name.to_string()))
@@ -324,5 +399,19 @@ impl InferDeps for TestDeps {
     }
     fn find_fun_callable_info(&self, fn_name: &str, _uri: &Url) -> Option<CallableInfo> {
         self.callable_infos.get(fn_name).cloned()
+    }
+    fn find_contextual_type(
+        &self,
+        name: &str,
+        uri: &Url,
+        _line: usize,
+        _col: usize,
+    ) -> Option<String> {
+        self.contextual_types
+            .get(&(uri.to_string(), name.to_string()))
+            .cloned()
+    }
+    fn has_type_definition(&self, name: &str) -> bool {
+        self.type_names.contains(name)
     }
 }

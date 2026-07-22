@@ -7,11 +7,11 @@ use crate::queries::{
     KIND_CALL_EXPR, KIND_CALL_SUFFIX, KIND_CLASS_DECL, KIND_LAMBDA_LIT, KIND_NAV_EXPR,
     KIND_NAV_SUFFIX, KIND_OBJECT_DECL, KIND_SIMPLE_IDENT, KIND_STATEMENTS, KIND_TYPE_IDENT,
 };
+use crate::resolver::extract_collection_element_type;
 use crate::StrExt;
 
 use super::deps::InferDeps;
 use super::lambda::{LAMBDA_RESULT_FNS, SCOPE_FUNCTIONS};
-use super::receiver::uppercase_dotted_type_prefix;
 use super::type_subst::{
     apply_simple_subst, build_fn_subst, build_type_arg_subst, capitalize_first_char,
     first_type_arg_raw, is_generic_param, split_top_level_commas, type_args_inner,
@@ -93,12 +93,25 @@ fn collect_nav_segments_recursive<'a>(
     }
 }
 
+/// How an unresolvable navigation suffix is handled during a forward walk.
+#[derive(Clone, Copy, PartialEq)]
+pub(super) enum SuffixStrictness {
+    /// Receiver-position semantics: an unresolved suffix leaves the receiver
+    /// type in place (best-effort; the caller probes members next).
+    LeakReceiver,
+    /// Expression-position semantics: an unresolved suffix fails the walk —
+    /// the expression's own type is unknown (matches the deleted text
+    /// walker's per-segment `?`).
+    Fail,
+}
+
 /// Forward-resolve a chain of segments to get (receiver_type_before_last, last_method_name).
 pub(super) fn forward_resolve_segments(
     segments: &[NavSegment<'_>],
     bytes: &[u8],
     deps: &impl InferDeps,
     uri: &Url,
+    strictness: SuffixStrictness,
 ) -> Option<(String, String)> {
     if segments.is_empty() {
         return None;
@@ -136,12 +149,16 @@ pub(super) fn forward_resolve_segments(
                 }
                 last_suffix_resolved = false;
                 if let Some(ref cur) = current_type {
-                    if let Some(resolved) = resolve_member_type_on(cur, name, deps) {
+                    if let Some(resolved) = resolve_member_type_on(cur, name, deps, uri) {
                         current_type = Some(resolved);
                         last_suffix_resolved = true;
                     } else if SCOPE_FUNCTIONS.contains(&name.as_str()) {
                         // Scope function: receiver type flows through.
+                    } else if strictness == SuffixStrictness::Fail {
+                        return None;
                     }
+                } else if strictness == SuffixStrictness::Fail {
+                    return None;
                 }
                 last_suffix = Some(name.clone());
             }
@@ -157,13 +174,13 @@ pub(super) fn forward_resolve_segments(
                         continue;
                     }
                     if let Some(ref cur) = current_type {
-                        if let Some(resolved) = resolve_member_type_on(cur, name, deps) {
+                        if let Some(resolved) = resolve_member_type_on(cur, name, deps, uri) {
                             current_type = Some(resolved);
                             continue;
                         }
                     }
                     if let Some(ret_ty) = deps.find_fun_return_type(name) {
-                        let ret_base = ret_ty.trim_end_matches('?').dotted_ident_prefix();
+                        let ret_base = ret_ty.strip_nullable().dotted_ident_prefix();
                         let ret_base = ret_base.trim_end_matches('.');
                         if !is_generic_param(ret_base) {
                             current_type = Some(ret_ty);
@@ -172,7 +189,7 @@ pub(super) fn forward_resolve_segments(
                         // Generic return type — fall through to first_type_arg_raw fallback.
                     } else if let Some(class_name) = enclosing_class_name(*call_node, bytes) {
                         if let Some(ret_ty) =
-                            deps.find_method_return_type_for_type(&class_name, name)
+                            deps.find_method_return_type_for_type(&class_name, name, uri)
                         {
                             current_type = Some(ret_ty);
                             continue;
@@ -226,7 +243,56 @@ pub(super) fn resolve_callee_chain(
             if segments.is_empty() {
                 return None;
             }
-            forward_resolve_segments(&segments, bytes, deps, uri)
+            // Mirror resolve_call_expr_type's pre-slice (this same file,
+            // ~line 436-449): when the final segment is a plain
+            // (non-scope-function) method name -- e.g. "map" in
+            // `container.items.map { }` -- it is the method being called
+            // with the trailing lambda, not itself a member access to fold
+            // into the receiver's type, so exclude it before resolving.
+            //
+            // Scope functions (let/also/run/apply/takeIf/takeUnless) are
+            // deliberately NOT excluded here, exactly like
+            // resolve_call_expr_type's own SCOPE_FUNCTIONS check gates its
+            // pre-slice: forward_resolve_segments already flows the
+            // receiver type through a scope-function Suffix unchanged, and
+            // that full-list walk also carries side effects tied to
+            // processing that exact segment (e.g. `?.`-driven nullability
+            // stripping) that only fire while it is actually visited.
+            // Slicing it away unconditionally silently drops those side
+            // effects -- caught by running the full suite after the initial
+            // unconditional-slice attempt, which broke
+            // `nullable_let_chain_it_type_resolves`,
+            // `this_type_apply_on_constructor_call_infers_receiver`, and 7
+            // other scope-function-terminated chain tests.
+            //
+            // Do NOT push this exclusion into
+            // forward_resolve_segments/resolve_segments_type themselves --
+            // their "resolve every segment I'm handed" contract is relied on
+            // elsewhere (see mod_tests.rs's
+            // unresolved_final_suffix_fails_the_strict_walk) and by
+            // resolve_call_expr_type's own already-correct pre-sliced call.
+            match segments.last() {
+                Some(NavSegment::Suffix { name, .. })
+                    if !SCOPE_FUNCTIONS.contains(&name.as_str()) =>
+                {
+                    let method_name = name.clone();
+                    let receiver_type = resolve_segments_type(
+                        &segments[..segments.len() - 1],
+                        bytes,
+                        deps,
+                        uri,
+                        SuffixStrictness::LeakReceiver,
+                    )?;
+                    Some((receiver_type, method_name))
+                }
+                _ => forward_resolve_segments(
+                    &segments,
+                    bytes,
+                    deps,
+                    uri,
+                    SuffixStrictness::LeakReceiver,
+                ),
+            }
         }
         k if k == KIND_SIMPLE_IDENT || k == KIND_TYPE_IDENT => {
             let name = callee.utf8_text_owned(bytes)?;
@@ -234,6 +300,14 @@ pub(super) fn resolve_callee_chain(
                 let _ = name;
                 None
             })
+        }
+        // `receiver.method(args) { lambda }` nests as
+        // `outer_call(inner_call(receiver.method, args), call_suffix{lambda})`.
+        // The receiver chain lives on the inner call's own callee — unwrap one level
+        // so `items.mapNotNull(::transform) { it }` still resolves `items`'s type.
+        k if k == KIND_CALL_EXPR => {
+            let inner_callee = callee.child(0)?;
+            resolve_callee_chain(inner_callee, bytes, deps, uri)
         }
         _ => None,
     }
@@ -261,12 +335,15 @@ pub(super) fn cst_forward_resolve_receiver_type(
     //   root = "settings", segments = ["familyCreationDate", "let"]
     let (root_type, final_method) = resolve_callee_chain(callee, bytes, deps, uri)?;
 
-    // For scope functions, `it` type is the receiver type.
-    // For collection methods (map/filter/etc), we'd need more complex logic.
+    // For scope functions, `it` type IS the receiver type (`user.let { it }` → User).
     if SCOPE_FUNCTIONS.contains(&final_method.as_str()) {
         return Some(root_type);
     }
-    None
+    // Otherwise, when the receiver itself is a known collection type, `it` is its
+    // element type (`items: List<Product>` → `Product` for `forEach`/`map`/…).
+    // The decision is on the receiver *type*, not the method name — keyed off
+    // the collection type. Non-collection receivers yield `None` (unchanged).
+    extract_collection_element_type(&root_type)
 }
 
 /// Resolve the receiver type that flows into a call expression's lambda.
@@ -300,6 +377,7 @@ pub(super) fn resolve_member_type_on(
     current_type: &str,
     member: &str,
     deps: &impl InferDeps,
+    uri: &Url,
 ) -> Option<String> {
     let type_name = current_type.dotted_ident_prefix();
     let type_base = type_name.last_segment();
@@ -313,15 +391,15 @@ pub(super) fn resolve_member_type_on(
     if let Some(field_ty) = deps.find_field_type(&effective_type, member) {
         let subst = build_type_arg_subst(deps, &effective_type, current_type);
         let applied = crate::indexer::apply_type_subst(&field_ty, &subst);
-        if is_generic_param(applied.trim_end_matches('?')) {
+        if is_generic_param(applied.strip_nullable()) {
             return first_type_arg_raw(current_type);
         }
         return Some(applied);
     }
-    if let Some(ret_ty) = deps.find_method_return_type_for_type(&effective_type, member) {
+    if let Some(ret_ty) = deps.find_method_return_type_for_type(&effective_type, member, uri) {
         let subst = build_type_arg_subst(deps, &effective_type, current_type);
         let applied = crate::indexer::apply_type_subst(&ret_ty, &subst);
-        if is_generic_param(applied.trim_end_matches('?')) {
+        if is_generic_param(applied.strip_nullable()) {
             return first_type_arg_raw(current_type);
         }
         return Some(applied);
@@ -378,8 +456,8 @@ pub(super) fn resolve_root_node_type(
             Some(name)
         }
         k if k == KIND_NAV_EXPR => {
-            let text = node.utf8_text_owned(bytes)?;
-            resolve_dotted_text_type(&text, deps, uri)
+            let segments = collect_nav_segments(node, bytes);
+            resolve_segments_type(&segments, bytes, deps, uri, SuffixStrictness::Fail)
         }
         k if k == KIND_CALL_EXPR => resolve_call_expr_type(node, bytes, deps, uri),
         _ => None,
@@ -408,7 +486,13 @@ pub(super) fn resolve_call_expr_type(
     let receiver_type = if callee.kind() == KIND_NAV_EXPR {
         let segments = collect_nav_segments(callee, bytes);
         if segments.len() >= 2 {
-            resolve_segments_type(&segments[..segments.len() - 1], bytes, deps, uri)
+            resolve_segments_type(
+                &segments[..segments.len() - 1],
+                bytes,
+                deps,
+                uri,
+                SuffixStrictness::LeakReceiver,
+            )
         } else {
             None
         }
@@ -423,7 +507,9 @@ pub(super) fn resolve_call_expr_type(
             capitalize_first_char(&type_base)
         };
         if !effective_type.is_empty() {
-            if let Some(ret_ty) = deps.find_method_return_type_for_type(&effective_type, &fn_name) {
+            if let Some(ret_ty) =
+                deps.find_method_return_type_for_type(&effective_type, &fn_name, uri)
+            {
                 let subst = build_type_arg_subst(deps, &effective_type, recv_ty);
                 return Some(crate::indexer::apply_type_subst(&ret_ty, &subst));
             }
@@ -511,6 +597,7 @@ pub(super) fn resolve_segments_type(
     bytes: &[u8],
     deps: &impl InferDeps,
     uri: &Url,
+    strictness: SuffixStrictness,
 ) -> Option<String> {
     if segments.is_empty() {
         return None;
@@ -523,31 +610,6 @@ pub(super) fn resolve_segments_type(
     }
     // Otherwise use forward_resolve_segments which returns (final_type, last_suffix).
     // The final type after all segments is what we want.
-    forward_resolve_segments(segments, bytes, deps, uri).map(|(resolved_type, _)| resolved_type)
-}
-
-/// Resolve the type of a dotted text expression like `settings.familyCreationDate`.
-pub(super) fn resolve_dotted_text_type(
-    text: &str,
-    deps: &impl InferDeps,
-    uri: &Url,
-) -> Option<String> {
-    // Try as single variable first
-    if let Some(raw) = deps.find_var_type(text, uri) {
-        return uppercase_dotted_type_prefix(&raw);
-    }
-    // Split on dots and resolve segment by segment
-    let parts: Vec<&str> = text.split('.').collect();
-    if parts.len() < 2 {
-        return None;
-    }
-    let mut current_type = deps.find_var_type(parts[0], uri)?;
-    for &field in &parts[1..] {
-        let type_name = current_type.dotted_ident_prefix();
-        if type_name.is_empty() {
-            return None;
-        }
-        current_type = deps.find_field_type(&type_name, field)?;
-    }
-    uppercase_dotted_type_prefix(&current_type)
+    forward_resolve_segments(segments, bytes, deps, uri, strictness)
+        .map(|(resolved_type, _)| resolved_type)
 }

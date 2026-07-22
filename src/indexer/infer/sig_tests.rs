@@ -397,7 +397,10 @@ fn resolve_unqualified_bails_on_ubiquitous_name() {
             range: Range::default(),
         })
         .collect();
-    idx.definitions.insert("create".to_owned(), many);
+    idx.definitions.insert(
+        "create".to_owned(),
+        many.iter().map(|l| idx.intern_location(l)).collect(),
+    );
 
     let call = CallSite {
         name: "create",
@@ -465,10 +468,12 @@ fn resolve_qualified_jar_extension_overloads_with_source_member() {
         params: "path: String".into(),
         param_counts: (1, 1),
         container: None,
-        extension_receiver: "Repository".into(),
-        extension_receiver_type: "Repository".into(),
-        type_params: vec![],
-        doc: String::new(),
+        cold: crate::types::pack_cold_fields(
+            vec![],
+            "Repository".into(),
+            "Repository".into(),
+            String::new(),
+        ),
         trailing_lambda: false,
         deprecated: false,
     };
@@ -547,7 +552,10 @@ fn resolve_qualified_bails_on_ubiquitous_name_even_with_receiver_extension() {
             range: Range::default(),
         })
         .collect();
-    idx.definitions.insert("loadData".to_owned(), many);
+    idx.definitions.insert(
+        "loadData".to_owned(),
+        many.iter().map(|l| idx.intern_location(l)).collect(),
+    );
 
     // A 1-arg JAR extension on Repository (Phase 2 — receiver-scoped, always runs).
     let jar_symbol = SymbolEntry {
@@ -578,10 +586,12 @@ fn resolve_qualified_bails_on_ubiquitous_name_even_with_receiver_extension() {
         params: "path: String".into(),
         param_counts: (1, 1),
         container: None,
-        extension_receiver: "Repository".into(),
-        extension_receiver_type: "Repository".into(),
-        type_params: vec![],
-        doc: String::new(),
+        cold: crate::types::pack_cold_fields(
+            vec![],
+            "Repository".into(),
+            "Repository".into(),
+            String::new(),
+        ),
         trailing_lambda: false,
         deprecated: false,
     };
@@ -827,11 +837,8 @@ mod import_reachable {
             detail: String::new(),
             params: String::new(),
             param_counts: (0, 0),
-            type_params: vec![],
-            extension_receiver: String::new(),
-            extension_receiver_type: String::new(),
+            cold: None,
             container: Some(container.to_owned()),
-            doc: String::new(),
             trailing_lambda: false,
             deprecated: false,
         }

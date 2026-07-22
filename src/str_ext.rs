@@ -22,6 +22,20 @@ pub(crate) trait StrExt {
     /// `"com.example.Foo"` → `"Foo"`, `"Foo"` → `"Foo"`.
     fn last_segment(&self) -> &str;
 
+    /// Returns `true` if `self` is a nullable type string — i.e. it ends with the
+    /// Kotlin/Swift `?` nullable marker (ignoring trailing whitespace).
+    ///
+    /// The single canonical place the nullable rule is *read*; every consumer
+    /// asks here instead of re-deriving `ends_with('?')` inline.
+    fn is_nullable(&self) -> bool;
+
+    /// Returns `self` with any trailing `?` nullable marker(s) removed.
+    /// `"Foo?"` → `"Foo"`, `"Foo"` → `"Foo"`.
+    ///
+    /// The single canonical place the nullable marker is *stripped*. (Java type
+    /// strings never carry `?`, so this is a no-op there — safe language-agnostic.)
+    fn strip_nullable(&self) -> &str;
+
     /// Returns the declaration-keyword prefix of `self` — strips leading whitespace and annotations.
     fn decl_prefix(&self) -> &str;
 
@@ -61,6 +75,16 @@ impl StrExt for str {
     #[inline]
     fn last_segment(&self) -> &str {
         self.rsplit('.').next().unwrap_or(self)
+    }
+
+    #[inline]
+    fn is_nullable(&self) -> bool {
+        self.trim_end().ends_with('?')
+    }
+
+    #[inline]
+    fn strip_nullable(&self) -> &str {
+        self.trim_end_matches('?')
     }
 
     #[inline]

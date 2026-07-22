@@ -11,12 +11,43 @@
 use std::collections::HashSet;
 use std::sync::Arc;
 
-use tower_lsp::lsp_types::{GotoDefinitionResponse, Location, SymbolKind, Url};
+use tower_lsp::lsp_types::{GotoDefinitionResponse, Location, Position, SymbolKind, Url};
 
 use crate::features::definition::locs_to_opt_response;
 use crate::features::traits::{DocumentAccess, SearchAccess, SymbolIndex};
+use crate::indexer::{classify_cursor, Indexer, SymbolRole};
 use crate::rg;
 use crate::types::FileData;
+
+/// Find implementations for the symbol at `position` — CST-resolved first
+/// (works from a CALL SITE via the receiver's type, not just the declaration
+/// line), falling back to the existing name+line path.
+///
+/// Returns `None` — never an error — whenever the CST can't classify the
+/// cursor position, or classification succeeds but doesn't land on a typed
+/// call reference; either case means "fall through to the string-first path
+/// below."
+pub(crate) async fn find_implementation_at(
+    indexer: &Indexer,
+    uri: &Url,
+    position: Position,
+) -> Option<GotoDefinitionResponse> {
+    if let Some(sym) = classify_cursor(indexer, uri, position) {
+        if let SymbolRole::Reference {
+            receiver_type: Some(receiver_type),
+            is_call: true,
+        } = &sym.role
+        {
+            if let Some(response) =
+                find_method_implementations(&sym.name, receiver_type, indexer, uri).await
+            {
+                return Some(response);
+            }
+        }
+    }
+    let (word, _) = indexer.word_and_qualifier_at(uri, position)?;
+    find_implementation(&word, indexer, uri, position.line).await
+}
 
 /// Find all implementations/subtypes of the symbol under the cursor at `uri`.
 ///

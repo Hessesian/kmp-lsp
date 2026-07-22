@@ -48,6 +48,11 @@ pub(crate) fn ensure_file_data(indexer: &Indexer, uri: &Url) -> Option<Arc<FileD
         return Some(file_data.value().clone());
     }
 
+    // URI-keyed `jar_files` read: deliberately NOT gated by a Tier-2 promotion —
+    // there is no URI→name reverse index to promote by. A URI for a
+    // not-yet-materialized JAR therefore misses here (known limitation);
+    // in practice most callers arrive with URIs a name-keyed (promoting)
+    // lookup produced, so the miss window is narrow.
     if let Some(file_data) = indexer.jar_files.get(uri.as_str()) {
         return Some(file_data.value().clone());
     }
@@ -66,6 +71,20 @@ pub(crate) fn fqns_for_name(indexer: &Indexer, name: &str) -> Vec<String> {
         .read()
         .map(|m| m.get(name).cloned().unwrap_or_default())
         .unwrap_or_default()
+}
+
+/// Which IO and fallbacks a resolution pass may use. The plan's "IoPolicy".
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ResolveIo {
+    /// Navigation (go-to-def, hover): may spawn `fd`/`rg`, walk the class
+    /// hierarchy, and index a cold file on demand. No global-defs tail fallback.
+    Full,
+    /// Index-only, but imports may still `fd`. No `rg`, no hierarchy, no cold
+    /// index. Tail fallback: first global-defs match. (completion/highlight hot path)
+    NoRg,
+    /// Strictly in-memory: no `fd`, no `rg`, no hierarchy. Tail fallback:
+    /// unique global-defs match only (ambiguity-safe). (diagnostics keystroke path)
+    IndexOnly,
 }
 
 /// Resolve `name` as seen from `from_uri`, returning all known definition
@@ -154,10 +173,39 @@ pub(crate) fn resolve_symbol_inner(
     from_uri: &Url,
     with_hierarchy: bool,
 ) -> Vec<Location> {
+    resolve_chain(indexer, name, from_uri, ResolveIo::Full, with_hierarchy)
+}
+
+/// The single prioritised resolution chain, parameterised by IO policy.
+///
+/// `resolve_symbol_inner` (`Full`), `resolve_symbol_no_rg` (`NoRg`) and
+/// `resolve_type_index_only_simple` (`IndexOnly`) are all thin wrappers over this
+/// function. The `ResolveIo` policy selects which subprocess fallbacks (`fd`/`rg`),
+/// the hierarchy walk, the cold-file on-demand index, and which global-defs tail
+/// fallback are permitted — see the `ResolveIo` doc-comment for the per-policy table.
+///
+/// The chain order is fixed (local → local-decl → imports → swift → same-package →
+/// star → hierarchy → rg → tail); each step that is policy-gated simply no-ops when
+/// the policy forbids it, so every policy walks the same steps in the same order.
+fn resolve_chain(
+    indexer: &Indexer,
+    name: &str,
+    from_uri: &Url,
+    io: ResolveIo,
+    with_hierarchy: bool,
+) -> Vec<Location> {
+    // Behavioural knobs derived from the policy (see the `ResolveIo` table):
+    //  - `full_io`: cold-index + local-decl + swift + hierarchy + project-wide rg
+    //  - `allow_fd`: import resolution may spawn `fd` (everything except IndexOnly)
+    //  - `star_rg`: star imports may `rg` the package dir (Full only)
+    let full_io = matches!(io, ResolveIo::Full);
+    let allow_fd = !matches!(io, ResolveIo::IndexOnly);
+    let star_rg = matches!(io, ResolveIo::Full);
+
     // 0.5 ── on-demand index of the current file if not yet indexed ────────────
     // Ensures resolve_local and find_local_declaration work even at cold start
     // (e.g. the user invokes gd/hover before indexing has reached this file).
-    if !indexer.files.contains_key(from_uri.as_str()) {
+    if full_io && !indexer.files.contains_key(from_uri.as_str()) {
         if let Ok(path) = from_uri.to_file_path() {
             if let Ok(content) = std::fs::read_to_string(&path) {
                 indexer.index_content(from_uri, &content);
@@ -175,7 +223,7 @@ pub(crate) fn resolve_symbol_inner(
     // Catches function parameters without val/var that aren't in the symbol index.
     // Also catches named lambda parameters: `{ item -> ...}` found via the
     // `name ->` pattern in find_declaration_range_in_lines.
-    if !name.starts_with_uppercase() {
+    if full_io && !name.starts_with_uppercase() {
         let decl = find_local_declaration(indexer, name, from_uri);
         if !decl.is_empty() {
             return decl;
@@ -183,7 +231,7 @@ pub(crate) fn resolve_symbol_inner(
     }
 
     // 2 ── explicit imports ───────────────────────────────────────────────────
-    let imported = resolve_via_imports(indexer, name, from_uri);
+    let imported = resolve_via_imports(indexer, name, from_uri, allow_fd);
     if !imported.is_empty() {
         return imported;
     }
@@ -192,11 +240,16 @@ pub(crate) fn resolve_symbol_inner(
     // Swift files have no package declarations, so same-package and star-import
     // steps return empty. Use the in-memory definitions index directly to avoid
     // expensive project-wide rg fallback at step 5.
-    if crate::Language::from_path(from_uri.path()) == crate::Language::Swift
+    if full_io
+        && crate::Language::from_path(from_uri.path()) == crate::Language::Swift
         && name.starts_with_uppercase()
     {
         if let Some(locs_ref) = indexer.definitions.get(name) {
-            let locs: Vec<Location> = locs_ref.clone();
+            // Reconstitute interned `SymbolLoc`s at this boundary before filtering.
+            let locs: Vec<Location> = locs_ref
+                .iter()
+                .filter_map(|sym_loc| indexer.file_table.location(*sym_loc))
+                .collect();
             // Prefer definitions from .swift files when available.
             let swift_locs: Vec<Location> = locs
                 .iter()
@@ -219,13 +272,30 @@ pub(crate) fn resolve_symbol_inner(
     }
 
     // 4 ── star imports ───────────────────────────────────────────────────────
-    let star = resolve_star_imports(indexer, name, from_uri);
-    if !star.is_empty() {
-        return star;
+    if star_rg {
+        // Indexed-package scan, then `rg` scoped to the package dir for unindexed files.
+        let star = resolve_star_imports(indexer, name, from_uri);
+        if !star.is_empty() {
+            return star;
+        }
+    } else {
+        // Index-only scan (no rg fallback for unindexed files).
+        let star_pkgs: Vec<String> = match indexer.files.get(from_uri.as_str()) {
+            Some(f) => f
+                .imports
+                .iter()
+                .filter(|i| i.is_star && !is_stdlib(&i.full_path))
+                .map(|i| i.full_path.clone())
+                .collect(),
+            None => vec![],
+        };
+        if let Some(loc) = find_in_star_imports(indexer, name, &star_pkgs) {
+            return vec![loc];
+        }
     }
 
     // 4.5 ── superclass / interface hierarchy ─────────────────────────────────
-    if with_hierarchy {
+    if full_io && with_hierarchy {
         let inherited = resolve_from_class_hierarchy(indexer, name, from_uri);
         if !inherited.is_empty() {
             return inherited;
@@ -233,22 +303,45 @@ pub(crate) fn resolve_symbol_inner(
     }
 
     // 5 ── project-wide rg ───────────────────────────────────────────────────
-    let (root, source_roots, matcher) = indexer.rg_scope_for_path(None);
-    // Skip when an explicit import for this name already went through all
-    // source-tree lookups (qualified index + definitions index + fd) and came
-    // up empty.  rg searches the same source tree and cannot add anything new.
-    // The package-dir check is the authoritative gate: if `android/os/` doesn't
-    // exist under any source root, the symbol simply isn't in the project.
-    if import_package_absent_from_source_roots(
-        indexer,
-        name,
-        from_uri,
-        root.as_deref(),
-        &source_roots,
-    ) {
-        return vec![];
+    if full_io {
+        let (root, source_roots, matcher) = indexer.rg_scope_for_path(None);
+        // Skip when an explicit import for this name already went through all
+        // source-tree lookups (qualified index + definitions index + fd) and came
+        // up empty.  rg searches the same source tree and cannot add anything new.
+        // The package-dir check is the authoritative gate: if `android/os/` doesn't
+        // exist under any source root, the symbol simply isn't in the project.
+        if import_package_absent_from_source_roots(
+            indexer,
+            name,
+            from_uri,
+            root.as_deref(),
+            &source_roots,
+        ) {
+            return vec![];
+        }
+        return rg_find_definition(name, root.as_deref(), &source_roots, matcher.as_deref());
     }
-    rg_find_definition(name, root.as_deref(), &source_roots, matcher.as_deref())
+
+    // Tail fallback — global definitions index (includes JAR symbols).
+    //  - NoRg: first match.   - IndexOnly: unique match only (ambiguity-safe).
+    //  - Full: never reached (returns inside the rg branch above).
+    match io {
+        ResolveIo::Full => vec![],
+        ResolveIo::NoRg => indexer
+            .lookup_definitions(name)
+            .into_iter()
+            .next()
+            .map(|loc| vec![loc])
+            .unwrap_or_default(),
+        ResolveIo::IndexOnly => {
+            let locs = indexer.lookup_definitions(name);
+            if locs.len() == 1 {
+                locs
+            } else {
+                vec![]
+            }
+        }
+    }
 }
 
 /// Returns the first Location found by scanning star-import packages.
@@ -271,42 +364,7 @@ fn find_in_star_imports(indexer: &Indexer, name: &str, star_pkgs: &[String]) -> 
 /// Completion is triggered on every keystroke; spawning external `rg`/`fd`
 /// processes on each request would block the LSP thread and spike CPU.
 pub(crate) fn resolve_symbol_no_rg(indexer: &Indexer, name: &str, from_uri: &Url) -> Vec<Location> {
-    let local = resolve_local(indexer, name, from_uri);
-    if !local.is_empty() {
-        return local;
-    }
-
-    let imported = resolve_via_imports(indexer, name, from_uri);
-    if !imported.is_empty() {
-        return imported;
-    }
-
-    let same_pkg = resolve_same_package(indexer, name, from_uri);
-    if !same_pkg.is_empty() {
-        return same_pkg;
-    }
-
-    // Star imports: index-only scan (no rg fallback for unindexed files).
-    let star_pkgs: Vec<String> = match indexer.files.get(from_uri.as_str()) {
-        Some(f) => f
-            .imports
-            .iter()
-            .filter(|i| i.is_star && !is_stdlib(&i.full_path))
-            .map(|i| i.full_path.clone())
-            .collect(),
-        None => vec![],
-    };
-    if let Some(loc) = find_in_star_imports(indexer, name, &star_pkgs) {
-        return vec![loc];
-    }
-
-    // Check the global definitions index as a final fast fallback (includes JAR symbols).
-    let locs = indexer.lookup_definitions(name);
-    if let Some(loc) = locs.into_iter().next() {
-        return vec![loc];
-    }
-
-    vec![]
+    resolve_chain(indexer, name, from_uri, ResolveIo::NoRg, false)
 }
 
 /// Index-only type resolver for the diagnostics hot path.
@@ -342,116 +400,7 @@ pub(crate) fn resolve_type_index_only(
 
 /// Inner helper: resolves a simple (non-dotted) type name using the index-only chain.
 fn resolve_type_index_only_simple(indexer: &Indexer, name: &str, from_uri: &Url) -> Vec<Location> {
-    let local = resolve_local(indexer, name, from_uri);
-    if !local.is_empty() {
-        return local;
-    }
-
-    let imported = resolve_via_imports_index_only(indexer, name, from_uri);
-    if !imported.is_empty() {
-        return imported;
-    }
-
-    let same_pkg = resolve_same_package(indexer, name, from_uri);
-    if !same_pkg.is_empty() {
-        return same_pkg;
-    }
-
-    // Star imports: index-only scan.
-    let star_pkgs: Vec<String> = match indexer.files.get(from_uri.as_str()) {
-        Some(f) => f
-            .imports
-            .iter()
-            .filter(|i| i.is_star && !is_stdlib(&i.full_path))
-            .map(|i| i.full_path.clone())
-            .collect(),
-        None => vec![],
-    };
-    if let Some(loc) = find_in_star_imports(indexer, name, &star_pkgs) {
-        return vec![loc];
-    }
-
-    // Ambiguity-safe global fallback (includes JAR symbols): only return if exactly one candidate.
-    let locs = indexer.lookup_definitions(name);
-    if locs.len() == 1 {
-        return locs;
-    }
-
-    vec![]
-}
-
-/// Import resolution without subprocess fallback (no `fd_find_and_parse`).
-/// Uses only the in-memory qualified index and definitions index.
-fn resolve_via_imports_index_only(indexer: &Indexer, name: &str, uri: &Url) -> Vec<Location> {
-    let imports: Vec<crate::types::ImportEntry> = match indexer.files.get(uri.as_str()) {
-        Some(f) => f.imports.iter().filter(|i| !i.is_star).cloned().collect(),
-        None => return vec![],
-    };
-
-    for imp in imports.iter().filter(|i| i.local_name == name) {
-        // i) qualified index — exact FQN
-        if let Some(loc) = indexer.qualified.get(&imp.full_path) {
-            return vec![loc.clone()];
-        }
-
-        // ii) short-name index filtered to the expected package
-        let short = imp.full_path.last_segment();
-        let expected_pkg = import_package_prefix(&imp.full_path);
-        // For nested class imports (e.g. OverviewProductContract.Event), extract
-        // the container name to disambiguate when multiple classes with the same
-        // short name exist in the same package.
-        let expected_container = extract_container_from_import(&imp.full_path);
-
-        let mut all_locations: Vec<tower_lsp::lsp_types::Location> = Vec::new();
-        if let Some(locs) = indexer.definitions.get(short) {
-            all_locations.extend(locs.iter().cloned());
-        }
-        if let Some(locs) = indexer.jar_definitions.get(short) {
-            all_locations.extend(locs.iter().cloned());
-        }
-        if !all_locations.is_empty() {
-            let filtered: Vec<_> = all_locations
-                .iter()
-                .filter(|loc| {
-                    // Package filter
-                    let pkg_match = indexer
-                        .files
-                        .get(loc.uri.as_str())
-                        .or_else(|| indexer.jar_files.get(loc.uri.as_str()))
-                        .and_then(|f| f.package.clone())
-                        .map(|p| p == expected_pkg || p.starts_with(&format!("{expected_pkg}.")))
-                        .unwrap_or(false);
-
-                    if !pkg_match {
-                        return false;
-                    }
-
-                    // Container filter for nested classes
-                    if let Some(ref container) = expected_container {
-                        // Find the symbol at this location to check its container field
-                        if let Some(file_data) = indexer.file_data_for(loc.uri.as_str()) {
-                            if let Some(symbol) = file_data
-                                .symbols
-                                .iter()
-                                .find(|s| s.selection_range == loc.range)
-                            {
-                                return symbol.container.as_deref() == Some(container.as_str());
-                            }
-                        }
-                        return false;
-                    }
-
-                    true
-                })
-                .cloned()
-                .collect();
-            if !filtered.is_empty() {
-                return filtered;
-            }
-        }
-        // No fd fallback — index-only
-    }
-    vec![]
+    resolve_chain(indexer, name, from_uri, ResolveIo::IndexOnly, false)
 }
 
 // ─── step implementations ────────────────────────────────────────────────────
@@ -469,7 +418,13 @@ fn resolve_extension_in_scope(
     name: &str,
     from_uri: &Url,
 ) -> Vec<Location> {
-    let Some(entries) = indexer.extension_by_receiver.get(receiver_base) else {
+    // Atomic promote+read (zero budget): this helper serves goto-definition
+    // AND the per-call-site diagnostics path (`resolve_member`), so blocking
+    // sidecar IPC is forbidden here — cache-backed promotions are still free.
+    let mut cache_backed_only = 0usize;
+    let Some(entries) =
+        crate::indexer::jar::extension_entries_for(indexer, receiver_base, &mut cache_backed_only)
+    else {
         return vec![];
     };
     let caller_file_data = indexer.files.get(from_uri.as_str());
@@ -497,7 +452,7 @@ fn resolve_extension_in_scope(
                             .iter()
                             .find(|s| {
                                 s.name == name
-                                    && s.extension_receiver == receiver_base
+                                    && s.extension_receiver() == receiver_base
                                     && s.container.is_none()
                             })
                             .map(|s| s.selection_range)
@@ -586,8 +541,13 @@ fn resolve_qualified(
             }
         }
         // Extension functions may live in a different file than the receiver class.
+        // Atomic promote+read (zero budget): `resolve_qualified` is on both the
+        // goto-definition and the per-call-site diagnostics path.
         let root_base = root.last_segment();
-        if let Some(entries) = indexer.extension_by_receiver.get(root_base) {
+        let mut cache_backed_only = 0usize;
+        if let Some(entries) =
+            crate::indexer::jar::extension_entries_for(indexer, root_base, &mut cache_backed_only)
+        {
             for entry in entries.iter() {
                 if entry.name == name {
                     if let Ok(uri) = Url::parse(&entry.file_uri) {
@@ -618,7 +578,7 @@ fn resolve_qualified(
     // A nullable receiver resolves members from its underlying (non-null) class,
     // so drop any trailing `?` before resolving the type to a file — otherwise
     // `resolve_symbol("Confirmation?")` would find nothing.
-    let start_type = start_type.trim_end_matches('?');
+    let start_type = start_type.strip_nullable();
 
     // `start_type` may be a dotted nested type like `Outer.Inner`.
     // Split into outer (for file resolution) and optional inner (nested class).
@@ -706,7 +666,7 @@ fn resolve_local(indexer: &Indexer, name: &str, uri: &Url) -> Vec<Location> {
 /// JAR symbols use a synthetic range whose line number equals the symbol's index
 /// within the jar's `FileData.symbols`, so the line indexes the package vector.
 /// Returns `None` when unknown (no entry, or pre-per-symbol-package jar cache).
-fn jar_symbol_package(indexer: &Indexer, loc: &Location) -> Option<String> {
+pub(crate) fn jar_symbol_package(indexer: &Indexer, loc: &Location) -> Option<String> {
     let packages = indexer.jar_symbol_packages.get(loc.uri.as_str())?;
     packages
         .get(loc.range.start.line as usize)
@@ -842,17 +802,32 @@ fn resolve_companion_member(
 ///   i.   qualified index  — exact match, O(1), works once file is indexed
 ///   ii.  definitions index — short-name, filtered to expected package
 ///   iii. fd + on-demand parse — works at cold start; tries parent class file
-///        first for nested symbols (AccountPickerContract.kt before Event.kt)
-fn resolve_via_imports(indexer: &Indexer, name: &str, uri: &Url) -> Vec<Location> {
+///        first for nested symbols (AccountPickerContract.kt before Event.kt).
+///        Gated by `allow_fd`: the index-only policy passes `false` to stay
+///        strictly in-memory (no subprocess spawns) while keeping sub-steps i–ii.
+fn resolve_via_imports(indexer: &Indexer, name: &str, uri: &Url, allow_fd: bool) -> Vec<Location> {
     let imports: Vec<crate::types::ImportEntry> = match indexer.files.get(uri.as_str()) {
         Some(f) => f.imports.iter().filter(|i| !i.is_star).cloned().collect(),
         None => return vec![],
     };
 
     for imp in imports.iter().filter(|i| i.local_name == name) {
-        // i) qualified index — exact FQN (works for top-level classes)
-        if let Some(loc) = indexer.qualified.get(&imp.full_path) {
-            return vec![loc.clone()];
+        // i) qualified index — exact FQN (works for top-level classes).
+        //    `qualified` stores an interned `SymbolLoc`; reconstitute the
+        //    `Location` here, at the return boundary.
+        if let Some(sym_loc) = indexer.qualified.get(&imp.full_path) {
+            match indexer.file_table.location(*sym_loc) {
+                Some(loc) => return vec![loc],
+                // Unreachable by construction: every SymbolLoc in `qualified`
+                // was interned before insert and FileIds are never reused.
+                // Loud in dev builds; release degrades to the fallback ladder
+                // below rather than mis-resolving.
+                None => debug_assert!(
+                    false,
+                    "qualified SymbolLoc has no file_table entry for {}",
+                    imp.full_path
+                ),
+            }
         }
 
         // ii) short-name index filtered to the expected package.
@@ -869,8 +844,20 @@ fn resolve_via_imports(indexer: &Indexer, name: &str, uri: &Url) -> Vec<Location
         let expected_chain = import_container_chain(&imp.full_path, short);
         let mut all_locations: Vec<tower_lsp::lsp_types::Location> = Vec::new();
         if let Some(locs) = indexer.definitions.get(short) {
-            all_locations.extend(locs.iter().cloned());
+            // Reconstitute interned `SymbolLoc`s at this boundary.
+            all_locations.extend(
+                locs.iter()
+                    .filter_map(|sym_loc| indexer.file_table.location(*sym_loc)),
+            );
         }
+        // Promote-before-read (zero budget): an imported name whose JAR is
+        // Tier-1-only must become visible here — this exact read shipped the
+        // first promote-AFTER-read ordering bug. Blocking IPC for imports
+        // already happens at file open (per-import promotion), and this
+        // helper also runs on keystroke/diagnostics paths, so only free
+        // cache-backed promotions are allowed.
+        let mut cache_backed_only = 0usize;
+        crate::indexer::jar::ensure_jar_definitions_for(indexer, short, &mut cache_backed_only);
         if let Some(locs) = indexer.jar_definitions.get(short) {
             all_locations.extend(locs.iter().cloned());
         }
@@ -931,11 +918,14 @@ fn resolve_via_imports(indexer: &Indexer, name: &str, uri: &Url) -> Vec<Location
         // any source root.  A single stat() per import prevents spawning fd
         // processes for SDK/stdlib packages (android.os, androidx.*…) whose
         // sources are never present in the project tree.
-        let (root, source_roots, matcher) = indexer.rg_scope_for_path(None);
-        if package_dir_in_source_roots(&imp.full_path, root.as_deref(), &source_roots) {
-            let locs = fd_find_and_parse(name, &imp.full_path, root.as_deref(), matcher.as_deref());
-            if !locs.is_empty() {
-                return locs;
+        if allow_fd {
+            let (root, source_roots, matcher) = indexer.rg_scope_for_path(None);
+            if package_dir_in_source_roots(&imp.full_path, root.as_deref(), &source_roots) {
+                let locs =
+                    fd_find_and_parse(name, &imp.full_path, root.as_deref(), matcher.as_deref());
+                if !locs.is_empty() {
+                    return locs;
+                }
             }
         }
     }
@@ -957,29 +947,35 @@ fn resolve_same_package(indexer: &Indexer, name: &str, uri: &Url) -> Vec<Locatio
         None => return vec![],
     };
 
-    let peer_uris: Vec<String> = match indexer.packages.get(&pkg) {
-        Some(u) => u.clone(),
+    let peer_ids: Vec<crate::types::FileId> = match indexer.packages.get(&pkg) {
+        Some(ids) => ids.clone(),
         None => return vec![],
     };
 
     let self_str = uri.as_str();
-    for peer_uri_str in &peer_uris {
+    for peer_id in &peer_ids {
+        let Some(peer_url) = indexer.file_table.url(*peer_id) else {
+            continue;
+        };
+        let peer_uri_str = peer_url.as_str();
         if peer_uri_str == self_str {
             continue;
         }
         if let Some(f) = indexer.files.get(peer_uri_str) {
-            for sym in f.symbols.iter().filter(|s| s.name == name) {
-                if let Ok(u) = Url::parse(peer_uri_str) {
-                    return vec![Location {
-                        uri: u,
-                        range: sym.selection_range,
-                    }];
-                }
+            if let Some(sym) = f.symbols.iter().find(|s| s.name == name) {
+                return vec![Location {
+                    uri: (*peer_url).clone(),
+                    range: sym.selection_range,
+                }];
             }
         }
     }
 
     // Also check compiled JAR definitions for same-package symbols.
+    // Promote-before-read (zero budget): serves all three resolution policies,
+    // including keystroke/diagnostics paths — no blocking sidecar IPC here.
+    let mut cache_backed_only = 0usize;
+    crate::indexer::jar::ensure_jar_definitions_for(indexer, name, &mut cache_backed_only);
     if let Some(locs) = indexer.jar_definitions.get(name) {
         for loc in locs.iter() {
             if let Some(f) = indexer.jar_files.get(loc.uri.as_str()) {
@@ -1001,25 +997,30 @@ fn symbols_in_package(indexer: &Indexer, name: &str, pkg: &str) -> Vec<Location>
 
 /// Scan all indexed files in `pkg` for the first symbol named `name`.
 fn find_symbol_in_package(indexer: &Indexer, name: &str, pkg: &str) -> Option<Location> {
-    let peer_uris: Vec<String> = indexer
+    let peer_ids: Vec<crate::types::FileId> = indexer
         .packages
         .get(pkg)
-        .map(|u| u.clone())
+        .map(|ids| ids.clone())
         .unwrap_or_default();
-    for peer_uri_str in peer_uris {
-        if let Some(f) = indexer.files.get(&peer_uri_str) {
-            for sym in f.symbols.iter().filter(|s| s.name == name) {
-                if let Ok(u) = Url::parse(&peer_uri_str) {
-                    return Some(Location {
-                        uri: u,
-                        range: sym.selection_range,
-                    });
-                }
+    for peer_id in peer_ids {
+        let Some(peer_url) = indexer.file_table.url(peer_id) else {
+            continue;
+        };
+        if let Some(f) = indexer.files.get(peer_url.as_str()) {
+            if let Some(sym) = f.symbols.iter().find(|s| s.name == name) {
+                return Some(Location {
+                    uri: (*peer_url).clone(),
+                    range: sym.selection_range,
+                });
             }
         }
     }
 
     // Also check compiled JAR definitions.
+    // Promote-before-read (zero budget): star-import scans run per-name on
+    // keystroke/diagnostics paths — no blocking sidecar IPC here.
+    let mut cache_backed_only = 0usize;
+    crate::indexer::jar::ensure_jar_definitions_for(indexer, name, &mut cache_backed_only);
     if let Some(locs) = indexer.jar_definitions.get(name) {
         for loc in locs.iter() {
             if let Some(f) = indexer.jar_files.get(loc.uri.as_str()) {
@@ -1163,25 +1164,6 @@ fn rg_in_package_dir(
 
 // ─── shared helpers ───────────────────────────────────────────────────────────
 
-/// Extract the container name from a nested class import path.
-/// E.g. `"cz.moneta.OverviewProductContract.Event"` → `Some("OverviewProductContract")`
-/// E.g. `"cz.moneta.Event"` → `None` (not a nested class)
-fn extract_container_from_import(import_path: &str) -> Option<String> {
-    use crate::StrExt;
-    let segments: Vec<&str> = import_path.split('.').collect();
-    // Find the last two uppercase segments. If they exist, the first is the container.
-    let upper: Vec<&str> = segments
-        .iter()
-        .copied()
-        .filter(|s| s.starts_with_uppercase())
-        .collect();
-    if upper.len() >= 2 {
-        Some(upper[upper.len() - 2].to_string())
-    } else {
-        None
-    }
-}
-
 /// Returns `true` if the package directory derived from `import_path` exists as a
 /// subdirectory of at least one search root.
 ///
@@ -1262,46 +1244,6 @@ pub(crate) fn is_stdlib(pkg: &str) -> bool {
         | "WebKit" | "StoreKit" | "GameKit" | "ARKit" | "RealityKit"
         | "Swift" | "ObjectiveC" | "Darwin" | "Dispatch" | "os"
     )
-}
-
-// ─── ResolutionChain trait ────────────────────────────────────────────────────
-
-/// The five ordered resolution steps used by [`resolve_symbol_inner`].
-///
-/// Implementing this trait on a type allows the resolution chain to be driven
-/// generically — e.g. in tests a lightweight stub can replace the full
-/// [`Indexer`] without bringing up a real index.
-///
-/// Step order mirrors the chain in [`resolve_symbol_inner`]:
-/// `local → via_imports → same_package → star_imports → qualified`.
-///
-/// TODO(G4): make `resolve_symbol_inner` generic over `ResolutionChain +
-/// SymbolIndex + ScopeQuery` and migrate call-sites away from `&Indexer`.
-#[allow(dead_code)]
-pub(crate) trait ResolutionChain {
-    fn resolve_local(&self, name: &str, uri: &Url) -> Vec<Location>;
-    fn resolve_via_imports(&self, name: &str, uri: &Url) -> Vec<Location>;
-    fn resolve_same_package(&self, name: &str, uri: &Url) -> Vec<Location>;
-    fn resolve_star_imports(&self, name: &str, uri: &Url) -> Vec<Location>;
-    fn resolve_qualified(&self, name: &str, qualifier: &str, uri: &Url) -> Vec<Location>;
-}
-
-impl ResolutionChain for Indexer {
-    fn resolve_local(&self, name: &str, uri: &Url) -> Vec<Location> {
-        resolve_local(self, name, uri)
-    }
-    fn resolve_via_imports(&self, name: &str, uri: &Url) -> Vec<Location> {
-        resolve_via_imports(self, name, uri)
-    }
-    fn resolve_same_package(&self, name: &str, uri: &Url) -> Vec<Location> {
-        resolve_same_package(self, name, uri)
-    }
-    fn resolve_star_imports(&self, name: &str, uri: &Url) -> Vec<Location> {
-        resolve_star_imports(self, name, uri)
-    }
-    fn resolve_qualified(&self, name: &str, qualifier: &str, uri: &Url) -> Vec<Location> {
-        resolve_qualified(self, name, qualifier, uri)
-    }
 }
 
 // ─── impl Indexer wrappers ────────────────────────────────────────────────────

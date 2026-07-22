@@ -156,13 +156,38 @@ impl DocumentHandler {
             };
             // Return `content` from the closure so the second spawn_blocking
             // can reuse it without an upfront full-file clone.
-            let result = tokio::task::spawn_blocking(move || {
-                let _permit = permit;
-                let data = indexer.index_content(&uri, &content);
-                Arc::clone(&indexer).prewarm_completion_cache(&uri);
-                (data, content)
+            //
+            // The parse permit covers ONLY `index_content`: import promotion
+            // is sidecar IPC, not parsing, and since the promotion became
+            // uncapped a cold import list can take seconds — holding a
+            // `parse_sem` permit (a single permit on 2-core machines) across
+            // it stalled every other parse task in the process.
+            let parse_result = tokio::task::spawn_blocking({
+                let indexer = Arc::clone(&indexer);
+                let uri = uri.clone();
+                move || {
+                    let _permit = permit;
+                    let data = indexer.index_content(&uri, &content);
+                    (data, content)
+                }
             })
             .await;
+            // Eagerly promote the file's own imports before the diagnostics
+            // pass below runs, so call-arg/nullable diagnostics against a
+            // freshly-opened file's own imported library types see real
+            // signatures on first publish rather than degrading to Task 7's
+            // suppression path for the common case.
+            let result = match parse_result {
+                Ok(parsed) => {
+                    tokio::task::spawn_blocking(move || {
+                        promote_file_imports(&indexer, &uri);
+                        Arc::clone(&indexer).prewarm_completion_cache(&uri);
+                        parsed
+                    })
+                    .await
+                }
+                Err(join_error) => Err(join_error),
+            };
 
             let (index_result, diagnostics_text) = match result {
                 Ok((data, text)) => (Ok(data), text),
@@ -231,48 +256,77 @@ impl DocumentHandler {
     /// completes so that files opened during the scan get their semantic
     /// diagnostics (which were suppressed while the index was partial).
     pub(crate) fn republish_open_file_diagnostics(&self) {
-        for entry in self.indexer.live_trees.iter() {
-            let Ok(uri) = Url::parse(entry.key()) else {
-                continue;
-            };
-            let indexer = Arc::clone(&self.indexer);
-            let client = self.client.clone();
-            tokio::task::spawn(async move {
-                let syntax_diags = indexer
-                    .files
-                    .get(uri.as_str())
-                    .map(|f| syntax_diagnostics(&f.syntax_errors))
-                    .unwrap_or_default();
-                let semantic_diags = tokio::task::spawn_blocking({
-                    let indexer = Arc::clone(&indexer);
-                    let uri = uri.clone();
-                    move || {
-                        let mut d = Vec::new();
-                        d.extend(when_diagnostics(&indexer, &uri));
-                        if let Some(doc) = indexer.live_doc(&uri) {
-                            d.extend(call_arg_diagnostics(&indexer, &uri, &doc));
-                            d.extend(nullable_dot_call_diagnostics(&indexer, &uri, &doc));
-                        }
-                        let lines = indexer.mem_lines_for(uri.as_str());
-                        let lines: Vec<String> = lines
-                            .as_ref()
-                            .map(|l| l.as_ref().clone())
-                            .unwrap_or_default();
-                        if let Some(pkg_diag) = missing_package_diagnostic(&lines, &uri) {
-                            d.push(pkg_diag);
-                        }
-                        d
-                    }
-                })
-                .await
-                .unwrap_or_default();
-                let mut diagnostics = syntax_diags;
-                diagnostics.extend(semantic_diags);
-                if let Some(client) = client {
-                    client.publish_diagnostics(uri, diagnostics, None).await;
+        let open_uris: Vec<Url> = self
+            .indexer
+            .live_trees
+            .iter()
+            .filter_map(|entry| Url::parse(entry.key()).ok())
+            .collect();
+
+        // Re-attempt import promotion for EVERY open file, SEQUENTIALLY in
+        // one blocking task, before any per-file diagnostics run. This
+        // republish fires when the jar scan completes, and any file opened
+        // BEFORE that ran its didOpen promotion against an empty Tier-1
+        // manifest (no candidates, silent no-op) — on a cold start that is
+        // every initially open file, and nothing else ever retries.
+        // Sequential on purpose: per-file CONCURRENT promotions raced on the
+        // immediate-or-nothing sidecar `try_lock`, and a contended candidate
+        // is skipped with no memo and no retry — an arbitrary subset of a
+        // file's imports silently never materialized (review finding H1).
+        // Idempotent and cheap when already promoted (`materialized` /
+        // `materialization_failed` memoize per JAR).
+        let handler_indexer = Arc::clone(&self.indexer);
+        let handler_client = self.client.clone();
+        tokio::task::spawn(async move {
+            let promotion_indexer = Arc::clone(&handler_indexer);
+            let promotion_uris = open_uris.clone();
+            let _ = tokio::task::spawn_blocking(move || {
+                for uri in &promotion_uris {
+                    promote_file_imports(&promotion_indexer, uri);
                 }
-            });
-        }
+            })
+            .await;
+
+            for uri in open_uris {
+                let indexer = Arc::clone(&handler_indexer);
+                let client = handler_client.clone();
+                tokio::task::spawn(async move {
+                    let syntax_diags = indexer
+                        .files
+                        .get(uri.as_str())
+                        .map(|f| syntax_diagnostics(&f.syntax_errors))
+                        .unwrap_or_default();
+                    let semantic_diags = tokio::task::spawn_blocking({
+                        let indexer = Arc::clone(&indexer);
+                        let uri = uri.clone();
+                        move || {
+                            let mut d = Vec::new();
+                            d.extend(when_diagnostics(&indexer, &uri));
+                            if let Some(doc) = indexer.live_doc(&uri) {
+                                d.extend(call_arg_diagnostics(&indexer, &uri, &doc));
+                                d.extend(nullable_dot_call_diagnostics(&indexer, &uri, &doc));
+                            }
+                            let lines = indexer.mem_lines_for(uri.as_str());
+                            let lines: Vec<String> = lines
+                                .as_ref()
+                                .map(|l| l.as_ref().clone())
+                                .unwrap_or_default();
+                            if let Some(pkg_diag) = missing_package_diagnostic(&lines, &uri) {
+                                d.push(pkg_diag);
+                            }
+                            d
+                        }
+                    })
+                    .await
+                    .unwrap_or_default();
+                    let mut diagnostics = syntax_diags;
+                    diagnostics.extend(semantic_diags);
+                    if let Some(client) = client {
+                        client.publish_diagnostics(uri, diagnostics, None).await;
+                    }
+                });
+            }
+        });
     }
 
     fn spawn_outside_root_document_indexing(&self, uri: Url, content: String) {
@@ -381,6 +435,49 @@ impl DocumentHandler {
 
 fn has_any_marker(directory: &Path, markers: &[&str]) -> bool {
     markers.iter().any(|marker| directory.join(marker).exists())
+}
+
+/// Eagerly promote every JAR a file's own imports reference, before that
+/// file's first diagnostics pass runs. Without this, call-arg/nullable
+/// diagnostics on the file's own imported library types would fall back to
+/// the Tier-1-suppression path (Task 7) on every fresh open — correct, but
+/// unnecessarily degraded for the common case (design §Import-scoped eager
+/// promotion: "briefly incomplete, then correct" is the intended gap, not
+/// "always degraded by default").
+///
+/// Reads `FileData::imports` (already populated by `index_content`, which
+/// must have been called for `uri` before this runs) and attempts promotion
+/// once per non-star import's local name.
+/// Star imports are skipped: the design defers package-keyed Tier-1 lookups
+/// to v2 (`ImportEntry::local_name` is `"*"` for a star import, which is not
+/// a usable `jar_bare_names` key).
+///
+/// NOT budget-capped, deliberately. This function is the designated safety
+/// net the zero-IPC inference sites lean on ("uncached JARs are covered by
+/// file-open import promotion") — a cap of 5 across a whole import list
+/// silently broke that contract for every cold import past the fifth, and a
+/// real Compose file imports dozens of names: with a partially wiped disk
+/// cache, an explicitly imported `padding` never materialized and
+/// chained-call completion (`Modifier.padding().padd…`) returned nothing,
+/// with no later request able to repair it (chain inference is zero-IPC and
+/// completion's own promotion is keyed on other names). It runs inside
+/// `spawn_blocking` on didOpen — a notification, not a user-facing request —
+/// so per-import blocking IPC costs background time, not request latency,
+/// and the per-JAR sidecar lock scoping lets interactive promotions
+/// interleave between imports.
+pub(crate) fn promote_file_imports(indexer: &Indexer, uri: &Url) {
+    let imports: Vec<crate::types::ImportEntry> = match indexer.files.get(uri.as_str()) {
+        Some(file_data) => file_data
+            .imports
+            .iter()
+            .filter(|import| !import.is_star)
+            .cloned()
+            .collect(),
+        None => return,
+    };
+    for import in &imports {
+        crate::indexer::jar::ensure_jar_materialized(indexer, &import.local_name);
+    }
 }
 
 #[cfg(test)]

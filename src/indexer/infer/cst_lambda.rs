@@ -3,7 +3,7 @@
 use tower_lsp::lsp_types::Url;
 
 use crate::indexer::{Indexer, NodeExt};
-use crate::queries::{KIND_CALL_EXPR, KIND_CALL_SUFFIX, KIND_LAMBDA_LIT, KIND_VALUE_ARG};
+use crate::queries::{KIND_CALL_SUFFIX, KIND_LAMBDA_LIT, KIND_VALUE_ARG};
 use crate::types::CursorPos;
 use crate::StrExt;
 
@@ -12,56 +12,14 @@ use super::super::last_ident_in;
 use super::args::has_named_params_not_it;
 use super::args::{extract_first_arg, find_named_param_type_in_sig};
 use super::chain::{cst_forward_resolve_receiver_type, resolve_callee_chain};
-use super::deps::{CallableInfo, InferDeps};
-use super::it_this::LambdaParamKind;
-#[cfg(test)]
-use super::it_this::IT_SCAN_BACK_LINES;
+use super::deps::{CallableInfo, InferDeps, OuterScopedParams};
 use super::lambda::{lambda_type_nth_input, lambda_type_receiver, RECEIVER_THIS_FNS};
 use super::lambda_resolution::{ExtractedTypeKind, GenericParamSource, LambdaParamResolution};
-use super::receiver::{
-    fun_trailing_lambda_this_type, lambda_receiver_type_from_context,
-    lambda_receiver_type_named_arg_ml, resolve_call_params,
-};
 use super::sig::{last_fun_param_type_str, nth_fun_param_type_str, strip_trailing_call_args};
 use super::type_subst::{
     build_ext_fn_type_subst, find_last_dot_at_depth_zero, is_declared_type_param, is_generic_param,
     try_substitute_ext_fn_type_param,
 };
-
-/// Tri-state result of CST-based named lambda parameter type lookup.
-///
-/// Returned by [`cst_named_lambda_param_type`] and [`cst_lambda_param_type_via_call`].
-///
-/// The distinction between the two `None`-like variants is essential for the
-/// text-fallback decision in callers: `TryFallback` means "CST couldn't help,
-/// try the text path"; `AuthoritativeNone` means "CST determined this param has
-/// no usable type — the text path would give a wrong answer, so skip it".
-pub(super) enum CstParamResult {
-    /// CST resolved the parameter type to this string.
-    Resolved(String),
-    /// CST cannot determine the type but the text-fallback path may still help
-    /// (e.g. the enclosing function is not indexed, tree is incomplete).
-    TryFallback,
-    /// CST has enough information to know no type hint should be shown for this
-    /// position (e.g. `index` in `forEachIndexed { index, item -> }` when the
-    /// function is JAR-only — the receiver element type belongs to `item`, not
-    /// `index`). The text-fallback path must NOT run; it cannot distinguish
-    /// parameter positions and would return the wrong type.
-    AuthoritativeNone,
-}
-
-impl CstParamResult {
-    /// Convert to `Option<String>`, treating both `None`-like variants as `None`.
-    ///
-    /// Use at call sites that do not distinguish the two failure modes (e.g. the
-    /// implicit-`it` path where `AuthoritativeNone` cannot occur).
-    pub(super) fn into_option(self) -> Option<String> {
-        match self {
-            CstParamResult::Resolved(s) => Some(s),
-            CstParamResult::TryFallback | CstParamResult::AuthoritativeNone => None,
-        }
-    }
-}
 
 /// Tri-state result of classifying a lambda's `this`-receiver context.
 ///
@@ -194,16 +152,10 @@ fn lambda_this_ctx(
     uri: &Url,
 ) -> ThisLambdaCtx {
     let call_expression = cur.enclosing_call_expression();
-    let call_function_name = call_expression.and_then(|call| {
-        call.call_fn_name(&doc.bytes).or_else(|| {
-            // `Foo(args) { lambda }` (args *and* a trailing lambda) nests as
-            // `outer_call(inner_call(Foo, args), call_suffix{lambda})`, so the callee
-            // name lives on the inner call_expression, not the outer.
-            call.child(0)
-                .filter(|child| child.kind() == KIND_CALL_EXPR)
-                .and_then(|inner_call| inner_call.call_fn_name(&doc.bytes))
-        })
-    });
+    // `call_fn_name` unwraps the `outer_call(inner_call(Foo, args), call_suffix{lambda})`
+    // nesting that `Foo(args) { lambda }` produces, so the callee name is found whether or
+    // not the call carries positional args alongside its trailing lambda.
+    let call_function_name = call_expression.and_then(|call| call.call_fn_name(&doc.bytes));
 
     if call_function_name.as_deref() == Some("with") {
         return call_expression
@@ -222,9 +174,14 @@ fn lambda_this_ctx(
         if let Some(receiver_type) =
             call_expression.and_then(|call| resolve_receiver_type(&call, &doc.bytes, idx, uri))
         {
-            let dotted_prefix = receiver_type.trim_end_matches('?').dotted_ident_prefix();
+            let dotted_prefix = receiver_type.strip_nullable().dotted_ident_prefix();
             let base_name = dotted_prefix.trim_end_matches('.').last_segment();
-            if !base_name.is_empty() {
+            // Guard: only treat a resolved name as a type when it starts with an uppercase
+            // letter. `resolve_receiver_type` may return a raw variable name (e.g. `unknown`)
+            // when the variable has no type annotation in the index — that is NOT a type.
+            // Falling through to `classify_this_lambda_context` handles that case correctly
+            // by returning `ThisLambdaCtx::Receiver` for unresolvable receiver-this lambdas.
+            if !base_name.is_empty() && base_name.starts_with_uppercase() {
                 return ThisLambdaCtx::Resolved(base_name.to_owned());
             }
         }
@@ -241,9 +198,10 @@ fn lambda_this_ctx(
             .filter(|parent| parent.kind() == KIND_VALUE_ARG)
             .and_then(|value_argument| value_argument.named_arg_label(&doc.bytes));
         if let Some(label) = argument_label {
-            if let Some(receiver_type) = receiver_aware_params(call, &doc.bytes, idx, uri)
-                .and_then(|signature| find_named_param_type_in_sig(&signature, &label))
-                .and_then(|parameter_type| lambda_type_receiver(&parameter_type))
+            if let Some(receiver_type) =
+                receiver_aware_params(call, &doc.bytes, idx, uri, Some(&label))
+                    .and_then(|signature| find_named_param_type_in_sig(&signature, &label))
+                    .and_then(|parameter_type| lambda_type_receiver(&parameter_type))
             {
                 return ThisLambdaCtx::Resolved(receiver_type);
             }
@@ -262,16 +220,21 @@ fn lambda_this_ctx(
         }
     }
 }
+/// Lines to scan backward when searching for the enclosing lambda opener in
+/// the test-only text scan of [`is_inside_receiver_lambda`].
+#[cfg(test)]
+const IT_SCAN_BACK_LINES: usize = 15;
+
 /// Return `true` when the text-scan of `lines` around `pos` determines that
 /// the cursor is inside a **receiver-`this` lambda** whose receiver type is
 /// either resolved or simply not found — either way `this` refers to the
 /// lambda receiver, NOT the enclosing class.
 ///
 /// Used in `infer_lambda_param_type_at` to suppress the `enclosing_class_at`
-/// fallback when `find_this_element_type_in_lines` returned `None` only
+/// fallback when `find_this_element_type` returned `None` only
 /// because the receiver variable's type couldn't be resolved.
 /// Used by tests only — production code uses [`cst_this_context`] via
-/// [`crate::indexer::find_this_context_in_lines`] which returns the richer
+/// [`crate::indexer::find_this_context`] which returns the richer
 /// [`ThisContext`] enum and avoids a redundant second scan.
 #[cfg(test)]
 pub(crate) fn is_inside_receiver_lambda(
@@ -344,18 +307,44 @@ pub(crate) fn is_inside_receiver_lambda(
     false
 }
 
-pub(super) fn cursor_node_at(
+pub(crate) fn cursor_node_at(
     doc: &crate::indexer::live_tree::LiveDoc,
     pos: CursorPos,
 ) -> Option<tree_sitter::Node<'_>> {
     use tree_sitter::Point;
 
     let source = std::str::from_utf8(&doc.bytes).ok()?;
-    let line_text = source.lines().nth(pos.line).unwrap_or("");
-    let byte_col =
-        crate::indexer::live_tree::utf16_col_to_byte(line_text, pos.utf16_col).min(line_text.len());
+    // If `pos.line` is beyond the end of the parsed content, return `None` rather
+    // than clamping to an empty string and letting tree-sitter return the root node
+    // (which would cause the CST path to silently return a wrong result instead of
+    // falling through to the text-scan fallback).
+    //
+    // One position beyond `lines()` is NOT beyond the content: for `\n`-terminated
+    // text the editor shows a final empty line (cursor at end-of-file — a normal
+    // typing state) that `str::lines()` never yields. Node end positions are
+    // exclusive in tree-sitter, so a point in that trailing gap (or at the exact
+    // end of the last content line) lands on no token; resolve it ON the last
+    // character of the last content line instead, whose node carries the cursor's
+    // enclosing context (e.g. the ERROR node of a just-typed unclosed `{`).
+    let (row, byte_col) = match source.lines().nth(pos.line) {
+        Some(line_text) => {
+            let byte_col = crate::indexer::live_tree::utf16_col_to_byte(line_text, pos.utf16_col)
+                .min(line_text.len());
+            (pos.line, byte_col)
+        }
+        None if pos.line == source.lines().count() && source.ends_with('\n') => {
+            let last_row = pos.line.checked_sub(1)?;
+            let line_text = source.lines().nth(last_row)?;
+            // Byte offset of the last character's START — `len() - 1` would split
+            // a multi-byte UTF-8 character and hand tree-sitter a mid-codepoint
+            // point. Empty line ⇒ column 0.
+            let last_char_start = line_text.char_indices().next_back().map_or(0, |(i, _)| i);
+            (last_row, last_char_start)
+        }
+        None => return None,
+    };
     let point = Point {
-        row: pos.line,
+        row,
         column: byte_col,
     };
     doc.tree
@@ -386,28 +375,148 @@ pub(super) fn cst_named_lambda_param_type(
     doc: &crate::indexer::live_tree::LiveDoc,
     idx: &Indexer,
     uri: &Url,
-) -> CstParamResult {
-    let Some(mut cur) = cursor_node_at(doc, pos) else {
-        return CstParamResult::TryFallback;
-    };
+) -> Option<String> {
+    let mut cur = cursor_node_at(doc, pos)?;
     while let Some(lambda) = cur.enclosing_lambda_literal() {
         if let Some(param_pos) = lambda.lambda_param_position(param_name, &doc.bytes) {
-            // Try the full substitution path (handles generic extension fns like
-            // forEachIndexed where the param type is a type parameter of the receiver).
-            if let Some(result) = locate_and_extract(&lambda, doc, idx, uri, param_pos)
-                .and_then(|res| finalize_resolution(res, &doc.bytes, idx, uri))
-            {
-                return CstParamResult::Resolved(result);
-            }
-            // Fallback: scope functions, non-generic, or unresolvable chains.
-            return cst_lambda_param_type_via_call(doc, &lambda, idx, uri, param_pos);
+            return cst_lambda_param_type_at(&lambda, doc, idx, uri, param_pos);
         }
         let Some(parent) = lambda.parent() else {
             break;
         };
         cur = parent;
     }
-    CstParamResult::TryFallback
+    None
+}
+
+/// Resolve the type of the parameter at `param_pos` for a single
+/// `lambda_literal` node.
+///
+/// Tries the full substitution path first (handles generic extension fns like
+/// `forEachIndexed`, where the param type is a type parameter of the receiver),
+/// then the structural call fallback (scope functions, non-generic, or
+/// unresolvable chains).
+pub(super) fn cst_lambda_param_type_at(
+    lambda: &tree_sitter::Node<'_>,
+    doc: &crate::indexer::live_tree::LiveDoc,
+    deps: &impl InferDeps,
+    uri: &Url,
+    param_pos: usize,
+) -> Option<String> {
+    locate_and_extract(lambda, doc, deps, uri, param_pos)
+        .and_then(|resolution| finalize_resolution(resolution, &doc.bytes, deps, uri))
+        .or_else(|| cst_lambda_param_type_via_call(doc, lambda, deps, uri, param_pos))
+}
+
+/// Completion-scope facts for one enclosing lambda, produced by the CST
+/// ancestor walk in [`cst_lambda_scopes`].
+///
+/// Field-compatible with the completion feature's `LambdaScope`; the feature
+/// converts each entry without re-deriving anything.
+pub(crate) struct LambdaScopeInfo {
+    /// Type of the implicit `it` parameter, when the enclosing call gives one.
+    pub it_type: Option<String>,
+    /// Named lambda parameters in declaration order: `(name, type)`.
+    pub named_params: Vec<(String, String)>,
+    /// Lambda label — the call name just before `{` (`forEach { }` → `forEach`),
+    /// used to resolve `this@forEach` / `this@label` references.
+    pub label: Option<String>,
+}
+
+/// Walk the CST ancestor chain from `start_node`, building a scope for every
+/// enclosing `lambda_literal`. The result is ordered outermost-first,
+/// innermost-last — the order the completion scope stack consumes.
+///
+/// This subsumes the old bounded backward brace-scan: ancestor walking finds
+/// every enclosing lambda regardless of distance or intervening sibling
+/// lambdas, and never mis-balances braces inside strings or comments.
+pub(super) fn cst_lambda_scopes(
+    start_node: tree_sitter::Node<'_>,
+    doc: &crate::indexer::live_tree::LiveDoc,
+    deps: &impl InferDeps,
+    uri: &Url,
+) -> Vec<LambdaScopeInfo> {
+    let mut scopes = Vec::new();
+    let mut cur = start_node;
+    loop {
+        if cur.kind() == KIND_LAMBDA_LIT {
+            if let Some(scope) = lambda_scope_info(cur, doc, deps, uri) {
+                scopes.push(scope);
+            }
+        }
+        let Some(parent) = cur.parent() else { break };
+        cur = parent;
+    }
+    scopes.reverse();
+    scopes
+}
+
+/// Build the completion scope for a single `lambda_literal`, or `None` when it
+/// contributes neither an `it` type nor any usable named parameter.
+fn lambda_scope_info(
+    lambda: tree_sitter::Node<'_>,
+    doc: &crate::indexer::live_tree::LiveDoc,
+    deps: &impl InferDeps,
+    uri: &Url,
+) -> Option<LambdaScopeInfo> {
+    let (before_brace, _row) = lambda_before_brace_context(lambda, doc)?;
+    let named_params = lambda_named_param_types(lambda, doc, deps, uri);
+    let it_type = cst_lambda_param_type_at(&lambda, doc, deps, uri, 0);
+    if named_params.is_empty() && it_type.is_none() {
+        return None;
+    }
+    Some(LambdaScopeInfo {
+        it_type,
+        named_params,
+        label: lambda_label(&before_brace),
+    })
+}
+
+/// Type every collectable named parameter of `lambda` against its declared
+/// position in the lambda's parameter list.
+fn lambda_named_param_types(
+    lambda: tree_sitter::Node<'_>,
+    doc: &crate::indexer::live_tree::LiveDoc,
+    deps: &impl InferDeps,
+    uri: &Url,
+) -> Vec<(String, String)> {
+    let mut named = Vec::new();
+    for (position, name) in lambda
+        .lambda_param_names(&doc.bytes)
+        .into_iter()
+        .enumerate()
+    {
+        if !is_collectable_named_param(&name, &named) {
+            continue;
+        }
+        let param_type =
+            cst_lambda_param_type_at(&lambda, doc, deps, uri, position).unwrap_or_default();
+        named.push((name, param_type));
+    }
+    named
+}
+
+/// A lambda parameter contributes to the completion scope only when it is a
+/// real user-named binding: non-empty, not the implicit `it`, not the `_`
+/// discard, lowercase-led (types never lead a param name), and not already
+/// collected for this lambda.
+fn is_collectable_named_param(name: &str, collected: &[(String, String)]) -> bool {
+    !name.is_empty()
+        && name != "it"
+        && name != "_"
+        && name.starts_with_lowercase()
+        && !collected.iter().any(|(existing, _)| existing == name)
+}
+
+/// The lambda label: the trailing identifier of the call that opens the lambda
+/// (`items.forEach {` → `forEach`), used to resolve `this@label`.
+fn lambda_label(before_brace: &str) -> Option<String> {
+    let callee = strip_trailing_call_args(before_brace)
+        .replace("?.", ".")
+        .trim()
+        .to_owned();
+    let label = last_ident_in(&callee);
+    (!label.is_empty()).then(|| label.to_owned())
 }
 
 fn cst_with_receiver_ctx(
@@ -435,7 +544,7 @@ fn cst_with_receiver_ctx(
 /// distinguishes resolved types, unresolvable receiver lambdas, and
 /// "not inside any receiver lambda" — without requiring a second scan.
 ///
-/// This is the CST fast-path for [`find_this_context_in_lines`] in `it_this`.
+/// This is the CST fast-path for [`find_this_context`] in `it_this`.
 pub(super) fn cst_this_context(
     start_node: tree_sitter::Node<'_>,
     doc: &crate::indexer::live_tree::LiveDoc,
@@ -457,101 +566,26 @@ pub(super) fn cst_this_context(
     ThisContext::NotFound
 }
 
-/// Walk ancestors from `start_node` looking for a `lambda_literal` without
-/// named params, then infer the `it`/`this` type for that lambda.
+/// Walk ancestors from `start_node` looking for the nearest `lambda_literal`
+/// without named params, then resolve the implicit `it` element type for it.
 ///
-/// This is the extracted body of the CST fast-path in
-/// `find_it_element_type_in_lines_impl`.
-pub(super) fn cst_it_or_this_type(
+/// The resolution engine behind `find_it_element_type`, which runs it
+/// against the tree picked by `it_resolution_doc_at` (live, transient, or
+/// brace-repaired). `this` resolution is handled separately by [`cst_this_context`].
+pub(super) fn cst_it_element_type(
     start_node: tree_sitter::Node<'_>,
     doc: &crate::indexer::live_tree::LiveDoc,
-    lines: &[String],
-    kind: LambdaParamKind,
     idx: &Indexer,
     uri: &Url,
 ) -> Option<String> {
     let mut cur = start_node;
-    log::trace!(
-        "cst_it_or_this_type: start_node kind={}, text={:?}",
-        start_node.kind(),
-        start_node
-            .utf8_text(&doc.bytes)
-            .ok()
-            .map(|s| s.chars().take(40).collect::<String>())
-    );
     loop {
-        log::trace!(
-            "cst_it_or_this_type: cur kind={} at {:?}",
-            cur.kind(),
-            cur.start_position()
-        );
         if cur.kind() == KIND_LAMBDA_LIT && !cur.has_lambda_named_params(&doc.bytes) {
-            let Some((before_brace, ln)) = lambda_before_brace_context(cur, doc) else {
-                log::trace!(
-                    "cst_it_or_this_type: no before_brace context for lambda at {:?}",
-                    cur.start_position()
-                );
-                let p = cur.parent()?;
-                cur = p;
-                continue;
-            };
-
-            if kind == LambdaParamKind::This {
-                let ctx = cur
-                    .enclosing_call_expression()
-                    .and_then(|call_expr| {
-                        (call_expr.call_fn_name(&doc.bytes).as_deref() == Some("with"))
-                            .then(|| cst_with_receiver_ctx(call_expr, &doc.bytes, idx, uri))
-                            .flatten()
-                    })
-                    .unwrap_or_else(|| classify_this_lambda_context(&before_brace, idx, uri));
-                match ctx {
-                    ThisLambdaCtx::Resolved(t) => return Some(t),
-                    // Receiver-lambda context but type not found: stop walking up.
-                    // `this` here is the receiver, not an outer lambda's receiver.
-                    ThisLambdaCtx::Receiver => return None,
-                    // Non-receiver lambda (forEach, map…): keep walking outward.
-                    // `this` inside these lambdas is the enclosing class / outer receiver.
-                    ThisLambdaCtx::NotReceiver => {}
-                }
-            } else {
-                // CST-first: use the unified resolver (no rg spawns, HashMap only).
-                log::trace!("cst_it_or_this_type: trying locate_and_extract");
-                if let Some(resolution) = locate_and_extract(&cur, doc, idx, uri, 0) {
-                    if let Some(resolved) = finalize_resolution(resolution, &doc.bytes, idx, uri) {
-                        log::trace!("cst_it_or_this_type: CST resolved to {resolved}");
-                        return Some(resolved);
-                    }
-                }
-                log::trace!("cst_it_or_this_type: CST resolver returned None, trying text fallback with before_brace={before_brace:?}");
-                // Text fallback for cases the CST resolver can't handle yet
-                // (function not indexed, no call_expression parent).
-                let result = lambda_receiver_type_from_context(&before_brace, idx, uri)
-                    .or_else(|| {
-                        lambda_receiver_type_named_arg_ml(&before_brace, 0, lines, ln, idx, uri)
-                    })
-                    .or_else(|| {
-                        cst_lambda_param_type_via_call(doc, &cur, idx, uri, 0).into_option()
-                    });
-                match result.as_deref() {
-                    Some(t) if is_generic_param(t) => {
-                        if let Some(concrete) =
-                            cst_forward_resolve_receiver_type(&cur, &doc.bytes, idx, uri)
-                        {
-                            return Some(concrete);
-                        }
-                        // Generic placeholder not resolvable — skip this lambda, keep walking
-                        let p = cur.parent()?;
-                        cur = p;
-                        continue;
-                    }
-                    Some(_) => return result,
-                    None => {}
-                }
+            if let Some(resolved) = cst_lambda_param_type_at(&cur, doc, idx, uri, 0) {
+                return Some(resolved);
             }
         }
-        let p = cur.parent()?;
-        cur = p;
+        cur = cur.parent()?;
     }
 }
 
@@ -734,11 +768,10 @@ fn find_enclosing_call_and_param<'a>(
         );
         if kind == KIND_VALUE_ARG {
             let call_expr = parent.enclosing_call_expression()?;
-            let sig = receiver_aware_params(call_expr, bytes, deps, uri).or_else(|| {
-                let fn_name = call_expr.call_fn_name(bytes)?;
-                deps.find_fun_params_text(&fn_name, uri)
-            })?;
-            let param_type = if let Some(label) = parent.named_arg_label(bytes) {
+            let named_arg_label = parent.named_arg_label(bytes);
+            let sig =
+                receiver_aware_params(call_expr, bytes, deps, uri, named_arg_label.as_deref())?;
+            let param_type = if let Some(label) = named_arg_label {
                 find_named_param_type_in_sig(&sig, &label)?
             } else {
                 nth_fun_param_type_str(&sig, parent.value_arg_position())?.to_owned()
@@ -751,13 +784,7 @@ fn find_enclosing_call_and_param<'a>(
                 "find_enclosing_call_and_param: call_suffix, call_expr fn={:?}",
                 call_expr.call_fn_name(bytes)
             );
-            let sig = receiver_aware_params(call_expr, bytes, deps, uri).or_else(|| {
-                let fn_name = call_expr.call_fn_name(bytes)?;
-                log::trace!(
-                    "find_enclosing_call_and_param: looking up params for fn_name={fn_name}"
-                );
-                deps.find_fun_params_text(&fn_name, uri)
-            })?;
+            let sig = receiver_aware_params(call_expr, bytes, deps, uri, None)?;
             log::trace!("find_enclosing_call_and_param: sig={sig}");
             let last_type = last_fun_param_type_str(&sig)?;
             return Some((call_expr, last_type.to_owned()));
@@ -778,19 +805,13 @@ pub(super) fn cst_lambda_param_type_via_call(
     deps: &impl InferDeps,
     uri: &Url,
     param_pos: usize,
-) -> CstParamResult {
-    let result = cst_lambda_call_param_type(doc, lambda, deps, uri);
-    match result {
+) -> Option<String> {
+    match cst_lambda_call_param_type(doc, lambda, deps, uri) {
         Some(param_type) => {
-            let Some(extracted) = lambda_type_nth_input(&param_type, param_pos) else {
-                return CstParamResult::TryFallback;
-            };
+            let extracted = lambda_type_nth_input(&param_type, param_pos)?;
             if is_generic_param(&extracted) {
                 // Generic param (T/R/E) — resolve via forward chain walk.
-                return match cst_forward_resolve_receiver_type(lambda, &doc.bytes, deps, uri) {
-                    Some(t) => CstParamResult::Resolved(t),
-                    None => CstParamResult::TryFallback,
-                };
+                return cst_forward_resolve_receiver_type(lambda, &doc.bytes, deps, uri);
             }
             // Check longer generic param names (e.g. EffectType, StateType) against
             // the function's declared type params.
@@ -800,26 +821,25 @@ pub(super) fn cst_lambda_param_type_via_call(
                     if let Some(concrete) =
                         try_substitute_ext_fn_type_param(&extracted, &fn_name, &before, deps, uri)
                     {
-                        return CstParamResult::Resolved(concrete);
+                        return Some(concrete);
                     }
                 }
             }
-            CstParamResult::Resolved(extracted)
+            Some(extracted)
         }
         None => {
             // Function not indexed — forward chain walk resolves the collection
             // element type (receiver's generic arg). This is only valid for the
             // last lambda parameter (e.g. `item` in `forEachIndexed { index, item -> }`).
-            // For earlier positions CST has authoritative knowledge that the text
-            // fallback cannot match: it would return the element type for ALL params.
+            // For earlier positions (e.g. `index`) the receiver's element type
+            // belongs to the last parameter, not this one, so short-circuit to
+            // `None` rather than resolving the forward chain and returning
+            // the element type for the wrong parameter.
             let param_count = lambda.lambda_param_names(&doc.bytes).len();
             if param_pos + 1 >= param_count {
-                match cst_forward_resolve_receiver_type(lambda, &doc.bytes, deps, uri) {
-                    Some(t) => CstParamResult::Resolved(t),
-                    None => CstParamResult::TryFallback,
-                }
+                cst_forward_resolve_receiver_type(lambda, &doc.bytes, deps, uri)
             } else {
-                CstParamResult::AuthoritativeNone
+                None
             }
         }
     }
@@ -839,8 +859,10 @@ fn cst_lambda_call_param_type(
         let kind = parent.kind();
         if kind == KIND_VALUE_ARG {
             let call_expr = parent.enclosing_call_expression()?;
-            let sig = receiver_aware_params(call_expr, bytes, deps, uri)?;
-            return if let Some(label) = parent.named_arg_label(bytes) {
+            let named_arg_label = parent.named_arg_label(bytes);
+            let sig =
+                receiver_aware_params(call_expr, bytes, deps, uri, named_arg_label.as_deref())?;
+            return if let Some(label) = named_arg_label {
                 find_named_param_type_in_sig(&sig, &label)
             } else {
                 nth_fun_param_type_str(&sig, parent.value_arg_position())
@@ -848,7 +870,7 @@ fn cst_lambda_call_param_type(
         }
         if kind == KIND_CALL_SUFFIX {
             let call_expr = lambda.enclosing_call_expression()?;
-            let sig = receiver_aware_params(call_expr, bytes, deps, uri)?;
+            let sig = receiver_aware_params(call_expr, bytes, deps, uri, None)?;
             let last_type = last_fun_param_type_str(&sig)?;
             return Some(last_type.to_owned());
         }
@@ -878,15 +900,94 @@ pub(super) fn cst_before_open_text(
 
 // ─── Generic extension function type substitution ────────────────────────────
 
+/// Return the receiver type of `fn_name`'s trailing lambda parameter, but only
+/// when that parameter is a **receiver lambda** `T.() -> R` (`this`-style DSLs);
+/// regular `(T) -> R` lambdas yield `None`.
+pub(super) fn fun_trailing_lambda_this_type(
+    fn_name: &str,
+    deps: &impl InferDeps,
+    uri: &Url,
+) -> Option<String> {
+    let sig = deps.find_fun_params_text(fn_name, uri)?;
+    let last_type = last_fun_param_type_str(&sig)?;
+    lambda_type_receiver(&last_type)
+}
+
+/// Resolve function params with receiver awareness: if the call has a dot-receiver
+/// (e.g. `factory.create(...)`), resolve the receiver's type and look up the
+/// method on that type.  Falls back to global name-based lookup.
+pub(super) fn resolve_call_params(
+    fn_name: &str,
+    receiver_type: Option<&str>,
+    deps: &impl InferDeps,
+    uri: &Url,
+) -> Option<String> {
+    if let Some(raw_type) = receiver_type {
+        let dotted = raw_type.dotted_ident_prefix();
+        if !dotted.is_empty() {
+            if let Some(params) = deps.find_method_params_text(&dotted, fn_name) {
+                return Some(params);
+            }
+        }
+    }
+    deps.find_fun_params_text(fn_name, uri)
+}
+
+/// Signature lookup for a lambda's enclosing call, aware of two qualifier kinds:
+/// a VALUE receiver (`factory.create(...)` — resolve the variable's type and look
+/// the method up on it) and a TYPE qualifier (`Outer.Nested(...)` — scope the
+/// lookup to the file defining `Outer`, so a same-named nested class from an
+/// unrelated file can't win the global by-name search).
 fn receiver_aware_params(
     call_expr: tree_sitter::Node<'_>,
     bytes: &[u8],
     deps: &impl InferDeps,
     uri: &Url,
+    named_arg_label: Option<&str>,
 ) -> Option<String> {
     let (fn_name, qualifier) = call_expr.call_fn_and_qualifier(bytes)?;
     let recv_type = qualifier
         .as_deref()
         .and_then(|v| deps.find_var_type(v, uri));
+    if recv_type.is_none() {
+        if let Some(outer) = qualifier.as_deref().filter(|q| is_type_qualifier(q)) {
+            match deps.find_outer_scoped_fun_params(outer, &fn_name, uri) {
+                OuterScopedParams::Candidates(candidates) => {
+                    if let Some(signature) =
+                        pick_outer_scoped_signature(candidates, named_arg_label)
+                    {
+                        return Some(signature);
+                    }
+                }
+                OuterScopedParams::ForbidGlobalFallback => return None,
+            }
+        }
+    }
     resolve_call_params(&fn_name, recv_type.as_deref(), deps, uri)
+}
+
+/// `Outer` / `Outer.Nested` — a dotted identifier starting with an uppercase
+/// letter names a type or object, never a local variable (variables were already
+/// tried via `find_var_type`).  Call chains (`Regex("x")`) and other receiver
+/// expressions are not type qualifiers.
+fn is_type_qualifier(qualifier: &str) -> bool {
+    qualifier.starts_with_uppercase()
+        && qualifier
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == '_' || c == '.')
+}
+
+/// Pick the outer-scoped signature that declares `named_arg_label` (the outer
+/// file may contain several same-named nested classes); without a label
+/// (positional/trailing lambda) the first candidate wins.
+fn pick_outer_scoped_signature(
+    candidates: Vec<String>,
+    named_arg_label: Option<&str>,
+) -> Option<String> {
+    match named_arg_label {
+        Some(label) => candidates
+            .into_iter()
+            .find(|signature| find_named_param_type_in_sig(signature, label).is_some()),
+        None => candidates.into_iter().next(),
+    }
 }

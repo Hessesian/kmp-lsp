@@ -24,7 +24,11 @@ use crate::types::{FileData, FileIndexResult, Visibility};
 /// v28: added `SymbolEntry.deprecated` (forces reparse so it populates).
 /// v29: recover interface symbols mis-parsed via qualified/array annotations
 ///      (forces reparse so the recovered symbols populate).
-pub(crate) const CACHE_VERSION: u32 = 29;
+/// v30: `SymbolEntry`'s four rarely-populated fields (`type_params`,
+///      `extension_receiver`, `extension_receiver_type`, `doc`) moved behind a
+///      boxed `cold: Option<Box<SymbolColdFields>>` — a positional bincode
+///      layout change, so older caches must be rejected and rescanned.
+pub(crate) const CACHE_VERSION: u32 = 30;
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 

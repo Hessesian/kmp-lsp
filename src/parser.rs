@@ -26,7 +26,7 @@ use crate::StrExt;
 
 /// (pattern_index, symbol_name, full_range, selection_range, type_params)
 type BestMatch = (usize, String, Range, Range, Vec<String>);
-use crate::types::{FileData, ImportEntry, SymbolEntry, SyntaxError, Visibility};
+use crate::types::{pack_cold_fields, FileData, ImportEntry, SymbolEntry, SyntaxError, Visibility};
 
 type MatchEntry = (usize, [Option<(String, Range, Range, Vec<String>)>; 2]);
 
@@ -396,13 +396,15 @@ fn push_def_symbols(
                 range,
                 selection_range: sel,
                 detail,
-                type_params,
-                extension_receiver,
-                extension_receiver_type,
                 container: None,
                 params,
                 param_counts,
-                doc: String::new(),
+                cold: pack_cold_fields(
+                    type_params,
+                    extension_receiver,
+                    extension_receiver_type,
+                    String::new(),
+                ),
                 trailing_lambda,
                 deprecated,
             });
@@ -442,11 +444,8 @@ fn synthesize_data_class_copy(root: Node, bytes: &[u8], symbols: &mut Vec<Symbol
             params: copy_params,
             // All params have defaults in copy() — (required=0, total=N)
             param_counts: (0, total),
-            type_params: Vec::new(),
-            extension_receiver: String::new(),
-            extension_receiver_type: String::new(),
             container: Some(cls.name),
-            doc: String::new(),
+            cold: None,
             trailing_lambda: false,
             deprecated: cls.deprecated,
         });
@@ -844,13 +843,10 @@ fn push_interface_symbol(
         range,
         selection_range: sel,
         detail,
-        type_params,
-        extension_receiver: String::new(),
-        extension_receiver_type: String::new(),
         container: None,
         params: String::new(),
         param_counts: (0, 0),
-        doc: String::new(),
+        cold: pack_cold_fields(type_params, String::new(), String::new(), String::new()),
         trailing_lambda: false,
         deprecated,
     });
@@ -1019,13 +1015,10 @@ fn extract_secondary_constructors(root: Node, bytes: &[u8], data: &mut FileData)
                     range,
                     selection_range: sel,
                     detail,
-                    type_params: Vec::new(),
-                    extension_receiver: String::new(),
-                    extension_receiver_type: String::new(),
                     container: None,
                     params,
                     param_counts,
-                    doc: String::new(),
+                    cold: None,
                     trailing_lambda: false,
                     deprecated,
                 });
@@ -1070,13 +1063,10 @@ fn extract_anonymous_companion_objects(root: Node, bytes: &[u8], data: &mut File
                 range,
                 selection_range: sel,
                 detail,
-                type_params: Vec::new(),
-                extension_receiver: String::new(),
-                extension_receiver_type: String::new(),
                 container: None,
                 params: String::new(),
                 param_counts: (0, 0),
-                doc: String::new(),
+                cold: None,
                 trailing_lambda: false,
                 deprecated,
             });
@@ -2145,7 +2135,7 @@ fn extract_type_arg_from_call_suffix(call: Node, bytes: &[u8]) -> Option<String>
     let args = call_suffix.type_arg_strings(bytes);
     let first = args.into_iter().next()?;
     // Strip nullability marker and whitespace
-    let clean = first.trim().trim_end_matches('?');
+    let clean = first.trim().strip_nullable();
     if clean.is_empty() || !clean.starts_with_uppercase() {
         return None;
     }
@@ -2467,13 +2457,10 @@ impl crate::types::FileData {
                 range,
                 selection_range: sel,
                 detail,
-                type_params,
-                extension_receiver: String::new(),
-                extension_receiver_type: String::new(),
                 container: None,
                 params,
                 param_counts,
-                doc: String::new(),
+                cold: pack_cold_fields(type_params, String::new(), String::new(), String::new()),
                 trailing_lambda: false,
                 deprecated,
             });
@@ -2509,13 +2496,10 @@ impl crate::types::FileData {
                     range: nr,
                     selection_range: sel,
                     detail: detail.clone(),
-                    type_params: Vec::new(),
-                    extension_receiver: String::new(),
-                    extension_receiver_type: String::new(),
                     container: None,
                     params: String::new(),
                     param_counts: (0, 0),
-                    doc: String::new(),
+                    cold: None,
                     trailing_lambda: false,
                     deprecated: dep,
                 });

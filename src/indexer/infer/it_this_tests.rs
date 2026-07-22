@@ -21,6 +21,17 @@ fn indexed(path: &str, src: &str) -> (Url, Indexer) {
     (u, idx)
 }
 
+/// Test shim for the former single-line `find_it_element_type`: routes
+/// `before_cursor` (text up to the cursor) through the production CST-first
+/// `find_it_element_type` with the cursor at end of a one-line file.
+fn it_type_at_line_end(before_cursor: &str, indexer: &Indexer, uri: &Url) -> Option<String> {
+    let pos = crate::types::CursorPos {
+        line: 0,
+        utf16_col: before_cursor.encode_utf16().count(),
+    };
+    find_it_element_type(pos, indexer, uri)
+}
+
 /// Index `sig_src` for signature lookup, plus store a live tree for `code_src`
 /// at the same URI (for CST fast-path tests).
 fn indexed_with_live(path: &str, sig_src: &str, code_src: &str) -> (Url, Indexer, Vec<String>) {
@@ -37,11 +48,18 @@ fn indexed_with_live(path: &str, sig_src: &str, code_src: &str) -> (Url, Indexer
 
 #[test]
 fn it_element_type_simple_foreach() {
-    // `users.forEach { it.` — `it` should resolve to `User`
-    let src = "val users: List<User> = emptyList()";
+    // `users.forEach { it }` — `it` should resolve to `User`.
+    // The full snippet (declaration + usage) is the indexed document, so the
+    // transient-parse CST path sees the real lambda and resolves `it` from
+    // `List<User>`.
+    let src = "val users: List<User> = emptyList()\nusers.forEach { it }";
     let (u, idx) = indexed("/t.kt", src);
-    let before = "users.forEach { it.";
-    let result = find_it_element_type(before, &idx, &u);
+    // line 1: "users.forEach { it }" — `it` at col 16.
+    let pos = crate::types::CursorPos {
+        line: 1,
+        utf16_col: 17,
+    };
+    let result = find_it_element_type(pos, &idx, &u);
     assert_eq!(
         result.as_deref(),
         Some("User"),
@@ -51,11 +69,15 @@ fn it_element_type_simple_foreach() {
 
 #[test]
 fn it_element_type_flow() {
-    let src = "val events: Flow<Event> = emptyFlow()";
+    let src = "val events: Flow<Event> = emptyFlow()\nevents.collect { it }";
     let (u, idx) = indexed("/t.kt", src);
-    let before = "events.collect { it.";
+    // line 1: "events.collect { it }" — `it` at col 17.
+    let pos = crate::types::CursorPos {
+        line: 1,
+        utf16_col: 18,
+    };
     assert_eq!(
-        find_it_element_type(before, &idx, &u).as_deref(),
+        find_it_element_type(pos, &idx, &u).as_deref(),
         Some("Event")
     );
 }
@@ -63,20 +85,62 @@ fn it_element_type_flow() {
 #[test]
 fn it_element_type_unknown_var_returns_none() {
     let (u, idx) = indexed("/t.kt", "");
-    assert_eq!(
-        find_it_element_type("unknown.forEach { it.", &idx, &u),
-        None
-    );
+    assert_eq!(it_type_at_line_end("unknown.forEach { it.", &idx, &u), None);
 }
 
 #[test]
 fn it_element_type_scope_fn_let() {
-    // `user.let { it.` — `it` is the User itself (non-collection receiver)
-    let src = "val user: User = User()";
+    // `user.let { it }` — `it` is the User itself (non-collection receiver)
+    let src = "val user: User = User()\nuser.let { it }";
     let (u, idx) = indexed("/t.kt", src);
+    // line 1: "user.let { it }" — `it` at col 11.
+    let pos = crate::types::CursorPos {
+        line: 1,
+        utf16_col: 12,
+    };
+    assert_eq!(find_it_element_type(pos, &idx, &u).as_deref(), Some("User"));
+}
+
+// ── cursor at end-of-file (trailing empty line) ──────────────────────────────
+
+#[test]
+fn it_resolves_on_trailing_empty_line_at_eof() {
+    // Typing state: `items.forEach {` then Enter — the content ends with `\n`
+    // and the cursor sits on the final empty line (a completely normal editor
+    // state). `str::lines()` yields no trailing empty line, so the naive line
+    // lookup in `cursor_node_at` returned `None`, failing the resolution (and
+    // the brace-repair gate) before it could even run. The cursor there is the
+    // same inter-token gap as the end of the last content line, and must
+    // resolve identically: through repair to the enclosing forEach lambda.
+    let code = "val items: List<Item> = listOf()\nitems.forEach {\n";
+    let (u, idx, _lines) = indexed_with_live("/t.kt", "class Item { val price: Int = 0 }", code);
+    let pos = crate::types::CursorPos {
+        line: 2,
+        utf16_col: 0,
+    };
     assert_eq!(
-        find_it_element_type("user.let { it.", &idx, &u).as_deref(),
-        Some("User")
+        find_it_element_type(pos, &idx, &u).as_deref(),
+        Some("Item"),
+        "cursor on the trailing empty line must resolve `it` inside the unclosed lambda"
+    );
+}
+
+#[test]
+fn it_resolves_at_eof_when_last_line_ends_in_multibyte_char() {
+    // Same EOF remap, but the last content line ends in a multi-byte UTF-8
+    // character. The remap must target the START of that character — a naive
+    // `len() - 1` byte column splits the codepoint and hands tree-sitter a
+    // mid-codepoint point.
+    let code = "val items: List<Item> = listOf()\nitems.forEach { // žluť\n";
+    let (u, idx, _lines) = indexed_with_live("/t.kt", "class Item { val price: Int = 0 }", code);
+    let pos = crate::types::CursorPos {
+        line: 2,
+        utf16_col: 0,
+    };
+    assert_eq!(
+        find_it_element_type(pos, &idx, &u).as_deref(),
+        Some("Item"),
+        "EOF remap onto a multi-byte final character must not split the codepoint"
     );
 }
 
@@ -84,20 +148,29 @@ fn it_element_type_scope_fn_let() {
 
 #[test]
 fn it_type_second_of_two_lambdas_same_line() {
-    // { setState { it } }, { setEffect { it } }
-    // First `it` (inside setState lambda): should resolve to State
-    // Second `it` (inside setEffect lambda): should resolve to Effect
-    let src = "fun setState(block: (State) -> Unit) {}\nfun setEffect(block: (Effect) -> Unit) {}";
+    // Two sibling lambdas on one line: `{ setState { it } }, { setEffect { it } }`.
+    // First `it` (inside setState lambda): should resolve to State.
+    // Second `it` (inside setEffect lambda): should resolve to Effect.
+    let src = "fun setState(block: (State) -> Unit) {}\n\
+               fun setEffect(block: (Effect) -> Unit) {}\n\
+               { setState { it } }, { setEffect { it } }";
     let (u, idx) = indexed("/t.kt", src);
-    let before1 = "{ setState { ";
-    let before2 = "{ setState { it } }, { setEffect { ";
+    // line 2: first `it` at col 13, second `it` at col 35.
+    let pos_first = crate::types::CursorPos {
+        line: 2,
+        utf16_col: 14,
+    };
+    let pos_second = crate::types::CursorPos {
+        line: 2,
+        utf16_col: 36,
+    };
     assert_eq!(
-        find_it_element_type(before1, &idx, &u).as_deref(),
+        find_it_element_type(pos_first, &idx, &u).as_deref(),
         Some("State"),
         "first it (inside setState) should resolve to State"
     );
     assert_eq!(
-        find_it_element_type(before2, &idx, &u).as_deref(),
+        find_it_element_type(pos_second, &idx, &u).as_deref(),
         Some("Effect"),
         "second it (inside setEffect) should resolve to Effect"
     );
@@ -117,12 +190,12 @@ fn it_type_second_lambda_multiline_unindexed_inner() {
     // Line 2: "    { setEffect { it } }"
     //          0123456789012345678901234
     // second `it` is at col 18 on line 2
-    let (u, idx, lines) = indexed_with_live("/t.kt", sig_src, code_src);
+    let (u, idx, _lines) = indexed_with_live("/t.kt", sig_src, code_src);
     let pos = crate::types::CursorPos {
         line: 2,
         utf16_col: 18,
     };
-    let result = find_it_element_type_in_lines(&lines, pos, &idx, &u);
+    let result = find_it_element_type(pos, &idx, &u);
     assert_eq!(
         result.as_deref(),
         Some("Effect"),
@@ -138,12 +211,12 @@ fn it_type_first_lambda_multiline_unindexed_inner() {
     // Line 1: "    { setState { it } },"
     //          012345678901234567890123
     // first `it` is at col 17 on line 1
-    let (u, idx, lines) = indexed_with_live("/t.kt", sig_src, code_src);
+    let (u, idx, _lines) = indexed_with_live("/t.kt", sig_src, code_src);
     let pos = crate::types::CursorPos {
         line: 1,
         utf16_col: 17,
     };
-    let result = find_it_element_type_in_lines(&lines, pos, &idx, &u);
+    let result = find_it_element_type(pos, &idx, &u);
     assert_eq!(
         result.as_deref(),
         Some("State"),
@@ -151,25 +224,41 @@ fn it_type_first_lambda_multiline_unindexed_inner() {
     );
 }
 
-// ── find_this_element_type_in_lines ─────────────────────────────────────────
+/// Gap-1 closure: `items.forEach { it }` where `forEach` carries no indexed
+/// signature must resolve `it` to the receiver collection's element type through
+/// the CST receiver-chain walk — with a live tree present the CST path is
+/// exercised (not the text fallback), proving it is self-sufficient here.
+#[test]
+fn it_type_unindexed_foreach_resolves_collection_element_via_cst() {
+    let src = "val items: List<Product> = emptyList()\nitems.forEach { it }";
+    let (u, idx, _lines) = indexed_with_live("/t.kt", src, src);
+    // Line 1: "items.forEach { it }" — `it` at col 17.
+    let pos = crate::types::CursorPos {
+        line: 1,
+        utf16_col: 17,
+    };
+    let result = find_it_element_type(pos, &idx, &u);
+    assert_eq!(
+        result.as_deref(),
+        Some("Product"),
+        "unindexed forEach on List<Product> should yield element type Product via CST"
+    );
+}
+
+// ── find_this_element_type ─────────────────────────────────────────
 
 #[test]
 fn this_element_type_multiline_scope_fn() {
+    // val items: List<String> = emptyList()
     // items.run {
-    //     this.  ← cursor here (line 1, col 9)
+    //     this.  ← cursor here (line 2, col 9)
     // }
-    let src = "val items: List<String> = emptyList()";
+    let src = "val items: List<String> = emptyList()\nitems.run {\n    this.\n}";
     let (u, idx) = indexed("/t.kt", src);
-    let lines: Vec<String> = vec![
-        "items.run {".to_owned(),
-        "    this.".to_owned(),
-        "}".to_owned(),
-    ];
     // `run` is a stdlib scope function (RECEIVER_THIS_FNS) → `this` refers to List<String> → "List"
-    let result = find_this_element_type_in_lines(
-        &lines,
+    let result = find_this_element_type(
         CursorPos {
-            line: 1,
+            line: 2,
             utf16_col: 9,
         },
         &idx,
@@ -187,17 +276,11 @@ fn this_element_type_multiline_scope_fn() {
 #[test]
 fn this_type_with_block() {
     // with(user) { this. } — this should resolve to User
-    let src = "val user: User = User()";
+    let src = "val user: User = User()\nwith(user) {\n    this.\n}";
     let (u, idx) = indexed("/t.kt", src);
-    let lines: Vec<String> = vec![
-        "with(user) {".to_owned(),
-        "    this.".to_owned(),
-        "}".to_owned(),
-    ];
-    let result = find_this_element_type_in_lines(
-        &lines,
+    let result = find_this_element_type(
         CursorPos {
-            line: 1,
+            line: 2,
             utf16_col: 9,
         },
         &idx,
@@ -215,16 +298,14 @@ fn named_lambda_param_type_cst_fast_path() {
     let sig_src = "fun consume(block: (User) -> Unit) {}";
     let code_src = "consume { user ->\n    user.name\n}";
     let (u, idx, _lines) = indexed_with_live("/t.kt", sig_src, code_src);
-    let before = "    user.";
     let result = find_named_lambda_param_type(
-        before,
         "user",
-        &idx,
-        &u,
         CursorPos {
             line: 1,
-            utf16_col: before.encode_utf16().count(),
+            utf16_col: "    user.".encode_utf16().count(),
         },
+        &idx,
+        &u,
     );
     assert_eq!(result.as_deref(), Some("User"));
 }
@@ -233,14 +314,13 @@ fn named_lambda_param_type_cst_fast_path() {
 fn named_lambda_param_type_in_lines_cst_uses_param_position() {
     let sig_src = "fun zipUsers(block: (LeftUser, RightUser) -> Unit) {}";
     let code_src = "zipUsers { left, right ->\n    right.name\n}";
-    let (u, idx, lines) = indexed_with_live("/t.kt", sig_src, code_src);
-    let live_doc_arc = idx.live_doc(&u);
-    let result = find_named_lambda_param_type_in_lines(
-        &lines,
+    let (u, idx, _lines) = indexed_with_live("/t.kt", sig_src, code_src);
+    let result = find_named_lambda_param_type(
         "right",
-        1,
-        0,
-        live_doc_arc.as_deref(),
+        CursorPos {
+            line: 1,
+            utf16_col: 0,
+        },
         &idx,
         &u,
     );
@@ -257,14 +337,12 @@ fn named_lambda_param_multiline_receiver_via_function_call() {
     let (u, idx, lines) = indexed_with_live("/t.kt", sig_src, code_src);
     // Compute the UTF-16 column of `categoryAge` in line 1.
     let col = lines[1].find("categoryAge").unwrap();
-    // Pass the live_doc snapshot to ensure CST and position use the same tree.
-    let live_doc_arc = idx.live_doc(&u);
-    let result = find_named_lambda_param_type_in_lines(
-        &lines,
+    let result = find_named_lambda_param_type(
         "categoryAge",
-        1,
-        col,
-        live_doc_arc.as_deref(),
+        CursorPos {
+            line: 1,
+            utf16_col: col,
+        },
         &idx,
         &u,
     );
@@ -272,6 +350,83 @@ fn named_lambda_param_multiline_receiver_via_function_call() {
         result.as_deref(),
         Some("Int"),
         "categoryAge should resolve to Int (return type of childCategory), got: {result:?}"
+    );
+}
+
+#[test]
+fn named_lambda_param_qualified_nested_class_callee_scopes_to_outer_file() {
+    // Two files declare a same-named nested class `SheetActions` whose constructor
+    // takes a named lambda param `action` with DIFFERENT input types. The callee is
+    // qualified (`ReducerA.SheetActions`), so the signature lookup must scope to the
+    // file defining `ReducerA` — an unscoped global by-name lookup would return
+    // whichever file was indexed first (ReducerB's here → ProductB).
+    let reducer_b_src =
+        "class ReducerB {\n    class SheetActions(val action: (ProductB) -> Unit)\n}";
+    let reducer_a_src =
+        "class ReducerA {\n    class SheetActions(val action: (ProductA) -> Unit)\n}";
+    let code_src = "ReducerA.SheetActions(action = { item ->\n    item.\n})";
+
+    let u_b = uri("/ReducerB.kt");
+    let u_a = uri("/ReducerA.kt");
+    let u_code = uri("/code.kt");
+    let idx = Indexer::new();
+    // Index ReducerB FIRST so the unscoped global lookup deterministically
+    // returns ProductB when the outer-file scoping is missing.
+    idx.index_content(&u_b, reducer_b_src);
+    idx.index_content(&u_a, reducer_a_src);
+    idx.index_content(&u_code, code_src);
+    idx.store_live_tree(&u_code, code_src);
+    idx.set_live_lines(&u_code, code_src);
+
+    let result = find_named_lambda_param_type(
+        "item",
+        CursorPos {
+            line: 1,
+            utf16_col: "    item.".encode_utf16().count(),
+        },
+        &idx,
+        &u_code,
+    );
+    assert_eq!(
+        result.as_deref(),
+        Some("ProductA"),
+        "qualified callee ReducerA.SheetActions must scope the signature lookup to \
+         ReducerA's file and resolve item to ProductA, got: {result:?}"
+    );
+}
+
+#[test]
+fn named_lambda_param_qualified_callee_unresolved_outer_not_wrong_sibling() {
+    // Sibling negative case: only ReducerB's file is indexed but the code calls
+    // `ReducerA.SheetActions`. The outer class is unresolvable, so the lookup must
+    // NOT fall back to the global by-name scan and return the wrong sibling's
+    // ProductB (matching the `regression_*_not_t` pattern of asserting wrong
+    // answers away — None is acceptable, ProductB is not).
+    let reducer_b_src =
+        "class ReducerB {\n    class SheetActions(val action: (ProductB) -> Unit)\n}";
+    let code_src = "ReducerA.SheetActions(action = { item ->\n    item.\n})";
+
+    let u_b = uri("/ReducerB.kt");
+    let u_code = uri("/code.kt");
+    let idx = Indexer::new();
+    idx.index_content(&u_b, reducer_b_src);
+    idx.index_content(&u_code, code_src);
+    idx.store_live_tree(&u_code, code_src);
+    idx.set_live_lines(&u_code, code_src);
+
+    let result = find_named_lambda_param_type(
+        "item",
+        CursorPos {
+            line: 1,
+            utf16_col: "    item.".encode_utf16().count(),
+        },
+        &idx,
+        &u_code,
+    );
+    assert_ne!(
+        result.as_deref(),
+        Some("ProductB"),
+        "unresolved outer ReducerA must not resolve item to the wrong sibling's ProductB"
     );
 }
 
@@ -349,32 +504,6 @@ fn lambda_brace_pos_none_for_unknown_param() {
     assert_eq!(lambda_brace_pos_for_param(line, "unknown"), None);
 }
 
-// ── find_lambda_brace_for_param ──────────────────────────────────────────────
-
-#[test]
-fn find_lambda_brace_returns_brace_pos_and_index() {
-    let line = "items.forEach { item -> item.name }";
-    assert_eq!(find_lambda_brace_for_param(line, "item"), Some((14, 0)));
-}
-
-#[test]
-fn find_lambda_brace_multi_param() {
-    let line = "fn { a, b -> a + b }";
-    assert_eq!(find_lambda_brace_for_param(line, "b"), Some((3, 1)));
-}
-
-#[test]
-fn find_lambda_brace_unknown_param() {
-    let line = "fn { x -> x }";
-    assert_eq!(find_lambda_brace_for_param(line, "y"), None);
-}
-
-#[test]
-fn find_lambda_brace_extra_spaces() {
-    let line = "{   name   -> name.foo }";
-    assert_eq!(find_lambda_brace_for_param(line, "name"), Some((0, 0)));
-}
-
 // ── lambda_param_position_on_line ─────────────────────────────────────────────
 
 #[test]
@@ -449,21 +578,16 @@ fn dot_at_depth_zero_chained() {
 
 #[test]
 fn this_type_run_infers_receiver() {
+    // val user: User = User()
     // user.run {
-    //     this.   ← cursor here (line 1, col 9)
+    //     this.   ← cursor here (line 2, col 9)
     // }
-    let src = "val user: User = User()";
+    let src = "val user: User = User()\nuser.run {\n    this.\n}";
     let (u, idx) = indexed("/t.kt", src);
-    let lines: Vec<String> = vec![
-        "user.run {".to_owned(),
-        "    this.".to_owned(),
-        "}".to_owned(),
-    ];
     assert_eq!(
-        find_this_element_type_in_lines(
-            &lines,
+        find_this_element_type(
             CursorPos {
-                line: 1,
+                line: 2,
                 utf16_col: 9
             },
             &idx,
@@ -477,21 +601,16 @@ fn this_type_run_infers_receiver() {
 
 #[test]
 fn this_type_apply_infers_receiver() {
+    // val user: User = User()
     // user.apply {
-    //     this.   ← cursor here (line 1, col 9)
+    //     this.   ← cursor here (line 2, col 9)
     // }
-    let src = "val user: User = User()";
+    let src = "val user: User = User()\nuser.apply {\n    this.\n}";
     let (u, idx) = indexed("/t.kt", src);
-    let lines: Vec<String> = vec![
-        "user.apply {".to_owned(),
-        "    this.".to_owned(),
-        "}".to_owned(),
-    ];
     assert_eq!(
-        find_this_element_type_in_lines(
-            &lines,
+        find_this_element_type(
             CursorPos {
-                line: 1,
+                line: 2,
                 utf16_col: 9
             },
             &idx,
@@ -507,17 +626,11 @@ fn this_type_apply_infers_receiver() {
 fn this_type_let_does_not_infer_receiver() {
     // `let` exposes the receiver as `it`, not `this`.
     // `this` inside a let{} block should NOT resolve to User via RECEIVER_THIS_FNS.
-    let src = "val user: User = User()";
+    let src = "val user: User = User()\nuser.let {\n    this.\n}";
     let (u, idx) = indexed("/t.kt", src);
-    let lines: Vec<String> = vec![
-        "user.let {".to_owned(),
-        "    this.".to_owned(),
-        "}".to_owned(),
-    ];
-    let result = find_this_element_type_in_lines(
-        &lines,
+    let result = find_this_element_type(
         CursorPos {
-            line: 1,
+            line: 2,
             utf16_col: 9,
         },
         &idx,
@@ -533,17 +646,11 @@ fn this_type_let_does_not_infer_receiver() {
 #[test]
 fn this_type_also_does_not_infer_receiver() {
     // `also` exposes the receiver as `it`, not `this`.
-    let src = "val user: User = User()";
+    let src = "val user: User = User()\nuser.also {\n    this.\n}";
     let (u, idx) = indexed("/t.kt", src);
-    let lines: Vec<String> = vec![
-        "user.also {".to_owned(),
-        "    this.".to_owned(),
-        "}".to_owned(),
-    ];
-    let result = find_this_element_type_in_lines(
-        &lines,
+    let result = find_this_element_type(
         CursorPos {
-            line: 1,
+            line: 2,
             utf16_col: 9,
         },
         &idx,
@@ -558,11 +665,16 @@ fn this_type_also_does_not_infer_receiver() {
 
 #[test]
 fn it_type_let_still_infers_receiver() {
-    // `user.let { it.` — `let` exposes receiver as `it` → should still infer User
-    let src = "val user: User = User()";
+    // `user.let { it }` — `let` exposes receiver as `it` → should still infer User
+    let src = "val user: User = User()\nuser.let { it }";
     let (u, idx) = indexed("/t.kt", src);
+    // line 1: "user.let { it }" — `it` at col 11.
+    let pos = crate::types::CursorPos {
+        line: 1,
+        utf16_col: 12,
+    };
     assert_eq!(
-        find_it_element_type("user.let { it.", &idx, &u).as_deref(),
+        find_it_element_type(pos, &idx, &u).as_deref(),
         Some("User"),
         "let: it should still resolve to User"
     );
@@ -576,13 +688,13 @@ fn it_type_let_still_infers_receiver() {
 fn it_type_indexed_inner_fn_cst_still_works() {
     let sig_src = "fun setState(block: (State) -> Unit) {}";
     let code_src = "setState { it }";
-    let (u, idx, lines) = indexed_with_live("/t.kt", sig_src, code_src);
+    let (u, idx, _lines) = indexed_with_live("/t.kt", sig_src, code_src);
     // "setState { " = 11 chars → `it` at col 11
     let pos = crate::types::CursorPos {
         line: 0,
         utf16_col: 11,
     };
-    let result = find_it_element_type_in_lines(&lines, pos, &idx, &u);
+    let result = find_it_element_type(pos, &idx, &u);
     assert_eq!(
         result.as_deref(),
         Some("State"),
@@ -610,6 +722,44 @@ fn find_node_kind<'a>(node: tree_sitter::Node<'a>, kind: &str) -> Option<tree_si
         }
     }
     None
+}
+
+/// Resolve the type of the `nth`-declared param of the `nth_lambda`-th lambda in
+/// `code` through the production CST resolver, using a `TestDeps` seam.
+///
+/// This is the CST successor of the deleted `lambda_receiver_type_from_context`
+/// text helper: the same I/O-free `TestDeps` boundary, but resolution now flows
+/// through `cst_lambda_param_type_at` on the parsed lambda node instead of a
+/// hand-sliced before-brace string.
+fn cst_param_type(
+    code: &str,
+    nth_lambda: usize,
+    param_pos: usize,
+    deps: &super::super::deps::TestDeps,
+    uri: &Url,
+) -> Option<String> {
+    let doc = crate::indexer::live_tree::parse_live(code, tree_sitter_kotlin::language())
+        .expect("parse_live");
+    let mut lambdas = Vec::new();
+    collect_nodes_of_kind(doc.tree.root_node(), KIND_LAMBDA_LIT, &mut lambdas);
+    let lambda = lambdas.get(nth_lambda).copied().expect("lambda node");
+    super::super::cst_lambda::cst_lambda_param_type_at(&lambda, &doc, deps, uri, param_pos)
+}
+
+/// Collect every descendant node of `kind` in document order.
+fn collect_nodes_of_kind<'a>(
+    node: tree_sitter::Node<'a>,
+    kind: &str,
+    out: &mut Vec<tree_sitter::Node<'a>>,
+) {
+    if node.kind() == kind {
+        out.push(node);
+    }
+    for i in 0..node.child_count() {
+        if let Some(child) = node.child(i) {
+            collect_nodes_of_kind(child, kind, out);
+        }
+    }
 }
 
 #[test]
@@ -683,7 +833,7 @@ fn test_deps_case_b_trailing_lambda_it_type() {
         "loadData",
         "block: (Product) -> Unit",
     );
-    let result = lambda_receiver_type_from_context("loadData", &deps, &u);
+    let result = cst_param_type("loadData { it }", 0, 0, &deps, &u);
     assert_eq!(
         result.as_deref(),
         Some("Product"),
@@ -700,7 +850,7 @@ fn test_deps_case_b_with_args() {
         "loadData",
         "key: String, block: (Product) -> Unit",
     );
-    let result = lambda_receiver_type_from_context("loadData(key)", &deps, &u);
+    let result = cst_param_type("loadData(key) { it }", 0, 0, &deps, &u);
     assert_eq!(
         result.as_deref(),
         Some("Product"),
@@ -713,7 +863,7 @@ fn test_deps_case_a_receiver_dot_method() {
     // `items.map { it }` — receiver is `items: List<Item>`.
     let u = test_uri();
     let deps = super::super::deps::TestDeps::new().with_var(u.as_str(), "items", "List<Item>");
-    let result = lambda_receiver_type_from_context("items.map", &deps, &u);
+    let result = cst_param_type("items.map { it }", 0, 0, &deps, &u);
     assert_eq!(
         result.as_deref(),
         Some("Item"),
@@ -729,7 +879,7 @@ fn test_deps_case_a_var_type_no_collection() {
         .with_var(u.as_str(), "repo", "Repository")
         .with_fun(u.as_str(), "run", "block: (Repository) -> Unit");
     // `run` is found so the method's lambda-param type wins.
-    let result = lambda_receiver_type_from_context("repo.run", &deps, &u);
+    let result = cst_param_type("repo.run { it }", 0, 0, &deps, &u);
     assert_eq!(
         result.as_deref(),
         Some("Repository"),
@@ -747,7 +897,7 @@ fn test_deps_case_a_multi_segment_field_collection() {
     let deps = super::super::deps::TestDeps::new()
         .with_var(u.as_str(), "result", "ResponseBody")
         .with_field("ResponseBody", "availableBanks", "MutableList<Bank>");
-    let result = lambda_receiver_type_from_context("result.availableBanks.firstOrNull", &deps, &u);
+    let result = cst_param_type("result.availableBanks.firstOrNull { it }", 0, 0, &deps, &u);
     assert_eq!(
         result.as_deref(),
         Some("Bank"),
@@ -768,7 +918,13 @@ fn test_deps_case_a_multi_segment_field_collection_map() {
             "connectedAccounts",
             "MutableList<MbAccount>",
         );
-    let result = lambda_receiver_type_from_context("result.connectedAccounts.map", &deps, &u);
+    let result = cst_param_type(
+        "result.connectedAccounts.map { account -> account }",
+        0,
+        0,
+        &deps,
+        &u,
+    );
     assert_eq!(
         result.as_deref(),
         Some("MbAccount"),
@@ -784,9 +940,10 @@ fn test_deps_case_a_multi_segment_with_assignment_prefix() {
     let deps = super::super::deps::TestDeps::new()
         .with_var(u.as_str(), "result", "ResponseBody")
         .with_field("ResponseBody", "availableBanks", "MutableList<Bank>");
-    // The callee string as extracted from the source line (assignment prefix included).
-    let result = lambda_receiver_type_from_context(
-        "account.bankName = result.availableBanks.firstOrNull",
+    let result = cst_param_type(
+        "account.bankName = result.availableBanks.firstOrNull { it }",
+        0,
+        0,
         &deps,
         &u,
     );
@@ -806,7 +963,7 @@ fn test_deps_case_a_multi_segment_field_non_collection_method_lambda() {
         .with_var(u.as_str(), "result", "ResponseBody")
         .with_field("ResponseBody", "foo", "Repo")
         .with_fun(u.as_str(), "customOp", "block: (Bar) -> Unit");
-    let result = lambda_receiver_type_from_context("result.foo.customOp", &deps, &u);
+    let result = cst_param_type("result.foo.customOp { it }", 0, 0, &deps, &u);
     assert_eq!(
         result.as_deref(),
         Some("Bar"),
@@ -821,8 +978,10 @@ fn test_deps_case_a_method_chain_return_type() {
     //   joinAllAccounts() returns List<Account> → element "Account"
     let u = test_uri();
     let deps = super::super::deps::TestDeps::new().with_return("joinAllAccounts", "List<Account>");
-    let result = lambda_receiver_type_from_context(
-        "getAccountList(isRefresh).joinAllAccounts().firstOrNull",
+    let result = cst_param_type(
+        "getAccountList(isRefresh).joinAllAccounts().firstOrNull { it }",
+        0,
+        0,
         &deps,
         &u,
     );
@@ -838,7 +997,7 @@ fn test_deps_unknown_fn_returns_none() {
     // Function not registered → None.
     let u = test_uri();
     let deps = super::super::deps::TestDeps::new();
-    let result = lambda_receiver_type_from_context("unknownFn", &deps, &u);
+    let result = cst_param_type("unknownFn { it }", 0, 0, &deps, &u);
     assert_eq!(result, None, "unknown function should return None");
 }
 
@@ -952,7 +1111,7 @@ fn chain_inference_single_hop_result_also() {
         "resultWrapped",
         "Result<FamilyAccount>",
     );
-    let result = lambda_receiver_type_from_context("resultWrapped.getOrNull().also", &deps, &u);
+    let result = cst_param_type("resultWrapped.getOrNull()?.also { it }", 0, 0, &deps, &u);
     assert_eq!(
         result.as_deref(),
         Some("FamilyAccount"),
@@ -967,7 +1126,7 @@ fn chain_inference_single_hop_optional_let() {
     let u = test_uri();
     let deps =
         super::super::deps::TestDeps::new().with_var(u.as_str(), "maybeUser", "Optional<User>");
-    let result = lambda_receiver_type_from_context("maybeUser.getOrNull().let", &deps, &u);
+    let result = cst_param_type("maybeUser.getOrNull()?.let { it }", 0, 0, &deps, &u);
     assert_eq!(result.as_deref(), Some("User"));
 }
 
@@ -976,16 +1135,18 @@ fn stdlib_let_generic_param_not_leaked() {
     // When stdlib `let` is indexed (sourcePaths includes stdlib sources),
     // its signature `block: (T) -> R` contains generic param `T`.
     // We must NOT leak `T` as the inferred type — the receiver's concrete
-    // type should win via the uppercase fallback.
+    // type should win. The CST path resolves `Long?.let { it }` to the exact
+    // receiver type `Long?` (nullability preserved, unlike the retired text
+    // heuristic which stripped the `?`); the point is that `T` never leaks.
     let u = test_uri();
     let deps = super::super::deps::TestDeps::new()
         .with_var(u.as_str(), "familyCreationDate", "Long?")
         .with_fun(u.as_str(), "let", "block: (T) -> R");
-    let result = lambda_receiver_type_from_context("familyCreationDate.let", &deps, &u);
+    let result = cst_param_type("familyCreationDate.let { it }", 0, 0, &deps, &u);
     assert_eq!(
         result.as_deref(),
-        Some("Long"),
-        "should resolve to receiver type Long, not generic param T"
+        Some("Long?"),
+        "should resolve to receiver type Long?, not generic param T"
     );
 }
 
@@ -1000,7 +1161,13 @@ fn chain_inference_two_hop_field_method_also() {
         .with_var(u.as_str(), "resultState", "ResultState<Account>")
         .with_field("ResultState", "value", "Result<T>")
         .with_class_params("ResultState", &["T"]);
-    let result = lambda_receiver_type_from_context("resultState.value.getOrNull().also", &deps, &u);
+    let result = cst_param_type(
+        "resultState.value.getOrNull()?.also { it }",
+        0,
+        0,
+        &deps,
+        &u,
+    );
     assert_eq!(
         result.as_deref(),
         Some("Account"),
@@ -1016,7 +1183,7 @@ fn chain_inference_two_hop_concrete_field_type() {
     let deps = super::super::deps::TestDeps::new()
         .with_var(u.as_str(), "wrapper", "Wrapper<X>")
         .with_field("Wrapper", "result", "Result<Order>");
-    let result = lambda_receiver_type_from_context("wrapper.result.getOrNull().let", &deps, &u);
+    let result = cst_param_type("wrapper.result.getOrNull()?.let { it }", 0, 0, &deps, &u);
     assert_eq!(
         result.as_deref(),
         Some("Order"),
@@ -1035,7 +1202,7 @@ fn chain_inference_proper_subst_with_method_return() {
         .with_var(u.as_str(), "resultWrapped", "Result<FamilyAccount>")
         .with_class_params("Result", &["T"])
         .with_method_return_for_type("Result", "getOrNull", "T?");
-    let result = lambda_receiver_type_from_context("resultWrapped.getOrNull().also", &deps, &u);
+    let result = cst_param_type("resultWrapped.getOrNull()?.also { it }", 0, 0, &deps, &u);
     assert_eq!(
         result.as_deref(),
         Some("FamilyAccount"),
@@ -1054,7 +1221,7 @@ fn chain_inference_map_second_type_param() {
         .with_var(u.as_str(), "entries", "Map<String, Order>")
         .with_class_params("Map", &["K", "V"])
         .with_method_return_for_type("Map", "getValue", "V");
-    let result = lambda_receiver_type_from_context("entries.getValue().also", &deps, &u);
+    let result = cst_param_type("entries.getValue()?.also { it }", 0, 0, &deps, &u);
     assert_eq!(
         result.as_deref(),
         Some("Order"),
@@ -1079,7 +1246,13 @@ fn chain_inference_dotted_nested_class_type() {
         .with_class_params("Success", &["T"])
         .with_class_params("Optional", &["T"])
         .with_method_return_for_type("Optional", "getOrNull", "T?");
-    let result = lambda_receiver_type_from_context("resultState.value.getOrNull().also", &deps, &u);
+    let result = cst_param_type(
+        "resultState.value.getOrNull()?.also { it }",
+        0,
+        0,
+        &deps,
+        &u,
+    );
     assert_eq!(
         result.as_deref(),
         Some("FamilyAccount"),
@@ -1107,6 +1280,7 @@ fn resolve_member_type_on_fallback_when_class_params_unindexed() {
         "ResultState.Success<Optional<FamilyAccount>>",
         "value",
         &deps,
+        &tower_lsp::lsp_types::Url::parse("file:///test/T.kt").unwrap(),
     );
     assert_eq!(
         result.as_deref(),
@@ -1126,7 +1300,12 @@ fn resolve_member_type_on_fallback_method_return_unindexed() {
     );
     // NO .with_class_params("Optional", ...)
 
-    let result = resolve_member_type_on("Optional<FamilyAccount>", "getOrNull", &deps);
+    let result = resolve_member_type_on(
+        "Optional<FamilyAccount>",
+        "getOrNull",
+        &deps,
+        &tower_lsp::lsp_types::Url::parse("file:///test/T.kt").unwrap(),
+    );
     assert_eq!(
         result.as_deref(),
         Some("FamilyAccount"),
@@ -1158,9 +1337,9 @@ fn inline_lambda_generic_ext_fn_no_var_type_capitalize_fallback() {
             &["EffectType", "StateType", "VMState", "VMEffect"],
             "Flow<ReducedResult<EffectType, StateType>>",
         );
-    // First lambda (comma_count=0) → setState → StateType → Sheet
-    let before_brace = "buildingSavingsReducer.reduce(event.events) { state().sheetState }\n    .collectState(\n            ";
-    let result = lambda_receiver_type_from_context(before_brace, &deps, &u);
+    // First collectState lambda → setState param → StateType → Sheet
+    let code = "buildingSavingsReducer.reduce(event.events) { x }\n    .collectState(\n        { it },\n        { it },\n    )";
+    let result = cst_param_type(code, 1, 0, &deps, &u);
     assert_eq!(
         result.as_deref(),
         Some("Sheet"),
@@ -1190,8 +1369,9 @@ fn inline_lambda_generic_ext_fn_no_var_type_capitalize_second_param() {
             &["EffectType", "StateType", "VMState", "VMEffect"],
             "Flow<ReducedResult<EffectType, StateType>>",
         );
-    let before_brace = "buildingSavingsReducer.reduce(event.events) { state().sheetState }\n    .collectState(\n            { sendState(state().copy(sheetState = it)) },\n            ";
-    let result = lambda_receiver_type_from_context(before_brace, &deps, &u);
+    // Second collectState lambda → setEffect param → EffectType → BuildingSavingsEffect
+    let code = "buildingSavingsReducer.reduce(event.events) { x }\n    .collectState(\n        { it },\n        { it },\n    )";
+    let result = cst_param_type(code, 2, 0, &deps, &u);
     assert_eq!(
         result.as_deref(),
         Some("BuildingSavingsEffect"),
@@ -1228,9 +1408,9 @@ fn inline_lambda_generic_ext_fn_substitution_second_param() {
             &["EffectType", "StateType", "VMState", "VMEffect"],
             "Flow<ReducedResult<EffectType, StateType>>",
         );
-    // Second lambda (comma_count=1) → setEffect param → EffectType → BuildingSavingsEffect
-    let before_brace = "reducer.reduce(event.events) { state().sheetState }\n    .collectState(\n            { sendState(state().copy(sheetState = it)) },\n            ";
-    let result = lambda_receiver_type_from_context(before_brace, &deps, &u);
+    // Second collectState lambda → setEffect param → EffectType → BuildingSavingsEffect
+    let code = "reducer.reduce(event.events) { x }\n    .collectState(\n        { it },\n        { it },\n    )";
+    let result = cst_param_type(code, 2, 0, &deps, &u);
     assert_eq!(
         result.as_deref(),
         Some("BuildingSavingsEffect"),
@@ -1259,10 +1439,9 @@ fn inline_lambda_generic_ext_fn_substitution_first_param() {
             &["EffectType", "StateType", "VMState", "VMEffect"],
             "Flow<ReducedResult<EffectType, StateType>>",
         );
-    // First lambda (comma_count=0) → setState param → StateType → SheetState
-    let before_brace =
-        "reducer.reduce(event.events) { state().sheetState }\n    .collectState(\n            ";
-    let result = lambda_receiver_type_from_context(before_brace, &deps, &u);
+    // First collectState lambda → setState param → StateType → SheetState
+    let code = "reducer.reduce(event.events) { x }\n    .collectState(\n        { it },\n        { it },\n    )";
+    let result = cst_param_type(code, 1, 0, &deps, &u);
     assert_eq!(
         result.as_deref(),
         Some("SheetState"),
@@ -1290,8 +1469,9 @@ fn test_deps_collect_state_preserves_qualified_effect_type() {
             &["EffectType", "StateType", "VMState", "VMEffect"],
             "Flow<ReducedResult<EffectType, StateType>>",
         );
-    let before_brace = "reducer.reduce(event.events) { state().sheetState }\n    .collectState(\n            { sendState(state().copy(sheetState = it)) },\n            ";
-    let result = lambda_receiver_type_from_context(before_brace, &deps, &u);
+    // Second collectState lambda → setEffect param → EffectType → Contract.Effect
+    let code = "reducer.reduce(event.events) { x }\n    .collectState(\n        { it },\n        { it },\n    )";
+    let result = cst_param_type(code, 2, 0, &deps, &u);
     assert_eq!(
         result.as_deref(),
         Some("Contract.Effect"),
@@ -1307,7 +1487,7 @@ fn method_chain_preserves_qualified_method_return_type() {
         .with_class_params("Optional", &["T"])
         .with_method_return_for_type("Optional", "getOrNull", "T?")
         .with_fun(u.as_str(), "also", "block: (T) -> Unit");
-    let result = lambda_receiver_type_from_context("box.getOrNull().also", &deps, &u);
+    let result = cst_param_type("box.getOrNull()?.also { it }", 0, 0, &deps, &u);
     assert_eq!(
         result.as_deref(),
         Some("Contract.Effect"),
@@ -1392,7 +1572,7 @@ suspend fun <EffectType, StateType, VMState, VMEffect> Flow<ReducedResult<Effect
         line: 1,
         utf16_col: it_offset,
     };
-    let result = find_it_element_type_in_lines(&lines, pos, &idx, &u_code);
+    let result = find_it_element_type(pos, &idx, &u_code);
     assert_eq!(
         result.as_deref(),
         Some("SheetState"),
@@ -1452,7 +1632,7 @@ suspend fun <EffectType, StateType, VMState, VMEffect> Flow<ReducedResult<Effect
         line: 1,
         utf16_col: it_offset,
     };
-    let result = find_it_element_type_in_lines(&lines, pos, &idx, &u_code);
+    let result = find_it_element_type(pos, &idx, &u_code);
     assert_eq!(
         result.as_deref(),
         Some("ConcreteStateType"),
@@ -1461,11 +1641,11 @@ suspend fun <EffectType, StateType, VMState, VMEffect> Flow<ReducedResult<Effect
 }
 
 #[test]
-fn text_fallback_named_param_dotted_type_chain() {
+fn transient_parse_named_param_dotted_type_chain() {
     // Regression (inlay-hints): same chain as `cst_named_param_dotted_type_chain` but
-    // WITHOUT live_doc (simulates the first inlay-hint request before did_open is
-    // processed).  The text-fallback path in `find_named_lambda_param_type_in_lines`
-    // must also resolve `familyAccount` to `FamilyAccount`.
+    // WITHOUT a stored live tree (simulates the first inlay-hint request before
+    // did_open is processed). `live_doc_or_parse` transient-parses the indexed
+    // content, so the CST path must still resolve `familyAccount` to `FamilyAccount`.
     let result_state_src = r#"
 sealed class ResultState<out T : Any> {
     data class Success<out T : Any>(val value: T) : ResultState<T>()
@@ -1497,19 +1677,19 @@ fun oneYearOlder(resultState: ResultState.Success<Optional<FamilyAccount>>) {
     let line3 = &lines[3];
     let fa_offset = line3.find("familyAccount").unwrap();
 
-    let result = find_named_lambda_param_type_in_lines(
-        &lines,
+    let result = find_named_lambda_param_type(
         "familyAccount",
-        3,
-        fa_offset,
-        None, // no live_doc — text fallback path
+        crate::types::CursorPos {
+            line: 3,
+            utf16_col: fa_offset,
+        },
         &idx,
         &u_code,
     );
     assert_eq!(
         result.as_deref(),
         Some("FamilyAccount"),
-        "text fallback (no live_doc): familyAccount should resolve to FamilyAccount"
+        "transient parse (no live tree): familyAccount should resolve to FamilyAccount"
     );
 }
 
@@ -1555,15 +1735,7 @@ fun oneYearOlder(resultState: ResultState.Success<Optional<FamilyAccount>>) {
         line: 3,
         utf16_col: fa_offset,
     };
-    let result = find_named_lambda_param_type_in_lines(
-        &lines,
-        "familyAccount",
-        pos.line,
-        pos.utf16_col,
-        idx.live_doc(&u_code).as_deref(),
-        &idx,
-        &u_code,
-    );
+    let result = find_named_lambda_param_type("familyAccount", pos, &idx, &u_code);
     assert_eq!(
         result.as_deref(),
         Some("FamilyAccount"),
@@ -1618,15 +1790,7 @@ fun oneYearOlder(resultState: ResultState.Success<Optional<FamilyAccount>>) {
         line: 3,
         utf16_col: fa_offset,
     };
-    let result = find_named_lambda_param_type_in_lines(
-        &lines,
-        "familyAccount",
-        pos.line,
-        pos.utf16_col,
-        idx.live_doc(&u_code).as_deref(),
-        &idx,
-        &u_code,
-    );
+    let result = find_named_lambda_param_type("familyAccount", pos, &idx, &u_code);
     assert_eq!(
         result.as_deref(),
         Some("FamilyAccount"),
@@ -1634,7 +1798,7 @@ fun oneYearOlder(resultState: ResultState.Success<Optional<FamilyAccount>>) {
     );
 }
 
-// ── classify_this_lambda_context / find_this_context_in_lines ─────────────────
+// ── classify_this_lambda_context / find_this_context ─────────────────
 
 #[test]
 fn find_this_context_apply_unresolved_is_inside_receiver() {
@@ -1642,12 +1806,11 @@ fn find_this_context_apply_unresolved_is_inside_receiver() {
     let u = uri("/t.kt");
     let idx = Indexer::new();
     idx.index_content(&u, src);
-    let lines: Vec<String> = src.lines().map(String::from).collect();
     let pos = crate::types::CursorPos {
         line: 1,
         utf16_col: 8,
     };
-    let result = super::find_this_context_in_lines(&lines, pos, &idx, &u);
+    let result = super::find_this_context(pos, &idx, &u);
     assert!(
         matches!(result, super::ThisContext::InsideReceiver),
         "cursor inside unknown.apply{{}} should be InsideReceiver, got: {result:?}"
@@ -1660,12 +1823,11 @@ fn find_this_context_foreach_is_not_found() {
     let u = uri("/t.kt");
     let idx = Indexer::new();
     idx.index_content(&u, src);
-    let lines: Vec<String> = src.lines().map(String::from).collect();
     let pos = crate::types::CursorPos {
         line: 2,
         utf16_col: 8,
     };
-    let result = super::find_this_context_in_lines(&lines, pos, &idx, &u);
+    let result = super::find_this_context(pos, &idx, &u);
     assert!(
         matches!(result, super::ThisContext::NotFound),
         "cursor inside forEach{{}} should be NotFound, got: {result:?}"
@@ -1675,12 +1837,12 @@ fn find_this_context_foreach_is_not_found() {
 #[test]
 fn find_this_context_apply_resolved_with_live_tree() {
     let src = "val user: User = User()\nuser.apply {\n    this\n}";
-    let (u, idx, lines) = indexed_with_live("/t.kt", src, src);
+    let (u, idx, _lines) = indexed_with_live("/t.kt", src, src);
     let pos = crate::types::CursorPos {
         line: 2,
         utf16_col: 8,
     };
-    let result = super::find_this_context_in_lines(&lines, pos, &idx, &u);
+    let result = super::find_this_context(pos, &idx, &u);
     assert!(
         matches!(result, super::ThisContext::Resolved(ref t) if t == "User"),
         "cursor inside user.apply{{}} should be Resolved(User), got: {result:?}"
@@ -1693,12 +1855,11 @@ fn find_this_context_nested_foreach_outer_apply() {
     let u = uri("/t.kt");
     let idx = Indexer::new();
     idx.index_content(&u, src);
-    let lines: Vec<String> = src.lines().map(String::from).collect();
     let pos = crate::types::CursorPos {
         line: 4,
         utf16_col: 12,
     };
-    let result = super::find_this_context_in_lines(&lines, pos, &idx, &u);
+    let result = super::find_this_context(pos, &idx, &u);
     assert!(
         matches!(result, super::ThisContext::InsideReceiver),
         "cursor inside forEach inside apply{{}} should be InsideReceiver, got: {result:?}"
@@ -1720,13 +1881,13 @@ fn it_type_generic_ext_fn_substitutes_type_param() {
     ]
     .join("\n");
     let code_src = "header.buttons.fastForEach { it }";
-    let (u, idx, lines) = indexed_with_live("/t.kt", &sig_src, code_src);
+    let (u, idx, _lines) = indexed_with_live("/t.kt", &sig_src, code_src);
     let col = "header.buttons.fastForEach { ".encode_utf16().count();
     let pos = crate::types::CursorPos {
         line: 0,
         utf16_col: col,
     };
-    let result = find_it_element_type_in_lines(&lines, pos, &idx, &u);
+    let result = find_it_element_type(pos, &idx, &u);
     assert_eq!(
         result.as_deref(),
         Some("CButtonData"),
@@ -1747,15 +1908,14 @@ fn named_lambda_params_foreach_indexed_resolves_index_and_item() {
     .join("\n");
     let code_src = "header.buttons.forEachIndexed { index, item ->\n    item\n}";
     let (u, idx, lines) = indexed_with_live("/t.kt", &sig_src, code_src);
-    let live_doc_arc = idx.live_doc(&u);
 
     let col_item = lines[1].find("item").unwrap();
-    let result_item = find_named_lambda_param_type_in_lines(
-        &lines,
+    let result_item = find_named_lambda_param_type(
         "item",
-        1,
-        col_item,
-        live_doc_arc.as_deref(),
+        crate::types::CursorPos {
+            line: 1,
+            utf16_col: col_item,
+        },
         &idx,
         &u,
     );
@@ -1766,12 +1926,12 @@ fn named_lambda_params_foreach_indexed_resolves_index_and_item() {
     );
 
     let col_index = lines[0].find("index").unwrap();
-    let result_index = find_named_lambda_param_type_in_lines(
-        &lines,
+    let result_index = find_named_lambda_param_type(
         "index",
-        0,
-        col_index,
-        live_doc_arc.as_deref(),
+        crate::types::CursorPos {
+            line: 0,
+            utf16_col: col_index,
+        },
         &idx,
         &u,
     );
@@ -1794,13 +1954,13 @@ fn it_type_resolves_via_function_parameter_type() {
     ]
     .join("\n");
     let code_src = "header.buttons.fastForEach { it }";
-    let (u, idx, lines) = indexed_with_live("/t.kt", &sig_src, code_src);
+    let (u, idx, _lines) = indexed_with_live("/t.kt", &sig_src, code_src);
     let col = "header.buttons.fastForEach { ".encode_utf16().count();
     let pos = crate::types::CursorPos {
         line: 0,
         utf16_col: col,
     };
-    let result = find_it_element_type_in_lines(&lines, pos, &idx, &u);
+    let result = find_it_element_type(pos, &idx, &u);
     assert_eq!(
         result.as_deref(),
         Some("CButtonData"),
@@ -1810,22 +1970,27 @@ fn it_type_resolves_via_function_parameter_type() {
 
 #[test]
 // See: https://github.com/Hessesian/kmp-lsp/issues — ImmutableList not in COLLECTION_TYPES
-fn regression_immutable_list_foreach_it_text_path() {
-    // Text-only path (no live tree): ImmutableList<ButtonModel>.fastForEach { it }
-    // — fastForEach NOT indexed with type_params (simulates JAR-only scenario).
+fn regression_immutable_list_foreach_it_transient_parse() {
+    // Transient-parse path (indexed, not open): ImmutableList<ButtonModel>.fastForEach { it }
+    // — fastForEach NOT indexed at all (simulates JAR-only scenario).
     // Before this fix, `it` resolved to `T` (unsubstituted generic).
-    let sig_src = [
+    let src = [
         "data class Header(val buttons: ImmutableList<ButtonModel>)",
         "fun Header(header: Header) {}",
+        "header.buttons.fastForEach { it }",
     ]
     .join("\n");
-    let (u, idx) = indexed("/t.kt", &sig_src);
-    let before = "header.buttons.fastForEach { it.";
-    let result = find_it_element_type(before, &idx, &u);
+    let (u, idx) = indexed("/t.kt", &src);
+    // line 2: "header.buttons.fastForEach { it }" — `it` at col 29.
+    let pos = crate::types::CursorPos {
+        line: 2,
+        utf16_col: 30,
+    };
+    let result = find_it_element_type(pos, &idx, &u);
     assert_eq!(
         result.as_deref(),
         Some("ButtonModel"),
-        "it inside ImmutableList.fastForEach (text path) should yield ButtonModel, got: {result:?}"
+        "it inside ImmutableList.fastForEach should yield ButtonModel, got: {result:?}"
     );
 }
 
@@ -1853,16 +2018,21 @@ fn regression_generic_lambda_param_substituted_from_receiver_type_args() {
     // from a JAR without type_params), fall back to the receiver's first type argument.
     // Before fix 2, the `SCOPE_FUNCTIONS.contains(&method)` guard prevented substitution
     // for non-scope iteration functions like fastForEach, and `it` stayed as T.
-    let sig_src = [
+    let src = [
         "data class ButtonModel(val label: String)",
         // fastForEach indexed as a global function — mimics JAR without type_params on symbol
         "fun fastForEach(action: (T) -> Unit) {}",
         "val buttons: ImmutableList<ButtonModel> = listOf()",
+        "buttons.fastForEach { it }",
     ]
     .join("\n");
-    let (u, idx) = indexed("/t.kt", &sig_src);
-    let before = "buttons.fastForEach { it.";
-    let result = find_it_element_type(before, &idx, &u);
+    let (u, idx) = indexed("/t.kt", &src);
+    // line 3: "buttons.fastForEach { it }" — `it` at col 22.
+    let pos = crate::types::CursorPos {
+        line: 3,
+        utf16_col: 23,
+    };
+    let result = find_it_element_type(pos, &idx, &u);
     assert_eq!(
         result.as_deref(),
         Some("ButtonModel"),
@@ -1909,10 +2079,12 @@ fn insert_fake_jar_symbol(
         container: None,
         params: String::new(),
         param_counts: (0, 0),
-        type_params,
-        extension_receiver,
-        extension_receiver_type: ext_receiver_type.to_owned(),
-        doc: String::new(),
+        cold: crate::types::pack_cold_fields(
+            type_params,
+            extension_receiver,
+            ext_receiver_type.to_owned(),
+            String::new(),
+        ),
         trailing_lambda: false,
         deprecated: false,
     };
@@ -1948,7 +2120,7 @@ fn regression_jar_symbol_find_fun_callable_info_cst_path() {
     ]
     .join("\n");
     let code_src = "header.buttons.fastForEach { it }";
-    let (u, idx, lines) = indexed_with_live("/t.kt", &sig_src, code_src);
+    let (u, idx, _lines) = indexed_with_live("/t.kt", &sig_src, code_src);
 
     // Simulate a sidecar-indexed fastForEach with structured type metadata.
     insert_fake_jar_symbol(
@@ -1964,7 +2136,7 @@ fn regression_jar_symbol_find_fun_callable_info_cst_path() {
         line: 0,
         utf16_col: col,
     };
-    let result = find_it_element_type_in_lines(&lines, pos, &idx, &u);
+    let result = find_it_element_type(pos, &idx, &u);
     assert_eq!(
         result.as_deref(),
         Some("ButtonModel"),
@@ -1982,7 +2154,7 @@ fn regression_jar_symbol_wrong_receiver_falls_back_to_text_path() {
     // propagated the unsubstituted generic param as the `it` type.
     let sig_src = "val users: List<User> = listOf()";
     let code_src = "users.forEach { it }";
-    let (u, idx, lines) = indexed_with_live("/t.kt", sig_src, code_src);
+    let (u, idx, _lines) = indexed_with_live("/t.kt", sig_src, code_src);
 
     // Insert a JAR forEach with a MISMATCHING receiver (PersistentList, not List).
     insert_fake_jar_symbol(
@@ -1998,7 +2170,7 @@ fn regression_jar_symbol_wrong_receiver_falls_back_to_text_path() {
         line: 0,
         utf16_col: col,
     };
-    let result = find_it_element_type_in_lines(&lines, pos, &idx, &u);
+    let result = find_it_element_type(pos, &idx, &u);
     assert_eq!(
         result.as_deref(),
         Some("User"),
@@ -2020,7 +2192,7 @@ fn regression_jar_descriptive_type_param_name_not_treated_as_generic() {
     ]
     .join("\n");
     let code_src = "state.observe { it }";
-    let (u, idx, lines) = indexed_with_live("/t.kt", &sig_src, code_src);
+    let (u, idx, _lines) = indexed_with_live("/t.kt", &sig_src, code_src);
 
     // A JAR symbol whose type_param name "Effect" matches the concrete extracted type.
     // Its receiver is unrelated — substitution will return empty map.
@@ -2037,7 +2209,7 @@ fn regression_jar_descriptive_type_param_name_not_treated_as_generic() {
         line: 0,
         utf16_col: col,
     };
-    let result = find_it_element_type_in_lines(&lines, pos, &idx, &u);
+    let result = find_it_element_type(pos, &idx, &u);
     assert_eq!(
         result.as_deref(),
         Some("Contract.Effect"),
@@ -2065,14 +2237,14 @@ fn regression_jar_fun_param_two_level_chain_fastforeach() {
         "}",
     ]
     .join("\n");
-    let (u, idx, lines) = indexed_with_live("/t.kt", &sig_src, code_src.as_str());
+    let (u, idx, _lines) = indexed_with_live("/t.kt", &sig_src, code_src.as_str());
 
     let col = "  item.tableRows.fastForEach { ".encode_utf16().count();
     let pos = crate::types::CursorPos {
         line: 1,
         utf16_col: col,
     };
-    let result = find_it_element_type_in_lines(&lines, pos, &idx, &u);
+    let result = find_it_element_type(pos, &idx, &u);
     assert_eq!(
         result.as_deref(),
         Some("TableRowModel"),
@@ -2094,7 +2266,7 @@ fn regression_jar_fun_param_two_level_chain_fastforeach_jar_only() {
         "}",
     ]
     .join("\n");
-    let (u, idx, lines) = indexed_with_live("/t.kt", &sig_src, code_src.as_str());
+    let (u, idx, _lines) = indexed_with_live("/t.kt", &sig_src, code_src.as_str());
 
     insert_fake_jar_symbol(
         &idx,
@@ -2109,7 +2281,7 @@ fn regression_jar_fun_param_two_level_chain_fastforeach_jar_only() {
         line: 1,
         utf16_col: col,
     };
-    let result = find_it_element_type_in_lines(&lines, pos, &idx, &u);
+    let result = find_it_element_type(pos, &idx, &u);
     assert_eq!(
         result.as_deref(),
         Some("TableRowModel"),
@@ -2118,10 +2290,9 @@ fn regression_jar_fun_param_two_level_chain_fastforeach_jar_only() {
 }
 
 #[test]
-fn regression_text_only_path_named_param_collect_not_t() {
-    // Exercises the text-only fallback in find_named_lambda_param_type_in_lines
-    // (live_doc = None) with a JAR generic collect on Flow<T>.
-    // The lambda param must NOT resolve to bare generic placeholder T.
+fn regression_named_param_collect_not_leaked_generic_t() {
+    // The CST path, resolving a named lambda param on a JAR generic `collect`
+    // on Flow<T>, must NOT leak the bare generic placeholder T.
     let sig_src = ["data class ResultState<T>(val v: T)"].join("\n");
     let code_src = "productFlow(true).collect { result ->\n    result.\n}";
     let (u, idx, _lines) = indexed_with_live("/t.kt", &sig_src, code_src);
@@ -2135,13 +2306,12 @@ fn regression_text_only_path_named_param_collect_not_t() {
         "suspend fun <T> Flow<ResultState<T>>.collect(action: suspend (ResultState<T>) -> Unit): Unit",
     );
 
-    let lines: Vec<String> = code_src.lines().map(String::from).collect();
-    let result = find_named_lambda_param_type_in_lines(
-        &lines,
+    let result = find_named_lambda_param_type(
         "result",
-        1,
-        "    result.".encode_utf16().count(),
-        None, // no live_doc — text fallback path only
+        crate::types::CursorPos {
+            line: 1,
+            utf16_col: "    result.".encode_utf16().count(),
+        },
         &idx,
         &u,
     );
@@ -2150,7 +2320,7 @@ fn regression_text_only_path_named_param_collect_not_t() {
     assert_ne!(
         result.as_deref(),
         Some("T"),
-        "text-only path must not leak bare generic T for named lambda param, got: {:?}",
+        "named lambda param must not leak bare generic T, got: {:?}",
         result
     );
 }
@@ -2172,14 +2342,14 @@ fn regression_jar_nested_qualified_param_type_chain_fastforeach() {
         "}",
     ]
     .join("\n");
-    let (u, idx, lines) = indexed_with_live("/t.kt", &sig_src, code_src.as_str());
+    let (u, idx, _lines) = indexed_with_live("/t.kt", &sig_src, code_src.as_str());
 
     let col = "  item.tableRows.fastForEach { ".encode_utf16().count();
     let pos = crate::types::CursorPos {
         line: 1,
         utf16_col: col,
     };
-    let result = find_it_element_type_in_lines(&lines, pos, &idx, &u);
+    let result = find_it_element_type(pos, &idx, &u);
     assert_eq!(
         result.as_deref(),
         Some("TableRowModel"),
@@ -2213,14 +2383,13 @@ fn regression_generic_t_not_leaked_as_named_lambda_param_type() {
     );
 
     let result = find_named_lambda_param_type(
-        "    trigger.",
         "trigger",
-        &idx,
-        &u,
         crate::types::CursorPos {
             line: 1,
             utf16_col: "    trigger.".encode_utf16().count(),
         },
+        &idx,
+        &u,
     );
     // Must NOT return the raw generic placeholder "T" — return None and fall to text path.
     assert_ne!(
@@ -2248,14 +2417,13 @@ fn regression_container_generic_arg_not_leaked_as_named_lambda_param_type() {
     );
 
     let result = find_named_lambda_param_type(
-        "    result.",
         "result",
-        &idx,
-        &u,
         crate::types::CursorPos {
             line: 1,
             utf16_col: "    result.".encode_utf16().count(),
         },
+        &idx,
+        &u,
     );
     assert_ne!(
         result.as_deref(),
@@ -2293,14 +2461,13 @@ fn regression_jar_collect_on_flow_t_container_generic_not_leak() {
     );
 
     let result = find_named_lambda_param_type(
-        "    result.",
         "result",
-        &idx,
-        &u,
         crate::types::CursorPos {
             line: 2,
             utf16_col: "    result.".encode_utf16().count(),
         },
+        &idx,
+        &u,
     );
 
     assert_ne!(
@@ -2357,14 +2524,13 @@ fn regression_productflow_param_collect_result_not_t() {
     // but the CALL `productFlow(true)` doesn't resolve to a concrete receiver
     // because `productFlow` is a lambda param, not a real function.
     let result = find_named_lambda_param_type(
-        "    result.",
         "result",
-        &idx,
-        &u,
         crate::types::CursorPos {
             line: 6,
             utf16_col: "    result.".encode_utf16().count(),
         },
+        &idx,
+        &u,
     );
 
     // The correct behavior: must NOT show T or ResultState<T>
@@ -2379,11 +2545,10 @@ fn regression_productflow_param_collect_result_not_t() {
 }
 
 #[test]
-fn regression_jar_fun_param_collect_named_lambda_not_t_text_only() {
+fn regression_jar_fun_param_collect_named_lambda_not_t() {
     // Same shape as regression_jar_fun_param_two_level_chain_fastforeach_jar_only
-    // but exercises find_named_lambda_param_type_in_lines on the text-only path
-    // (live_doc=None) with a JAR-provided collect on Flow<T>.
-    // A named lambda param must NOT resolve to bare generic T.
+    // but resolves a named lambda param via the CST path with a JAR-provided
+    // collect on Flow<T>. A named lambda param must NOT resolve to bare generic T.
     let sig_src = ["data class ResultState<T>(val v: T)"].join("\n");
     let code_src = [
         "fun <T: Any> wrapper(productFlow: () -> Flow<ResultState<T>>) {",
@@ -2403,13 +2568,12 @@ fn regression_jar_fun_param_collect_named_lambda_not_t_text_only() {
         "suspend fun <T> Flow<T>.collect(action: suspend (T) -> Unit): Unit",
     );
 
-    let lines: Vec<String> = code_src.lines().map(String::from).collect();
-    let result = find_named_lambda_param_type_in_lines(
-        &lines,
+    let result = find_named_lambda_param_type(
         "result",
-        2,
-        "    result.".encode_utf16().count(),
-        None, // no live_doc — text-only fallback path
+        crate::types::CursorPos {
+            line: 2,
+            utf16_col: "    result.".encode_utf16().count(),
+        },
         &idx,
         &u,
     );
@@ -2417,7 +2581,7 @@ fn regression_jar_fun_param_collect_named_lambda_not_t_text_only() {
     assert_ne!(
         result.as_deref(),
         Some("T"),
-        "text-only path must not leak bare generic T for named lambda param in collect chain, got: {result:?}"
+        "named lambda param must not leak bare generic T in collect chain, got: {result:?}"
     );
 }
 
@@ -2434,10 +2598,10 @@ fn it_type_trailing_lambda_on_method_call_chain() {
             "create",
             "param: String, block: (LoanDetailSheetState) -> Unit",
         );
-    // Before stripping: `loanReducerFactory.create(sheetReloadActions.loan)`
-    // After stripping trailing args: `loanReducerFactory.create`
-    let result = lambda_receiver_type_from_context(
-        "loanReducerFactory.create(sheetReloadActions.loan)",
+    let result = cst_param_type(
+        "loanReducerFactory.create(sheetReloadActions.loan) { it }",
+        0,
+        0,
         &deps,
         &u,
     );
@@ -2454,10 +2618,9 @@ fn this_type_apply_on_constructor_call_infers_receiver() {
     // variable. The CST receiver-chain resolver must still yield `User` (the text
     // path can't extract a call-expression receiver).
     let code = "User().apply {\n    this.\n}";
-    let (uri, idx, lines) = indexed_with_live("/t.kt", "class User", code);
+    let (uri, idx, _lines) = indexed_with_live("/t.kt", "class User", code);
     assert_eq!(
-        find_this_element_type_in_lines(
-            &lines,
+        find_this_element_type(
             CursorPos {
                 line: 1,
                 utf16_col: 9
@@ -2477,10 +2640,9 @@ fn this_type_named_argument_builder_lambda_infers_receiver() {
     // one); its receiver is resolved by the `content` parameter's receiver type.
     let sig = "class LazyListScope\nfun Foo(content: LazyListScope.() -> Unit) {}";
     let code = "Foo(content = {\n    this.\n})";
-    let (uri, idx, lines) = indexed_with_live("/t.kt", sig, code);
+    let (uri, idx, _lines) = indexed_with_live("/t.kt", sig, code);
     assert_eq!(
-        find_this_element_type_in_lines(
-            &lines,
+        find_this_element_type(
             CursorPos {
                 line: 1,
                 utf16_col: 9
@@ -2492,4 +2654,72 @@ fn this_type_named_argument_builder_lambda_infers_receiver() {
         Some("LazyListScope"),
         "named-argument builder lambda: this should resolve to LazyListScope"
     );
+}
+
+/// Generics-survival decoy for the nav-arm redirect: a chain ROOTED at a
+/// navigation expression whose type is generic must keep its type args —
+/// the deleted text walker stripped them at exit, collapsing List<Product>
+/// to List and killing element extraction.
+#[test]
+fn nav_rooted_generic_chain_keeps_element_type_for_it() {
+    let src = "class Product { val price: Int = 0 }\n\
+               class Wrapper { val items: List<Product> = listOf() }\n\
+               fun f(wrapper: Wrapper) {\n\
+                   wrapper.items.map { it }\n\
+               }";
+    let (u, idx) = indexed("/NavRootGeneric.kt", src);
+    // line 3: "wrapper.items.map { it }" (the `\`-continuation eats the
+    // indent) — cursor ON `it` at col 21.
+    let pos = crate::types::CursorPos {
+        line: 3,
+        utf16_col: 21,
+    };
+    let resolved = find_it_element_type(pos, &idx, &u);
+    assert_eq!(resolved.as_deref(), Some("Product"));
+    assert_ne!(
+        resolved.as_deref(),
+        Some("T"),
+        "bare type param must never leak"
+    );
+}
+
+#[test]
+fn named_param_type_resolves_in_an_unclosed_lambda() {
+    let src = "class Item { val price: Int = 0 }\n\
+               fun f(items: List<Item>) {\n\
+                   items.map { item ->\n\
+                       \n";
+    let (u, idx) = indexed("/UnclosedNamed.kt", src);
+    idx.store_live_tree(&u, src);
+    idx.set_live_lines(&u, src);
+    let pos = crate::types::CursorPos {
+        line: 3,
+        utf16_col: 0,
+    };
+    assert_eq!(
+        find_named_lambda_param_type("item", pos, &idx, &u).as_deref(),
+        Some("Item"),
+        "brace repair must recover the named param's type mid-typing"
+    );
+}
+
+/// Ledger minor (2026-07-04 wave): `it` over a nested-generic element.
+/// `List<Optional<Foo>>` → `it` must be the full `Optional<Foo>`, never a
+/// bare `T` and never a stripped `Optional`.
+#[test]
+fn nested_generic_it_resolves_to_the_concrete_inner_type() {
+    let src = "class Foo { val bar: Int = 0 }\n\
+               class Optional<T> { fun getOrNull(): T? = null }\n\
+               fun f(items: List<Optional<Foo>>) {\n\
+                   items.map { it }\n\
+               }";
+    let (u, idx) = indexed("/NestedGeneric.kt", src);
+    // line 3 = "items.map { it }" (continuation-eaten indent), `it` at col 12.
+    let pos = crate::types::CursorPos {
+        line: 3,
+        utf16_col: 13,
+    };
+    let resolved = find_it_element_type(pos, &idx, &u);
+    assert_eq!(resolved.as_deref(), Some("Optional<Foo>"));
+    assert_ne!(resolved.as_deref(), Some("T"));
 }

@@ -11,11 +11,40 @@ use super::phase::{ReadyState, State};
 use super::scan_queue::{ScanArgs, ScanKind, ScanQueue};
 use super::Config;
 
+/// A short, bounded attempt to lock `jar_sidecar` — used by on-demand
+/// materialization (Task 8) so a hover/completion request never blocks
+/// indefinitely behind the startup crawl or another in-flight materialization.
+/// Returns `None` (degrade to Tier-1-only for this request) rather than
+/// waiting. See design §Concurrency.
+pub(crate) fn try_lock_sidecar_bounded(
+    indexer: &crate::indexer::Indexer,
+) -> Option<std::sync::MutexGuard<'_, Option<crate::sidecar::SidecarHandle>>> {
+    // `try_lock` is genuinely non-blocking (fails immediately if contended,
+    // rather than spinning) — the "bounded" framing in the design becomes
+    // "immediate or nothing" here, which is the simplest correct instance of
+    // "don't block the interactive path" and avoids inventing a timeout
+    // mechanism this codebase doesn't otherwise use.
+    //
+    // A plain `.ok()` would treat "poisoned" the same as "contended" —
+    // unlike a contended lock, a poisoned one never recovers on its own, so
+    // that would permanently disable on-demand promotion after a single
+    // recoverable panic elsewhere while holding this lock. Every other
+    // `jar_sidecar` lock site in this codebase recovers via
+    // `unwrap_or_else(|e| e.into_inner())`; match that here.
+    match indexer.jar_sidecar.try_lock() {
+        Ok(guard) => Some(guard),
+        Err(std::sync::TryLockError::Poisoned(poisoned)) => Some(poisoned.into_inner()),
+        Err(std::sync::TryLockError::WouldBlock) => None,
+    }
+}
+
 pub(crate) struct ScanHandler<R: ProgressReporter + 'static> {
     indexer: Arc<Indexer>,
     reporter: Arc<R>,
     state: Arc<RwLock<State>>,
-    scan_queue: Mutex<ScanQueue>,
+    /// `Arc` so the jar-pipeline task can poll "is a workspace scan still
+    /// running" from its blocking thread — see `wait_for_jvm_sources_gate`.
+    scan_queue: Arc<Mutex<ScanQueue>>,
     scan_done_tx: mpsc::UnboundedSender<()>,
     /// Signals the actor when background JAR indexing reaches a terminal phase so
     /// it can recompute diagnostics for files diagnosed against a partial index.
@@ -40,7 +69,7 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
             indexer,
             reporter,
             state,
-            scan_queue: Mutex::new(ScanQueue::new()),
+            scan_queue: Arc::new(Mutex::new(ScanQueue::new())),
             scan_done_tx,
             jar_done_tx,
             jar_indexing_in_progress: Arc::new(AtomicBool::new(false)),
@@ -100,6 +129,26 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
             log::warn!("Actor: Reindex received but no workspace root is set");
             return;
         };
+        // Tier-1 (`jar_qualified`/`jar_bare_names`) and materialization
+        // (`materialized`/`materialization_failed`) state must not survive a
+        // reindex — a stale entry would point at a JarId whose manifest is
+        // about to be rebuilt from scratch by `spawn_jar_indexing` below, and
+        // a stale `materialized` flag would suppress re-materialization for a
+        // JAR that could have changed on disk since it was last read. This
+        // mirrors the discipline `jar.rs::clear_jar_maps` already applies to
+        // `jar_files`/`jar_definitions`.
+        //
+        // `jar_table` itself is NOT cleared — JarIds stay stable across a
+        // reindex (append-only growth), the same invariant `FileTable`
+        // already relies on for `FileId`. Only the maps keyed BY JarId reset;
+        // a JAR whose path is interned again during the new crawl gets its
+        // existing JarId back (`JarTable::intern` is idempotent), so nothing
+        // downstream needs to know a reindex happened.
+        self.indexer.materialized.clear();
+        self.indexer.materialization_failed.clear();
+        self.indexer.jar_qualified.clear();
+        self.indexer.jar_bare_names.clear();
+        self.indexer.jar_extension_receivers.clear();
         // `reset_index_state()` is deferred into the scan task so it never
         // races with a concurrently running scan.
         self.enqueue_scan(ScanArgs {
@@ -334,6 +383,7 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
         let indexer = Arc::clone(&self.indexer);
         let in_progress = Arc::clone(&self.jar_indexing_in_progress);
         let jar_done_tx = self.jar_done_tx.clone();
+        let scan_queue = Arc::clone(&self.scan_queue);
 
         // Init-options `jarPaths` specs (cheap string clone). The actual filesystem
         // expansion (reading workspace.json, walking dirs) happens inside the
@@ -362,7 +412,56 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
                 return;
             }
             // ── Compiled-JAR first (sidecar path, populates jar_files / jar_definitions) ──
-            let gradle_paths = crate::indexer::jar::scan_gradle_jars(None);
+            // The Gradle-cache pipeline only matters for a workspace with
+            // JVM sources — a Swift-only project cannot reference anything
+            // in it, and unconditionally running the pipeline there cost a
+            // 1.28M-name Tier-1 manifest over 755 JARs plus a 1.66M-symbol
+            // sources-JAR pass (observed live on an iOS repo). Gated on the
+            // INDEX, not on build-file markers — see
+            // `workspace_has_jvm_sources` for why. This task races the
+            // workspace scan that populates that index (every caller
+            // enqueues the scan first, so the queue is already non-idle
+            // here), so the gate WAITS: it opens the moment the scan
+            // indexes the first JVM source, and returns a negative verdict
+            // only once the queue drains. Explicitly configured `jarPaths`
+            // below stay unaffected.
+            let generation_ok = || {
+                indexer
+                    .workspace_root
+                    .generation_atomic()
+                    .load(Ordering::Acquire)
+                    == expected_gen
+            };
+            // Recover from a poisoned queue lock rather than panicking: a
+            // panic here would strand `jar_indexing_in_progress` as true and
+            // wedge the jar pipeline for the rest of the process. Reading
+            // `is_in_progress` off a poisoned queue is harmless.
+            let workspace_uses_gradle_cache = match crate::indexer::jar::wait_for_jvm_sources_gate(
+                &indexer,
+                || {
+                    scan_queue
+                        .lock()
+                        .unwrap_or_else(|poisoned| poisoned.into_inner())
+                        .is_in_progress()
+                },
+                generation_ok,
+                std::time::Duration::from_millis(100),
+            ) {
+                Some(verdict) => verdict,
+                None => {
+                    abandon_stale_jar_scan(&indexer, &in_progress, &jar_done_tx);
+                    return;
+                }
+            };
+            let gradle_paths = if workspace_uses_gradle_cache {
+                crate::indexer::jar::scan_gradle_jars(None)
+            } else {
+                log::info!(
+                    "jar: no Kotlin/Java sources in the workspace — skipping the \
+                     Gradle-cache JAR pipeline (configured jarPaths still honored)"
+                );
+                Vec::new()
+            };
             let gradle_count = gradle_paths.len();
             let mut paths = gradle_paths;
 
@@ -392,11 +491,26 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
                 return;
             }
 
-            let mut sidecar = indexer
-                .jar_sidecar
-                .lock()
-                .unwrap_or_else(|e| e.into_inner());
-            let compiled_total = crate::indexer::jar::index_jars(&indexer, &paths, &mut sidecar);
+            crate::indexer::jar::clear_jar_maps(&indexer);
+            let (compiled_total, sidecar_alive) = {
+                let mut sidecar = indexer
+                    .jar_sidecar
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner());
+                let compiled_total =
+                    crate::indexer::jar::build_jar_manifest(&indexer, &paths, &mut sidecar);
+                (compiled_total, sidecar.is_some())
+                // `sidecar` MutexGuard drops here, at the end of this block —
+                // released before index_sources_jars runs, so an on-demand
+                // materialization request only ever contends with the
+                // compiled-JAR phase, never the (much longer) sources-JAR
+                // phase that follows it.
+            };
+            log::info!(
+                "jar: manifested {compiled_total} names from {} compiled JARs (Tier 1 only — \
+                 full materialization deferred to first real use)",
+                paths.len()
+            );
 
             // Check generation again before continuing to sources-JAR work.
             let current_gen = indexer
@@ -412,8 +526,13 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
             // Runs LAST so that when both pipelines contribute the same FQN to
             // `qualified` / `extension_by_receiver`, the sources-JAR entry (real
             // line numbers from tree-sitter) wins over the compiled-JAR entry
-            // (synthetic line indices from the sidecar).
-            let sources_total = crate::indexer::jar::index_sources_jars(&indexer, None, None);
+            // (synthetic line indices from the sidecar). Same Gradle gate as
+            // the compiled pipeline — sources JARs come from the same cache.
+            let sources_total = if workspace_uses_gradle_cache {
+                crate::indexer::jar::index_sources_jars(&indexer, None, None)
+            } else {
+                0
+            };
 
             if paths.is_empty() && sources_total == 0 {
                 if let Ok(mut phase) = indexer.jar_phase.lock() {
@@ -442,7 +561,7 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
             }
 
             let total = sources_total + compiled_total;
-            let final_phase = if sidecar.is_none() && compiled_total > 0 {
+            let final_phase = if !sidecar_alive && compiled_total > 0 {
                 // Sidecar died mid-index; sources may still be available.
                 JarPhase::Failed(format!(
                     "sidecar died mid-index; {total} symbols partially loaded ({sources_total} from sources, {compiled_total} from compiled)"

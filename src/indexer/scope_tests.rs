@@ -20,6 +20,16 @@ fn indexed(path: &str, src: &str) -> (Url, Indexer) {
     (u, indexer)
 }
 
+/// Test shim for the former single-line `find_it_element_type`: routes
+/// `before_cursor` through the production CST-first `find_it_element_type`.
+fn it_type_at_line_end(before_cursor: &str, indexer: &Indexer, uri: &Url) -> Option<String> {
+    let pos = crate::types::CursorPos {
+        line: 0,
+        utf16_col: before_cursor.encode_utf16().count(),
+    };
+    find_it_element_type(pos, indexer, uri)
+}
+
 // ── word_at ──────────────────────────────────────────────────────────────
 
 #[test]
@@ -219,22 +229,29 @@ fn named_arg_state_multiline_with_method_receiver() {
 
 #[test]
 fn it_element_type_list() {
-    // val items: List<Product>
-    // items.forEach { it.  ← element type should be "Product"
-    let src = "val items: List<Product> = emptyList()";
+    // val items: List<Product>; `items.forEach { it }` — element type "Product".
+    let src = "val items: List<Product> = emptyList()\nitems.forEach { it }";
     let (u, indexer) = indexed("/t.kt", src);
-    let before = "items.forEach { it.";
-    let result = find_it_element_type(before, &indexer, &u);
+    // line 1: "items.forEach { it }" — `it` at col 16.
+    let pos = crate::types::CursorPos {
+        line: 1,
+        utf16_col: 17,
+    };
+    let result = find_it_element_type(pos, &indexer, &u);
     assert_eq!(result.as_deref(), Some("Product"));
 }
 
 #[test]
 fn it_element_type_flow() {
-    let src = "val events: Flow<Event> = emptyFlow()";
+    let src = "val events: Flow<Event> = emptyFlow()\nevents.collect { it }";
     let (u, indexer) = indexed("/t.kt", src);
-    let before = "events.collect { it.";
+    // line 1: "events.collect { it }" — `it` at col 17.
+    let pos = crate::types::CursorPos {
+        line: 1,
+        utf16_col: 18,
+    };
     assert_eq!(
-        find_it_element_type(before, &indexer, &u).as_deref(),
+        find_it_element_type(pos, &indexer, &u).as_deref(),
         Some("Event")
     );
 }
@@ -246,43 +263,55 @@ fn it_element_type_state_flow() {
     let before = "_state.value.let { it."; // `value` is lowercase → chain, falls back
                                            // _state itself is StateFlow, but we ask about `value` which isn't typed here.
                                            // Just ensure no panic.
-    let _ = find_it_element_type(before, &indexer, &u);
+    let _ = it_type_at_line_end(before, &indexer, &u);
 }
 
 #[test]
 fn it_scope_fn_let() {
-    // val user: User — `user.let { it.` — it IS the User type
-    let src = "val user: User = User()";
+    // val user: User — `user.let { it }` — it IS the User type
+    let src = "val user: User = User()\nuser.let { it }";
     let (u, indexer) = indexed("/t.kt", src);
-    let before = "user.let { it.";
+    // line 1: "user.let { it }" — `it` at col 11.
+    let pos = crate::types::CursorPos {
+        line: 1,
+        utf16_col: 12,
+    };
     // User is not a collection, so returns the base type directly
     assert_eq!(
-        find_it_element_type(before, &indexer, &u).as_deref(),
+        find_it_element_type(pos, &indexer, &u).as_deref(),
         Some("User")
     );
 }
 
 #[test]
 fn it_element_type_nullable_call() {
-    // val user: User? — `user?.let { it.`
-    let src = "val user: User? = null";
+    // val user: User? — `user?.let { it }`
+    let src = "val user: User? = null\nuser?.let { it }";
     let (u, indexer) = indexed("/t.kt", src);
-    let before = "user?.let { it.";
+    // line 1: "user?.let { it }" — `it` at col 12.
+    let pos = crate::types::CursorPos {
+        line: 1,
+        utf16_col: 13,
+    };
     // `?` in `?.` is normalised away — should still find "User"
-    // `infer_type_in_lines_raw` for `user: User?` → "User" (? stripped at type boundary)
-    let result = find_it_element_type(before, &indexer, &u);
+    // (`user: User?` → "User", the trailing `?` stripped at the type boundary).
+    let result = find_it_element_type(pos, &indexer, &u);
     assert_eq!(result.as_deref(), Some("User"));
 }
 
 #[test]
 fn it_element_type_with_call_args() {
-    // items.map(transform) { it.  → strip `(transform)` first
-    let src = "val items: List<Order> = emptyList()";
+    // `items.mapNotNull(::transform) { it }` → strip `(::transform)` first.
+    let src = "val items: List<Order> = emptyList()\nitems.mapNotNull(::transform) { it }";
     let (u, indexer) = indexed("/t.kt", src);
-    let before = "items.mapNotNull(::transform) { it.";
-    // strip `(::transform)` → callee = `items.mapNotNull` → receiver = `items` → List<Order>
+    // strip `(::transform)` → callee = `items.mapNotNull` → receiver = `items` → List<Order>.
+    // line 1: "items.mapNotNull(::transform) { it }" — `it` at col 32.
+    let pos = crate::types::CursorPos {
+        line: 1,
+        utf16_col: 33,
+    };
     assert_eq!(
-        find_it_element_type(before, &indexer, &u).as_deref(),
+        find_it_element_type(pos, &indexer, &u).as_deref(),
         Some("Order")
     );
 }
@@ -291,7 +320,7 @@ fn it_element_type_with_call_args() {
 fn it_unknown_var_returns_none() {
     let (u, indexer) = indexed("/t.kt", "");
     assert_eq!(
-        find_it_element_type("unknown.forEach { it.", &indexer, &u),
+        it_type_at_line_end("unknown.forEach { it.", &indexer, &u),
         None
     );
 }
@@ -301,18 +330,16 @@ fn it_unknown_var_returns_none() {
 #[test]
 fn named_lambda_param_same_line() {
     // items.forEach { item -> item.  ← same line
-    let src = "val items: List<Product> = emptyList()";
+    let src = "val items: List<Product> = emptyList()\nitems.forEach { item -> item.name }";
     let (u, indexer) = indexed("/t.kt", src);
-    let before = "items.forEach { item -> item.";
     let result = find_named_lambda_param_type(
-        before,
         "item",
+        crate::types::CursorPos {
+            line: 1,
+            utf16_col: "items.forEach { item -> item.".encode_utf16().count(),
+        },
         &indexer,
         &u,
-        crate::types::CursorPos {
-            line: 0,
-            utf16_col: before.encode_utf16().count(),
-        },
     );
     assert_eq!(result.as_deref(), Some("Product"));
 }
@@ -325,14 +352,13 @@ fn named_lambda_param_multiline() {
     let (u, indexer) = indexed("/t.kt", src);
     // cursor on line 2 ("    order.x"), scanning back to line 1 for `{ order ->`
     let result = find_named_lambda_param_type(
-        "    order.",
         "order",
-        &indexer,
-        &u,
         crate::types::CursorPos {
             line: 2,
             utf16_col: "    order.".encode_utf16().count(),
         },
+        &indexer,
+        &u,
     );
     assert_eq!(result.as_deref(), Some("Order"));
 }
@@ -340,18 +366,16 @@ fn named_lambda_param_multiline() {
 #[test]
 fn named_lambda_param_scope_fn() {
     // val user: User — `user.also { u -> u.` — `u` is User itself
-    let src = "val user: User = User()";
+    let src = "val user: User = User()\nuser.also { u -> u.name }";
     let (u, indexer) = indexed("/t.kt", src);
-    let before = "user.also { u -> u.";
     let result = find_named_lambda_param_type(
-        before,
         "u",
+        crate::types::CursorPos {
+            line: 1,
+            utf16_col: "user.also { u -> u.".encode_utf16().count(),
+        },
         &indexer,
         &u,
-        crate::types::CursorPos {
-            line: 0,
-            utf16_col: before.encode_utf16().count(),
-        },
     );
     assert_eq!(result.as_deref(), Some("User"));
 }
@@ -728,5 +752,58 @@ fn collect_lambda_param_names_multi() {
     assert!(
         names.contains(&"b".to_string()),
         "should contain 'b', got: {names:?}"
+    );
+}
+
+// ── infer_lambda_param_type_at: disk fallback (neither live nor indexed) ─────
+
+/// Pins the ungated named-param branch of `infer_lambda_param_type_at`: the
+/// target URI is in neither `live_lines` nor `files`, but the file exists on
+/// disk, so `live_doc_or_parse`'s disk fallback supplies the CST and the named
+/// lambda parameter still resolves. (Before the ungating, the whole function
+/// bailed out when `mem_lines_for` had nothing for the URI.)
+#[test]
+fn named_lambda_param_resolves_from_disk_only_file() {
+    let indexer = Indexer::new();
+    // The callee's signature is indexed from a separate in-memory file.
+    let signature_uri = uri("/Callbacks.kt");
+    indexer.index_content(
+        &signature_uri,
+        "fun withProduct(block: (Product) -> Unit) {}",
+    );
+
+    // The lambda usage lives ONLY on disk: never indexed, never opened.
+    let dir = tempfile::TempDir::new().expect("create tempdir");
+    let disk_path = dir.path().join("Usage.kt");
+    std::fs::write(
+        &disk_path,
+        "fun use() {\n    withProduct { product ->\n        product\n    }\n}\n",
+    )
+    .expect("write disk-only kt file");
+    let disk_uri = Url::from_file_path(&disk_path).expect("file url");
+    assert!(indexer.mem_lines_for(disk_uri.as_str()).is_none());
+
+    // Cursor on the `product` usage inside the lambda body (line 2, col 9).
+    let result = indexer.infer_lambda_param_type_at("product", &disk_uri, Position::new(2, 9));
+    assert_eq!(
+        result.as_deref(),
+        Some("Product"),
+        "named lambda param in a disk-only file should resolve via the transient parse, got: {result:?}"
+    );
+}
+
+#[test]
+fn lambda_params_fall_back_to_the_text_scan_on_a_broken_tree() {
+    // Unclosed lambda: the CST forms no lambda_literal, so the CST path
+    // used to answer Some(vec![]) and short-circuit the text fallback —
+    // named params vanished in exactly the mid-typing states that matter.
+    let src = "fun f(items: List<Item>) {\n    items.map { item ->\n        \n";
+    let (u, indexer) = indexed("/BrokenParams.kt", src);
+    indexer.store_live_tree(&u, src);
+    indexer.set_live_lines(&u, src);
+    let params = indexer.lambda_params_at_col(&u, 2, 8);
+    assert!(
+        params.iter().any(|p| p == "item"),
+        "broken tree must fall through to the text scan; got {params:?}"
     );
 }

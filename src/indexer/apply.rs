@@ -28,7 +28,8 @@ use crate::parser::parse_by_extension;
 use crate::path_util::to_forward_slash;
 use crate::resolver::symbols_from_uri_as_completions_pub;
 use crate::types::{
-    ExtensionEntry, FileData, FileIndexResult, SourceSet, Visibility, WorkspaceIndexResult,
+    ExtensionEntry, FileData, FileIndexResult, SourceSet, SymbolLoc, Visibility,
+    WorkspaceIndexResult,
 };
 use crate::StrExt;
 
@@ -205,11 +206,11 @@ pub(crate) fn contributions_from_data(
 
     let mut extensions: HashMap<String, Vec<ExtensionEntry>> = HashMap::new();
     for sym in &file_data.symbols {
-        if sym.extension_receiver.is_empty() {
+        if sym.extension_receiver().is_empty() {
             continue;
         }
         extensions
-            .entry(sym.extension_receiver.clone())
+            .entry(sym.extension_receiver().to_owned())
             .or_default()
             .push(ExtensionEntry {
                 file_uri: uri_str.clone(),
@@ -256,6 +257,21 @@ pub(crate) fn file_contributions(result: &FileIndexResult) -> FileContributions 
     contributions_from_data(
         &result.uri,
         Arc::new(result.data.clone()),
+        result.content_hash,
+        &result.supertypes,
+    )
+}
+
+/// Like [`file_contributions`] but consumes the `FileIndexResult`, **moving** its
+/// `FileData` straight into the `Arc` instead of deep-cloning it. Use this on the
+/// warm-load / bulk-apply path where the result is a transient that would be
+/// dropped immediately after: moving avoids holding two full copies of the file
+/// data at once (the source vec plus the Indexer's copy), halving the apply-phase
+/// RSS peak.
+pub(crate) fn file_contributions_owned(result: FileIndexResult) -> FileContributions {
+    contributions_from_data(
+        &result.uri,
+        Arc::new(result.data),
         result.content_hash,
         &result.supertypes,
     )
@@ -409,11 +425,11 @@ impl LibraryBatch {
         }
 
         for sym in &file_data.symbols {
-            if sym.extension_receiver.is_empty() {
+            if sym.extension_receiver().is_empty() {
                 continue;
             }
             self.extensions
-                .entry(sym.extension_receiver.clone())
+                .entry(sym.extension_receiver().to_owned())
                 .or_default()
                 .push(ExtensionEntry {
                     file_uri: uri_str.to_string(),
@@ -445,19 +461,43 @@ impl LibraryBatch {
         }
         for (k, v) in self.files {
             let file_data = indexer.with_classified_source_set(&k, v);
+            indexer.register_file_uri(&k);
             indexer.files.insert(k, file_data);
         }
         for (name, locs) in self.definitions {
-            indexer.definitions.entry(name).or_default().extend(locs);
+            // Intern before taking the DashMap entry guard — matches the lock
+            // ordering used everywhere else (never hold a shard guard while
+            // acquiring file_table's lock).
+            let interned: Vec<SymbolLoc> = locs
+                .iter()
+                .map(|loc| indexer.intern_location(loc))
+                .collect();
+            indexer
+                .definitions
+                .entry(name)
+                .or_default()
+                .extend(interned);
         }
         for (key, loc) in self.qualified {
-            indexer.qualified.insert(key, loc);
+            indexer.qualified.insert(key, indexer.intern_location(&loc));
         }
         for (pkg, uris) in self.packages {
-            indexer.packages.entry(pkg).or_default().extend(uris);
+            let interned: Vec<crate::types::FileId> = uris
+                .iter()
+                .filter_map(|uri| indexer.intern_uri_str(uri))
+                .collect();
+            indexer.packages.entry(pkg).or_default().extend(interned);
         }
         for (super_name, locs) in self.subtypes {
-            indexer.subtypes.entry(super_name).or_default().extend(locs);
+            let interned: Vec<SymbolLoc> = locs
+                .iter()
+                .map(|loc| indexer.intern_location(loc))
+                .collect();
+            indexer
+                .subtypes
+                .entry(super_name)
+                .or_default()
+                .extend(interned);
         }
         for (receiver, new_entries) in self.extensions {
             let new_uris: std::collections::HashSet<String> =
@@ -491,6 +531,34 @@ impl Indexer {
         let mut file_data = (*file_data).clone();
         file_data.source_set = source_set;
         Arc::new(file_data)
+    }
+
+    /// Intern `uri_str` into [`Indexer::file_table`] so index maps can reference
+    /// the file by its `FileId` instead of duplicating the parsed `Url`. Called
+    /// wherever a file enters `files` / `jar_files`. Idempotent; a URI that fails
+    /// to parse is skipped (it can never surface in the maps as a `Location`).
+    pub(crate) fn register_file_uri(&self, uri_str: &str) {
+        if let Ok(uri) = Url::parse(uri_str) {
+            self.file_table.intern(&uri);
+        }
+    }
+
+    /// Intern `uri_str` and return its [`FileId`], or `None` if the string does
+    /// not parse as a `Url` (mirrors [`Indexer::register_file_uri`], which
+    /// silently skips such URIs). Used to compact the `packages` index onto
+    /// interned file handles instead of duplicated URI strings.
+    pub(crate) fn intern_uri_str(&self, uri_str: &str) -> Option<crate::types::FileId> {
+        Url::parse(uri_str)
+            .ok()
+            .map(|uri| self.file_table.intern(&uri))
+    }
+
+    /// Compact a `Location` into the [`SymbolLoc`] stored in `qualified`, interning
+    /// its URI. Idempotent: files already registered at insert time reuse their
+    /// `FileId`, so this is a lookup for workspace/library files and only allocates
+    /// for a not-yet-seen URI (e.g. a JAR symbol interned before its file lands).
+    pub(crate) fn intern_location(&self, loc: &Location) -> SymbolLoc {
+        SymbolLoc::new(self.file_table.intern(&loc.uri), loc.range)
     }
 
     /// Parse a single file via tree-sitter and extract symbols, supertypes, and a
@@ -538,21 +606,27 @@ impl Indexer {
         };
         let stale = stale_keys_for(&uri, &old);
 
+        // `uri` is already indexed (we fetched `old` above), so it is already
+        // interned; `intern` returns its existing `FileId`. Comparing that single
+        // `FileId` against each stored `SymbolLoc.file` — both from this Indexer's
+        // one `file_table` — is a same-source, idempotent match, not a cross-source
+        // URI-string compare.
+        let stale_id = self.file_table.intern(&uri);
         for name in &stale.definition_names {
             if let Some(mut locs) = self.definitions.get_mut(name) {
-                locs.retain(|l| l.uri.as_str() != uri_str);
+                locs.retain(|l| l.file != stale_id);
             }
         }
         for key in &stale.qualified_keys {
             self.qualified.remove(key);
         }
         if let Some(ref pkg) = stale.package {
-            if let Some(mut uris) = self.packages.get_mut(pkg) {
-                uris.retain(|u| u != uri_str);
+            if let Some(mut file_ids) = self.packages.get_mut(pkg) {
+                file_ids.retain(|file_id| *file_id != stale_id);
             }
         }
         for mut entry in self.subtypes.iter_mut() {
-            entry.value_mut().retain(|l| l.uri.as_str() != uri_str);
+            entry.value_mut().retain(|l| l.file != stale_id);
         }
         for mut entry in self.extension_by_receiver.iter_mut() {
             entry.value_mut().retain(|e| e.file_uri != uri_str);
@@ -564,7 +638,13 @@ impl Indexer {
     /// Full-replace path: resets all index maps first, then inserts all file
     /// contributions. Cache hits are already converted to `FileIndexResult` by
     /// `cache_entry_to_file_result` (supertypes included).
-    pub(crate) fn apply_workspace_result(&self, result: &WorkspaceIndexResult) {
+    ///
+    /// Takes `result` **by value** and moves each file's `FileData` into the
+    /// index (via [`file_contributions_owned`]) rather than deep-cloning it. The
+    /// source vec is drained as the maps are populated, so the two full copies of
+    /// the workspace's file data never coexist — this halves the warm-load RSS
+    /// peak (see `memory_retainer_profile`).
+    pub(crate) fn apply_workspace_result(&self, result: WorkspaceIndexResult) {
         log::info!(
             "Applying workspace results: {} files parsed, {} cache hits",
             result.stats.files_parsed,
@@ -579,9 +659,11 @@ impl Indexer {
         // Fast path: after reset the maps are empty so dedup checks are
         // unnecessary.  Use apply_contributions_fresh which skips the O(n)
         // iter().any() scans inside each DashMap entry, turning the overall
-        // apply from O(files²) to O(files).
-        for file_result in &result.files {
-            let contrib = file_contributions(file_result);
+        // apply from O(files²) to O(files).  Consume `result.files` so each
+        // `FileData` is moved into its Arc (no second full copy) and the source
+        // slot is freed as soon as it is applied.
+        for file_result in result.files {
+            let contrib = file_contributions_owned(file_result);
             self.apply_contributions_fresh(contrib);
         }
         log::debug!("apply: contributions done in {:?}", t0.elapsed());
@@ -610,25 +692,37 @@ impl Indexer {
         let file_data = self.with_classified_source_set(&uri_str, file_data);
 
         self.content_hashes.insert(hash_key, hash_val);
+        self.register_file_uri(&uri_str);
         self.files.insert(uri_str.clone(), file_data);
 
         for (name, locs) in contrib.definitions {
+            // Intern before taking the shard guard: `file_table` is a separate lock.
+            let interned: Vec<SymbolLoc> =
+                locs.iter().map(|loc| self.intern_location(loc)).collect();
             let mut entry = self.definitions.entry(name).or_default();
-            entry.extend(locs);
+            entry.extend(interned);
         }
 
         for (key, loc) in contrib.qualified {
-            self.qualified.insert(key, loc);
+            self.qualified.insert(key, self.intern_location(&loc));
         }
 
         for (pkg, uris) in contrib.packages {
+            // Intern before taking the shard guard: `file_table` is a separate lock.
+            let file_ids: Vec<crate::types::FileId> = uris
+                .iter()
+                .filter_map(|uri| self.intern_uri_str(uri))
+                .collect();
             let mut entry = self.packages.entry(pkg).or_default();
-            entry.extend(uris);
+            entry.extend(file_ids);
         }
 
         for (super_name, locs) in contrib.subtypes {
+            // Intern before taking the shard guard: `file_table` is a separate lock.
+            let interned: Vec<SymbolLoc> =
+                locs.iter().map(|loc| self.intern_location(loc)).collect();
             let mut entry = self.subtypes.entry(super_name).or_default();
-            entry.extend(locs);
+            entry.extend(interned);
         }
 
         for (receiver, new_entries) in contrib.extensions {
@@ -915,41 +1009,47 @@ impl Indexer {
         let file_data = self.with_classified_source_set(&uri_str, file_data);
 
         self.content_hashes.insert(hash_key, hash_val);
+        self.register_file_uri(&uri_str);
         self.files.insert(uri_str.clone(), file_data);
 
         for (name, locs) in contrib.definitions {
+            // Intern before taking the shard guard: `file_table` is a separate lock.
+            let interned: Vec<SymbolLoc> =
+                locs.iter().map(|loc| self.intern_location(loc)).collect();
             let mut entry = self.definitions.entry(name).or_default();
-            for loc in locs {
-                if !entry
-                    .iter()
-                    .any(|l| l.uri == loc.uri && l.range == loc.range)
-                {
-                    entry.push(loc);
+            for sym_loc in interned {
+                if !entry.contains(&sym_loc) {
+                    entry.push(sym_loc);
                 }
             }
         }
 
         for (key, loc) in contrib.qualified {
-            self.qualified.insert(key, loc);
+            self.qualified.insert(key, self.intern_location(&loc));
         }
 
         for (pkg, uris) in contrib.packages {
+            // Intern before taking the shard guard: `file_table` is a separate lock.
+            let file_ids: Vec<crate::types::FileId> = uris
+                .iter()
+                .filter_map(|uri| self.intern_uri_str(uri))
+                .collect();
             let mut entry = self.packages.entry(pkg).or_default();
-            for u in uris {
-                if !entry.contains(&u) {
-                    entry.push(u);
+            for file_id in file_ids {
+                if !entry.contains(&file_id) {
+                    entry.push(file_id);
                 }
             }
         }
 
         for (super_name, locs) in contrib.subtypes {
+            // Intern before taking the shard guard: `file_table` is a separate lock.
+            let interned: Vec<SymbolLoc> =
+                locs.iter().map(|loc| self.intern_location(loc)).collect();
             let mut entry = self.subtypes.entry(super_name).or_default();
-            for loc in locs {
-                if !entry
-                    .iter()
-                    .any(|l| l.uri == loc.uri && l.range == loc.range)
-                {
-                    entry.push(loc);
+            for sym_loc in interned {
+                if !entry.contains(&sym_loc) {
+                    entry.push(sym_loc);
                 }
             }
         }
@@ -980,6 +1080,17 @@ impl Indexer {
             // Add JAR-only names (those not already in workspace definitions).
             for entry in self.jar_definitions.iter() {
                 if !self.definitions.contains_key(entry.key()) {
+                    names.push(entry.key().clone());
+                }
+            }
+            // Tier 1: names that exist only in an unmaterialized JAR's
+            // manifest. Without this, bare-word completion silently loses
+            // coverage for anything not yet promoted to Tier 2 — see design
+            // §Consumer integration.
+            for entry in self.jar_bare_names.iter() {
+                if !self.definitions.contains_key(entry.key())
+                    && !self.jar_definitions.contains_key(entry.key())
+                {
                     names.push(entry.key().clone());
                 }
             }
@@ -1022,6 +1133,23 @@ impl Indexer {
                 }
                 let fqn = format!("{}.{}", pkg, sym.name);
                 map.entry(sym.name.clone()).or_default().push(fqn);
+            }
+        }
+        // Tier 1: jar_qualified already stores full FQNs as keys, built by
+        // build_jar_manifest (Task 6) directly from the manifest's package
+        // field — no materialization required first. Merging this in means
+        // a Tier-1-only candidate is offered by FQN as soon as its JAR is
+        // manifested, not only after Tier 2 promotion. (A symbol whose
+        // manifest entry had no package — default package, or a manifest
+        // cached before this field existed — has no FQN to offer here; it's
+        // still reachable via jar_bare_names for bare-name completion.)
+        for entry in self.jar_qualified.iter() {
+            let fqn = entry.key();
+            if let Some(dot) = fqn.rfind('.') {
+                let simple_name = &fqn[dot + 1..];
+                map.entry(simple_name.to_owned())
+                    .or_default()
+                    .push(fqn.clone());
             }
         }
         for fqns in map.values_mut() {

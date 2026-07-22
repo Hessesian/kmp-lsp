@@ -6,9 +6,8 @@ use tower_lsp::lsp_types::*;
 use tree_sitter::Point;
 
 use super::{
-    find_as_call_arg_type, find_it_element_type_in_lines, find_named_lambda_param_type_in_lines,
-    find_this_context_in_lines, lambda_brace_pos_for_param, line_has_lambda_param, Indexer,
-    ThisContext,
+    find_as_call_arg_type, find_it_element_type, find_named_lambda_param_type, find_this_context,
+    lambda_brace_pos_for_param, line_has_lambda_param, Indexer, ThisContext,
 };
 use crate::indexer::live_tree::utf16_col_to_byte;
 use crate::indexer::NodeExt;
@@ -214,21 +213,16 @@ impl Indexer {
         uri: &Url,
         position: Position,
     ) -> Option<String> {
-        let line_no = position.line as usize;
-
-        // Prefer live_lines (current editor content, updated synchronously on
-        // did_change) over files.lines (refreshed after debounced reindex).
-        // Type resolution still uses the index (definitions, files) by name —
-        // that data remains valid even before reindex completes.
-        let lines: Arc<Vec<String>> = self.mem_lines_for(uri.as_str())?;
+        let pos = CursorPos::from(position);
 
         if name == "it" || name == "this" {
-            let pos = CursorPos {
-                line: line_no,
-                utf16_col: position.character as usize,
-            };
+            // Prefer live_lines (current editor content, updated synchronously on
+            // did_change) over files.lines (refreshed after debounced reindex).
+            // Type resolution still uses the index (definitions, files) by name —
+            // that data remains valid even before reindex completes.
+            let lines: Arc<Vec<String>> = self.mem_lines_for(uri.as_str())?;
             let lambda_type = if name == "this" {
-                match find_this_context_in_lines(&lines, pos, self, uri) {
+                match find_this_context(pos, self, uri) {
                     ThisContext::Resolved(ty) => return Some(ty),
                     // Inside a receiver lambda but type unknown: `this` is the lambda
                     // receiver, not the enclosing class.  Do not fall back.
@@ -238,7 +232,7 @@ impl Indexer {
                     ThisContext::NotFound => None,
                 }
             } else {
-                find_it_element_type_in_lines(&lines, pos, self, uri)
+                find_it_element_type(pos, self, uri)
             };
             if lambda_type.is_some() {
                 return lambda_type;
@@ -256,30 +250,17 @@ impl Indexer {
             }
             None
         } else {
-            // For named params: scan backward for `{ name ->` pattern.
-            // Pass the real UTF-16 column so the CST fast-path places the cursor
-            // inside the correct lambda_literal (multi-line receiver chain case).
-            // Snapshot live_doc ONCE here so the CST path uses the same tree
-            // that produced `position` — prevents a race where did_change updates
-            // live_doc between the caller's position derivation and our CST lookup.
-            let utf16_col = position.character as usize;
-            let live_doc_arc = self.live_doc(uri);
-            find_named_lambda_param_type_in_lines(
-                &lines,
-                name,
-                line_no,
-                utf16_col,
-                live_doc_arc.as_deref(),
-                self,
-                uri,
-            )
+            // For named params: the CST resolver places the cursor inside the
+            // correct lambda_literal (multi-line receiver chains included) using
+            // the real UTF-16 column.
+            find_named_lambda_param_type(name, pos, self, uri)
         }
     }
 
     /// Lambda parameter names that are **in scope** at `(cursor_line, cursor_col)`.
     ///
     /// Uses the same brace-depth backward-scan algorithm as
-    /// `find_it_element_type_in_lines`: `}` increments depth, `{` decrements;
+    /// `find_it_element_type`: `}` increments depth, `{` decrements;
     /// when depth < 0 we've found an *enclosing* `{` lambda.  Sibling/inner lambdas
     /// whose closing `}` appears before their `{` in the backward scan self-balance
     /// and never trigger depth < 0, so they are correctly excluded.
@@ -331,7 +312,14 @@ impl Indexer {
             .tree
             .root_node()
             .descendant_for_point_range(point, point)?;
-        Some(collect_cst_lambda_params(node, &doc.bytes))
+        let params = collect_cst_lambda_params(node, &doc.bytes);
+        if params.is_empty() && doc.tree.root_node().has_error() {
+            // A broken tree may simply have failed to FORM the enclosing
+            // lambda_literal (unclosed `{`); empty here does not mean "no
+            // params" — let the caller fall through to the text scan.
+            return None;
+        }
+        Some(params)
     }
 
     fn lambda_param_scan_lines(&self, uri: &Url) -> Arc<Vec<String>> {

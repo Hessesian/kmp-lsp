@@ -206,47 +206,6 @@ fn normalize_parameter_base_type(parameter_type: &str) -> Option<String> {
 
 // ─── Named-arg helpers ────────────────────────────────────────────────────────
 
-/// Detect the `IDENT =` named-arg pattern at the end of `before_brace`.
-/// Returns the identifier if found (must be lowercase-first, not `!=`, `<=`, `>=`).
-///
-/// Also requires that the text BEFORE the identifier is only whitespace (or
-/// comma + whitespace for same-line multi-arg calls), so that patterns like
-/// `(isRefresh = { resultState ->` are NOT falsely matched as named args
-/// (the `(` before `isRefresh` disqualifies it).
-pub(crate) fn extract_named_arg_name(before_brace: &str) -> Option<&str> {
-    let s = before_brace.trim_end();
-    let s = s.strip_suffix('=')?;
-    // Guard against `!=`, `<=`, `>=`, `==`
-    if s.ends_with(|c: char| "!<>=".contains(c)) {
-        return None;
-    }
-    let s = s.trim_end();
-    // Extract trailing identifier
-    let ident_start = s
-        .rfind(|c: char| !c.is_alphanumeric() && c != '_')
-        .map(|i| i + 1)
-        .unwrap_or(0);
-    let ident = &s[ident_start..];
-    if ident.is_empty() {
-        return None;
-    }
-    // Named args start with a lowercase letter
-    if ident.starts_with_uppercase() {
-        return None;
-    }
-    // Require the prefix to be only whitespace (optionally preceded by a comma).
-    // This prevents `(isRefresh = {` from matching — the `(` before `isRefresh`
-    // makes the prefix non-empty after stripping commas and whitespace.
-    let prefix = s[..ident_start]
-        .trim_start()
-        .trim_start_matches(',')
-        .trim_start();
-    if !prefix.is_empty() {
-        return None;
-    }
-    Some(ident)
-}
-
 /// Find the type string of a named parameter `param_name` inside a
 /// comma-separated parameter list text (output of `collect_fun_params_text`).
 ///
@@ -294,6 +253,10 @@ pub(crate) fn find_named_param_type_in_sig(sig: &str, param_name: &str) -> Optio
 ///   - `{ it }`               — implicit single param
 ///   - `{ }` / `{`            — empty / block
 ///   - `{ setEvent(...)` }    — starts with a function call
+///
+/// Test-only since the `it` text-scan ladder was deleted: production named-param
+/// detection reads `lambda_parameters` off the CST (`NodeExt::has_lambda_named_params`).
+#[cfg(test)]
 pub(crate) fn has_named_params_not_it(after_open_brace: &str) -> bool {
     let s = after_open_brace.trim_start();
     // Find the first `->` at brace-depth 0 (ignoring `->` inside nested lambdas).

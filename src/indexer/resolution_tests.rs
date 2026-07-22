@@ -64,13 +64,10 @@ fn make_sym(name: &str, kind: SymbolKind, start_line: u32, end_line: u32) -> Sym
         range: make_range(start_line, end_line),
         selection_range: make_range(start_line, start_line),
         detail: String::new(),
-        type_params: Vec::new(),
-        extension_receiver: String::new(),
-        extension_receiver_type: String::new(),
+        cold: None,
         container: None,
         params: String::new(),
         param_counts: (0, 0),
-        doc: String::new(),
         trailing_lambda: false,
         deprecated: false,
     }
@@ -158,7 +155,7 @@ fn build_subst_map_uses_base_class_type_params() {
     let child_uri = "file:///child.kt";
 
     let mut base_sym = make_sym("Base", SymbolKind::CLASS, 0, 10);
-    base_sym.type_params = vec!["T".to_owned(), "U".to_owned()];
+    base_sym.set_type_params(vec!["T".to_owned(), "U".to_owned()]);
 
     let base_data = Arc::new(crate::types::FileData {
         symbols: vec![base_sym],
@@ -197,7 +194,7 @@ fn build_subst_map_child_has_no_own_type_params() {
     let child_uri = "file:///dashboard.kt";
 
     let mut base_sym = make_sym("FlowReducer", SymbolKind::CLASS, 0, 5);
-    base_sym.type_params = vec!["Event".to_owned(), "State".to_owned()];
+    base_sym.set_type_params(vec!["Event".to_owned(), "State".to_owned()]);
 
     let base_data = Arc::new(crate::types::FileData {
         symbols: vec![base_sym],
@@ -265,13 +262,10 @@ fn make_sym_col(
             },
         },
         detail: format!("fun {}()", name),
-        type_params: Vec::new(),
-        extension_receiver: String::new(),
-        extension_receiver_type: String::new(),
+        cold: None,
         container: None,
         params: String::new(),
         param_counts: (0, 0),
-        doc: String::new(),
         trailing_lambda: false,
         deprecated: false,
     }
@@ -412,6 +406,67 @@ fn resolve_symbol_info_basic_lookup() {
     );
 }
 
+/// The widened `ResolvedSymbol` joins `deprecated`/`container` from the symbol
+/// entry and `package` from the file; the hover formatter then renders both a
+/// deprecation marker and a `package.Container` context footer for members —
+/// all from the one record, no second lookup.
+#[test]
+fn resolve_symbol_info_widens_deprecated_with_qualified_context() {
+    use crate::backend::format::format_symbol_hover;
+
+    let file_uri = "file:///widget.kt";
+
+    let mut sym = make_sym("render", SymbolKind::METHOD, 2, 8);
+    sym.detail = "fun render(): Unit".to_owned();
+    sym.container = Some("Widget".to_owned());
+    sym.deprecated = true;
+
+    let file_data = Arc::new(crate::types::FileData {
+        symbols: vec![sym],
+        package: Some("com.example.ui".to_owned()),
+        lines: std::sync::Arc::new(vec![
+            "package com.example.ui".to_owned(),
+            "class Widget {".to_owned(),
+            "    @Deprecated fun render(): Unit {}".to_owned(),
+            "}".to_owned(),
+        ]),
+        ..Default::default()
+    });
+
+    let mut files = HashMap::new();
+    files.insert(file_uri.to_owned(), file_data);
+    let mut definitions = HashMap::new();
+    definitions.insert("render".to_owned(), vec![make_location(file_uri, 2)]);
+    let idx = RealTestIndex { files, definitions };
+
+    let r = resolve_symbol_info(
+        &idx,
+        "render",
+        None,
+        &Url::parse("file:///caller.kt").unwrap(),
+        SubstitutionContext::None,
+        &ResolveOptions::hover(),
+    )
+    .expect("render should resolve");
+
+    assert!(
+        r.deprecated,
+        "deprecated must be joined from the symbol entry"
+    );
+    assert_eq!(r.container.as_deref(), Some("Widget"));
+    assert_eq!(r.package.as_deref(), Some("com.example.ui"));
+
+    let hover = format_symbol_hover(&r, file_uri);
+    assert!(
+        hover.contains("⚠ Deprecated"),
+        "hover marks deprecation: {hover}"
+    );
+    assert!(
+        hover.contains("*in `com.example.ui.Widget`*"),
+        "hover shows qualified member context: {hover}"
+    );
+}
+
 /// With substitution context: `{T→String}` applied to the signature.
 #[test]
 fn resolve_symbol_info_applies_precomputed_subst() {
@@ -477,7 +532,7 @@ fn crossfile_cursor_line_disambiguates_multiple_callers() {
     // Base: class FlowReducer<E, S>  with fun reduce(e: E): S
     let base_class = {
         let mut s = make_sym("FlowReducer", SymbolKind::CLASS, 0, 10);
-        s.type_params = vec!["E".to_owned(), "S".to_owned()];
+        s.set_type_params(vec!["E".to_owned(), "S".to_owned()]);
         s
     };
     let base_method = {
@@ -704,7 +759,7 @@ fn enrich_uses_sym_doc_when_no_source_lines() {
     let mut sym = make_sym("launch", SymbolKind::FUNCTION, 0, 0);
     sym.detail =
         "fun CoroutineScope.launch(block: suspend CoroutineScope.() -> Unit): Job".to_owned();
-    sym.doc = "Launches a new coroutine without blocking the current thread.".to_owned();
+    sym.set_doc("Launches a new coroutine without blocking the current thread.".to_owned());
 
     // JAR FileData has detail strings as lines, not real source — no KDoc above line 0.
     let lines = vec![sym.detail.clone()];
@@ -734,5 +789,29 @@ fn enrich_uses_sym_doc_when_no_source_lines() {
         result.doc.contains("Launches a new coroutine"),
         "JAR sym.doc should appear in hover; got: {:?}",
         result.doc
+    );
+}
+
+// ── get_definitions Tier-1 promotion (Task 8) ────────────────────────────────
+
+#[test]
+fn get_definitions_attempts_promotion_for_a_tier1_only_symbol() {
+    // Mirrors `jar_declaration_scope_finds_a_tier1_only_symbol_after_promotion_attempt`
+    // in `lookup_tests.rs`: no real sidecar is available in a unit test, so this
+    // pins the CONTRACT that `IndexRead::get_definitions` on the production
+    // `Indexer` attempts `ensure_jar_materialized` for a Tier-1-only candidate
+    // (observable via `materialization_failed`) rather than reading
+    // `jar_definitions` directly and silently missing the promotion.
+    let idx = crate::indexer::Indexer::new();
+    let jar_id = idx.jar_table.intern("/nonexistent/fixture.jar");
+    idx.jar_bare_names
+        .entry("RemoteFun".to_owned())
+        .or_default()
+        .push(jar_id);
+    let _ = IndexRead::get_definitions(&idx, "RemoteFun");
+    assert!(
+        idx.materialization_failed.contains(&jar_id),
+        "get_definitions must attempt promotion for a Tier-1-only name, not \
+         silently read jar_definitions without trying to materialize it first"
     );
 }

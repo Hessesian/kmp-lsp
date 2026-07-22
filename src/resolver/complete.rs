@@ -1,8 +1,7 @@
-use std::borrow::Cow;
 use std::sync::Arc;
 use tower_lsp::lsp_types::{
-    CompletionItem, CompletionItemKind, CompletionItemTag, InsertTextFormat, Position, SymbolKind,
-    Url,
+    CompletionItem, CompletionItemKind, CompletionItemLabelDetails, CompletionItemTag,
+    InsertTextFormat, Location, Position, SymbolKind, Url,
 };
 
 use crate::indexer::Indexer;
@@ -13,14 +12,12 @@ use crate::types::{CallerContext, ImportEntry, SourceSet, Visibility};
 use crate::LinesExt;
 use crate::StrExt;
 
-use super::infer::{
-    find_field_type_in_class, find_fun_return_type_by_name, find_method_return_type,
-    infer_receiver_type, infer_receiver_type_at, infer_variable_type_raw, ReceiverKind,
-    ReceiverType,
-};
+use super::infer::{infer_receiver_type, infer_receiver_type_at, ReceiverKind, ReceiverType};
 use super::infer_lines::infer_callable_param_return_type;
+use super::resolve::jar_symbol_package;
 use super::{
     already_imported, ensure_file_data, fqns_for_name, resolve_symbol_no_rg, walk_hierarchy,
+    Resolver,
 };
 
 // ─── CompletionItem.data JSON keys ───────────────────────────────────────────
@@ -33,6 +30,11 @@ pub(crate) const DATA_LINE: &str = "l";
 pub(crate) const DATA_COL: &str = "c";
 /// Calling-site URI, present only for cross-file substitution context.
 pub(crate) const DATA_CALLING_URI: &str = "cu";
+/// Fully-qualified name of an UNMATERIALIZED jar-backed candidate (stub).
+/// Present instead of `DATA_URI`/`DATA_LINE`: the symbol has no location
+/// yet — `completionItem/resolve` materializes it on demand from this FQN
+/// (one user-selected candidate, unbudgeted like hover).
+pub(crate) const DATA_FQN: &str = "f";
 
 // ─── match scoring ────────────────────────────────────────────────────────────
 
@@ -130,98 +132,70 @@ const MIN_PREFIX_SCORE_REDUCTION: usize = 4;
 /// to score-0 (case-insensitive prefix match) to avoid camel-acronym noise.
 const MIN_CAMEL_ACRONYM_PREFIX: usize = 2;
 
-/// Parsed receiver expression from text immediately before a `.` trigger.
+/// Maximum number of synchronous, blocking `ensure_jar_materialized` calls a
+/// single `complete_bare` request will attempt. Each attempt is a real
+/// sidecar IPC round trip (not just the `try_lock_sidecar_bounded` mutex
+/// attempt) — a short/ambiguous prefix can match dozens of Tier-1-only
+/// candidates at once, and without a cap a single completion request can
+/// fan out into many sequential round trips (measured against a real
+/// ~756-JAR Gradle cache: ~17 sequential promotions totaling ~20s for one
+/// response). Candidates beyond the cap are still offered by name (Task 9's
+/// Tier-1 merge into `bare_name_cache` guarantees that independent of
+/// promotion) — they just keep the name-only/qualifier-stub `detail` for
+/// this request; a later request (narrowed prefix, hover, goto-def) can
+/// still promote them individually.
+pub(crate) const MAX_SYNC_JAR_PROMOTIONS_PER_COMPLETION: usize = 5;
+
+/// Per-request ceiling on TOTAL jar materializations triggered by the
+/// cross-package bare-name walk — cache-backed promotions cost no sidecar
+/// IPC, but `populate_from_symbols` on a large AAR is real CPU and a real
+/// memory step, and this walk can match hundreds of Tier-1-only names in
+/// one request (short prefixes, fresh process, warm disk cache). Generous:
+/// realistic fan-outs (a few dozen jars, once per session) fit under it;
+/// only the pathological first-keystroke storm is clipped, and clipped
+/// names still appear by name via the Tier-1 merge.
+const MAX_CACHE_BACKED_MATERIALIZATIONS_PER_COMPLETION: usize = 32;
+
+/// Dot-completion receiver derived from the CST (speculative marker parse).
 ///
-/// Carries both the identifier chain and whether the receiver was a function
-/// call, so resolution can be explicit rather than heuristic.
+/// Built by `features::completion_context::derive_dot_receiver` while the
+/// speculative tree is alive; only this owned value flows downstream.
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct ReceiverExpr {
-    /// Dotted identifier chain with call args stripped, e.g. `"productFlow"` or `"foo.bar"`.
-    pub(crate) chain: String,
-    /// `true` when the receiver was a call expression like `productFlow(...)`.
-    pub(crate) is_call: bool,
+pub(crate) enum DotReceiver {
+    /// `it`, `this`, `this@label` — resolved by `ScopeContext`, routed to
+    /// `complete_lambda_dot` before member collection.
+    Scope(String),
+    Super,
+    /// Any other receiver expression.
+    Expr {
+        /// Receiver text — for a call receiver, the callee text (the final
+        /// argument list is implied by `is_call`). Feeds the retained
+        /// text-keyed type fallbacks.
+        text: String,
+        /// The receiver subtree was a `call_expression`.
+        is_call: bool,
+        /// Type resolved by `CstQuery::expr_type` at analysis time. `None`
+        /// for simple identifiers (smart-cast must get first look) and for
+        /// CST-unresolvable receivers.
+        resolved: Option<String>,
+    },
 }
 
-impl ReceiverExpr {
-    /// Parse the text before a `.` completion trigger.
-    ///
-    /// `"productFlow(trigger.isRefresh())."` → `Some(ReceiverExpr { chain: "productFlow", is_call: true })`
-    /// `"foo.bar."` → `Some(ReceiverExpr { chain: "foo.bar", is_call: false })`
-    /// `"nullable?."` → `Some(ReceiverExpr { chain: "nullable", is_call: false })`
-    pub(crate) fn parse(before_prefix: &str) -> Option<Self> {
-        // Kotlin's safe-call `?.` only affects null-handling at runtime — for
-        // finding which type's members to suggest it's equivalent to a plain `.`.
-        // Normalize before scanning so the rest of this function (and the
-        // backward identifier scan, which doesn't otherwise allow `?`) doesn't
-        // need its own safe-call handling. Only allocate when a `?.` is actually
-        // present — the common (plain `.`) case borrows the input unchanged.
-        let normalized: Cow<str> = if before_prefix.contains("?.") {
-            Cow::Owned(before_prefix.replace("?.", "."))
-        } else {
-            Cow::Borrowed(before_prefix)
-        };
-        let before_dot = normalized.strip_suffix('.')?;
-        let (before_call, is_call) = if before_dot.trim_end().ends_with(')') {
-            (Self::strip_call_args(before_dot.trim_end()), true)
-        } else {
-            (before_dot, false)
-        };
-        // Scan backwards for a dotted identifier chain.
-        // Includes bytes >= 0x80 to support non-ASCII identifiers.
-        let bytes = before_call.as_bytes();
-        let mut start = before_call.len();
-        for i in (0..before_call.len()).rev() {
-            let c = bytes[i];
-            if c.is_ascii_alphanumeric() || c == b'_' || c == b'.' || c >= 0x80 {
-                start = i;
-            } else {
-                break;
-            }
-        }
-        let chain = before_call[start..].trim();
-        if chain.is_empty() || chain.starts_with('.') || chain.ends_with('.') {
-            return None;
-        }
-        Some(Self {
-            chain: chain.to_owned(),
-            is_call,
-        })
-    }
-
-    /// Construct a plain variable / type-name receiver (not a call expression).
-    pub(crate) fn variable(name: &str) -> Self {
-        Self {
-            chain: name.to_owned(),
+impl DotReceiver {
+    /// Plain variable / type-name receiver (the `complete_symbol` entry).
+    pub(crate) fn expr(text: &str) -> Self {
+        Self::Expr {
+            text: text.to_owned(),
             is_call: false,
+            resolved: None,
         }
     }
 
-    pub(crate) fn as_str(&self) -> &str {
-        &self.chain
-    }
-
-    /// Strip a balanced trailing `(...)`, e.g. `"foo(arg, bar())"` → `"foo"`.
-    fn strip_call_args(s: &str) -> &str {
-        let bytes = s.as_bytes();
-        let mut depth = 0usize;
-        let mut i = bytes.len();
-        loop {
-            if i == 0 {
-                break;
-            }
-            i -= 1;
-            match bytes[i] {
-                b')' => depth += 1,
-                b'(' => {
-                    depth -= 1;
-                    if depth == 0 {
-                        return s[..i].trim_end();
-                    }
-                }
-                _ => {}
-            }
+    pub(crate) fn text(&self) -> &str {
+        match self {
+            Self::Scope(text) | Self::Expr { text, .. } => text,
+            Self::Super => "super",
         }
-        s
     }
 }
 
@@ -241,7 +215,7 @@ pub(crate) fn complete_symbol(
     complete_symbol_with_context(
         indexer,
         prefix,
-        dot_receiver.map(ReceiverExpr::variable),
+        dot_receiver.map(DotReceiver::expr),
         from_uri,
         snippets,
         false,
@@ -254,7 +228,7 @@ pub(crate) fn complete_symbol(
 pub(crate) fn complete_symbol_with_context(
     indexer: &Indexer,
     prefix: &str,
-    dot_receiver: Option<ReceiverExpr>,
+    dot_receiver: Option<DotReceiver>,
     from_uri: &Url,
     snippets: bool,
     annotation_only: bool,
@@ -328,8 +302,21 @@ fn extension_fn_completions(
     let context = ExtensionCompletionContext::build(indexer, from_uri);
     let mut builder = ExtensionCompletionBuilder::new(&context, receiver_type, snippets);
 
+    // Bounded across the whole ancestor walk, not per-ancestor: a common
+    // receiver type ("String", "Iterable") can be declared on by dozens of
+    // library JARs, so without a shared budget a single dot-completion could
+    // trigger dozens of blocking sidecar round trips — the same cold-start
+    // stall Task 12's review already found and capped for cross-package
+    // completion (`MAX_SYNC_JAR_PROMOTIONS_PER_COMPLETION`).
+    let mut jar_promotion_budget = MAX_SYNC_JAR_PROMOTIONS_PER_COMPLETION;
     for ancestor in &ancestor_set {
-        if let Some(entries) = indexer.extension_by_receiver.get(ancestor) {
+        // Atomic promote+read: `extension_by_receiver` is Tier 2 (populated
+        // only by full JAR materialization), so a not-yet-touched JAR's
+        // extensions (e.g. `viewModelScope`) would be silently invisible
+        // without the accessor's promotion.
+        if let Some(entries) =
+            crate::indexer::jar::extension_entries_for(indexer, ancestor, &mut jar_promotion_budget)
+        {
             for entry in entries.iter() {
                 if crate::Language::from_path(&entry.file_uri) == crate::Language::Kotlin {
                     let is_library = is_library_extension(indexer, &entry.file_uri);
@@ -597,6 +584,10 @@ fn complete_super(indexer: &Indexer, from_uri: &Url, snippets: bool) -> Vec<Comp
 
 /// Dot-completion: return all members of the receiver's inferred type,
 /// sorted: methods first, then fields/vars, then class-level names last.
+///
+/// Test-only thin wrapper over [`complete_dot_expr`]; production callers build
+/// the [`DotReceiver`] directly.
+#[cfg(test)]
 pub(crate) fn complete_dot(
     indexer: &Indexer,
     receiver: &str,
@@ -606,7 +597,7 @@ pub(crate) fn complete_dot(
 ) -> Vec<CompletionItem> {
     complete_dot_expr(
         indexer,
-        &ReceiverExpr::variable(receiver),
+        &DotReceiver::expr(receiver),
         from_uri,
         snippets,
         cursor_line,
@@ -615,12 +606,12 @@ pub(crate) fn complete_dot(
 
 fn complete_dot_expr(
     indexer: &Indexer,
-    expr: &ReceiverExpr,
+    expr: &DotReceiver,
     from_uri: &Url,
     snippets: bool,
     cursor_line: Option<u32>,
 ) -> Vec<CompletionItem> {
-    if expr.as_str() == "super" {
+    if matches!(expr, DotReceiver::Super) || expr.text() == "super" {
         return complete_super(indexer, from_uri, snippets);
     }
 
@@ -674,38 +665,44 @@ struct DotCompletionContext {
 
 fn resolve_dot_receiver_type(
     indexer: &Indexer,
-    expr: &ReceiverExpr,
+    expr: &DotReceiver,
     from_uri: &Url,
     cursor_line: Option<u32>,
 ) -> Option<ReceiverType> {
-    let receiver = expr.as_str();
+    let (receiver, is_call, resolved) = match expr {
+        DotReceiver::Expr {
+            text,
+            is_call,
+            resolved,
+        } => (text.as_str(), *is_call, resolved.as_deref()),
+        // Scope receivers are routed to complete_lambda_dot before member
+        // collection; reaching here means a plain-text receiver from the
+        // complete_symbol entry — treat as a non-call expression.
+        DotReceiver::Scope(text) => (text.as_str(), false, None),
+        DotReceiver::Super => return None,
+    };
 
-    if expr.is_call {
-        // Call expression: skip variable lookup, resolve by function return type.
-        if receiver.contains('.') {
-            if let Some(raw) = resolve_dotted_receiver_type(indexer, receiver, from_uri) {
-                return Some(ReceiverType::from_raw(raw));
-            }
-        }
-        if let Some(ret) = find_fun_return_type_by_name(indexer, receiver) {
-            return Some(ReceiverType::from_raw(ret));
+    // CST-resolved type from analysis time is authoritative.
+    if let Some(resolved_type) = resolved {
+        return Some(ReceiverType::from_raw(resolved_type.to_owned()));
+    }
+
+    if is_call {
+        // Call receiver the CST engine couldn't type: global fn return type,
+        // then callable-param inference (`val make: () -> Foo` + `make().`).
+        if let Some(ret) = indexer.function_return_type(receiver, from_uri) {
+            return Some(ReceiverType::from_raw(ret.into_inner()));
         }
         let file = ensure_file_data(indexer, from_uri)?;
         let ret = infer_callable_param_return_type(&file.lines, receiver)?;
         return Some(ReceiverType::from_raw(ret));
     }
 
-    // Non-call expression: smart-cast, chain, variable, type name.
+    // Non-call expression: smart-cast, variable, type name.
     if let Some(line) = cursor_line {
         let pos = Position::new(line, 0);
         if let Some(rt) = infer_receiver_type_at(indexer, receiver, from_uri, pos) {
             return Some(rt);
-        }
-    }
-
-    if receiver.contains('.') {
-        if let Some(raw) = resolve_dotted_receiver_type(indexer, receiver, from_uri) {
-            return Some(ReceiverType::from_raw(raw));
         }
     }
 
@@ -721,54 +718,12 @@ fn resolve_dot_receiver_type(
     }
 
     // Fallback: function defined in scope (e.g. bare `productFlow` written without `()`).
-    if let Some(ret) = find_fun_return_type_by_name(indexer, receiver) {
-        return Some(ReceiverType::from_raw(ret));
+    if let Some(ret) = indexer.function_return_type(receiver, from_uri) {
+        return Some(ReceiverType::from_raw(ret.into_inner()));
     }
     let file = ensure_file_data(indexer, from_uri)?;
     let ret = infer_callable_param_return_type(&file.lines, receiver)?;
     Some(ReceiverType::from_raw(ret))
-}
-
-/// Iteratively resolve the type of a dot-separated receiver chain.
-/// e.g. "MaterialTheme.colorScheme" -> "ColorScheme"
-fn resolve_dotted_receiver_type(indexer: &Indexer, path: &str, uri: &Url) -> Option<String> {
-    let segments: Vec<&str> = path.split('.').collect();
-    if segments.is_empty() {
-        return None;
-    }
-
-    let first = segments[0];
-    let mut current_type = if let Some(type_name) = infer_variable_type_raw(indexer, first, uri) {
-        type_name
-    } else if first.starts_with(|c: char| c.is_uppercase()) {
-        first.to_string()
-    } else {
-        return None;
-    };
-
-    for &segment in &segments[1..] {
-        let current_base = current_type.split('<').next()?.trim();
-        let current_base_leaf = current_base
-            .rsplit('.')
-            .next()?
-            .trim()
-            .trim_end_matches('?');
-
-        let clean_segment = segment.trim_end_matches("()").trim();
-
-        if let Some(next_type) = find_field_type_in_class(indexer, current_base_leaf, clean_segment)
-        {
-            current_type = next_type;
-        } else if let Some(next_type) =
-            find_method_return_type(indexer, current_base_leaf, clean_segment, Some(uri))
-        {
-            current_type = next_type;
-        } else {
-            return None;
-        }
-    }
-
-    Some(current_type)
 }
 
 /// Extract the return type from a Kotlin function-type string.
@@ -785,29 +740,17 @@ fn extract_fn_type_return(fn_type: &str) -> Option<String> {
     Some(ret.to_owned())
 }
 
-/// Resolve a dotted receiver chain to a `ReceiverType`.
-///
-/// Thin wrapper over `resolve_dotted_receiver_type` that skips contextual
-/// keywords and converts the result to `ReceiverType`.  Exported for tests.
-#[cfg(test)]
-pub(crate) fn resolve_chain_receiver(
-    indexer: &Indexer,
-    chain: &str,
-    from_uri: &Url,
-) -> Option<ReceiverType> {
-    const UNCHAINABLE: &[&str] = &["this", "super", "it", "self"];
-    let head = chain.split('.').next()?;
-    if UNCHAINABLE.contains(&head) {
-        return None;
-    }
-    resolve_dotted_receiver_type(indexer, chain, from_uri).map(ReceiverType::from_raw)
-}
-
 fn resolve_dot_receiver_file(
     indexer: &Indexer,
     outer_type: &str,
     from_uri: &Url,
 ) -> Option<String> {
+    // A receiver type declared only in a not-yet-materialized JAR is
+    // invisible to `resolve_symbol_no_rg` (Tier-2 `jar_definitions` reads) —
+    // promote it first, or this returns `None` and BOTH direct-member and
+    // inherited-member completion are skipped wholesale for that receiver.
+    let mut unbudgeted = usize::MAX;
+    crate::indexer::jar::ensure_jar_definitions_for(indexer, outer_type, &mut unbudgeted);
     Some(
         resolve_symbol_no_rg(indexer, outer_type, from_uri)
             .first()?
@@ -1024,6 +967,112 @@ fn symbols_from_nested_type(
             .map(|symbol| completion_item_for_nested_symbol(indexer, symbol, file_uri, caller))
             .collect();
     };
+
+    // Compiled-JAR synthetic `FileData` gives every symbol a one-line range
+    // (line = its index), so the range-nesting scan below finds nothing
+    // inside a class — its span has no interior. The sidecar instead records
+    // each member's declaring class in `container`; use that as the
+    // membership signal for jar-backed files. Without this, every member of
+    // a compiled-only library class (no sources JAR published) is invisible
+    // to member enumeration, while name-keyed lookups (hover) keep working.
+    //
+    // `container` holds the declaring class's SIMPLE name, and one synthetic
+    // FileData spans the whole JAR — so two top-level classes sharing a
+    // simple name in different packages of one JAR would have their members
+    // merged. Disambiguate with the per-symbol package side table
+    // (`jar_symbol_packages`, index-aligned with `symbols`): members must
+    // match the package of the `inner_name` class the caller means — the
+    // caller's explicit import when present, the declaring class symbol's
+    // own package otherwise. Also drop deprecated members: JAR symbols are
+    // always `Public`, so the shared visibility filter below never fires
+    // for them, and project policy hides deprecated library symbols from
+    // completion entirely (same as the direct jar-definitions paths).
+    if indexer.jar_files.contains_key(file_uri) {
+        let member_indices: Vec<usize> = {
+            let symbol_packages = indexer.jar_symbol_packages.get(file_uri);
+            let package_at = |index: usize| -> Option<&str> {
+                symbol_packages
+                    .as_ref()
+                    .and_then(|packages| packages.value().get(index))
+                    .map(String::as_str)
+            };
+            // Candidate members: container match + the shared symbol filters.
+            let candidate_indices: Vec<usize> = symbols
+                .iter()
+                .enumerate()
+                .filter(|(_, symbol)| symbol.container.as_deref() == Some(inner_name))
+                .filter(|(_, symbol)| !symbol.deprecated)
+                .filter(|(_, symbol)| symbol.visibility != Visibility::Private)
+                .map(|(index, _)| index)
+                .collect();
+
+            // Package disambiguation via IMPORT-COVERAGE semantics
+            // (`ImportEntry::covers`), which — unlike a naive
+            // `full_path.strip_suffix(".Name")` — understands nested-class
+            // imports (`import com.example.Outer.Config` covers `Config`
+            // declared in package `com.example`). Members the caller's
+            // import covers win; when the import covers NONE of them (or no
+            // import names this class), fall back to the declaring class
+            // symbol's own package so the enumeration never goes empty just
+            // because the import points at a different library's same-named
+            // class.
+            let caller_imports: Vec<crate::types::ImportEntry> = caller
+                .uri
+                .and_then(|caller_uri| {
+                    indexer.files.get(caller_uri).map(|caller_file| {
+                        caller_file
+                            .imports
+                            .iter()
+                            .filter(|import| !import.is_star && import.local_name == inner_name)
+                            .cloned()
+                            .collect()
+                    })
+                })
+                .unwrap_or_default();
+            let import_covered: Vec<usize> = candidate_indices
+                .iter()
+                .copied()
+                .filter(|index| {
+                    package_at(*index).is_some_and(|member_package| {
+                        caller_imports
+                            .iter()
+                            .any(|import| import.covers(member_package, inner_name))
+                    })
+                })
+                .collect();
+            if !import_covered.is_empty() {
+                import_covered
+            } else {
+                let declaring_class_package = symbols
+                    .iter()
+                    .position(|symbol| std::ptr::eq(symbol, type_symbol))
+                    .and_then(package_at)
+                    .map(str::to_owned);
+                candidate_indices
+                    .into_iter()
+                    .filter(|index| {
+                        match (declaring_class_package.as_deref(), package_at(*index)) {
+                            (Some(class_package), Some(member_package)) => {
+                                class_package == member_package
+                            }
+                            // Older cache entries without per-symbol
+                            // packages: keep the container match rather
+                            // than dropping all.
+                            _ => true,
+                        }
+                    })
+                    .collect()
+            }
+            // `symbol_packages` dashmap guard drops here — before the item
+            // construction below touches the indexer again.
+        };
+        return member_indices
+            .into_iter()
+            .map(|index| {
+                completion_item_for_nested_symbol(indexer, &symbols[index], file_uri, caller)
+            })
+            .collect();
+    }
 
     let type_start = type_symbol.range.start;
     let type_end = type_symbol.range.end;
@@ -1245,6 +1294,20 @@ struct BareCompletionWalk<'a> {
     from_uri: &'a Url,
     cursor_line: Option<u32>,
     completer: BareCompleter,
+    /// Promotion budget consumed so far by this request — see
+    /// `MAX_SYNC_JAR_PROMOTIONS_PER_COMPLETION`. Incremented once a
+    /// candidate is confirmed Tier-1-only and not-yet-Tier-2 (not when it's
+    /// checked-and-skipped as already-materialized or not JAR-sourced at
+    /// this call site), but NOT a guarantee real sidecar IPC happened for
+    /// every increment — `ensure_jar_materialized` can still no-op
+    /// internally (a previously-failed candidate, or lock contention) after
+    /// the budget for it was already reserved. Treat this as "how much
+    /// budget this request has spent," not "how many real promotions ran."
+    jar_promotion_attempts: usize,
+    /// Total jar materializations this request triggered via the
+    /// cross-package walk (cache-backed included) — see
+    /// `MAX_CACHE_BACKED_MATERIALIZATIONS_PER_COMPLETION`.
+    jar_materializations: usize,
 }
 
 impl<'a> BareCompletionWalk<'a> {
@@ -1262,6 +1325,8 @@ impl<'a> BareCompletionWalk<'a> {
             from_uri,
             cursor_line,
             completer: BareCompleter::new(prefix, snippets, annotation_only),
+            jar_promotion_attempts: 0,
+            jar_materializations: 0,
         }
     }
 
@@ -1299,7 +1364,7 @@ impl<'a> BareCompletionWalk<'a> {
         let Some(package_name) = self.current_package_name() else {
             return;
         };
-        let Some(package_uris) = self.indexer.packages.get(&package_name) else {
+        let Some(package_ids) = self.indexer.packages.get(&package_name) else {
             return;
         };
         let caller_source_set = self
@@ -1309,11 +1374,15 @@ impl<'a> BareCompletionWalk<'a> {
             .map(|file| file.source_set)
             .unwrap_or_default();
 
-        for package_uri in package_uris.iter() {
+        for package_id in package_ids.iter() {
+            let Some(package_url) = self.indexer.file_table.url(*package_id) else {
+                continue;
+            };
+            let package_uri = package_url.as_str();
             if package_uri == self.from_uri.as_str() {
                 continue;
             }
-            let Some(file) = self.indexer.files.get(package_uri.as_str()) else {
+            let Some(file) = self.indexer.files.get(package_uri) else {
                 continue;
             };
             if file.source_set == SourceSet::Test && caller_source_set != SourceSet::Test {
@@ -1326,7 +1395,7 @@ impl<'a> BareCompletionWalk<'a> {
                     1,
                     self.prefix,
                     &symbol.detail,
-                    Some(serde_json::json!({DATA_URI: package_uri.as_str(), DATA_LINE: symbol.selection_start(), DATA_COL: symbol.selection_range.start.character})),
+                    Some(serde_json::json!({DATA_URI: package_uri, DATA_LINE: symbol.selection_start(), DATA_COL: symbol.selection_range.start.character})),
                 );
             }
         }
@@ -1375,14 +1444,17 @@ impl<'a> BareCompletionWalk<'a> {
             if !import.is_star {
                 continue;
             }
-            let Some(pkg_uris) = self.indexer.packages.get(&import.full_path) else {
+            let Some(pkg_ids) = self.indexer.packages.get(&import.full_path) else {
                 continue;
             };
-            for pkg_uri in pkg_uris.iter() {
-                if pkg_uri.as_str() == self.from_uri.as_str() {
+            for pkg_id in pkg_ids.iter() {
+                let Some(pkg_url) = self.indexer.file_table.url(*pkg_id) else {
+                    continue;
+                };
+                if pkg_url.as_str() == self.from_uri.as_str() {
                     continue; // already covered by collect_local_file
                 }
-                let Some(file) = self.indexer.files.get(pkg_uri.as_str()) else {
+                let Some(file) = self.indexer.files.get(pkg_url.as_str()) else {
                     continue;
                 };
                 if file.source_set == crate::types::SourceSet::Test
@@ -1410,7 +1482,7 @@ impl<'a> BareCompletionWalk<'a> {
                         self.prefix,
                         &symbol.detail,
                         Some(serde_json::json!({
-                            DATA_URI: pkg_uri.as_str(),
+                            DATA_URI: pkg_url.as_str(),
                             DATA_LINE: symbol.selection_start(),
                             DATA_COL: symbol.selection_range.start.character
                         })),
@@ -1458,6 +1530,59 @@ impl<'a> BareCompletionWalk<'a> {
         };
         if self.completer.seen.contains(bare_name) {
             return;
+        }
+
+        // Tier-1-only candidate (in jar_bare_names but not yet in
+        // jar_definitions): attempt promotion now. Candidates reaching this
+        // point have already passed the prefix/score filter, so this is
+        // bounded by what's actually going to be rendered — unlike full-cache
+        // per-keystroke enumeration, which stays Tier-1-only per the design.
+        // Cheap enough to do eagerly here rather than waiting for a separate
+        // completionItem/resolve round-trip. `add_cross_package_symbol` below
+        // reads `jar_definitions`/`jar_files` after this call, so a
+        // successful promotion here does make the item's `detail` real; a
+        // failed/timed-out promotion falls back to the name-only/FQN-only
+        // stub already offered via Step 3's merge (graceful degradation,
+        // Task 5).
+        //
+        // Bounded to `MAX_SYNC_JAR_PROMOTIONS_PER_COMPLETION` attempts per
+        // request: each attempt is a real, blocking sidecar IPC round trip,
+        // and a short/ambiguous prefix can match many Tier-1-only candidates
+        // at once (Task 12 review finding — measured ~17 sequential
+        // promotions / ~20s for one request against a real Gradle cache).
+        // Candidates beyond the cap still get offered by name via the
+        // fallthrough below; they just don't get real `detail` on this
+        // request. The accessor spends from `remaining` only on genuinely
+        // blocking (cache-miss) promotions — free cache-backed promotions
+        // don't count against the request-wide cap — and the spent delta is
+        // charged back onto the counter, mirroring `collect_this_extensions`.
+        // Review finding on this migration: with cache-backed promotions no
+        // longer charged against the blocking-IPC cap, this site — the
+        // largest fan-out in the codebase (every prefix-matching bare name
+        // in one request) — needs its own ceiling, or a 1-char prefix on a
+        // fresh process with a warm disk cache materializes dozens-to-
+        // hundreds of jars in one keystroke, clawing back the lazy-loading
+        // memory win in a single request. Also restores the pre-migration
+        // early-out: a name that already has materialized definitions never
+        // spends promotion effort at all.
+        if !self.indexer.jar_definitions.contains_key(bare_name)
+            && self.jar_materializations < MAX_CACHE_BACKED_MATERIALIZATIONS_PER_COMPLETION
+        {
+            let materialized_before = self.indexer.materialized.len();
+            let cap_remaining =
+                MAX_SYNC_JAR_PROMOTIONS_PER_COMPLETION.saturating_sub(self.jar_promotion_attempts);
+            let mut remaining = cap_remaining;
+            crate::indexer::jar::ensure_jar_definitions_for(
+                self.indexer,
+                bare_name,
+                &mut remaining,
+            );
+            self.jar_promotion_attempts += cap_remaining - remaining;
+            self.jar_materializations += self
+                .indexer
+                .materialized
+                .len()
+                .saturating_sub(materialized_before);
         }
 
         let fully_qualified_names = fqns_for_name(self.indexer, bare_name);
@@ -1523,15 +1648,63 @@ impl<'a> BareCompletionWalk<'a> {
                 .lines
                 .make_import_edit(fully_qualified_name, current_context.needs_semicolons)]
         });
-        let detail = needs_import.then(|| qualifier.to_string());
+
+        // If this candidate is backed by an already-materialized JAR symbol
+        // (either it was never Tier-1-only, or the promotion attempt in
+        // `add_cross_package_name` just succeeded), use its real signature
+        // as `detail` and attach the same resolve-time `data` the Tier 0/1
+        // paths use (`collect_local_file`/`collect_same_package`), so
+        // `completionItem/resolve` can enrich its documentation too. Falls
+        // back to the import-qualifier-only stub when there's no
+        // materialized JAR symbol for this FQN yet (promotion failed or
+        // hasn't happened, or this candidate isn't JAR-sourced at all).
+        // The package hint that keeps identically-named candidates (five
+        // `Modifier`s from five packages) tellable apart. Two delivery
+        // routes, chosen by the client's `labelDetailsSupport` capability:
+        // - supported (VS Code, blink.cmp): the LSP-standard
+        //   `labelDetails.description` slot, rendered dimmed next to the
+        //   label in the completion list; `detail` stays untouched.
+        // - not supported (Helix — its menu renders label + kind only — and
+        //   the CLI path): fold the package into a materialized candidate's
+        //   signature `detail` as a Kotlin-style `package …` header line,
+        //   which such clients DO render in their doc popup. Unmaterialized
+        //   stubs already carry the package as their whole `detail`.
+        //   `resolve_completion_item` preserves the header line when it
+        //   re-derives `detail` from the enriched signature.
+        let supports_label_details = self
+            .indexer
+            .client_label_details_support
+            .load(std::sync::atomic::Ordering::Relaxed);
+        let (detail, item_data) = match jar_symbol_detail(self.indexer, bare_name, qualifier) {
+            Some((Some(signature), data)) if !supports_label_details && !qualifier.is_empty() => {
+                (Some(format!("package {qualifier}\n{signature}")), data)
+            }
+            Some(pair) => pair,
+            // Stub: no materialized symbol behind this FQN (yet). Carry the
+            // FQN so `completionItem/resolve` can materialize the ONE
+            // candidate the user actually selects and surface its real
+            // signature + docs — without this the stub resolves to nothing
+            // ("package but no signature/docs", the live report).
+            None => (
+                needs_import.then(|| qualifier.to_string()),
+                Some(serde_json::json!({ DATA_FQN: fully_qualified_name })),
+            ),
+        };
+        let label_details =
+            (supports_label_details && !qualifier.is_empty()).then(|| CompletionItemLabelDetails {
+                detail: None,
+                description: Some(qualifier.to_string()),
+            });
 
         self.completer.items.push(CompletionItem {
             label: bare_name.to_string(),
             kind: Some(CompletionItemKind::CLASS),
+            label_details,
             filter_text: Some(bare_name.to_string()),
             sort_text: Some(format!("2{}:{}", score, bare_name.to_lowercase())),
             detail,
             additional_text_edits,
+            data: item_data,
             ..Default::default()
         });
     }
@@ -1570,6 +1743,60 @@ impl<'a> BareCompletionWalk<'a> {
     /// Example: inside `DashboardProductsViewModel`, `viewModelScope` is available
     /// because `val ViewModel.viewModelScope` is an extension property on `ViewModel`
     /// and `DashboardProductsViewModel` inherits from it.
+    /// Inherited REGULAR members (methods/properties of ancestor classes) for
+    /// bare completion inside a class body — `setState` typed inside a
+    /// subclass of a library `MviViewModel` must complete without a receiver.
+    /// Dot-completion has had this since `collect_inherited_dot_completion_items`;
+    /// bare completion never did (its other collectors are file/package/
+    /// import/extension-scoped, and the cross-package path deliberately
+    /// excludes lowercase member names). The hierarchy walk promotes
+    /// Tier-1-only ancestor JARs via `supertype_targets`' gate, and
+    /// `symbols_from_nested_type` enumerates jar-backed ancestors by
+    /// `container` (synthetic one-line ranges can't nest).
+    fn collect_inherited_members(&mut self) {
+        if self.completer.annotation_only {
+            return;
+        }
+        let cursor_line = match self.cursor_line {
+            Some(line) => line,
+            None => return,
+        };
+        let enclosing_class = match self.indexer.enclosing_class_at(self.from_uri, cursor_line) {
+            Some(name) => name,
+            None => return,
+        };
+        let class_locations = resolve_symbol_no_rg(self.indexer, &enclosing_class, self.from_uri);
+        let class_uri = match class_locations.into_iter().next() {
+            Some(location) => location.uri.to_string(),
+            None => return,
+        };
+        let caller = CallerContext {
+            uri: Some(self.from_uri.as_str()),
+            cursor_line: self.cursor_line,
+        };
+        let inherited = walk_hierarchy(
+            self.indexer,
+            &enclosing_class,
+            &class_uri,
+            caller,
+            4,
+            |index, class_name, ancestor_uri, hierarchy_caller| {
+                symbols_from_nested_type(index, ancestor_uri, class_name, hierarchy_caller)
+            },
+        );
+        for item in inherited {
+            // Unlike external dot-access, `this`-context completion inside
+            // the subclass may see protected members — only private is
+            // excluded (already filtered by `symbols_from_nested_type`).
+            if match_score(&item.label, self.prefix).is_none() {
+                continue;
+            }
+            if self.completer.seen.insert(item.label.clone()) {
+                self.completer.items.push(item);
+            }
+        }
+    }
+
     fn collect_this_extensions(&mut self) {
         // Only Kotlin files can consume Kotlin extension functions.
         if crate::Language::from_path(self.from_uri.as_str()) != crate::Language::Kotlin {
@@ -1635,7 +1862,17 @@ impl<'a> BareCompletionWalk<'a> {
         // Use the reverse index: O(ancestors × entries_per_receiver) instead of O(all_files).
         let prefix = self.prefix;
         for ancestor in ancestor_names.iter() {
-            let Some(entries) = self.indexer.extension_by_receiver.get(ancestor) else {
+            // Atomic promote+read via the accessor. Shares the per-request
+            // blocking-IPC cap with the cross-package promotion below: the
+            // accessor spends from `remaining`, and the delta is charged
+            // back onto the request-wide counter.
+            let cap_remaining =
+                MAX_SYNC_JAR_PROMOTIONS_PER_COMPLETION.saturating_sub(self.jar_promotion_attempts);
+            let mut remaining = cap_remaining;
+            let entries =
+                crate::indexer::jar::extension_entries_for(self.indexer, ancestor, &mut remaining);
+            self.jar_promotion_attempts += cap_remaining - remaining;
+            let Some(entries) = entries else {
                 continue;
             };
             for entry in entries.iter() {
@@ -1682,6 +1919,44 @@ impl<'a> BareCompletionWalk<'a> {
     }
 }
 
+/// Real `detail` text + resolve-time `data` for a cross-package candidate
+/// backed by an already-materialized JAR symbol, or `None` when there isn't
+/// one yet (Tier-1-only and promotion failed/didn't run, or this candidate
+/// isn't JAR-sourced at all — the caller falls back to the import-qualifier
+/// stub in that case).
+///
+/// Looks up `jar_definitions` for `bare_name`, picks the `Location` whose
+/// real per-symbol package (`jar_symbol_package`, from the `jar_symbol_packages`
+/// side table) matches `package` — disambiguating when the same bare name
+/// exists in more than one JAR/package — then reads the real signature text
+/// from that JAR's synthetic `FileData` (`jar_files`), mirroring how
+/// `collect_local_file`/`collect_same_package` build `detail` from
+/// `SymbolEntry::detail` and attach `DATA_URI`/`DATA_LINE`/`DATA_COL` for
+/// `completionItem/resolve` doc enrichment.
+pub(crate) fn jar_symbol_detail(
+    indexer: &Indexer,
+    bare_name: &str,
+    package: &str,
+) -> Option<(Option<String>, Option<serde_json::Value>)> {
+    let locs = indexer.jar_definitions.get(bare_name)?;
+    let loc: Location = locs
+        .iter()
+        .find(|loc| jar_symbol_package(indexer, loc).as_deref() == Some(package))?
+        .clone();
+    drop(locs);
+
+    let uri_str = loc.uri.as_str();
+    let file = indexer.jar_files.get(uri_str)?;
+    let symbol = file.symbols.get(loc.range.start.line as usize)?;
+    let detail = (!symbol.detail.is_empty()).then(|| symbol.detail.clone());
+    let data = serde_json::json!({
+        DATA_URI: uri_str,
+        DATA_LINE: symbol.selection_start(),
+        DATA_COL: symbol.selection_range.start.character,
+    });
+    Some((detail, Some(data)))
+}
+
 /// Bare-word completion: match-scored across local file + same-package + index.
 ///
 /// Case heuristic:
@@ -1711,6 +1986,11 @@ pub(crate) fn complete_bare(
     );
     completion_walk.collect_local_file();
     log::debug!("bare: local_file {}ms", start_time.elapsed().as_millis());
+    completion_walk.collect_inherited_members();
+    log::debug!(
+        "bare: inherited_members {}ms",
+        start_time.elapsed().as_millis()
+    );
     completion_walk.collect_same_package();
     log::debug!("bare: same_package {}ms", start_time.elapsed().as_millis());
     completion_walk.collect_star_imported_functions();
@@ -1868,44 +2148,6 @@ fn trigger_parameter_hints() -> tower_lsp::lsp_types::Command {
         title: "triggerParameterHints".into(),
         command: "editor.action.triggerParameterHints".into(),
         arguments: None,
-    }
-}
-
-// ─── impl Indexer wrappers ────────────────────────────────────────────────────
-
-#[allow(dead_code)]
-impl crate::indexer::Indexer {
-    pub(crate) fn complete_dot(
-        &self,
-        receiver: &str,
-        from_uri: &Url,
-        snippets: bool,
-    ) -> Vec<CompletionItem> {
-        complete_dot(self, receiver, from_uri, snippets, None)
-    }
-    pub(crate) fn complete_bare(
-        &self,
-        prefix: &str,
-        from_uri: &Url,
-        snippets: bool,
-        annotation_only: bool,
-    ) -> (Vec<CompletionItem>, bool) {
-        complete_bare(self, prefix, from_uri, snippets, annotation_only, None)
-    }
-    pub(super) fn complete_super_w(&self, from_uri: &Url, snippets: bool) -> Vec<CompletionItem> {
-        complete_super(self, from_uri, snippets)
-    }
-    pub(super) fn symbols_from_uri_as_completions_w(&self, file_uri: &str) -> Vec<CompletionItem> {
-        symbols_from_uri_as_completions(self, file_uri)
-    }
-    pub(super) fn build_completion_items_w(&self, file_uri: &str) -> Vec<CompletionItem> {
-        build_completion_items(self, file_uri)
-    }
-    pub(crate) fn symbols_from_uri_as_completions_pub(
-        &self,
-        file_uri: &str,
-    ) -> Vec<CompletionItem> {
-        symbols_from_uri_as_completions_pub(self, file_uri)
     }
 }
 
