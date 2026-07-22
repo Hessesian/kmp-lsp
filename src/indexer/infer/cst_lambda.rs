@@ -443,6 +443,7 @@ pub(super) fn cst_lambda_param_type_at(
 ///
 /// Field-compatible with the completion feature's `LambdaScope`; the feature
 /// converts each entry without re-deriving anything.
+#[derive(Debug)]
 pub(crate) struct LambdaScopeInfo {
     /// Type of the implicit `it` parameter, when the enclosing call gives one.
     pub it_type: Option<String>,

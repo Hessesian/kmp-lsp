@@ -30,8 +30,8 @@ use super::cst_lambda::{
 #[cfg(test)]
 #[allow(unused_imports)]
 pub(super) use super::cst_lambda::{
-    classify_this_lambda_context, cst_lambda_param_type_via_call, is_inside_receiver_lambda,
-    lambda_before_brace_context, ThisLambdaCtx,
+    classify_this_lambda_context, cst_lambda_param_type_via_call, cst_lambda_scopes,
+    is_inside_receiver_lambda, lambda_before_brace_context, LambdaScopeInfo, ThisLambdaCtx,
 };
 use super::speculative::lambda_doc_at;
 use super::type_subst::is_generic_param;

@@ -1942,6 +1942,35 @@ fn all_lambda_receivers_at_resolves_multiline_named_arg_call_header() {
     );
 }
 
+#[test]
+fn lambda_scope_label_resolves_across_multiline_named_arg_call_header() {
+    // Regression: LambdaScopeInfo.label (which powers `this@Label` completion
+    // resolution, completion_context.rs:256) is built from the SAME widened
+    // lambda_before_brace_context span as the this-context fix above. Without
+    // the widening, a multi-line call header leaves before_brace as just ")"
+    // -- no identifier -- so lambda_label silently returns None and
+    // `this@Builder` inside the lambda would never resolve.
+    let sig_src = "class Scope\nfun Builder(padding: Int, content: Scope.(item: Int) -> Unit) {}\n";
+    let code_src = "Builder(\n    padding = 1,\n) { item ->\n    item\n}\n";
+    let (u, idx, _lines) = indexed_with_live("/t.kt", sig_src, code_src);
+    let doc = idx.live_doc(&u).expect("live doc");
+    let pos = crate::types::CursorPos {
+        line: 3,
+        utf16_col: 4,
+    };
+    let node = super::cursor_node_at(&doc, pos).expect("cursor node");
+    let scopes = super::cst_lambda_scopes(node, &doc, &idx, &u);
+    assert_eq!(
+        scopes
+            .iter()
+            .filter_map(|s| s.label.clone())
+            .next()
+            .as_deref(),
+        Some("Builder"),
+        "expected label Some(\"Builder\") from the multi-line call header, got: {scopes:?}"
+    );
+}
+
 // ── Generic extension function type substitution via dot chain ────────────────
 // See: https://github.com/Hessesian/kmp-lsp/issues/ (trailing comma + T subst bugs)
 
