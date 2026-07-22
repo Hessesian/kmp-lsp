@@ -3,9 +3,7 @@
 use tower_lsp::lsp_types::Url;
 
 use crate::indexer::{Indexer, NodeExt};
-use crate::queries::{
-    KIND_ANNOTATED_LAMBDA, KIND_CALL_EXPR, KIND_CALL_SUFFIX, KIND_LAMBDA_LIT, KIND_VALUE_ARG,
-};
+use crate::queries::{KIND_CALL_SUFFIX, KIND_LAMBDA_LIT, KIND_VALUE_ARG};
 use crate::types::CursorPos;
 use crate::StrExt;
 
@@ -354,22 +352,16 @@ pub(crate) fn cursor_node_at(
         .descendant_for_point_range(point, point)
 }
 
-/// If `lambda` is the trailing lambda of a call (`Foo(args) { … }` — CST shape
-/// `lambda_literal` → `annotated_lambda` → `call_suffix` → `call_expression`),
-/// return that call_expression's start byte. `None` for named-argument lambdas
-/// (`Foo(content = { … })`, handled separately), lambdas not attached to any
-/// call, etc.
+/// If `lambda` is part of an enclosing call (trailing or named-argument —
+/// `Foo(args) { … }` / `Foo(content = { … })`), that call_expression's start
+/// byte. Delegates to [`NodeExt::enclosing_call_expression`], which is more
+/// general than a fixed parent-chain shape check: it walks up regardless of
+/// the exact intermediate nesting, bailing only if another `lambda_literal`
+/// or the source root is hit first.
 fn enclosing_call_expression_start(lambda: tree_sitter::Node<'_>) -> Option<usize> {
-    let annotated = lambda.parent()?;
-    if annotated.kind() != KIND_ANNOTATED_LAMBDA {
-        return None;
-    }
-    let call_suffix = annotated.parent()?;
-    if call_suffix.kind() != KIND_CALL_SUFFIX {
-        return None;
-    }
-    let call_expr = call_suffix.parent()?;
-    (call_expr.kind() == KIND_CALL_EXPR).then(|| call_expr.start_byte())
+    lambda
+        .enclosing_call_expression()
+        .map(|call| call.start_byte())
 }
 
 pub(super) fn lambda_before_brace_context(
@@ -529,10 +521,18 @@ fn lambda_scope_info(
     if named_params.is_empty() && it_type.is_none() {
         return None;
     }
+    // CST-based first (robust to multi-line call headers with named args before
+    // the trailing lambda — same reasoning as lambda_this_ctx's call_fn_name
+    // path); the text-based lambda_label is only a fallback for lambdas whose
+    // enclosing call_expression can't be found this way.
+    let label = lambda
+        .enclosing_call_expression()
+        .and_then(|call| call.call_fn_name(&doc.bytes))
+        .or_else(|| lambda_label(&before_brace));
     Some(LambdaScopeInfo {
         it_type,
         named_params,
-        label: lambda_label(&before_brace),
+        label,
     })
 }
 
