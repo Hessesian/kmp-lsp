@@ -243,7 +243,56 @@ pub(super) fn resolve_callee_chain(
             if segments.is_empty() {
                 return None;
             }
-            forward_resolve_segments(&segments, bytes, deps, uri, SuffixStrictness::LeakReceiver)
+            // Mirror resolve_call_expr_type's pre-slice (this same file,
+            // ~line 436-449): when the final segment is a plain
+            // (non-scope-function) method name -- e.g. "map" in
+            // `container.items.map { }` -- it is the method being called
+            // with the trailing lambda, not itself a member access to fold
+            // into the receiver's type, so exclude it before resolving.
+            //
+            // Scope functions (let/also/run/apply/takeIf/takeUnless) are
+            // deliberately NOT excluded here, exactly like
+            // resolve_call_expr_type's own SCOPE_FUNCTIONS check gates its
+            // pre-slice: forward_resolve_segments already flows the
+            // receiver type through a scope-function Suffix unchanged, and
+            // that full-list walk also carries side effects tied to
+            // processing that exact segment (e.g. `?.`-driven nullability
+            // stripping) that only fire while it is actually visited.
+            // Slicing it away unconditionally silently drops those side
+            // effects -- caught by running the full suite after the initial
+            // unconditional-slice attempt, which broke
+            // `nullable_let_chain_it_type_resolves`,
+            // `this_type_apply_on_constructor_call_infers_receiver`, and 7
+            // other scope-function-terminated chain tests.
+            //
+            // Do NOT push this exclusion into
+            // forward_resolve_segments/resolve_segments_type themselves --
+            // their "resolve every segment I'm handed" contract is relied on
+            // elsewhere (see mod_tests.rs's
+            // unresolved_final_suffix_fails_the_strict_walk) and by
+            // resolve_call_expr_type's own already-correct pre-sliced call.
+            match segments.last() {
+                Some(NavSegment::Suffix { name, .. })
+                    if !SCOPE_FUNCTIONS.contains(&name.as_str()) =>
+                {
+                    let method_name = name.clone();
+                    let receiver_type = resolve_segments_type(
+                        &segments[..segments.len() - 1],
+                        bytes,
+                        deps,
+                        uri,
+                        SuffixStrictness::LeakReceiver,
+                    )?;
+                    Some((receiver_type, method_name))
+                }
+                _ => forward_resolve_segments(
+                    &segments,
+                    bytes,
+                    deps,
+                    uri,
+                    SuffixStrictness::LeakReceiver,
+                ),
+            }
         }
         k if k == KIND_SIMPLE_IDENT || k == KIND_TYPE_IDENT => {
             let name = callee.utf8_text_owned(bytes)?;

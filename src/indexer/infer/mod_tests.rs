@@ -161,6 +161,68 @@ fn unresolved_final_suffix_fails_the_strict_walk() {
     );
 }
 
+#[test]
+fn resolve_callee_chain_reports_receiver_type_before_the_final_method_not_its_return_type() {
+    use super::chain::resolve_callee_chain;
+
+    // `container.items.map` -- a nav_expr callee for `container.items.map { ... }`.
+    // resolve_callee_chain must report the type of `container.items` (Box<Thing>)
+    // as the receiver, and "map" as the method name -- NOT "map"'s own (here,
+    // deliberately wrong/unresolvable) return type folded into current_type.
+    let uri = test_url("/Chain.kt");
+    let deps = super::deps::TestDeps::new()
+        .with_var(uri.as_str(), "container", "Container")
+        .with_field("Container", "items", "Box<Thing>");
+    let doc = live_doc_for("fun f() { container.items.map { it } }\n");
+    let nav =
+        find_first_node_of_kind(doc.tree.root_node(), "navigation_expression").expect("nav node");
+
+    let result = resolve_callee_chain(nav, &doc.bytes, &deps, &uri);
+    assert_eq!(
+        result,
+        Some(("Box<Thing>".to_owned(), "map".to_owned())),
+        "receiver type must be Box<Thing> (the type before .map), with \"map\" \
+         as the separately-reported method name -- got {result:?}"
+    );
+}
+
+/// Supplementary pin for the same bug as the test above, using a receiver whose
+/// final segment ("map") IS indexed as a real (generic, unresolvable) method --
+/// this is what actually exercises `resolve_member_type_on`'s generic-param
+/// fallback (`first_type_arg_raw`) and corrupts `current_type` pre-fix. The
+/// verbatim brief test above happens to pass even before the fix, because
+/// `TestDeps` there has no "map" method registered at all, so
+/// `resolve_member_type_on` returns `None` cleanly and `LeakReceiver` lets the
+/// type flow through unchanged by coincidence -- it does not exercise the
+/// corruption path. This test does, matching the live-probed Flow<T>.map bug:
+/// pre-fix this resolves to `Some(("Thing", "map"))` (the corrupted, unwrapped
+/// element type); post-fix it must be `Some(("Box<Thing>", "map"))`.
+#[test]
+fn resolve_callee_chain_does_not_corrupt_receiver_when_final_method_is_indexed_and_generic() {
+    use super::chain::resolve_callee_chain;
+
+    let uri = test_url("/ChainIndexedMap.kt");
+    let deps = super::deps::TestDeps::new()
+        .with_var(uri.as_str(), "container", "Container")
+        .with_field("Container", "items", "Box<Thing>")
+        // "map" is indexed on Box, returning its own unresolved generic param "T"
+        // (no `with_class_params` registered for "Box", so the type-arg subst is
+        // empty and "T" stays a generic placeholder -- forcing the
+        // `first_type_arg_raw` fallback in `resolve_member_type_on`).
+        .with_method_return_for_type("Box", "map", "T");
+    let doc = live_doc_for("fun f() { container.items.map { it } }\n");
+    let nav =
+        find_first_node_of_kind(doc.tree.root_node(), "navigation_expression").expect("nav node");
+
+    let result = resolve_callee_chain(nav, &doc.bytes, &deps, &uri);
+    assert_eq!(
+        result,
+        Some(("Box<Thing>".to_owned(), "map".to_owned())),
+        "receiver type must stay Box<Thing> (the type before .map) even though \
+         \"map\" is indexed with a generic return type -- got {result:?}"
+    );
+}
+
 /// Unknown ROOT decoy: `resolve_root_node_type` falls back to `Some(name)`
 /// for an unresolvable root ident; combined with a leaking walk this used to
 /// be able to resolve a nav to the literal root string. The strict nav arm
