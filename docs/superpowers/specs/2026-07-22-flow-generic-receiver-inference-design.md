@@ -120,13 +120,66 @@ let receiver_type = if callee.kind() == KIND_NAV_EXPR {
 } else { resolve_root_node_type(callee, bytes, deps, uri) };
 ```
 
-**Fix:** `forward_resolve_segments` must not resolve the *last* suffix into `current_type` when
-that suffix is itself the method being called with a trailing lambda — mirror
-`resolve_call_expr_type`'s exclusion. (Confirmed this is necessary independent of Bug 3: even with
-Bug 3 fixed, `map`'s own raw return type uses `map`'s *function-level* type parameter — commonly
-named `R` in the library source, distinct from `Flow`'s *class-level* `T` — so resolving "map" as
-a plain member access would still produce an unresolved placeholder even with class-level
-substitution working. The two bugs are independently necessary, not alternatives.)
+**Fix — corrected after independent critique found the first draft unsafe.** The first draft of
+this doc proposed changing `forward_resolve_segments`'s own core loop to skip its last segment.
+That is wrong and would have shipped a regression: `resolve_segments_type` (`chain.rs:546-566`,
+contract: "the final type after all segments") is a **thin wrapper that calls
+`forward_resolve_segments` on the exact list it's given, with no truncation of its own**.
+`resolve_call_expr_type` already calls `resolve_segments_type(&segments[..len-1], ...)` —
+pre-sliced *at the call site*. If `forward_resolve_segments` ALSO excluded its own last segment
+internally, `resolve_call_expr_type`'s already-correct call would double-truncate (resolving one
+segment short of where it should stop), and the existing test
+`unresolved_final_suffix_fails_the_strict_walk` (`src/indexer/infer/mod_tests.rs:133-162`, which
+calls `resolve_segments_type` directly and asserts the **last** segment IS attempted) would start
+failing. `forward_resolve_segments`/`resolve_segments_type`'s "resolve every segment I'm handed"
+contract must stay exactly as-is.
+
+The truncation belongs at the caller that currently lacks it: `resolve_callee_chain`'s
+`KIND_NAV_EXPR` arm (`chain.rs:241-247`), which today hands `forward_resolve_segments` the *full*
+segment list and is the one place actually trying to answer "receiver type right before this
+callee's own trailing call" — exactly the question `resolve_call_expr_type` already answers
+correctly for full call expressions, just not yet mirrored here for the bare-callee case:
+
+```rust
+k if k == KIND_NAV_EXPR => {
+    let segments = collect_nav_segments(callee, bytes);
+    if segments.len() < 2 {
+        return None; // no receiver to report for a bare/rootless callee
+    }
+    // Mirror resolve_call_expr_type's external pre-slice (chain.rs:436-449):
+    // the LAST segment is the method being called (`map`), not itself a
+    // member access to fold into the receiver's type.
+    let method_name = match segments.last()? {
+        NavSegment::Suffix { name, .. } => name.clone(),
+        _ => return None,
+    };
+    let receiver_type = resolve_segments_type(
+        &segments[..segments.len() - 1],
+        bytes,
+        deps,
+        uri,
+        SuffixStrictness::LeakReceiver,
+    )?;
+    Some((receiver_type, method_name))
+}
+```
+This keeps `forward_resolve_segments`/`resolve_segments_type` untouched and their existing test
+(`mod_tests.rs:133-162`) passing unchanged, while giving `resolve_callee_chain` the correct
+"receiver before the call" value for `userDataRepository.userData.map` (`Flow<UserData>`, not
+`map`'s own corrupted return type).
+
+**Which goal this actually fixes — corrected.** The first draft implied Bug 3 backs both Goal 1
+and Goal 2. It doesn't: Goal 1 (`.first()`) resolves through `resolve_call_expr_type`'s
+class-level path (`find_method_return_type_for_type` + `build_type_arg_subst`, which calls
+`find_class_type_params` — this is what Bug 3 fixes). Goal 2 (`.map { it }`) resolves through a
+**separate, independent mechanism** — `build_ext_fn_type_subst` (`type_subst.rs:108-150`), which
+derives its substitution purely from the extension function's own declared receiver-type text
+(`"Flow<T>"`) and its own `type_params` (`["T","R"]`), both already supplied by
+`find_fun_callable_info`'s existing, working JAR fallback — **it never calls
+`find_class_type_params` at all**. So Goal 2 needs only this fix (Bug 2); Bug 3 is what Goal 1
+needs. Both fixes are still required (this doc's "three independently-necessary" framing holds),
+but the internal wiring is per-goal, not shared — get this right when writing the plan so tests
+target the actual mechanism each goal depends on.
 
 ### Bug 3 — `find_class_type_params` never reads JAR-indexed classes
 
@@ -185,26 +238,59 @@ fn find_var_type(&self, var_name: &str, uri: &Url) -> Option<String> {
         .or_else(|| infer_variable_type_from_cst(self, var_name, uri))
 }
 ```
-`infer_variable_type_from_cst` already exists (used by `infer_receiver_type`) and is
-`pub(crate)`/reachable from `indexer.rs` today (confirm the exact visibility/import path when
-implementing — `infer_receiver_type` calls it directly in the same crate). This is a
-behavior-additive change: every existing caller of `find_var_type` that already succeeded via
-`infer_variable_type_raw` sees no change; only the previously-`None` chained-receiver case gains
-a real answer.
+**Verified visibility gap (caught by independent critique — not "confirm when implementing," a
+required action item):** `infer_variable_type_from_cst` (`src/resolver/infer.rs:431`) is
+module-private to `resolver::infer` — no `pub` at all. `infer_receiver_type` can call it because
+it lives in the same module; `find_var_type` (`src/indexer.rs`, a different module) cannot,
+as-is. **Fix 1 must also add `pub(crate)` to `infer_variable_type_from_cst`'s declaration** or it
+will not compile. This is small and mechanical but is a real, required part of the patch, not an
+implementation detail to sort out later.
 
-### Fix 2 — `src/indexer/infer/chain.rs`, `forward_resolve_segments`
+This is a behavior-additive change: every existing caller of `find_var_type` that already
+succeeded via `infer_variable_type_raw` sees no change; only the previously-`None`
+chained-receiver case gains a real answer. **Perf note, flagged by critique, not yet
+benchmarked:** `find_var_type` is called from several hot paths (`resolve_root_node_type`,
+`receiver_aware_params`, `cst_with_receiver_ctx`, `classify_this_lambda_context`); the new
+fallback triggers a tree-sitter re-parse (`live_doc_or_parse`) on every miss for indexed-but-closed
+files. Given this project's prior history of similar per-call scans causing hover/inlay stalls
+(see `[[perf-by-name-scan-cherry-pick]]` memory), the implementer should sanity-check this isn't a
+regression (e.g. time a hover-heavy operation on a large real file before/after) rather than
+assume it's free — flag DONE_WITH_CONCERNS if it looks costly rather than silently shipping it.
 
-Split the final segment out of the walk, mirroring `resolve_call_expr_type`'s
-`&segments[..segments.len() - 1]` exclusion, then resolve the excluded final segment's *own*
-return type as a separate, later step using the same `find_method_return_type_for_type` +
-`build_type_arg_subst`/`apply_type_subst` combination `resolve_call_expr_type` already uses
-(lines 461-465) — do not invent a new substitution mechanism, reuse the existing one. The
-function's return contract (`Option<(String, String)>` = `(receiver_type, method_name)`) is
-unchanged; only *which* value ends up as `receiver_type` when the last segment is itself a
-call-with-trailing-lambda changes (it becomes "the type before that call," not "that call's
-return type" — which is what every caller of `resolve_callee_chain`/`forward_resolve_segments`
-already expects per its own doc comment: "returning the type of the expression before the final
-method call").
+### Fix 2 — `src/indexer/infer/chain.rs`, `resolve_callee_chain`'s `KIND_NAV_EXPR` arm
+
+**Do NOT modify `forward_resolve_segments` or `resolve_segments_type` themselves** — their
+existing "resolve every segment I'm handed" contract is correct and load-bearing (see the
+"Fix — corrected" note above; the first draft of this section proposed changing the shared core
+loop and an independent critique found it would double-truncate `resolve_call_expr_type`'s
+already-correct usage and break `mod_tests.rs:133-162`). The fix lives entirely in
+`resolve_callee_chain`'s `KIND_NAV_EXPR` arm (`chain.rs:241-247`), pre-slicing the segments
+exactly like `resolve_call_expr_type` already does before calling `resolve_call_expr_type`'s own
+sibling helper `resolve_segments_type`:
+
+```rust
+k if k == KIND_NAV_EXPR => {
+    let segments = collect_nav_segments(callee, bytes);
+    if segments.len() < 2 {
+        return None;
+    }
+    let method_name = match segments.last()? {
+        NavSegment::Suffix { name, .. } => name.clone(),
+        _ => return None,
+    };
+    let receiver_type = resolve_segments_type(
+        &segments[..segments.len() - 1],
+        bytes,
+        deps,
+        uri,
+        SuffixStrictness::LeakReceiver,
+    )?;
+    Some((receiver_type, method_name))
+}
+```
+The function's return contract (`Option<(String, String)>` = `(receiver_type, method_name)`) is
+unchanged. `forward_resolve_segments`/`resolve_segments_type` never see a truncated-then-re-truncated
+list; every other caller of either is completely unaffected.
 
 ### Fix 3 — `src/indexer.rs`, `InferDeps::find_class_type_params`
 
@@ -246,21 +332,46 @@ JAR-defined generic classes, which previously always got an empty `Vec`.
 
 ## Testing
 
-Each fix needs its own unit test at the level it changes (the existing `InferDeps`/`TestDeps` fake
-in `src/indexer/infer/deps.rs` is the established pattern for testing these in isolation — see
-`it_this_tests.rs`'s `.with_class_params(...)` usage), PLUS one end-to-end house-decoy proving the
-combination works: a live-probe-equivalent test (or, if the existing test harness can construct
-an in-memory JAR-symbol fixture cheaply, an integration test) asserting `classify_cursor` on a
-`someFlow.first()`-derived reference and a `someFlow.map { it -> }` lambda `it` reference both
-produce `receiver_type: Some("UserData")` (or an equivalent concrete type), not `None` — this is
-the actual user-facing symptom and the regression floor for this fix.
+**`TestDeps` (`src/indexer/infer/deps.rs`) cannot test Fix 3 — verified by independent critique.**
+`TestDeps` is a from-scratch mock of the `InferDeps` trait; its `find_class_type_params` just
+reads a `HashMap` populated by `.with_class_params(...)` and never touches
+`Indexer::definitions`/`jar_definitions`/`jar_files` at all. A `TestDeps`-based test can prove
+downstream substitution logic behaves correctly *given* a non-empty type-params list — it cannot
+exercise or catch a regression in `Indexer::find_class_type_params`'s own
+workspace-then-JAR-fallback branching, which is the actual code Fix 3 adds. Using `TestDeps` here
+would be false confidence.
 
-Since `Flow` itself lives in a real JAR the unit-test harness doesn't materialize, the end-to-end
-test should use a workspace-defined stand-in generic type with the identical shape (a `class
-Box<T>` or similar declared directly in the test fixture, deliberately indexed the same way a JAR
-symbol would be via `TestDeps`) to prove the mechanism, PLUS a live-probe re-run against the real
-nowInAndroid project (same two cursor positions this bug was found at) before merge, to prove the
-real JAR case specifically.
+The codebase already has the right tool: `insert_fake_jar_symbol`
+(`src/indexer/infer/it_this_tests.rs:2047-2107`) builds a **real** `Indexer` and inserts a
+synthetic symbol directly into `idx.jar_files`/`idx.jar_definitions` — exactly what's needed to
+exercise Fix 3's real fallback branch. Several existing regression tests already use it for
+`find_fun_callable_info`'s JAR path, including `Flow<T>`-shaped cases
+(`regression_jar_collect_on_flow_t_container_generic_not_leak`,
+`regression_productflow_param_collect_result_not_t`); Fix 3's own test should follow the same
+pattern with a `SymbolKind::CLASS` entry instead of a function entry.
+
+Per-fix and per-goal testing (**do not conflate which fix backs which goal** — see the corrected
+Bug 2/3 analysis above):
+- **Fix 1** (`find_var_type`'s CST fallback): a unit test on `Indexer::find_var_type` directly —
+  a `val x = a.b.c()`-shaped chained initializer that the line heuristic can't type, asserting the
+  CST fallback now returns the right answer where it previously returned `None`.
+- **Fix 2** (`resolve_callee_chain`'s pre-slice): a unit test on `resolve_callee_chain` directly
+  (or `cst_it_element_type`/whatever calls it for the lambda-`it` path) proving a
+  `receiver.member.method { lambda }`-shaped callee now returns `(type-of-receiver.member,
+  "method")` instead of `method`'s own corrupted return type — this is Goal 2's actual regression
+  floor, and does NOT need `insert_fake_jar_symbol` since it never touches
+  `find_class_type_params`; a workspace-defined stand-in generic (e.g. a test-fixture `class
+  Box<T>`) is sufficient and appropriate here.
+- **Fix 3** (`find_class_type_params`'s JAR fallback): a unit test using
+  `insert_fake_jar_symbol` to insert a synthetic JAR-defined generic class, asserting
+  `find_class_type_params` now returns its real type params instead of an empty `Vec` — this is
+  Goal 1's actual regression floor.
+- **End-to-end, both goals combined:** a live-probe re-run against the real nowInAndroid project
+  (the exact two cursor positions this bug was found at — `OfflineFirstNewsRepository.kt`'s
+  `.first()`-derived `userData` and `ForYouViewModel.kt`'s lambda `it`) before merge, confirming
+  `classify_cursor`'s `receiver_type` now resolves to `Some("UserData")` at both, and — the
+  original symptom that started this investigation — that rename from those exact reference sites
+  now succeeds instead of refusing.
 
 ## Spec correction
 
