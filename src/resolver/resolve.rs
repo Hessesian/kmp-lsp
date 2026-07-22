@@ -461,13 +461,52 @@ fn is_default_import_type(name: &str) -> bool {
 /// Whether `name` is available without an import because a symbol of that name is
 /// declared in a Kotlin default-import package (e.g. `kotlin.Result`, `kotlin.apply`),
 /// or `name` is itself one of the core default-import types.
+///
+/// Checks `jar_definitions`/`definitions` directly (by package), not the narrower
+/// `importable_fqns` cache — that cache only holds container-less symbols recorded
+/// for auto-import completion, and top-level `kotlin.*` functions (`error`, `run`,
+/// `with`, `repeat`, …) aren't reliably captured there, so a `fqns_for_name`-only
+/// check would silently miss them and flag real stdlib calls as missing imports.
 fn resolvable_via_default_import(indexer: &Indexer, name: &str) -> bool {
     if is_default_import_type(name) {
         return true;
     }
-    fqns_for_name(indexer, name)
-        .iter()
-        .any(|fqn| is_default_import_package(&fqn[..fqn.rfind('.').unwrap_or(fqn.len())]))
+    if let Some(locs) = indexer.jar_definitions.get(name) {
+        for loc in locs.iter() {
+            if jar_symbol_package(indexer, loc)
+                .as_deref()
+                .is_some_and(is_default_import_package)
+            {
+                return true;
+            }
+            if indexer
+                .jar_files
+                .get(loc.uri.as_str())
+                .and_then(|fd| fd.package.clone())
+                .as_deref()
+                .is_some_and(is_default_import_package)
+            {
+                return true;
+            }
+        }
+    }
+    if let Some(sym_locs) = indexer.definitions.get(name) {
+        for sym_loc in sym_locs.iter() {
+            let Some(loc) = indexer.file_table.location(*sym_loc) else {
+                continue;
+            };
+            if indexer
+                .files
+                .get(loc.uri.as_str())
+                .and_then(|fd| fd.package.clone())
+                .as_deref()
+                .is_some_and(is_default_import_package)
+            {
+                return true;
+            }
+        }
+    }
+    false
 }
 
 /// Strict in-scope reachability check for missing-import detection.
@@ -580,13 +619,16 @@ pub(crate) fn receiver_provides_member(indexer: &Indexer, receiver: &str, name: 
         }
     }
     // 4. Inherited from the receiver type's supertype chain (incl. library supertypes).
+    // Depth 24 (not the shared resolve_from_class_hierarchy's 12): validated on Moneta
+    // by the original missing-import POC as real headroom, not just enough — the
+    // visited-set bounds total work regardless, so there's no cost to the margin.
     for loc in indexer.lookup_definitions(receiver) {
         let found = walk_hierarchy(
             indexer,
             receiver,
             loc.uri.as_str(),
             CallerContext::default(),
-            12,
+            24,
             |index, _, class_uri, _| find_name_in_uri(index, name, class_uri),
         );
         if !found.is_empty() {

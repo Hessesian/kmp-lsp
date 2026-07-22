@@ -5338,6 +5338,43 @@ fn resolve_in_scope_strict_true_via_default_import_type() {
     assert!(resolve_in_scope_strict(&idx, "Result", &caller_uri));
 }
 
+/// Regression: `resolvable_via_default_import` must check `jar_definitions`
+/// directly (by package), not the narrower `importable_fqns` cache — a
+/// top-level `kotlin.*` FUNCTION (e.g. `error`, `run`, `with`, `repeat`) is not
+/// reliably captured there, so a name-only lookup via `fqns_for_name` would
+/// silently miss it and flag a real stdlib call as a missing import.
+#[test]
+fn resolve_in_scope_strict_true_via_jar_indexed_default_import_function() {
+    use crate::types::FileData;
+    use std::sync::Arc;
+
+    let caller_uri = uri("/Caller.kt");
+    let idx = Indexer::new();
+    idx.index_content(&caller_uri, "package app\nfun use() { error(\"x\") }\n");
+
+    // Simulate the kotlin-stdlib jar indexing a top-level `error` function.
+    let jar_uri = "jar:file:///kotlin-stdlib.jar!/kotlin/PreconditionsKt.class";
+    idx.jar_definitions
+        .entry("error".to_string())
+        .or_default()
+        .push(tower_lsp::lsp_types::Location {
+            uri: Url::parse(jar_uri).unwrap(),
+            range: tower_lsp::lsp_types::Range::default(),
+        });
+    idx.jar_files.insert(
+        jar_uri.to_string(),
+        Arc::new(FileData {
+            package: Some("kotlin".to_string()),
+            ..Default::default()
+        }),
+    );
+
+    assert!(
+        resolve_in_scope_strict(&idx, "error", &caller_uri),
+        "kotlin.error is a default-import top-level function — must not be flagged"
+    );
+}
+
 #[test]
 fn receiver_provides_member_true_for_extension_function() {
     let modifier_uri = uri("/Modifier.kt");
