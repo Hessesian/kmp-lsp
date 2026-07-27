@@ -19,6 +19,8 @@ mod kotlin;
 mod params;
 mod resolve;
 
+pub(crate) use helpers::is_named_argument_label;
+
 use tower_lsp::lsp_types::{
     Range, SemanticToken, SemanticTokenModifier, SemanticTokenType, SemanticTokens,
     SemanticTokensLegend, Url,

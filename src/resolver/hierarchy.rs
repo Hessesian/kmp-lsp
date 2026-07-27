@@ -19,16 +19,27 @@ use crate::types::{CallerContext, FileData};
 /// each JAR pays at most one attempt. Per-REQUEST budget threading (one
 /// budget shared across all the walks a request triggers) is deferred to
 /// the accessor-function refactor.
+///
+/// This is the *default* every interactive, keystroke-latency-sensitive
+/// caller should pass. `walk_hierarchy` takes the budget as a parameter,
+/// not a hardcoded internal — a caller with a different latency tolerance
+/// (e.g. a user-initiated rename, not a per-keystroke completion) may pass
+/// a larger budget so its walk can run to actual completion instead of
+/// guessing under a cap sized for a different use case.
 pub(crate) const MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK: usize = 3;
 
 /// Walk the class hierarchy starting from `start_class`, collecting items at each level.
 /// `T` is what the visitor produces per symbol. `max_depth` prevents infinite loops.
+/// `sidecar_budget` bounds blocking JAR-promotion round trips for this walk — pass
+/// [`MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK`] for interactive callers, or a
+/// caller-specific budget for operations that can tolerate more latency.
 pub(crate) fn walk_hierarchy<'a, T, F>(
     idx: &'a Indexer,
     start_class: &str,
     start_uri: &str,
     caller: CallerContext<'a>,
     max_depth: usize,
+    sidecar_budget: usize,
     collect: F,
 ) -> Vec<T>
 where
@@ -41,7 +52,7 @@ where
         collect,
         visited: HashSet::from([(start_uri.to_owned(), start_class.to_owned())]),
         items: Vec::new(),
-        sidecar_budget: MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK,
+        sidecar_budget,
     };
     walker.recurse(start_class, start_uri, 0);
     walker.items
@@ -169,12 +180,14 @@ pub(crate) enum ReceiverTypeAgreement {
 /// its supertypes? Same mechanism `resolve_from_class_hierarchy` already
 /// uses for the string engine's inherited-member lookups, applied in
 /// reverse — not "find the member," but "does this ancestor chain contain
-/// that type."
+/// that type." `sidecar_budget` bounds blocking JAR-promotion round trips —
+/// see [`walk_hierarchy`].
 pub(crate) fn supertype_chain_contains(
     indexer: &Indexer,
     candidate_type: &str,
     candidate_uri: &str,
     target_type: &str,
+    sidecar_budget: usize,
 ) -> bool {
     walk_hierarchy(
         indexer,
@@ -182,6 +195,7 @@ pub(crate) fn supertype_chain_contains(
         candidate_uri,
         CallerContext::default(),
         12,
+        sidecar_budget,
         |_, super_name, _, _| {
             if super_name == target_type {
                 vec![()]
@@ -197,12 +211,15 @@ pub(crate) fn supertype_chain_contains(
 
 /// The full receiver-type-agreement decision: exact match (cheap, no walk),
 /// else — only if `candidate_type` is genuinely indexed, so a negative
-/// result is trustworthy — an ascending supertype walk.
+/// result is trustworthy — an ascending supertype walk. `sidecar_budget`
+/// bounds blocking JAR-promotion round trips the walk may spend — see
+/// [`walk_hierarchy`].
 pub(crate) fn receiver_type_agreement(
     indexer: &Indexer,
     candidate_type: &str,
     candidate_uri: &str,
     target_type: &str,
+    sidecar_budget: usize,
 ) -> ReceiverTypeAgreement {
     if candidate_type == target_type {
         return ReceiverTypeAgreement::Exact;
@@ -210,7 +227,13 @@ pub(crate) fn receiver_type_agreement(
     if !indexer.has_type_definition(candidate_type) {
         return ReceiverTypeAgreement::Unresolvable;
     }
-    if supertype_chain_contains(indexer, candidate_type, candidate_uri, target_type) {
+    if supertype_chain_contains(
+        indexer,
+        candidate_type,
+        candidate_uri,
+        target_type,
+        sidecar_budget,
+    ) {
         ReceiverTypeAgreement::Inherited
     } else {
         ReceiverTypeAgreement::Unrelated
