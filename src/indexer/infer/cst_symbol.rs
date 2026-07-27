@@ -346,23 +346,17 @@ pub(crate) fn local_scope_occurrences(
         utf16_col: cursor_position.character as usize,
     };
     let cursor_node = crate::indexer::cursor_node_at(&doc, cursor)?;
-    // A named-argument label (`appState` in `NiaApp(appState = appState)`)
-    // names the CALLEE's parameter, not anything in the caller's own scope,
-    // even though it's textually identical to a local it's often paired
-    // with. The local fast path must never claim this position.
     if is_named_argument_label(cursor_node) {
-        return None;
+        return None; // names the callee's parameter, not the caller's local
     }
     let name = cursor_node.utf8_text_owned(&doc.bytes)?;
 
-    // Climb outward through enclosing scope boundaries, narrowest first,
-    // stopping at the first level that directly declares `name` — never
-    // widening past a level that already owns it, or an unrelated sibling
-    // for/when/if reusing the same name could be pulled in from further out.
+    // Never widen past a boundary that already owns `name` -- else an
+    // unrelated sibling for/when/if reusing the same name could be pulled in.
     let body = ancestor_scope_boundaries(cursor_node)
         .find(|scope| declares_name_directly(*scope, &name, &doc.bytes).is_some())?;
 
-    let mut occurrences: Vec<(Node, usize)> = Vec::new();
+    let mut occurrences: Vec<Occurrence> = Vec::new();
     visit_unshadowed_name_matches(
         body,
         &name,
@@ -370,38 +364,61 @@ pub(crate) fn local_scope_occurrences(
         false,
         None,
         &doc.bytes,
-        &mut |node, generation| occurrences.push((node, generation)),
+        &mut |node, generation| occurrences.push(Occurrence { node, generation }),
     );
 
     let cursor_generation = occurrences
         .iter()
-        .find(|(node, _)| node.id() == cursor_node.id())
-        .map(|(_, generation)| *generation)?;
-    let same_generation: Vec<&(Node, usize)> = occurrences
-        .iter()
-        .filter(|(_, generation)| *generation == cursor_generation)
-        .collect();
-    // A reference textually before any declaration of `name` in this scope
-    // (invalid Kotlin, real during mid-typing) lands in a generation with no
-    // declaration of its own. No CST trick repairs this — nothing here is
-    // syntactically broken, just semantically out of order — so it safely
-    // falls through to the cross-file path instead of a partial/wrong rename.
-    if !same_generation
-        .iter()
-        .any(|(node, _)| is_declaration_site(*node))
-    {
-        return None;
-    }
+        .find(|occurrence| occurrence.node.id() == cursor_node.id())?
+        .generation;
+    let members = match generation_group(&occurrences, cursor_generation) {
+        GenerationGroup::Anchored(members) => members,
+        GenerationGroup::Forward => return None,
+    };
 
     let full_text = std::str::from_utf8(&doc.bytes).ok()?;
-    let locations: Vec<Location> = same_generation
+    let locations: Vec<Location> = members
         .into_iter()
-        .filter_map(|(node, _)| node_to_location(uri, *node, full_text))
+        .filter_map(|occurrence| node_to_location(uri, occurrence.node, full_text))
         .collect();
     if locations.is_empty() {
         None
     } else {
         Some(locations)
+    }
+}
+
+/// One `simple_identifier` match for a name, tagged with its sequential
+/// re-declaration generation (see [`visit_statements_with_generations`]).
+#[derive(Clone, Copy)]
+struct Occurrence<'a> {
+    node: Node<'a>,
+    generation: usize,
+}
+
+/// Every occurrence sharing one generation, or proof that generation has no
+/// declaration of its own — a reference textually before any declaration of
+/// its name in scope (invalid Kotlin, real during mid-typing). No CST trick
+/// repairs `Forward`: nothing there is syntactically broken, just out of
+/// order, so callers fall through to the cross-file path.
+enum GenerationGroup<'a> {
+    Anchored(Vec<Occurrence<'a>>),
+    Forward,
+}
+
+fn generation_group<'a>(occurrences: &[Occurrence<'a>], generation: usize) -> GenerationGroup<'a> {
+    let members: Vec<Occurrence<'a>> = occurrences
+        .iter()
+        .copied()
+        .filter(|occurrence| occurrence.generation == generation)
+        .collect();
+    if members
+        .iter()
+        .any(|occurrence| is_declaration_site(occurrence.node))
+    {
+        GenerationGroup::Anchored(members)
+    } else {
+        GenerationGroup::Forward
     }
 }
 
@@ -450,17 +467,6 @@ fn scope_boundary_at(node: Node<'_>) -> Option<ScopeBoundary<'_>> {
 }
 
 /// Ancestor scope boundaries of `node`, narrowest first.
-///
-/// A function/method's own name is a direct `simple_identifier` child of its
-/// `KIND_FUN_DECL` (`is_declaration_site` recognizes exactly this shape as a
-/// declaration site) — climbing from the cursor sitting on that name must not
-/// treat the function's own declaration as local to its own body (house bug:
-/// renaming a class method's declaration then only walked that method's own
-/// empty subtree instead of falling through to the cross-file path). Skip
-/// that match and keep climbing. Verified this ambiguity is unique to
-/// `KIND_FUN_DECL`: `for_statement`/`when_expression`'s bound names sit one
-/// level deeper (through `variable_declaration`), so their own header
-/// bindings never trigger it.
 fn ancestor_scope_boundaries(node: Node<'_>) -> impl Iterator<Item = Node<'_>> {
     let mut current = node;
     std::iter::from_fn(move || loop {
@@ -468,12 +474,20 @@ fn ancestor_scope_boundaries(node: Node<'_>) -> impl Iterator<Item = Node<'_>> {
         let child = current;
         current = parent;
         if let Some(boundary) = scope_boundary_at(parent) {
-            let is_own_name = parent.kind() == KIND_FUN_DECL && is_declaration_site(child);
-            if !is_own_name {
+            if !is_functions_own_name(parent, child) {
                 return Some(boundary.node());
             }
         }
     })
+}
+
+/// A function's own name is a direct `simple_identifier` child of its
+/// `KIND_FUN_DECL` — the cursor sitting on that name must not treat the
+/// function's own declaration as local to its own body. `for_statement`/
+/// `when_expression`'s bound names sit one level deeper (through
+/// `variable_declaration`), so this ambiguity is unique to `KIND_FUN_DECL`.
+fn is_functions_own_name(parent: Node<'_>, child: Node<'_>) -> bool {
+    parent.kind() == KIND_FUN_DECL && is_declaration_site(child)
 }
 
 /// Whether `scope` itself — not any nested scope inside it — directly
@@ -498,12 +512,10 @@ fn declares_name_directly<'a>(scope: Node<'a>, name: &str, bytes: &[u8]) -> Opti
     None
 }
 
-/// Walk `statements`'s children in document order, threading a sequential
-/// re-declaration generation counter: each child that directly declares
-/// `name` starts a new generation from its own declaration identifier
-/// onward. The declaring statement's initializer — everything in that
-/// statement besides the declared name itself — is visited at the OLD
-/// generation: `val x: Any = "hello"; val x = x as String`'s own initializer
+/// Walk `statements`'s children in document order, incrementing `generation`
+/// after each one that declares `name`. A declaring statement's own
+/// initializer is visited at the OLD generation, then re-emitted at the new
+/// one — `val x: Any = "hello"; val x = x as String`'s own initializer
 /// reference must see the FIRST `x`, since the second doesn't exist yet
 /// while its own initializer runs.
 fn visit_statements_with_generations<'a>(
@@ -548,12 +560,10 @@ fn visit_statements_with_generations<'a>(
 }
 
 /// Walk `node`'s subtree, calling `visit` on every `simple_identifier`
-/// matching `name` together with its sequential re-declaration generation,
-/// skipping the subtree of any nested scope boundary that itself redeclares
-/// `name` (shadowing). `exclude` suppresses one specific node — used by
-/// `visit_statements_with_generations` to keep a declaration's own name out
-/// of the "old generation" pass over its statement, since it's re-emitted
-/// separately at its own new generation.
+/// matching `name` (tagged with `generation`), skipping the subtree of any
+/// nested scope boundary that itself redeclares `name` (shadowing).
+/// `exclude` suppresses one node — a declaration re-emitted separately by
+/// [`visit_statements_with_generations`] at its own new generation.
 fn visit_unshadowed_name_matches<'a>(
     node: Node<'a>,
     name: &str,
