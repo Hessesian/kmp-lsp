@@ -634,12 +634,15 @@ pub(crate) fn receiver_provides_member(indexer: &Indexer, receiver: &str, name: 
     // by the original missing-import POC as real headroom, not just enough — the
     // visited-set bounds total work regardless, so there's no cost to the margin.
     for loc in indexer.lookup_definitions(receiver) {
+        // Zero sidecar budget: same diagnostics/keystroke-path, no-blocking-IPC
+        // intent as this function's other two promote-before-read calls above.
         let found = walk_hierarchy(
             indexer,
             receiver,
             loc.uri.as_str(),
             CallerContext::default(),
             24,
+            0,
             |index, _, class_uri, _| find_name_in_uri(index, name, class_uri),
         );
         if !found.is_empty() {
