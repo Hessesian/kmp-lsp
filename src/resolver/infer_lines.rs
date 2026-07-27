@@ -169,6 +169,30 @@ pub(crate) fn infer_type_in_lines(lines: &[String], var_name: &str) -> Option<St
 ///
 /// Also handles delegate-inferred types:
 /// `val foo by lazy { SomeType() }` → `"SomeType"` (single-line only)
+///
+/// # Known limitation: whole-file, position-blind scan
+///
+/// This function (and `infer_type_in_lines`, above) scans **every** line for the
+/// first one matching `"{var_name}:"` — it has no notion of the cursor's
+/// position or which scope it's actually in. This is unlike lambda-parameter
+/// type resolution, which goes through the properly scoped
+/// `Resolver::find_contextual_type` path instead.
+///
+/// Consequence: if two different functions/scopes in the same file each
+/// declare a same-named parameter or local with a *different* type, this scan
+/// returns whichever declaration happens to appear first in the file —
+/// regardless of which one the caller is actually asking about. This can
+/// silently produce the WRONG inferred type at either call site. This has been
+/// confirmed (not just theoretical) to affect every caller reached through
+/// `Indexer::find_var_type` — hover, inlay hints, and chain-type resolution — and,
+/// as of the CST-verified rename (see `docs/superpowers/specs/2026-07-19-cst-navigation-design.md`,
+/// "Known limitation / follow-up needed"), also rename, which now writes an edit
+/// to disk gated on this inference. For rename this means a wrong inference here
+/// can produce a silently wrong edit, not merely a wrong display.
+///
+/// Fixing this (making the scan scope- and position-aware, like
+/// `find_contextual_type`) is a real, separate follow-up requiring its own
+/// design — intentionally NOT fixed here.
 pub(crate) fn infer_type_in_lines_raw(lines: &[String], var_name: &str) -> Option<String> {
     let pattern = format!("{var_name}:");
 

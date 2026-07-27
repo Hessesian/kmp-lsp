@@ -3,8 +3,8 @@
 
 use tower_lsp::lsp_types::Location;
 
-use crate::indexer::{Indexer, NavigationSource};
-use crate::resolver::{receiver_type_agreement, ReceiverType, ReceiverTypeAgreement};
+use crate::indexer::{Indexer, InferDeps, NavigationSource};
+use crate::resolver::{ReceiverType, ReceiverTypeAgreement, Resolver};
 
 /// Per-request cap on IO-costed verification steps (a candidate's file
 /// needing a fresh disk read, or a supertype walk that may spend blocking
@@ -20,11 +20,24 @@ pub(crate) struct VerifiedReferences {
     // happens rather than candidates silently vanishing from `kept`.
     #[cfg_attr(not(test), allow(dead_code))]
     pub rejected: Vec<Location>,
+    /// Declaration-role candidates proven, in either direction, to be in an
+    /// override relationship with the query's declaring type. Ignored by
+    /// find-references (its call always passes `query_declaring_type_uri:
+    /// None` — `verified_references_for`'s `detect_reverse_overrides: false`
+    /// forwards `None` here regardless of whether a real declaring-type URI
+    /// was computed — so this is always empty there); consumed only by 6c
+    /// rename to decide the override-participation refusal. A candidate here is ALSO
+    /// present in `kept` as `CstResolved` — the two fields answer different
+    /// questions ("is this the same identity" vs. "does an override relate
+    /// to it") and are not mutually exclusive.
+    pub proven_overrides: Vec<Location>,
 }
 
 pub(crate) fn verify_candidates(
     indexer: &Indexer,
     query_declaring_type: Option<&str>,
+    query_declaring_type_uri: Option<&str>,
+    sidecar_budget: usize,
     candidates: Vec<Location>,
 ) -> VerifiedReferences {
     let Some(query_declaring_type) = query_declaring_type else {
@@ -35,12 +48,14 @@ pub(crate) fn verify_candidates(
                 .map(NavigationSource::NameScan)
                 .collect(),
             rejected: Vec::new(),
+            proven_overrides: Vec::new(),
         };
     };
     let query_declaring_type = ReceiverType::from_raw(query_declaring_type.to_owned()).leaf;
 
     let mut kept = Vec::new();
     let mut rejected = Vec::new();
+    let mut proven_overrides = Vec::new();
     let mut io_budget = MAX_VERIFICATION_IO_OPERATIONS;
 
     for candidate in candidates {
@@ -70,18 +85,26 @@ pub(crate) fn verify_candidates(
                 ..
             } => {
                 let candidate_type = ReceiverType::from_raw(receiver_type.clone()).leaf;
-                // The supertype walk (Inherited case) may spend sidecar IPC —
-                // charge it against the same budget before running it.
-                if io_budget == 0 {
-                    kept.push(NavigationSource::NameScan(candidate));
-                    continue;
+                // Only charge the agreement-walk unit when a walk will
+                // actually run: `Exact` (same type, string equality) and
+                // `Unresolvable` (candidate type not indexed) both return
+                // from `receiver_type_agreement` before any supertype walk,
+                // so charging for them exhausted the budget faster than the
+                // real IO cost warranted.
+                let will_walk = candidate_type != query_declaring_type
+                    && indexer.has_type_definition(&candidate_type);
+                if will_walk {
+                    if io_budget == 0 {
+                        kept.push(NavigationSource::NameScan(candidate));
+                        continue;
+                    }
+                    io_budget -= 1;
                 }
-                io_budget -= 1;
-                match receiver_type_agreement(
-                    indexer,
+                match indexer.receiver_type_agreement(
                     &candidate_type,
                     candidate.uri.as_str(),
                     &query_declaring_type,
+                    sidecar_budget,
                 ) {
                     ReceiverTypeAgreement::Exact | ReceiverTypeAgreement::Inherited => {
                         kept.push(NavigationSource::CstResolved(candidate));
@@ -93,28 +116,86 @@ pub(crate) fn verify_candidates(
                 }
             }
             crate::indexer::SymbolRole::Declaration { .. } => {
-                // Verified by exact (name, enclosing class) match. A mismatch
-                // is a *weaker* signal than a proven type mismatch — two
-                // same-named unrelated declarations aren't the "wrong
-                // receiver type" case `ReceiverTypeAgreement` models — so
-                // err toward keeping (`NameScan`), never reject here.
                 let enclosing_class =
                     indexer.enclosing_class_at(&candidate.uri, candidate.range.start.line);
-                let matches_query = enclosing_class
-                    .as_deref()
-                    .map(|class_name| ReceiverType::from_raw(class_name.to_owned()).leaf)
-                    == Some(query_declaring_type.clone());
-                if matches_query {
-                    kept.push(NavigationSource::CstResolved(candidate));
-                } else {
-                    kept.push(NavigationSource::NameScan(candidate));
+                match enclosing_class {
+                    Some(class_name) => {
+                        let candidate_type = ReceiverType::from_raw(class_name).leaf;
+
+                        let forward_will_walk = candidate_type != query_declaring_type
+                            && indexer.has_type_definition(&candidate_type);
+                        if forward_will_walk {
+                            if io_budget == 0 {
+                                kept.push(NavigationSource::NameScan(candidate));
+                                continue;
+                            }
+                            io_budget -= 1;
+                        }
+                        let forward = indexer.receiver_type_agreement(
+                            &candidate_type,
+                            candidate.uri.as_str(),
+                            &query_declaring_type,
+                            sidecar_budget,
+                        );
+
+                        // Reverse direction: is the QUERY a subtype of the
+                        // CANDIDATE's type -- i.e. the cursor is on the
+                        // override, and this candidate is the base it
+                        // overrides? Only meaningful (and only ever
+                        // attempted) when the caller knows the query's own
+                        // declaring URI -- see Task 4 in the 6c rename plan
+                        // for when that's available.
+                        let reverse = query_declaring_type_uri.map(|query_uri| {
+                            let reverse_will_walk = query_declaring_type != candidate_type
+                                && indexer.has_type_definition(&query_declaring_type);
+                            if reverse_will_walk {
+                                if io_budget == 0 {
+                                    return ReceiverTypeAgreement::Unresolvable;
+                                }
+                                io_budget -= 1;
+                            }
+                            indexer.receiver_type_agreement(
+                                &query_declaring_type,
+                                query_uri,
+                                &candidate_type,
+                                sidecar_budget,
+                            )
+                        });
+
+                        let is_proven_override =
+                            matches!(forward, ReceiverTypeAgreement::Inherited)
+                                || matches!(reverse, Some(ReceiverTypeAgreement::Inherited));
+                        if is_proven_override {
+                            proven_overrides.push(candidate.clone());
+                        }
+
+                        match forward {
+                            ReceiverTypeAgreement::Exact | ReceiverTypeAgreement::Inherited => {
+                                kept.push(NavigationSource::CstResolved(candidate));
+                            }
+                            // A mismatch here is a *weaker* signal than a proven type
+                            // mismatch — two same-named unrelated declarations aren't
+                            // the "wrong receiver type" case `ReceiverTypeAgreement`
+                            // models — so err toward keeping (`NameScan`), never
+                            // reject here, same as before this fix.
+                            ReceiverTypeAgreement::Unrelated
+                            | ReceiverTypeAgreement::Unresolvable => {
+                                kept.push(NavigationSource::NameScan(candidate));
+                            }
+                        }
+                    }
+                    None => kept.push(NavigationSource::NameScan(candidate)),
                 }
             }
             _ => kept.push(NavigationSource::NameScan(candidate)),
         }
     }
 
-    VerifiedReferences { kept, rejected }
+    VerifiedReferences {
+        kept,
+        rejected,
+        proven_overrides,
+    }
 }
 
 #[cfg(test)]
@@ -127,10 +208,13 @@ mod tests {
         Url::parse(&format!("file:///t{path}")).unwrap()
     }
 
-    fn location(uri: &Url, line: u32, col_start: u32, col_end: u32) -> Location {
+    fn location(file_uri: &Url, line: u32, column_start: u32, column_end: u32) -> Location {
         Location {
-            uri: uri.clone(),
-            range: Range::new(Position::new(line, col_start), Position::new(line, col_end)),
+            uri: file_uri.clone(),
+            range: Range::new(
+                Position::new(line, column_start),
+                Position::new(line, column_end),
+            ),
         }
     }
 
@@ -139,17 +223,23 @@ mod tests {
     /// is `User`.
     #[test]
     fn unrelated_candidate_is_rejected_not_dropped_silently() {
-        let src = "class User { fun save() {} }\n\
+        let source = "class User { fun save() {} }\n\
                    class File { fun save() {} }\n\
                    fun f(file: File) { file.save() }\n";
-        let u = uri("/D.kt");
-        let idx = Indexer::new();
-        idx.index_content(&u, src);
-        idx.store_live_tree(&u, src);
-        let col = src.lines().nth(2).unwrap().find("save").unwrap() as u32;
-        let candidate = location(&u, 2, col, col + 4);
+        let file_uri = uri("/D.kt");
+        let indexer = Indexer::new();
+        indexer.index_content(&file_uri, source);
+        indexer.store_live_tree(&file_uri, source);
+        let column = source.lines().nth(2).unwrap().find("save").unwrap() as u32;
+        let candidate = location(&file_uri, 2, column, column + 4);
 
-        let result = verify_candidates(&idx, Some("User"), vec![candidate.clone()]);
+        let result = verify_candidates(
+            &indexer,
+            Some("User"),
+            None,
+            MAX_VERIFICATION_IO_OPERATIONS,
+            vec![candidate.clone()],
+        );
         assert!(
             result.kept.is_empty(),
             "must not be kept, got {:?}",
@@ -166,17 +256,23 @@ mod tests {
     /// subtype instance must be kept as `CstResolved`.
     #[test]
     fn inherited_candidate_is_kept_as_cst_resolved() {
-        let src = "open class User { fun save() {} }\n\
+        let source = "open class User { fun save() {} }\n\
                    class DerivedUser : User()\n\
                    fun f(derived: DerivedUser) { derived.save() }\n";
-        let u = uri("/D.kt");
-        let idx = Indexer::new();
-        idx.index_content(&u, src);
-        idx.store_live_tree(&u, src);
-        let col = src.lines().nth(2).unwrap().find("save").unwrap() as u32;
-        let candidate = location(&u, 2, col, col + 4);
+        let file_uri = uri("/D.kt");
+        let indexer = Indexer::new();
+        indexer.index_content(&file_uri, source);
+        indexer.store_live_tree(&file_uri, source);
+        let column = source.lines().nth(2).unwrap().find("save").unwrap() as u32;
+        let candidate = location(&file_uri, 2, column, column + 4);
 
-        let result = verify_candidates(&idx, Some("User"), vec![candidate.clone()]);
+        let result = verify_candidates(
+            &indexer,
+            Some("User"),
+            None,
+            MAX_VERIFICATION_IO_OPERATIONS,
+            vec![candidate.clone()],
+        );
         assert!(result.rejected.is_empty());
         assert!(matches!(
             result.kept.as_slice(),
@@ -184,12 +280,53 @@ mod tests {
         ));
     }
 
+    /// The Declaration-arm bug this task fixes: an override's OWN declaration
+    /// must classify the same way a reference *through* the subtype does
+    /// (`Inherited` -> `CstResolved`), not fall to `NameScan` just because its
+    /// enclosing class name isn't a byte-for-byte match against the query type.
+    #[test]
+    fn override_declaration_is_kept_as_cst_resolved_not_name_scan() {
+        let source = "open class User { fun save() {} }\n\
+                      class DerivedUser : User() {\n\
+                      override fun save() {}\n\
+                      }\n";
+        let file_uri = uri("/D.kt");
+        let indexer = Indexer::new();
+        indexer.index_content(&file_uri, source);
+        indexer.store_live_tree(&file_uri, source);
+        let column = source.lines().nth(2).unwrap().find("save").unwrap() as u32;
+        let candidate = location(&file_uri, 2, column, column + 4);
+
+        let result = verify_candidates(
+            &indexer,
+            Some("User"),
+            None,
+            MAX_VERIFICATION_IO_OPERATIONS,
+            vec![candidate.clone()],
+        );
+        assert!(result.rejected.is_empty());
+        assert!(
+            matches!(
+                result.kept.as_slice(),
+                [NavigationSource::CstResolved(location)] if *location == candidate
+            ),
+            "override's own declaration must be CstResolved, got {:?}",
+            result.kept
+        );
+    }
+
     #[test]
     fn no_query_identity_passes_every_candidate_through_as_name_scan() {
-        let u = uri("/D.kt");
-        let idx = Indexer::new();
-        let candidate = location(&u, 0, 0, 4);
-        let result = verify_candidates(&idx, None, vec![candidate.clone()]);
+        let file_uri = uri("/D.kt");
+        let indexer = Indexer::new();
+        let candidate = location(&file_uri, 0, 0, 4);
+        let result = verify_candidates(
+            &indexer,
+            None,
+            None,
+            MAX_VERIFICATION_IO_OPERATIONS,
+            vec![candidate.clone()],
+        );
         assert!(result.rejected.is_empty());
         assert!(matches!(
             result.kept.as_slice(),
@@ -229,22 +366,28 @@ mod tests {
         let decls_src = "class User { fun save() {} }\nclass File { fun save() {} }\n";
         std::fs::write(root.join("Decls.kt"), decls_src).unwrap();
         let decls_uri = Url::from_file_path(root.join("Decls.kt")).unwrap();
-        let idx = Indexer::new();
-        idx.index_content(&decls_uri, decls_src);
+        let indexer = Indexer::new();
+        indexer.index_content(&decls_uri, decls_src);
 
         let n = MAX_VERIFICATION_IO_OPERATIONS + 10;
         let candidate_src = "fun f(file: File) { file.save() }\n";
-        let col = candidate_src.find("save").unwrap() as u32;
+        let column = candidate_src.find("save").unwrap() as u32;
         let candidates: Vec<Location> = (0..n)
             .map(|i| {
                 let name = format!("C{i}.kt");
                 std::fs::write(root.join(&name), candidate_src).unwrap();
                 let candidate_uri = Url::from_file_path(root.join(&name)).unwrap();
-                location(&candidate_uri, 0, col, col + 4)
+                location(&candidate_uri, 0, column, column + 4)
             })
             .collect();
 
-        let result = verify_candidates(&idx, Some("User"), candidates.clone());
+        let result = verify_candidates(
+            &indexer,
+            Some("User"),
+            None,
+            MAX_VERIFICATION_IO_OPERATIONS,
+            candidates.clone(),
+        );
 
         let max_verifiable = MAX_VERIFICATION_IO_OPERATIONS / 2;
         assert_eq!(
@@ -272,5 +415,251 @@ mod tests {
                 .all(|k| matches!(k, NavigationSource::NameScan(_))),
             "budget-exhausted candidates must stay NameScan, never silently become CstResolved"
         );
+    }
+
+    /// Budget precision (Reference arm): an `Exact` agreement result
+    /// (candidate type == query's declaring type, plain string equality, no
+    /// walk) must NOT spend a budget unit. Spend the whole budget on
+    /// `MAX_VERIFICATION_IO_OPERATIONS` such candidates, then prove one more
+    /// `Exact`-match candidate at a distinct location still resolves
+    /// `CstResolved` rather than falling to `NameScan` for lack of budget.
+    ///
+    /// NOTE: the originally-specified construction for this test used an
+    /// `Unresolvable` filler (`fun filler(x: Ghost) { x.save() }`, `Ghost`
+    /// undeclared) to drain the budget instead of `Exact`. That construction
+    /// does not exercise this fix: `classify_symbol_at`
+    /// (`src/indexer/infer/cst_symbol.rs`, the `Resolution::Resolved(t) if
+    /// indexer.has_type_definition(...)` guard) already collapses an
+    /// undeclared receiver's type to `receiver_type: None` *before*
+    /// `verify_candidates` ever sees it, so the filler falls to the `_ =>
+    /// NameScan` catch-all arm and never reaches `receiver_type_agreement`
+    /// at all -- zero-cost with or without this fix, in both directions.
+    /// Confirmed empirically: the original construction passed unmodified
+    /// even with the pre-fix (unconditionally-charging) code still in place.
+    /// Because `receiver_type_agreement`'s `Unresolvable` branch requires
+    /// `candidate_type` to be `Some(_)` (i.e. already `has_type_definition`
+    /// -gated true by the classifier) AND simultaneously not
+    /// `has_type_definition` (the same predicate, same string, once
+    /// `ReceiverType::from_raw(..).leaf` is applied) -- a contradiction --
+    /// `Unresolvable` is provably unreachable via the Reference arm's real
+    /// call path. `Exact` has no such gate (it is decided as a first,
+    /// unconditional check inside `receiver_type_agreement` before
+    /// `has_type_definition` is ever consulted) and reliably reaches this
+    /// code, so this test uses `Exact` fillers instead. See
+    /// `declaration_arm_inherited_walk_now_spends_and_respects_budget` below
+    /// for a construction that exercises the Declaration arm's parallel fix
+    /// (where `Unresolvable`/`Inherited` genuinely are reachable, since
+    /// `enclosing_class_at` has no such gate).
+    ///
+    /// Every candidate lives in the SAME already-indexed file, so the
+    /// disk-read charge never fires for any of them -- only the
+    /// agreement-walk charge this fix touches is in play.
+    #[test]
+    fn exact_reference_agreement_does_not_spend_walk_budget() {
+        let source = "class User { fun save() {} }\n\
+                      fun filler(u: User) { u.save() }\n\
+                      fun caller(user: User) { user.save() }\n";
+        let file_uri = uri("/D.kt");
+        let indexer = Indexer::new();
+        indexer.index_content(&file_uri, source);
+        indexer.store_live_tree(&file_uri, source);
+
+        let filler_column = source.lines().nth(1).unwrap().find("save").unwrap() as u32;
+        let filler_candidate = location(&file_uri, 1, filler_column, filler_column + 4);
+
+        let real_column = source.lines().nth(2).unwrap().find("save").unwrap() as u32;
+        let real_candidate = location(&file_uri, 2, real_column, real_column + 4);
+
+        // MAX_VERIFICATION_IO_OPERATIONS copies of the SAME Exact-match
+        // candidate (position is all that matters -- classify_symbol_at is a
+        // pure function of (uri, position), duplicates classify identically)
+        // plus the one real Exact-match candidate, at a distinct location,
+        // at the end.
+        let mut candidates: Vec<Location> =
+            std::iter::repeat_n(filler_candidate, MAX_VERIFICATION_IO_OPERATIONS).collect();
+        candidates.push(real_candidate.clone());
+
+        let result = verify_candidates(
+            &indexer,
+            Some("User"),
+            None,
+            MAX_VERIFICATION_IO_OPERATIONS,
+            candidates,
+        );
+        assert!(
+            result.kept.iter().any(|kept_source| matches!(
+                kept_source,
+                NavigationSource::CstResolved(location) if *location == real_candidate
+            )),
+            "the Exact-match candidate must resolve CstResolved even after \
+             MAX_VERIFICATION_IO_OPERATIONS other Exact-match candidates \
+             precede it, because Exact never spends a walk-budget unit, \
+             got {:?}",
+            result.kept
+        );
+    }
+
+    /// Budget precision (Declaration arm): before this fix, the Declaration
+    /// arm never consulted `io_budget` at all (Task 2 wired
+    /// `receiver_type_agreement` into that arm but with no budget gating),
+    /// so a genuine supertype walk (`Inherited`) ran unconditionally
+    /// regardless of remaining budget -- unlike the Reference arm's
+    /// pre-existing (if imprecise) charge. This spends the whole budget on
+    /// `MAX_VERIFICATION_IO_OPERATIONS` Declaration-arm override candidates
+    /// that DO require a genuine walk (`Inherited`, so `will_walk` is
+    /// correctly true and a charge belongs here), then proves one more such
+    /// candidate, at a distinct location, correctly defers to `NameScan`
+    /// once the budget is legitimately exhausted -- instead of ignoring the
+    /// budget entirely and resolving `CstResolved` regardless, as the
+    /// pre-fix Declaration arm did.
+    ///
+    /// Every candidate lives in the SAME already-indexed file, so the
+    /// disk-read charge never fires for any of them -- only the
+    /// agreement-walk charge this fix adds to the Declaration arm is in
+    /// play.
+    #[test]
+    fn declaration_arm_inherited_walk_now_spends_and_respects_budget() {
+        let source = "class User { fun save() {} }\n\
+                      open class Base { fun save() {} }\n\
+                      class DerivedFiller : Base() {\n\
+                      override fun save() {}\n\
+                      }\n\
+                      class DerivedReal : Base() {\n\
+                      override fun save() {}\n\
+                      }\n";
+        let file_uri = uri("/D.kt");
+        let indexer = Indexer::new();
+        indexer.index_content(&file_uri, source);
+        indexer.store_live_tree(&file_uri, source);
+
+        let filler_column = source.lines().nth(3).unwrap().find("save").unwrap() as u32;
+        let filler_candidate = location(&file_uri, 3, filler_column, filler_column + 4);
+
+        let real_column = source.lines().nth(6).unwrap().find("save").unwrap() as u32;
+        let real_candidate = location(&file_uri, 6, real_column, real_column + 4);
+
+        // MAX_VERIFICATION_IO_OPERATIONS copies of the SAME Inherited-walk
+        // override-declaration candidate, plus the one real Inherited-walk
+        // candidate, at a distinct location, at the end.
+        let mut candidates: Vec<Location> =
+            std::iter::repeat_n(filler_candidate, MAX_VERIFICATION_IO_OPERATIONS).collect();
+        candidates.push(real_candidate.clone());
+
+        let result = verify_candidates(
+            &indexer,
+            Some("Base"),
+            None,
+            MAX_VERIFICATION_IO_OPERATIONS,
+            candidates,
+        );
+        assert!(
+            result.kept.iter().any(|kept_source| matches!(
+                kept_source,
+                NavigationSource::NameScan(location) if *location == real_candidate
+            )),
+            "once MAX_VERIFICATION_IO_OPERATIONS genuine Inherited walks have \
+             legitimately spent the whole budget, one more Declaration-arm \
+             candidate needing a walk must defer to NameScan rather than \
+             ignore the exhausted budget and resolve CstResolved regardless, \
+             got {:?}",
+            result.kept
+        );
+    }
+
+    /// The symmetric half of override detection: renaming FROM the concrete
+    /// override's own declaration must ALSO detect the interface declaration
+    /// as a proven override participant -- not just the forward direction
+    /// (querying from the interface, finding the override).
+    #[test]
+    fn override_detected_symmetrically_from_the_concrete_side() {
+        let source = "open class User {\n\
+                      fun save() {}\n\
+                      }\n\
+                      class DerivedUser : User() {\n\
+                      override fun save() {}\n\
+                      }\n";
+        let file_uri = uri("/D.kt");
+        let indexer = Indexer::new();
+        indexer.index_content(&file_uri, source);
+        indexer.store_live_tree(&file_uri, source);
+
+        // Candidate: the INTERFACE's own declaration (line 1).
+        let interface_column = source.lines().nth(1).unwrap().find("save").unwrap() as u32;
+        let interface_candidate = location(&file_uri, 1, interface_column, interface_column + 4);
+
+        // Query: "DerivedUser" (the CONCRETE/override side), declared at
+        // file_uri itself -- exactly the case Task 4 supplies
+        // query_declaring_type_uri for (cursor on a Declaration).
+        let result = verify_candidates(
+            &indexer,
+            Some("DerivedUser"),
+            Some(file_uri.as_str()),
+            usize::MAX,
+            vec![interface_candidate.clone()],
+        );
+        assert_eq!(
+            result.proven_overrides,
+            vec![interface_candidate],
+            "querying from the override side must still detect the interface \
+             declaration as a proven override participant"
+        );
+    }
+
+    /// The forward direction (querying from the interface, the override's
+    /// declaration is the candidate) must also populate `proven_overrides` --
+    /// not just classify CstResolved.
+    #[test]
+    fn override_detected_from_the_interface_side_populates_proven_overrides() {
+        let source = "open class User {\n\
+                      fun save() {}\n\
+                      }\n\
+                      class DerivedUser : User() {\n\
+                      override fun save() {}\n\
+                      }\n";
+        let file_uri = uri("/D.kt");
+        let indexer = Indexer::new();
+        indexer.index_content(&file_uri, source);
+        indexer.store_live_tree(&file_uri, source);
+
+        let override_column = source.lines().nth(4).unwrap().find("save").unwrap() as u32;
+        let override_candidate = location(&file_uri, 4, override_column, override_column + 4);
+
+        let result = verify_candidates(
+            &indexer,
+            Some("User"),
+            None,
+            usize::MAX,
+            vec![override_candidate.clone()],
+        );
+        assert_eq!(result.proven_overrides, vec![override_candidate]);
+    }
+
+    /// House decoy: two UNRELATED classes with same-named methods must never
+    /// populate `proven_overrides` -- only a proven supertype/subtype
+    /// relationship does.
+    #[test]
+    fn unrelated_same_named_declaration_is_not_a_proven_override() {
+        let source = "class User {\n\
+                      fun save() {}\n\
+                      }\n\
+                      class File {\n\
+                      fun save() {}\n\
+                      }\n";
+        let file_uri = uri("/D.kt");
+        let indexer = Indexer::new();
+        indexer.index_content(&file_uri, source);
+        indexer.store_live_tree(&file_uri, source);
+
+        let file_column = source.lines().nth(4).unwrap().find("save").unwrap() as u32;
+        let file_candidate = location(&file_uri, 4, file_column, file_column + 4);
+
+        let result = verify_candidates(
+            &indexer,
+            Some("User"),
+            None,
+            usize::MAX,
+            vec![file_candidate],
+        );
+        assert!(result.proven_overrides.is_empty());
     }
 }

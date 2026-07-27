@@ -33,7 +33,7 @@ use crate::StrExt;
 
 use super::fd::{fd_find_and_parse, import_package_prefix};
 use super::find::{find_local_declaration, find_name_in_uri, find_name_in_uri_after_line};
-use super::hierarchy::walk_hierarchy;
+use super::hierarchy::{walk_hierarchy, MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK};
 use super::infer::{infer_field_type, infer_variable_type};
 
 /// Return `FileData` for `uri` — from the live index if indexed, otherwise parse from disk.
@@ -1092,6 +1092,7 @@ fn resolve_from_class_hierarchy(indexer: &Indexer, name: &str, from_uri: &Url) -
         from_uri.as_str(),
         CallerContext::default(),
         12,
+        MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK,
         |index, _, class_uri, _| find_name_in_uri(index, name, class_uri),
     );
     // Stable dedup via HashSet — diamond inheritance can produce the same location
