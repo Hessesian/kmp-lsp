@@ -13,7 +13,7 @@
 //! the same line, or from column 0 on a new line).  Tokens must be sorted by
 //! (line, col) before encoding.
 
-mod helpers;
+pub(crate) mod helpers;
 mod java;
 mod kotlin;
 mod params;

@@ -255,7 +255,7 @@ pub(super) fn value_arg_label(node: Node<'_>) -> Option<Node<'_>> {
         .then_some(first)
 }
 
-pub(super) fn is_named_argument_label(node: Node<'_>) -> bool {
+pub(crate) fn is_named_argument_label(node: Node<'_>) -> bool {
     let Some(parent) = node.parent() else {
         return false;
     };

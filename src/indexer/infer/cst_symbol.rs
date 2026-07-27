@@ -19,6 +19,7 @@ use crate::queries::{
     KIND_VAR_DECL, KIND_WHEN_EXPR,
 };
 use crate::resolver::api::Definitions;
+use crate::semantic_tokens::helpers::is_named_argument_label;
 use crate::types::CursorPos;
 use tower_lsp::lsp_types::{Location, Position, Url};
 
@@ -345,6 +346,13 @@ pub(crate) fn local_scope_occurrences(
         utf16_col: cursor_position.character as usize,
     };
     let cursor_node = crate::indexer::cursor_node_at(&doc, cursor)?;
+    // A named-argument label (`appState` in `NiaApp(appState = appState)`)
+    // names the CALLEE's parameter, not anything in the caller's own scope,
+    // even though it's textually identical to a local it's often paired
+    // with. The local fast path must never claim this position.
+    if is_named_argument_label(cursor_node) {
+        return None;
+    }
     let name = cursor_node.utf8_text_owned(&doc.bytes)?;
 
     // Climb outward through enclosing scope boundaries, narrowest first,
@@ -559,6 +567,7 @@ fn visit_unshadowed_name_matches<'a>(
     if !already_shadowed
         && !is_excluded
         && node.kind() == KIND_SIMPLE_IDENT
+        && !is_named_argument_label(node)
         && node.utf8_text_owned(bytes).as_deref() == Some(name)
     {
         visit(node, generation);
@@ -1165,6 +1174,52 @@ mod tests {
             locations.len(),
             2,
             "destructured declaration + 1 reference, got {locations:?}"
+        );
+    }
+
+    /// Real-world bug (found renaming `appState` in `NiaApp(appState =
+    /// appState, ...)`): a named-argument label is textually identical to a
+    /// local it's often paired with, but names the CALLEE's parameter, not
+    /// the caller's local. It must never be swept into the local's rename
+    /// group, and rename must never be triggered directly from it (a
+    /// different symbol, needing its own resolution, not this fast path).
+    #[test]
+    fn local_scope_occurrences_excludes_named_argument_labels_from_a_local_variables_occurrences() {
+        let source =
+            "fun demo() {\n    val appState = 1\n    NiaApp(\n        appState = appState,\n    )\n}\n";
+        let (file_uri, indexer) = indexed_with_live("/D.kt", source);
+        let declaration_line = source.lines().nth(1).unwrap();
+        let column = declaration_line.find("appState").unwrap() as u32;
+        let locations = local_scope_occurrences(&indexer, &file_uri, Position::new(1, column))
+            .expect("appState is a local variable");
+        assert_eq!(
+            locations.len(),
+            2,
+            "declaration + the value reference only, excluding the named-argument label, got {locations:?}"
+        );
+        let argument_line = source.lines().nth(3).unwrap();
+        let label_column = argument_line.find("appState").unwrap() as u32;
+        assert!(
+            locations
+                .iter()
+                .all(|location| !(location.range.start.line == 3
+                    && location.range.start.character == label_column)),
+            "must not include the named-argument label itself, got {locations:?}"
+        );
+    }
+
+    #[test]
+    fn local_scope_occurrences_returns_none_when_cursor_is_on_a_named_argument_label() {
+        let source =
+            "fun demo() {\n    val appState = 1\n    NiaApp(\n        appState = appState,\n    )\n}\n";
+        let (file_uri, indexer) = indexed_with_live("/D.kt", source);
+        let argument_line = source.lines().nth(3).unwrap();
+        let label_column = argument_line.find("appState").unwrap() as u32;
+        let result = local_scope_occurrences(&indexer, &file_uri, Position::new(3, label_column));
+        assert!(
+            result.is_none(),
+            "a named-argument label names the callee's parameter, not the local -- \
+             the local fast path must not claim this position, got {result:?}"
         );
     }
 }
