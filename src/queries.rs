@@ -427,6 +427,7 @@ pub(crate) const KIND_WILDCARD_IMPORT: &str = "wildcard_import";
 pub(crate) const KIND_MODIFIERS: &str = "modifiers";
 pub(crate) const KIND_COLON: &str = ":";
 pub(crate) const KIND_EQ: &str = "=";
+pub(crate) const KIND_DOT: &str = ".";
 pub(crate) const KIND_PARAMETER: &str = "parameter";
 pub(crate) const KIND_FUN_VALUE_PARAMS: &str = "function_value_parameters";
 pub(crate) const KIND_FUNCTION_TYPE: &str = "function_type";

@@ -1866,6 +1866,111 @@ fn find_this_context_nested_foreach_outer_apply() {
     );
 }
 
+// ── all_lambda_receivers_at (missing-import diagnostic's multi-receiver walk) ─
+
+#[test]
+fn all_lambda_receivers_at_returns_every_enclosing_receiver_innermost_first() {
+    // Kotlin resolves an implicit-receiver call against every enclosing receiver,
+    // nearest first. A bare reference inside a doubly-nested `apply {}` must see
+    // BOTH receiver types, innermost-first — not just the nearest one.
+    let src = "class Outer\nclass Inner\nval outer = Outer()\nouter.apply {\n    val inner = Inner()\n    inner.apply {\n        this\n    }\n}";
+    let u = uri("/t.kt");
+    let idx = Indexer::new();
+    idx.index_content(&u, src);
+    idx.store_live_tree(&u, src);
+    let pos = crate::types::CursorPos {
+        line: 6,
+        utf16_col: 8,
+    };
+    let receivers = super::all_lambda_receivers_at(pos, &idx, &u);
+    assert_eq!(
+        receivers,
+        vec!["Inner".to_string(), "Outer".to_string()],
+        "expected innermost-first [Inner, Outer], got: {receivers:?}"
+    );
+}
+
+#[test]
+fn all_lambda_receivers_at_skips_unresolvable_receiver_walking_further_outward() {
+    // The inner `apply` receiver's type can't be resolved (unknown var) — the walk
+    // must not stop there; it should still surface the outer, resolvable receiver.
+    let src = "class Outer\nval outer = Outer()\nouter.apply {\n    unknown.apply {\n        this\n    }\n}";
+    let u = uri("/t.kt");
+    let idx = Indexer::new();
+    idx.index_content(&u, src);
+    idx.store_live_tree(&u, src);
+    let pos = crate::types::CursorPos {
+        line: 4,
+        utf16_col: 8,
+    };
+    let receivers = super::all_lambda_receivers_at(pos, &idx, &u);
+    assert_eq!(
+        receivers,
+        vec!["Outer".to_string()],
+        "expected the unresolvable inner receiver to be skipped, outer Outer kept, got: {receivers:?}"
+    );
+}
+
+#[test]
+fn all_lambda_receivers_at_resolves_multiline_named_arg_call_header() {
+    // Regression: a Compose-style builder call whose named arguments span
+    // multiple lines before the trailing receiver-lambda (e.g. real
+    // `LazyColumn(contentPadding = ..., ...) { item {} }`) must still resolve
+    // the receiver. lambda_before_brace_context's plain text-scan only sees
+    // the brace's own line (") {" -- no callee identifier at all); the fix
+    // routes through lambda_this_ctx's CST-based call_fn_name instead, which
+    // finds the callee via the call_expression ancestor regardless of how
+    // many lines its argument list spans.
+    let sig_src = "class Scope\nfun Builder(padding: Int, content: Scope.() -> Unit) {}\n";
+    let code_src = "Builder(\n    padding = 1,\n) {\n    this\n}\n";
+    let (u, idx, _lines) = indexed_with_live("/t.kt", sig_src, code_src);
+    let pos = crate::types::CursorPos {
+        line: 3,
+        utf16_col: 4,
+    };
+    let result = super::find_this_context(pos, &idx, &u);
+    assert!(
+        matches!(result, super::ThisContext::Resolved(ref t) if t == "Scope"),
+        "cursor inside Builder(...){{ this }} with a multi-line named-arg header \
+         should be Resolved(Scope), got: {result:?}"
+    );
+    let receivers = super::all_lambda_receivers_at(pos, &idx, &u);
+    assert_eq!(
+        receivers,
+        vec!["Scope".to_string()],
+        "all_lambda_receivers_at should also resolve Scope, got: {receivers:?}"
+    );
+}
+
+#[test]
+fn lambda_scope_label_resolves_across_multiline_named_arg_call_header() {
+    // Regression: LambdaScopeInfo.label (which powers `this@Label` completion
+    // resolution, completion_context.rs:256) is built from the SAME widened
+    // lambda_before_brace_context span as the this-context fix above. Without
+    // the widening, a multi-line call header leaves before_brace as just ")"
+    // -- no identifier -- so lambda_label silently returns None and
+    // `this@Builder` inside the lambda would never resolve.
+    let sig_src = "class Scope\nfun Builder(padding: Int, content: Scope.(item: Int) -> Unit) {}\n";
+    let code_src = "Builder(\n    padding = 1,\n) { item ->\n    item\n}\n";
+    let (u, idx, _lines) = indexed_with_live("/t.kt", sig_src, code_src);
+    let doc = idx.live_doc(&u).expect("live doc");
+    let pos = crate::types::CursorPos {
+        line: 3,
+        utf16_col: 4,
+    };
+    let node = super::cursor_node_at(&doc, pos).expect("cursor node");
+    let scopes = super::cst_lambda_scopes(node, &doc, &idx, &u);
+    assert_eq!(
+        scopes
+            .iter()
+            .filter_map(|s| s.label.clone())
+            .next()
+            .as_deref(),
+        Some("Builder"),
+        "expected label Some(\"Builder\") from the multi-line call header, got: {scopes:?}"
+    );
+}
+
 // ── Generic extension function type substitution via dot chain ────────────────
 // See: https://github.com/Hessesian/kmp-lsp/issues/ (trailing comma + T subst bugs)
 

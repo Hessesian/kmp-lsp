@@ -65,6 +65,10 @@ pub(crate) enum Subcommand {
     Check {
         files: Vec<PathBuf>,
     },
+    /// POC: report likely missing-import references across the workspace.
+    MissingImports {
+        root: Option<PathBuf>,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -288,6 +292,9 @@ fn build_subcommand(subcommand: &str, parsed: ParsedCliFlags) -> Result<Subcomma
         "check" => Ok(Subcommand::Check {
             files: positionals.iter().map(PathBuf::from).collect(),
         }),
+        "missing-imports" => Ok(Subcommand::MissingImports {
+            root: positionals.first().map(PathBuf::from),
+        }),
         _ => unreachable!(),
     }
 }
@@ -396,6 +403,7 @@ fn is_subcommand(value: &str) -> bool {
             | "sources"
             | "extract-sources"
             | "check"
+            | "missing-imports"
     )
 }
 

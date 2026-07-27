@@ -27,6 +27,7 @@ mod check;
 mod complete;
 pub(crate) mod extract_sources;
 mod hover;
+mod missing_import_poc;
 mod output;
 mod run;
 mod sources;

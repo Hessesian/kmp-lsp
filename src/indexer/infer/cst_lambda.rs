@@ -352,6 +352,18 @@ pub(crate) fn cursor_node_at(
         .descendant_for_point_range(point, point)
 }
 
+/// If `lambda` is part of an enclosing call (trailing or named-argument —
+/// `Foo(args) { … }` / `Foo(content = { … })`), that call_expression's start
+/// byte. Delegates to [`NodeExt::enclosing_call_expression`], which is more
+/// general than a fixed parent-chain shape check: it walks up regardless of
+/// the exact intermediate nesting, bailing only if another `lambda_literal`
+/// or the source root is hit first.
+fn enclosing_call_expression_start(lambda: tree_sitter::Node<'_>) -> Option<usize> {
+    lambda
+        .enclosing_call_expression()
+        .map(|call| call.start_byte())
+}
+
 pub(super) fn lambda_before_brace_context(
     lambda: tree_sitter::Node<'_>,
     doc: &crate::indexer::live_tree::LiveDoc,
@@ -362,7 +374,17 @@ pub(super) fn lambda_before_brace_context(
         .rposition(|&b| b == b'\n')
         .map(|i| i + 1)
         .unwrap_or(0);
-    let before_brace = std::str::from_utf8(&doc.bytes[line_start..brace_byte])
+    // A multi-line call header (`Foo(\n  arg = value,\n) { … }`) puts the callee
+    // several lines before the brace's own line — extend the text span back to
+    // the enclosing call_expression's start when this is its trailing lambda, so
+    // the callee-name extraction below (`classify_this_lambda_context` /
+    // `lambda_label`) can still see it. `.min` only ever extends the span
+    // earlier, never shrinks the existing single-line behavior.
+    let text_start = match enclosing_call_expression_start(lambda) {
+        Some(call_start) => call_start.min(line_start),
+        None => line_start,
+    };
+    let before_brace = std::str::from_utf8(&doc.bytes[text_start..brace_byte])
         .ok()?
         .trim_end()
         .to_owned();
@@ -413,6 +435,7 @@ pub(super) fn cst_lambda_param_type_at(
 ///
 /// Field-compatible with the completion feature's `LambdaScope`; the feature
 /// converts each entry without re-deriving anything.
+#[derive(Debug)]
 pub(crate) struct LambdaScopeInfo {
     /// Type of the implicit `it` parameter, when the enclosing call gives one.
     pub it_type: Option<String>,
@@ -451,6 +474,39 @@ pub(super) fn cst_lambda_scopes(
     scopes
 }
 
+/// Every enclosing lambda receiver type at `start_node`, innermost-first — the
+/// order Kotlin actually resolves an implicit-receiver call in (nearest
+/// receiver wins; an unresolvable or non-receiver lambda is simply skipped,
+/// the walk continues outward). Used to check a bare call/type reference
+/// against *all* candidate receivers, e.g. `item()` inside `with(x) { }`
+/// nested in a `LazyColumn`-style builder belongs to the outer
+/// `LazyListScope`, not `x`.
+pub(crate) fn all_this_receivers_at(
+    start_node: tree_sitter::Node<'_>,
+    doc: &crate::indexer::live_tree::LiveDoc,
+    deps: &impl InferDeps,
+    uri: &Url,
+) -> Vec<String> {
+    let mut receivers = Vec::new();
+    let mut cur = start_node;
+    loop {
+        if cur.kind() == KIND_LAMBDA_LIT {
+            // lambda_this_ctx (not the weaker text-only classify_this_lambda_context
+            // directly) — it resolves the callee via the CST call node first
+            // (enclosing_call_expression + call_fn_name), which is robust to
+            // multi-line call headers with named arguments before the trailing
+            // lambda (e.g. `LazyColumn(contentPadding = ..., ...) { item {} }`);
+            // the text-only path only ever sees the brace's own line.
+            if let ThisLambdaCtx::Resolved(receiver_type) = lambda_this_ctx(cur, doc, deps, uri) {
+                receivers.push(receiver_type);
+            }
+        }
+        let Some(parent) = cur.parent() else { break };
+        cur = parent;
+    }
+    receivers
+}
+
 /// Build the completion scope for a single `lambda_literal`, or `None` when it
 /// contributes neither an `it` type nor any usable named parameter.
 fn lambda_scope_info(
@@ -465,10 +521,18 @@ fn lambda_scope_info(
     if named_params.is_empty() && it_type.is_none() {
         return None;
     }
+    // CST-based first (robust to multi-line call headers with named args before
+    // the trailing lambda — same reasoning as lambda_this_ctx's call_fn_name
+    // path); the text-based lambda_label is only a fallback for lambdas whose
+    // enclosing call_expression can't be found this way.
+    let label = lambda
+        .enclosing_call_expression()
+        .and_then(|call| call.call_fn_name(&doc.bytes))
+        .or_else(|| lambda_label(&before_brace));
     Some(LambdaScopeInfo {
         it_type,
         named_params,
-        label: lambda_label(&before_brace),
+        label,
     })
 }
 

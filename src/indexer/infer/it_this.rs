@@ -23,14 +23,15 @@ pub(super) use super::args::has_named_params_not_it;
 #[allow(unused_imports)]
 pub(super) use super::chain::resolve_member_type_on;
 pub(crate) use super::cst_lambda::ThisContext;
+use super::cst_lambda::{
+    all_this_receivers_at, cst_it_element_type, cst_named_lambda_param_type, cst_this_context,
+    cursor_node_at,
+};
 #[cfg(test)]
 #[allow(unused_imports)]
 pub(super) use super::cst_lambda::{
-    classify_this_lambda_context, cst_lambda_param_type_via_call, is_inside_receiver_lambda,
-    lambda_before_brace_context, ThisLambdaCtx,
-};
-use super::cst_lambda::{
-    cst_it_element_type, cst_named_lambda_param_type, cst_this_context, cursor_node_at,
+    classify_this_lambda_context, cst_lambda_param_type_via_call, cst_lambda_scopes,
+    is_inside_receiver_lambda, lambda_before_brace_context, LambdaScopeInfo, ThisLambdaCtx,
 };
 use super::speculative::lambda_doc_at;
 use super::type_subst::is_generic_param;
@@ -96,6 +97,22 @@ pub(crate) fn find_this_element_type(pos: CursorPos, idx: &Indexer, uri: &Url) -
         ThisContext::Resolved(resolved_type) => Some(resolved_type),
         ThisContext::InsideReceiver | ThisContext::NotFound => None,
     }
+}
+
+/// Every enclosing lambda receiver type at `pos`, innermost-first (CST path
+/// only — used by the missing-import diagnostic to check a bare
+/// implicit-receiver call against *all* enclosing receivers, matching
+/// Kotlin's own resolution order). Same repair-gated tree acquisition as
+/// [`find_this_context`].
+pub(crate) fn all_lambda_receivers_at(pos: CursorPos, idx: &Indexer, uri: &Url) -> Vec<String> {
+    let Some(resolution) = lambda_doc_at(idx, uri, pos) else {
+        return vec![];
+    };
+    let doc = resolution.doc();
+    let Some(node) = cursor_node_at(doc, pos) else {
+        return vec![];
+    };
+    all_this_receivers_at(node, doc, idx, uri)
 }
 
 /// Resolve the element/receiver type for an EXPLICITLY NAMED lambda parameter

@@ -5297,3 +5297,216 @@ fn named_param_completion_survives_unclosed_lambda() {
         "named-param completion in the broken state — got: {labels:?}"
     );
 }
+
+// ── missing-import diagnostic helpers ────────────────────────────────────────
+
+#[test]
+fn resolve_in_scope_strict_true_for_explicit_import() {
+    let caller_uri = uri("/Caller.kt");
+    let idx = Indexer::new();
+    idx.index_content(
+        &caller_uri,
+        "package app\n\
+         import com.example.Foo\n\
+         fun use() { Foo() }\n",
+    );
+    assert!(resolve_in_scope_strict(&idx, "Foo", &caller_uri));
+}
+
+#[test]
+fn resolve_in_scope_strict_false_for_unimported_indexed_name() {
+    // `Foo` is a real, indexed symbol — but in a different package with no
+    // import, same-package relationship, or star import bringing it into
+    // `Caller.kt`'s scope. A missing-import candidate must resolve to false
+    // here even though the name IS otherwise known to the index.
+    let foo_uri = uri("/lib/Foo.kt");
+    let caller_uri = uri("/app/Caller.kt");
+    let idx = Indexer::new();
+    idx.index_content(&foo_uri, "package com.example.lib\nclass Foo");
+    idx.index_content(&caller_uri, "package app\nfun use() { Foo() }\n");
+    assert!(!resolve_in_scope_strict(&idx, "Foo", &caller_uri));
+}
+
+#[test]
+fn resolve_in_scope_strict_true_via_default_import_type() {
+    // `Result` is a core kotlin.* type, in scope everywhere without an import.
+    let caller_uri = uri("/Caller.kt");
+    let idx = Indexer::new();
+    idx.index_content(
+        &caller_uri,
+        "package app\nfun use(): Result<Int> = TODO()\n",
+    );
+    assert!(resolve_in_scope_strict(&idx, "Result", &caller_uri));
+}
+
+/// Regression: `resolvable_via_default_import` must check `jar_definitions`
+/// directly (by package), not the narrower `importable_fqns` cache — a
+/// top-level `kotlin.*` FUNCTION (e.g. `error`, `run`, `with`, `repeat`) is not
+/// reliably captured there, so a name-only lookup via `fqns_for_name` would
+/// silently miss it and flag a real stdlib call as a missing import.
+#[test]
+fn resolve_in_scope_strict_true_via_jar_indexed_default_import_function() {
+    use crate::types::FileData;
+    use std::sync::Arc;
+
+    let caller_uri = uri("/Caller.kt");
+    let idx = Indexer::new();
+    idx.index_content(&caller_uri, "package app\nfun use() { error(\"x\") }\n");
+
+    // Simulate the kotlin-stdlib jar indexing a top-level `error` function.
+    let jar_uri = "jar:file:///kotlin-stdlib.jar!/kotlin/PreconditionsKt.class";
+    idx.jar_definitions
+        .entry("error".to_string())
+        .or_default()
+        .push(tower_lsp::lsp_types::Location {
+            uri: Url::parse(jar_uri).unwrap(),
+            range: tower_lsp::lsp_types::Range::default(),
+        });
+    idx.jar_files.insert(
+        jar_uri.to_string(),
+        Arc::new(FileData {
+            package: Some("kotlin".to_string()),
+            ..Default::default()
+        }),
+    );
+
+    assert!(
+        resolve_in_scope_strict(&idx, "error", &caller_uri),
+        "kotlin.error is a default-import top-level function — must not be flagged"
+    );
+}
+
+/// Regression: `resolvable_via_default_import` must promote a Tier-1-only
+/// (not-yet-materialized) JAR candidate before reading `jar_definitions`,
+/// not read it directly. The test above seeds `jar_definitions` straight —
+/// which passes even without the promote-before-read call, since the data is
+/// already there. This one seeds only `jar_bare_names` (the real Tier-1
+/// signal a lazily-loaded JAR starts in) and asserts the promotion actually
+/// ran (`idx.materialized`), the way `find_fun_return_type_reachable`'s own
+/// Tier-1-promotion regression test does.
+#[test]
+fn resolve_in_scope_strict_promotes_a_tier1_only_default_import_jar_candidate() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    crate::indexer::test_helpers::with_xdg_cache(tmp.path(), || {
+        let jar_path = tmp.path().join("kotlin-stdlib.jar");
+        std::fs::write(&jar_path, b"fake jar bytes").expect("write fake jar");
+        let jar_path_key = jar_path.to_string_lossy().to_string();
+
+        let symbols = vec![crate::sidecar::SidecarSymbol {
+            name: "error".to_owned(),
+            kind: "fun".to_owned(),
+            container: String::new(),
+            detail: "fun error(message: Any): Nothing".to_owned(),
+            doc: String::new(),
+            type_params: Vec::new(),
+            extension_receiver_type: String::new(),
+            trailing_lambda: false,
+            deprecated: false,
+            pkg: "kotlin".to_owned(),
+            top_level: true,
+            supers: vec![],
+        }];
+        let entry = crate::indexer::jar_cache::make_cache_entry(&jar_path, symbols)
+            .expect("cache entry for existing file");
+        let mut entries = std::collections::HashMap::new();
+        entries.insert(jar_path_key.clone(), entry);
+        crate::indexer::jar_cache::save_jar_cache(&entries);
+
+        let idx = Indexer::new();
+        let jar_id = idx.jar_table.intern(&jar_path_key);
+        idx.jar_bare_names
+            .entry("error".to_owned())
+            .or_default()
+            .push(jar_id);
+
+        let caller_uri = uri("/Caller.kt");
+        idx.index_content(&caller_uri, "package app\nfun use() { error(\"x\") }\n");
+
+        assert!(
+            resolve_in_scope_strict(&idx, "error", &caller_uri),
+            "kotlin.error must resolve as default-import even before Tier-2 materialization"
+        );
+        assert!(
+            idx.materialized.contains(&jar_id),
+            "resolve_in_scope_strict must promote a fresh-cache-backed Tier-1-only \
+             candidate, not read jar_definitions directly"
+        );
+    });
+}
+
+/// Regression: `receiver_provides_member`'s JAR-member step (3) must likewise
+/// promote before reading `jar_definitions`/`jar_files`, not read them
+/// directly — same contract, different call site.
+#[test]
+fn receiver_provides_member_promotes_a_tier1_only_jar_member() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    crate::indexer::test_helpers::with_xdg_cache(tmp.path(), || {
+        let jar_path = tmp.path().join("some-lib.jar");
+        std::fs::write(&jar_path, b"fake jar bytes").expect("write fake jar");
+        let jar_path_key = jar_path.to_string_lossy().to_string();
+
+        let symbols = vec![crate::sidecar::SidecarSymbol {
+            name: "someMethod".to_owned(),
+            kind: "fun".to_owned(),
+            container: "SomeClass".to_owned(),
+            detail: "fun someMethod(): Unit".to_owned(),
+            doc: String::new(),
+            type_params: Vec::new(),
+            extension_receiver_type: String::new(),
+            trailing_lambda: false,
+            deprecated: false,
+            pkg: "lib".to_owned(),
+            top_level: false,
+            supers: vec![],
+        }];
+        let entry = crate::indexer::jar_cache::make_cache_entry(&jar_path, symbols)
+            .expect("cache entry for existing file");
+        let mut entries = std::collections::HashMap::new();
+        entries.insert(jar_path_key.clone(), entry);
+        crate::indexer::jar_cache::save_jar_cache(&entries);
+
+        let idx = Indexer::new();
+        let jar_id = idx.jar_table.intern(&jar_path_key);
+        idx.jar_bare_names
+            .entry("someMethod".to_owned())
+            .or_default()
+            .push(jar_id);
+
+        assert!(
+            receiver_provides_member(&idx, "SomeClass", "someMethod"),
+            "someMethod is a real JAR member of SomeClass, even before Tier-2 materialization"
+        );
+        assert!(
+            idx.materialized.contains(&jar_id),
+            "receiver_provides_member must promote a fresh-cache-backed Tier-1-only \
+             candidate, not read jar_definitions directly"
+        );
+    });
+}
+
+#[test]
+fn receiver_provides_member_true_for_extension_function() {
+    let modifier_uri = uri("/Modifier.kt");
+    let padding_uri = uri("/Padding.kt");
+    let idx = Indexer::new();
+    idx.index_content(
+        &modifier_uri,
+        "package androidx.compose.ui\nobject Modifier",
+    );
+    idx.index_content(
+        &padding_uri,
+        "package androidx.compose.ui\nfun Modifier.padding(v: Int): Modifier = this\n",
+    );
+    assert!(receiver_provides_member(&idx, "Modifier", "padding"));
+}
+
+#[test]
+fn receiver_provides_member_false_for_unrelated_name() {
+    let modifier_uri = uri("/Modifier.kt");
+    let idx = Indexer::new();
+    idx.index_content(
+        &modifier_uri,
+        "package androidx.compose.ui\nobject Modifier",
+    );
+    assert!(!receiver_provides_member(&idx, "Modifier", "notAMember"));
+}
