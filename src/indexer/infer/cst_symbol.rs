@@ -11,10 +11,12 @@ use tree_sitter::Node;
 
 use crate::indexer::{CstQuery, Indexer, NodeExt, Resolution, ResolveIo};
 use crate::queries::{
-    KIND_BINDING_PATTERN_KIND, KIND_CALL_EXPR, KIND_CLASS_DECL, KIND_CLASS_PARAM,
-    KIND_COMPANION_OBJ, KIND_ENUM_ENTRY, KIND_FUN_DECL, KIND_IDENTIFIER, KIND_IMPORT_HEADER,
+    KIND_BINDING_PATTERN_KIND, KIND_CALL_EXPR, KIND_CATCH_BLOCK, KIND_CLASS_DECL, KIND_CLASS_PARAM,
+    KIND_COMPANION_OBJ, KIND_CONTROL_STRUCTURE_BODY, KIND_ENUM_ENTRY, KIND_FINALLY_BLOCK,
+    KIND_FOR_STMT, KIND_FUN_DECL, KIND_IDENTIFIER, KIND_IMPORT_HEADER, KIND_LAMBDA_LIT,
     KIND_NAV_EXPR, KIND_NAV_SUFFIX, KIND_OBJECT_DECL, KIND_PARAMETER, KIND_SIMPLE_IDENT,
-    KIND_TYPE_ALIAS, KIND_TYPE_IDENT, KIND_TYPE_PARAM, KIND_VAR_DECL,
+    KIND_STATEMENTS, KIND_TRY_EXPR, KIND_TYPE_ALIAS, KIND_TYPE_IDENT, KIND_TYPE_PARAM,
+    KIND_VAR_DECL, KIND_WHEN_EXPR,
 };
 use crate::resolver::api::Definitions;
 use crate::types::CursorPos;
@@ -40,6 +42,7 @@ pub(crate) fn is_declaration_site(node: Node<'_>) -> bool {
         || pk == KIND_ENUM_ENTRY
         || pk == KIND_VAR_DECL
         || pk == KIND_CLASS_PARAM
+        || pk == KIND_CATCH_BLOCK
     {
         return node.kind() == KIND_SIMPLE_IDENT;
     }
@@ -343,23 +346,49 @@ pub(crate) fn local_scope_occurrences(
     };
     let cursor_node = crate::indexer::cursor_node_at(&doc, cursor)?;
     let name = cursor_node.utf8_text_owned(&doc.bytes)?;
-    let body = enclosing_local_body(cursor_node)?;
 
-    // The name under the cursor must itself be declared as a local directly
-    // inside `body` (a val/var/parameter) — not a captured outer variable, a
-    // class member, or a top-level symbol. Only then is the local fast path
-    // valid; anything else falls through to the cross-file path.
-    find_local_declaration_in_body(body, &name, &doc.bytes)?;
+    // Climb outward through enclosing scope boundaries, narrowest first,
+    // stopping at the first level that directly declares `name` — never
+    // widening past a level that already owns it, or an unrelated sibling
+    // for/when/if reusing the same name could be pulled in from further out.
+    let body = ancestor_scope_boundaries(cursor_node)
+        .find(|scope| declares_name_directly(*scope, &name, &doc.bytes).is_some())?;
 
-    let mut occurrence_nodes = Vec::new();
-    visit_unshadowed_name_matches(body, &name, false, &doc.bytes, &mut |node| {
-        occurrence_nodes.push(node)
-    });
+    let mut occurrences: Vec<(Node, usize)> = Vec::new();
+    visit_unshadowed_name_matches(
+        body,
+        &name,
+        0,
+        false,
+        None,
+        &doc.bytes,
+        &mut |node, generation| occurrences.push((node, generation)),
+    );
+
+    let cursor_generation = occurrences
+        .iter()
+        .find(|(node, _)| node.id() == cursor_node.id())
+        .map(|(_, generation)| *generation)?;
+    let same_generation: Vec<&(Node, usize)> = occurrences
+        .iter()
+        .filter(|(_, generation)| *generation == cursor_generation)
+        .collect();
+    // A reference textually before any declaration of `name` in this scope
+    // (invalid Kotlin, real during mid-typing) lands in a generation with no
+    // declaration of its own. No CST trick repairs this — nothing here is
+    // syntactically broken, just semantically out of order — so it safely
+    // falls through to the cross-file path instead of a partial/wrong rename.
+    if !same_generation
+        .iter()
+        .any(|(node, _)| is_declaration_site(*node))
+    {
+        return None;
+    }
 
     let full_text = std::str::from_utf8(&doc.bytes).ok()?;
-    let locations: Vec<Location> = occurrence_nodes
+    let locations: Vec<Location> = same_generation
         .into_iter()
-        .filter_map(|node| node_to_location(uri, node, full_text))
+        .filter_map(|(node, _)| node_to_location(uri, *node, full_text))
         .collect();
     if locations.is_empty() {
         None
@@ -368,54 +397,88 @@ pub(crate) fn local_scope_occurrences(
     }
 }
 
-/// The narrowest enclosing function/lambda body containing `node`.
+/// How a CST node introduces local scope for the rename local-scope walk.
+///
+/// Not every scope-boundary node has the same shape: a `for`/`when` binds a
+/// name in its own header (outside the `{}`), while a plain block's bound
+/// names are declared entirely inside it.
+enum ScopeBoundary<'a> {
+    /// The scope is the node's entire subtree, including a header-bound name
+    /// that sits outside its inner block (`function_declaration`'s own
+    /// parameters, `for_statement`'s loop variable, `when_expression`'s
+    /// subject binding).
+    WholeNode(Node<'a>),
+    /// The scope is exactly this node's subtree — a brace-delimited block
+    /// with no binding of its own outside it.
+    Block(Node<'a>),
+}
+
+impl<'a> ScopeBoundary<'a> {
+    fn node(self) -> Node<'a> {
+        match self {
+            ScopeBoundary::WholeNode(node) | ScopeBoundary::Block(node) => node,
+        }
+    }
+}
+
+fn scope_boundary_at(node: Node<'_>) -> Option<ScopeBoundary<'_>> {
+    match node.kind() {
+        k if k == KIND_FUN_DECL
+            || k == KIND_LAMBDA_LIT
+            || k == KIND_FOR_STMT
+            || k == KIND_WHEN_EXPR =>
+        {
+            Some(ScopeBoundary::WholeNode(node))
+        }
+        k if k == KIND_CONTROL_STRUCTURE_BODY
+            || k == KIND_CATCH_BLOCK
+            || k == KIND_FINALLY_BLOCK
+            || k == KIND_TRY_EXPR =>
+        {
+            Some(ScopeBoundary::Block(node))
+        }
+        _ => None,
+    }
+}
+
+/// Ancestor scope boundaries of `node`, narrowest first.
 ///
 /// A function/method's own name is a direct `simple_identifier` child of its
 /// `KIND_FUN_DECL` (`is_declaration_site` recognizes exactly this shape as a
-/// declaration site) — climbing one level up from the cursor sitting on that
-/// name would otherwise match that same `KIND_FUN_DECL` as "enclosing,"
-/// wrongly treating the function's own declaration as a local inside its own
-/// body (house bug: renaming a class method's declaration then only walked
-/// that method's own empty subtree instead of falling through to the
-/// cross-file path). Skip that match and keep climbing — a local/parameter is
-/// never a *direct* name child of `KIND_FUN_DECL` itself (parameters sit
-/// inside a `KIND_PARAMETER`/`KIND_FUN_VALUE_PARAMS` wrapper), so this only
-/// ever excludes the function's own name.
-fn enclosing_local_body(node: Node<'_>) -> Option<Node<'_>> {
+/// declaration site) — climbing from the cursor sitting on that name must not
+/// treat the function's own declaration as local to its own body (house bug:
+/// renaming a class method's declaration then only walked that method's own
+/// empty subtree instead of falling through to the cross-file path). Skip
+/// that match and keep climbing. Verified this ambiguity is unique to
+/// `KIND_FUN_DECL`: `for_statement`/`when_expression`'s bound names sit one
+/// level deeper (through `variable_declaration`), so their own header
+/// bindings never trigger it.
+fn ancestor_scope_boundaries(node: Node<'_>) -> impl Iterator<Item = Node<'_>> {
     let mut current = node;
-    while let Some(parent) = current.parent() {
-        if matches!(
-            parent.kind(),
-            k if k == crate::queries::KIND_FUN_DECL || k == crate::queries::KIND_LAMBDA_LIT
-        ) {
-            let is_own_name =
-                parent.kind() == crate::queries::KIND_FUN_DECL && is_declaration_site(current);
+    std::iter::from_fn(move || loop {
+        let parent = current.parent()?;
+        let child = current;
+        current = parent;
+        if let Some(boundary) = scope_boundary_at(parent) {
+            let is_own_name = parent.kind() == KIND_FUN_DECL && is_declaration_site(child);
             if !is_own_name {
-                return Some(parent);
+                return Some(boundary.node());
             }
         }
-        current = parent;
-    }
-    None
+    })
 }
 
-/// Returns `true` when `scope` (a nested `fun`/lambda body) itself declares a
-/// parameter or local named `name` — i.e. it shadows whatever declared `name`
-/// outside `scope`. Does not descend into scopes nested inside `scope` — each
-/// nested scope's own shadow status is evaluated independently when the outer
-/// walk reaches it.
-fn nested_scope_shadows(scope: Node<'_>, name: &str, bytes: &[u8]) -> bool {
+/// Whether `scope` itself — not any nested scope inside it — directly
+/// declares `name`: every `scope_boundary_at` match found while descending is
+/// treated as opaque and not searched into. Also the shadow-check primitive:
+/// a nested scope "shadows" `name` exactly when it directly declares it.
+fn declares_name_directly<'a>(scope: Node<'a>, name: &str, bytes: &[u8]) -> Option<Node<'a>> {
     let mut stack = vec![scope];
     while let Some(node) = stack.pop() {
         if is_declaration_site(node) && node.utf8_text_owned(bytes).as_deref() == Some(name) {
-            return true;
+            return Some(node);
         }
-        if node.id() != scope.id()
-            && matches!(
-                node.kind(),
-                k if k == crate::queries::KIND_FUN_DECL || k == crate::queries::KIND_LAMBDA_LIT
-            )
-        {
+        if node.id() != scope.id() && scope_boundary_at(node).is_some() {
             continue;
         }
         for i in 0..node.child_count() {
@@ -424,51 +487,103 @@ fn nested_scope_shadows(scope: Node<'_>, name: &str, bytes: &[u8]) -> bool {
             }
         }
     }
-    false
+    None
 }
 
-/// Walk `node`'s subtree, calling `visit` on every `simple_identifier` whose
-/// text equals `name`, skipping the subtree of any nested `fun`/lambda body
-/// that itself redeclares `name` (shadowing).
+/// Walk `statements`'s children in document order, threading a sequential
+/// re-declaration generation counter: each child that directly declares
+/// `name` starts a new generation from its own declaration identifier
+/// onward. The declaring statement's initializer — everything in that
+/// statement besides the declared name itself — is visited at the OLD
+/// generation: `val x: Any = "hello"; val x = x as String`'s own initializer
+/// reference must see the FIRST `x`, since the second doesn't exist yet
+/// while its own initializer runs.
+fn visit_statements_with_generations<'a>(
+    statements: Node<'a>,
+    name: &str,
+    mut generation: usize,
+    already_shadowed: bool,
+    bytes: &[u8],
+    visit: &mut impl FnMut(Node<'a>, usize),
+) {
+    for i in 0..statements.child_count() {
+        let Some(statement) = statements.child(i) else {
+            continue;
+        };
+        match declares_name_directly(statement, name, bytes) {
+            Some(declaration_node) => {
+                visit_unshadowed_name_matches(
+                    statement,
+                    name,
+                    generation,
+                    already_shadowed,
+                    Some(declaration_node),
+                    bytes,
+                    visit,
+                );
+                generation += 1;
+                if !already_shadowed {
+                    visit(declaration_node, generation);
+                }
+            }
+            None => visit_unshadowed_name_matches(
+                statement,
+                name,
+                generation,
+                already_shadowed,
+                None,
+                bytes,
+                visit,
+            ),
+        }
+    }
+}
+
+/// Walk `node`'s subtree, calling `visit` on every `simple_identifier`
+/// matching `name` together with its sequential re-declaration generation,
+/// skipping the subtree of any nested scope boundary that itself redeclares
+/// `name` (shadowing). `exclude` suppresses one specific node — used by
+/// `visit_statements_with_generations` to keep a declaration's own name out
+/// of the "old generation" pass over its statement, since it's re-emitted
+/// separately at its own new generation.
 fn visit_unshadowed_name_matches<'a>(
     node: Node<'a>,
     name: &str,
+    generation: usize,
     already_shadowed: bool,
+    exclude: Option<Node<'a>>,
     bytes: &[u8],
-    visit: &mut impl FnMut(Node<'a>),
+    visit: &mut impl FnMut(Node<'a>, usize),
 ) {
+    let is_excluded = exclude.is_some_and(|excluded| excluded.id() == node.id());
     if !already_shadowed
+        && !is_excluded
         && node.kind() == KIND_SIMPLE_IDENT
         && node.utf8_text_owned(bytes).as_deref() == Some(name)
     {
-        visit(node);
+        visit(node, generation);
+    }
+    if node.kind() == KIND_STATEMENTS {
+        visit_statements_with_generations(node, name, generation, already_shadowed, bytes, visit);
+        return;
     }
     for i in 0..node.child_count() {
-        let Some(child) = node.child(i) else { continue };
-        let child_is_nested_scope = matches!(
-            child.kind(),
-            k if k == crate::queries::KIND_FUN_DECL || k == crate::queries::KIND_LAMBDA_LIT
+        let Some(child) = node.child(i) else {
+            continue;
+        };
+        let child_shadowed = already_shadowed
+            || (scope_boundary_at(child).is_some()
+                && declares_name_directly(child, name, bytes).is_some());
+        visit_unshadowed_name_matches(
+            child,
+            name,
+            generation,
+            child_shadowed,
+            exclude,
+            bytes,
+            visit,
         );
-        let child_shadowed =
-            already_shadowed || (child_is_nested_scope && nested_scope_shadows(child, name, bytes));
-        visit_unshadowed_name_matches(child, name, child_shadowed, bytes, visit);
     }
-}
-
-/// The first (outermost, unshadowed) declaration-site node for `name` inside
-/// `body`'s subtree, or `None` if `body` doesn't itself declare `name`.
-fn find_local_declaration_in_body<'a>(
-    body: Node<'a>,
-    name: &str,
-    bytes: &[u8],
-) -> Option<Node<'a>> {
-    let mut found = None;
-    visit_unshadowed_name_matches(body, name, false, bytes, &mut |node| {
-        if found.is_none() && is_declaration_site(node) {
-            found = Some(node);
-        }
-    });
-    found
 }
 
 /// Convert a tree-sitter node's byte-based position into an LSP `Location`
@@ -850,6 +965,206 @@ mod tests {
         assert!(
             result.is_none(),
             "a class-level declaration is not a local, got {result:?}"
+        );
+    }
+
+    /// PR #229 Copilot review finding: a reference inside a nested lambda
+    /// that merely CAPTURES an outer local (no shadowing) must still take
+    /// the local fast path, not fall through to the slower cross-file path.
+    #[test]
+    fn local_scope_occurrences_finds_captured_outer_local_from_nested_lambda_reference() {
+        let source =
+            "fun outer() {\n    val total = 0\n    val block = {\n        print(total)\n    }\n}\n";
+        let (file_uri, indexer) = indexed_with_live("/D.kt", source);
+        let reference_line = source.lines().nth(3).unwrap();
+        let column = reference_line.find("total").unwrap() as u32;
+        let locations = local_scope_occurrences(&indexer, &file_uri, Position::new(3, column))
+            .expect("captured-not-shadowed local must still resolve via the fast path");
+        assert_eq!(
+            locations.len(),
+            2,
+            "declaration + the one captured reference, got {locations:?}"
+        );
+    }
+
+    /// House decoy (Fable's most severe finding): two unrelated sibling
+    /// `for` loops reusing the same loop-variable name must never be
+    /// conflated -- the outward climb must stop at the FIRST loop that owns
+    /// the name, not widen past it into an unrelated sibling.
+    #[test]
+    fn local_scope_occurrences_does_not_conflate_two_sibling_for_loops() {
+        let source = "fun demo() {\n    for (i in 0..2) {\n        print(i)\n    }\n    for (i in 0..2) {\n        print(i)\n    }\n}\n";
+        let (file_uri, indexer) = indexed_with_live("/D.kt", source);
+        let first_body_line = source.lines().nth(2).unwrap();
+        let column = first_body_line.find("print(i)").unwrap() + "print(".len();
+        let locations =
+            local_scope_occurrences(&indexer, &file_uri, Position::new(2, column as u32))
+                .expect("i is a local for-loop variable");
+        assert_eq!(
+            locations.len(),
+            2,
+            "declaration + 1 reference from the FIRST loop only, got {locations:?}"
+        );
+        assert!(
+            locations
+                .iter()
+                .all(|location| location.range.start.line == 1 || location.range.start.line == 2),
+            "must not include the second loop's own i (lines 4-5), got {locations:?}"
+        );
+    }
+
+    /// Same house decoy for `when (val x = ...)` subject bindings.
+    #[test]
+    fn local_scope_occurrences_does_not_conflate_two_sibling_when_subjects() {
+        let source = "fun demo() {\n    when (val x = compute()) {\n        1 -> print(x)\n        else -> print(x)\n    }\n    when (val x = compute()) {\n        1 -> print(x)\n        else -> print(x)\n    }\n}\n";
+        let (file_uri, indexer) = indexed_with_live("/D.kt", source);
+        let first_branch_line = source.lines().nth(2).unwrap();
+        let column = first_branch_line.find("print(x)").unwrap() + "print(".len();
+        let locations =
+            local_scope_occurrences(&indexer, &file_uri, Position::new(2, column as u32))
+                .expect("x is a local when-subject binding");
+        assert_eq!(
+            locations.len(),
+            3,
+            "subject declaration + 2 references from the FIRST when only, got {locations:?}"
+        );
+        assert!(
+            locations
+                .iter()
+                .all(|location| location.range.start.line <= 3),
+            "must not include the second when's own x (lines 5-8), got {locations:?}"
+        );
+    }
+
+    /// `catch`'s exception variable is a bare `simple_identifier` child of
+    /// `catch_block` (no `variable_declaration` wrapper, unlike a `val`/`var`
+    /// or a `for`/`when` binding) -- the one real `is_declaration_site` gap.
+    #[test]
+    fn local_scope_occurrences_scopes_catch_exception_variable_to_its_own_block() {
+        let source = "fun demo() {\n    try {\n        risky()\n    } catch (e: Exception) {\n        print(e)\n    }\n    try {\n        risky()\n    } catch (e: Exception) {\n        print(e)\n    }\n}\n";
+        let (file_uri, indexer) = indexed_with_live("/D.kt", source);
+        let first_catch_body_line = source.lines().nth(4).unwrap();
+        let column = first_catch_body_line.find("print(e)").unwrap() + "print(".len();
+        let locations =
+            local_scope_occurrences(&indexer, &file_uri, Position::new(4, column as u32))
+                .expect("e is the first catch block's exception variable");
+        assert_eq!(
+            locations.len(),
+            2,
+            "exception declaration + 1 reference from the FIRST catch only, got {locations:?}"
+        );
+        assert!(
+            locations
+                .iter()
+                .all(|location| location.range.start.line == 3 || location.range.start.line == 4),
+            "must not include the second catch's own e (lines 8-9), got {locations:?}"
+        );
+    }
+
+    /// A `val` declared inside an `if` block is scoped to that block, not
+    /// merged with an unrelated sibling `if` block's same-named local.
+    #[test]
+    fn local_scope_occurrences_scopes_a_val_declared_inside_an_if_block() {
+        let source = "fun demo() {\n    if (true) {\n        val total = 1\n        print(total)\n    }\n    if (true) {\n        val total = 2\n        print(total)\n    }\n}\n";
+        let (file_uri, indexer) = indexed_with_live("/D.kt", source);
+        let first_reference_line = source.lines().nth(3).unwrap();
+        let column = first_reference_line.find("total").unwrap() as u32;
+        let locations = local_scope_occurrences(&indexer, &file_uri, Position::new(3, column))
+            .expect("total is declared inside the first if-block");
+        assert_eq!(
+            locations.len(),
+            2,
+            "declaration + 1 reference from the FIRST if-block only, got {locations:?}"
+        );
+        assert!(
+            locations
+                .iter()
+                .all(|location| location.range.start.line == 2 || location.range.start.line == 3),
+            "must not include the second if-block's own total (lines 6-7), got {locations:?}"
+        );
+    }
+
+    /// Same-scope sequential re-declaration (`val x = ...; val x = ...`):
+    /// renaming the first declaration must not touch the second's own name,
+    /// and vice versa. `val x = x as String`'s own RHS `x` belongs to the
+    /// FIRST `x` -- the second doesn't exist yet while its initializer runs.
+    #[test]
+    fn local_scope_occurrences_separates_sequential_redeclarations_first_declaration() {
+        let source =
+            "fun demo() {\n    val x: Any = \"hello\"\n    val x = x as String\n    print(x)\n}\n";
+        let (file_uri, indexer) = indexed_with_live("/D.kt", source);
+        let first_declaration_line = source.lines().nth(1).unwrap();
+        let column = first_declaration_line.find('x').unwrap() as u32;
+        let locations = local_scope_occurrences(&indexer, &file_uri, Position::new(1, column))
+            .expect("x has a valid first declaration");
+        assert_eq!(
+            locations.len(),
+            2,
+            "first declaration + the second declaration's own initializer reference, got {locations:?}"
+        );
+        assert!(
+            locations.iter().all(|location| location.range.start.line == 1
+                || (location.range.start.line == 2 && location.range.start.character > 10)),
+            "must not include the second declaration's own name or the final print(x), got {locations:?}"
+        );
+    }
+
+    #[test]
+    fn local_scope_occurrences_separates_sequential_redeclarations_second_declaration() {
+        let source =
+            "fun demo() {\n    val x: Any = \"hello\"\n    val x = x as String\n    print(x)\n}\n";
+        let (file_uri, indexer) = indexed_with_live("/D.kt", source);
+        let second_declaration_line = source.lines().nth(2).unwrap();
+        let column = second_declaration_line.find('x').unwrap() as u32;
+        let locations = local_scope_occurrences(&indexer, &file_uri, Position::new(2, column))
+            .expect("x has a valid second declaration");
+        assert_eq!(
+            locations.len(),
+            2,
+            "second declaration + the final print(x), got {locations:?}"
+        );
+        assert!(
+            locations
+                .iter()
+                .all(|location| location.range.start.line == 2 || location.range.start.line == 3),
+            "must not include the first declaration or its own initializer, got {locations:?}"
+        );
+    }
+
+    /// A reference textually before any declaration of its name (invalid
+    /// Kotlin, real during mid-typing) has no valid local declaration to
+    /// anchor to -- safe fallthrough (`None`), not a partial/wrong rename.
+    /// No CST trick applies here: nothing is syntactically broken.
+    #[test]
+    fn local_scope_occurrences_returns_none_for_a_forward_reference_before_any_declaration() {
+        let source = "fun demo() {\n    print(x)\n    val x = 1\n}\n";
+        let (file_uri, indexer) = indexed_with_live("/D.kt", source);
+        let reference_line = source.lines().nth(1).unwrap();
+        let column = reference_line.find('x').unwrap() as u32;
+        let result = local_scope_occurrences(&indexer, &file_uri, Position::new(1, column));
+        assert!(
+            result.is_none(),
+            "a reference before any declaration must not resolve, got {result:?}"
+        );
+    }
+
+    /// Regression pin: destructuring names (`val (a, b) = pair`, and the same
+    /// shape inside a `for` loop header) were already correctly recognized
+    /// by `is_declaration_site` before this fix (each wraps its name in its
+    /// own `variable_declaration`, same as a plain `val`) -- confirmed
+    /// unaffected by the scope-boundary widening.
+    #[test]
+    fn local_scope_occurrences_handles_a_destructured_declaration() {
+        let source = "fun demo() {\n    val (a, b) = pair()\n    print(a)\n}\n";
+        let (file_uri, indexer) = indexed_with_live("/D.kt", source);
+        let reference_line = source.lines().nth(2).unwrap();
+        let column = reference_line.find('a').unwrap() as u32;
+        let locations = local_scope_occurrences(&indexer, &file_uri, Position::new(2, column))
+            .expect("a is a destructured local");
+        assert_eq!(
+            locations.len(),
+            2,
+            "destructured declaration + 1 reference, got {locations:?}"
         );
     }
 }
