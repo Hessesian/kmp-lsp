@@ -4295,6 +4295,7 @@ fn hierarchy_walk_bounds_synchronous_promotion_attempts_per_walk() {
             "file:///sdk/Base0.kt",
             crate::types::CallerContext::default(),
             CHAIN_LENGTH,
+            crate::resolver::MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK,
             |_, _, _, _| Vec::<()>::new(),
         );
 

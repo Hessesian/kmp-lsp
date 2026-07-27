@@ -9,6 +9,7 @@ use tower_lsp::lsp_types::{Location, Position, Range, SymbolKind, Url};
 use super::text_utils::{utf16_column, word_byte_offsets};
 use crate::features::traits::{DocumentAccess, ScopeQuery, SearchAccess, SymbolIndex};
 use crate::indexer::{classify_cursor, Indexer, NavigationSource, SymbolRole};
+use crate::resolver::MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK;
 use crate::rg::RgSearchRequest;
 use crate::StrExt;
 
@@ -18,7 +19,8 @@ use crate::StrExt;
 ///
 /// When `qualifier` is `Some("ReducerA")` (cursor was on `ReducerA.Factory`),
 /// the qualifier is used directly as the `parent_class` scope, bypassing the
-/// fallible index-lookup that `resolve_scope` uses for unresolved nested types.
+/// fallible index-lookup that `resolve_scope_with_qualifier` uses for unresolved
+/// nested types.
 /// This prevents false positives when multiple classes define an inner class
 /// with the same name (e.g. every class defines a `Factory` or `Builder`).
 ///
@@ -36,6 +38,59 @@ pub(crate) async fn find_references_with_qualifier(
     include_decl: bool,
     index: &Indexer,
 ) -> Vec<Location> {
+    let (verified, _query_declaring_type, _query_declaring_type_uri) = verified_references_for(
+        name,
+        qualifier,
+        uri,
+        position,
+        include_decl,
+        index,
+        MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK,
+        // find-references never needs the reverse override check that
+        // `verify_candidates` runs when it's handed a `query_declaring_type_uri`
+        // (that's rename's concern, via `proven_overrides`) — pass `false`
+        // explicitly rather than relying on it happening to be uncomputable.
+        false,
+    )
+    .await;
+
+    let mut resolved_first: Vec<Location> = Vec::with_capacity(verified.kept.len());
+    let mut name_scanned: Vec<Location> = Vec::new();
+    for source in verified.kept {
+        match source {
+            NavigationSource::CstResolved(location) => resolved_first.push(location),
+            NavigationSource::NameScan(location) => name_scanned.push(location),
+        }
+    }
+    resolved_first.append(&mut name_scanned);
+    resolved_first
+}
+
+/// Recall (rg + index, unchanged from 6b) plus 6b's per-candidate CST
+/// verification, exposed as the raw `VerifiedReferences` — the shared entry
+/// point both find-references and 6c rename build on. Also returns the
+/// query's declaring type and (when known) its declaring URI, so a caller
+/// that needs them (rename's override-participation refusal message) doesn't
+/// have to re-run `classify_cursor` itself.
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn verified_references_for(
+    name: &str,
+    qualifier: Option<&str>,
+    uri: &Url,
+    position: Position,
+    include_decl: bool,
+    index: &Indexer,
+    sidecar_budget: usize,
+    // Gates only what's forwarded into `verify_candidates`'s
+    // `query_declaring_type_uri` argument (the reverse-override walk trigger) —
+    // NOT the `query_declaring_type_uri` returned below, which callers (e.g.
+    // rename) may need regardless of whether they want the reverse check.
+    detect_reverse_overrides: bool,
+) -> (
+    crate::features::references_verify::VerifiedReferences,
+    Option<String>,
+    Option<String>,
+) {
     let line = position.line;
     let (parent_class, declared_pkg) =
         resolve_scope_with_qualifier(index, uri, line, name, qualifier);
@@ -109,33 +164,33 @@ pub(crate) async fn find_references_with_qualifier(
         );
     }
 
-    let query_declaring_type = match classify_cursor(index, uri, position) {
-        Some(symbol) => match &symbol.role {
-            SymbolRole::Declaration { .. } => index.enclosing_class_at(uri, line),
-            SymbolRole::Reference {
-                receiver_type: Some(receiver_type),
-                ..
-            } => Some(receiver_type.clone()),
-            _ => None,
-        },
-        None => None,
-    };
+    let (query_declaring_type, query_declaring_type_uri) =
+        match classify_cursor(index, uri, position) {
+            Some(symbol) => match &symbol.role {
+                SymbolRole::Declaration { .. } => (
+                    index.enclosing_class_at(uri, line),
+                    Some(uri.as_str().to_owned()),
+                ),
+                SymbolRole::Reference {
+                    receiver_type: Some(receiver_type),
+                    ..
+                } => (Some(receiver_type.clone()), None),
+                _ => (None, None),
+            },
+            None => (None, None),
+        };
 
+    let verify_uri_arg = detect_reverse_overrides
+        .then_some(query_declaring_type_uri.as_deref())
+        .flatten();
     let verified = crate::features::references_verify::verify_candidates(
         index,
         query_declaring_type.as_deref(),
+        verify_uri_arg,
+        sidecar_budget,
         locations,
     );
-    let mut resolved_first: Vec<Location> = Vec::with_capacity(verified.kept.len());
-    let mut name_scanned: Vec<Location> = Vec::new();
-    for source in verified.kept {
-        match source {
-            NavigationSource::CstResolved(location) => resolved_first.push(location),
-            NavigationSource::NameScan(location) => name_scanned.push(location),
-        }
-    }
-    resolved_first.append(&mut name_scanned);
-    resolved_first
+    (verified, query_declaring_type, query_declaring_type_uri)
 }
 
 // ─── Scope resolution ─────────────────────────────────────────────────────────
@@ -147,16 +202,8 @@ pub(crate) async fn find_references_with_qualifier(
 /// Lowercase symbols at the **declaration site** return `(None, Some(package))` —
 /// rg is scoped to same-package files.  Off-declaration-site lowercase names
 /// return `(None, None)` — codebase-wide bare-word search via rg.
-pub(crate) fn resolve_scope(
-    index: &(impl SymbolIndex + ScopeQuery),
-    uri: &Url,
-    line: u32,
-    name: &str,
-) -> (Option<String>, Option<String>) {
-    resolve_scope_with_qualifier(index, uri, line, name, None)
-}
-
-/// Like [`resolve_scope`] but accepts a dot-qualifier (the segment immediately
+///
+/// Accepts a dot-qualifier (the segment immediately
 /// preceding `name` at the cursor, e.g. `"ReducerA"` for `ReducerA.Factory`).
 ///
 /// An uppercase qualifier is used directly as the `parent_class`, which avoids

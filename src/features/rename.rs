@@ -1,8 +1,10 @@
 //! `rename` feature — shared rename logic behind thin backend adapters.
 //!
 //! Entry points: [`prepare_rename_impl`] and [`rename_impl`]. The backend
-//! adapter only unwraps LSP params; this module handles scope resolution,
-//! local-only renames, rg-backed workspace discovery, and edit construction.
+//! adapter only unwraps LSP params; this module handles CST-verified local
+//! (`local_scope_occurrences`) and cross-file (`verified_references_for`)
+//! rename, refusal-as-error on ambiguous/library/override identities, and
+//! edit construction.
 
 use std::cmp::Reverse;
 use std::collections::HashMap;
@@ -11,415 +13,11 @@ use std::sync::Arc;
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::*;
 
-use crate::features::references::resolve_scope;
+use crate::features::references::verified_references_for;
 use crate::features::text_utils::is_keyword_for_file;
-#[cfg(test)]
-use crate::indexer::live_tree::utf16_col_to_byte;
-use crate::indexer::{cst_cursor_is_local_var, Indexer};
-#[cfg(test)]
-use crate::queries::{
-    KIND_ANON_FUN, KIND_CLASS_BODY, KIND_COMPANION_OBJ, KIND_FUN_DECL, KIND_METHOD_DECL,
-    KIND_MULTI_VAR_DECL, KIND_NAV_EXPR, KIND_OBJECT_DECL, KIND_PROP_DECL, KIND_SOURCE_FILE,
-    KIND_VAR_DECL,
+use crate::indexer::{
+    classify_cursor, local_scope_occurrences, resolve_identity, Indexer, NavigationSource,
 };
-use crate::StrExt;
-
-/// Return `true` when the file index (within `scope`) contains a `val`/`var`
-/// declaration of `name` that is itself a local variable.
-///
-/// Complements `cst_cursor_is_local_var` for the *reference* case: when the
-/// cursor is on a reference the CST parent chain never contains a
-/// `property_declaration`, so `cst_cursor_is_local_var(cursor_pos)` returns
-/// false. This function recovers the declaration from the index and applies the
-/// same CST check on its `selection_range`, so both declaration and reference
-/// sites produce the correct `skip_dotted` result.
-///
-/// Class-level properties are naturally excluded: they are declared outside the
-/// function's `scope` window and therefore never matched by the line filter.
-pub(crate) fn any_local_var_decl_in_scope(
-    indexer: &Indexer,
-    uri: &Url,
-    name: &str,
-    scope: (usize, usize),
-) -> bool {
-    use tower_lsp::lsp_types::SymbolKind;
-
-    let Some(data) = indexer.file_data_for(uri.as_str()) else {
-        return false;
-    };
-    data.symbols
-        .iter()
-        .filter(|symbol| {
-            matches!(
-                symbol.kind,
-                SymbolKind::PROPERTY | SymbolKind::VARIABLE | SymbolKind::CONSTANT
-            ) && symbol.name == name
-                && (symbol.selection_range.start.line as usize) >= scope.0
-                && (symbol.selection_range.start.line as usize) <= scope.1
-        })
-        .any(|symbol| {
-            let declaration_position = Position {
-                line: symbol.selection_range.start.line,
-                character: symbol.selection_range.start.character,
-            };
-            cst_cursor_is_local_var(indexer, uri, declaration_position)
-        })
-}
-
-#[cfg(test)]
-/// declaration or a navigation expression (member access). Returns `false`
-/// for property/variable declarations, parameters, and unknown contexts.
-///
-/// Used as a secondary check to detect method call sites (nav expressions)
-/// that are not in the file's own symbol index.
-pub(crate) fn cst_cursor_is_method(indexer: &Indexer, uri: &Url, pos: Position) -> bool {
-    use tree_sitter::Point;
-
-    let doc = match indexer.live_doc(uri) {
-        Some(doc) => doc,
-        None => return false,
-    };
-    let full_text = match std::str::from_utf8(&doc.bytes) {
-        Ok(text) => text,
-        Err(_) => return false,
-    };
-    let line_index = pos.line as usize;
-    let line_text = match full_text.lines().nth(line_index) {
-        Some(line) => line,
-        None => return false,
-    };
-    let byte_column = utf16_col_to_byte(line_text, pos.character as usize);
-    let point = Point {
-        row: line_index,
-        column: byte_column,
-    };
-    let start_node = match doc
-        .tree
-        .root_node()
-        .descendant_for_point_range(point, point)
-    {
-        Some(node) => node,
-        None => return false,
-    };
-
-    let mut current_node = start_node;
-    loop {
-        match current_node.kind() {
-            KIND_PROP_DECL | KIND_VAR_DECL | KIND_MULTI_VAR_DECL => return false,
-            KIND_FUN_DECL | KIND_METHOD_DECL | KIND_ANON_FUN | KIND_NAV_EXPR => return true,
-            KIND_SOURCE_FILE | KIND_CLASS_BODY | KIND_OBJECT_DECL | KIND_COMPANION_OBJ => {
-                return false;
-            }
-            _ => {}
-        }
-        match current_node.parent() {
-            Some(parent_node) => current_node = parent_node,
-            None => return false,
-        }
-    }
-}
-
-/// Find the line range of the innermost function/lambda scope enclosing `cursor_line`.
-/// Returns `(start_line, end_line)` inclusive, or the whole file if not found.
-pub(crate) fn enclosing_scope(lines: &[String], cursor_line: usize) -> (usize, usize) {
-    let mut depth = 0i32;
-    let mut scope_start = 0usize;
-    'outer: for line_index in (0..=cursor_line.min(lines.len().saturating_sub(1))).rev() {
-        for character in lines[line_index].chars().rev() {
-            match character {
-                '}' => depth += 1,
-                '{' => {
-                    if depth == 0 {
-                        scope_start = line_index;
-                        break 'outer;
-                    }
-                    depth -= 1;
-                }
-                _ => {}
-            }
-        }
-    }
-
-    let mut depth = 0i32;
-    let mut scope_end = lines.len().saturating_sub(1);
-    for (line_index, line) in lines.iter().enumerate().skip(scope_start) {
-        for character in line.chars() {
-            match character {
-                '{' => depth += 1,
-                '}' => {
-                    depth -= 1;
-                    if depth == 0 {
-                        scope_end = line_index;
-                        return (scope_start, scope_end);
-                    }
-                }
-                _ => {}
-            }
-        }
-    }
-    (scope_start, scope_end)
-}
-
-/// Return TextEdits replacing all whole-word occurrences of `word` with `new_name`
-/// within `lines[scope.0..=scope.1]`, in reverse order (safe for sequential apply).
-///
-/// When `skip_dotted` is `true`, occurrences immediately preceded by `.` are
-/// skipped. This avoids renaming same-named method calls when the user is
-/// renaming a local variable (e.g. `val syncWith` vs `.syncWith()`).
-pub(crate) fn rename_in_scope(
-    lines: &[String],
-    word: &str,
-    new_name: &str,
-    scope: (usize, usize),
-    skip_dotted: bool,
-) -> Vec<TextEdit> {
-    let word_characters: Vec<char> = word.chars().collect();
-    let word_length = word_characters.len();
-    if word_length == 0 {
-        return vec![];
-    }
-    let mut edits: Vec<TextEdit> = Vec::new();
-
-    let end_line = scope.1.min(lines.len().saturating_sub(1));
-    for (line_number, line) in lines.iter().enumerate().take(end_line + 1).skip(scope.0) {
-        if line.trim_start().starts_with("package ") {
-            continue;
-        }
-        let line_characters: Vec<char> = line.chars().collect();
-        let character_to_utf16: Vec<u32> = {
-            let mut utf16_offsets = Vec::with_capacity(line_characters.len() + 1);
-            let mut utf16_offset = 0u32;
-            for &character in &line_characters {
-                utf16_offsets.push(utf16_offset);
-                utf16_offset += character.len_utf16() as u32;
-            }
-            utf16_offsets.push(utf16_offset);
-            utf16_offsets
-        };
-
-        let mut character_index = 0usize;
-        while character_index < line_characters.len() {
-            if line_characters[character_index..].starts_with(&word_characters) {
-                let word_start_ok = character_index == 0
-                    || !(line_characters[character_index - 1].is_alphanumeric()
-                        || line_characters[character_index - 1] == '_');
-                let word_end_index = character_index + word_length;
-                let word_end_ok = word_end_index >= line_characters.len()
-                    || !(line_characters[word_end_index].is_alphanumeric()
-                        || line_characters[word_end_index] == '_');
-                if word_start_ok && word_end_ok {
-                    if skip_dotted
-                        && character_index > 0
-                        && line_characters[character_index - 1] == '.'
-                    {
-                        character_index = word_end_index;
-                        continue;
-                    }
-                    edits.push(TextEdit {
-                        range: Range {
-                            start: Position::new(
-                                line_number as u32,
-                                character_to_utf16[character_index],
-                            ),
-                            end: Position::new(
-                                line_number as u32,
-                                character_to_utf16[word_end_index],
-                            ),
-                        },
-                        new_text: new_name.to_owned(),
-                    });
-                    character_index = word_end_index;
-                    continue;
-                }
-            }
-            character_index += 1;
-        }
-    }
-
-    edits.sort_by_key(|edit| Reverse(edit.range.start));
-    edits
-}
-
-struct RenameCursorSymbol {
-    name: String,
-    parent_class: Option<String>,
-    declared_package: Option<String>,
-    scope_limited_to_current_file: bool,
-}
-
-fn resolve_cursor_symbol(
-    indexer: &Indexer,
-    uri: &Url,
-    pos: Position,
-) -> Option<RenameCursorSymbol> {
-    let name = indexer.word_at(uri, pos)?;
-    let file_path = uri.path();
-    if is_keyword_for_file(&name, file_path) {
-        return None;
-    }
-    let (parent_class, declared_package, scope_limited_to_current_file) =
-        if name.starts_with_uppercase() {
-            let (parent_class, declared_package) = resolve_scope(indexer, uri, pos.line, &name);
-            (parent_class, declared_package, false)
-        } else if cst_cursor_is_local_var(indexer, uri, pos) {
-            // Cursor is on the declaration — local variable inside a function/lambda.
-            (None, None, true)
-        } else if indexer.lines_for(uri).is_some_and(|lines| {
-            let scope = enclosing_scope(&lines, pos.line as usize);
-            any_local_var_decl_in_scope(indexer, uri, &name, scope)
-        }) {
-            // Cursor is on a *reference* to a local variable — there is a `val`/`var`
-            // declaration of this name within the enclosing function scope.
-            // Treat the same as the declaration case: scope-limit the rename.
-            (None, None, true)
-        } else {
-            // Class-level property or top-level declaration — rename across files.
-            (None, None, false)
-        };
-
-    Some(RenameCursorSymbol {
-        name,
-        parent_class,
-        declared_package,
-        scope_limited_to_current_file,
-    })
-}
-
-fn rename_local_symbol(
-    indexer: &Indexer,
-    uri: &Url,
-    pos: Position,
-    name: &str,
-    new_name: &str,
-) -> Option<WorkspaceEdit> {
-    let lines = indexer.lines_for(uri)?;
-    let scope = enclosing_scope(&lines, pos.line as usize);
-    let skip_dotted = cst_cursor_is_local_var(indexer, uri, pos)
-        || any_local_var_decl_in_scope(indexer, uri, name, scope);
-    let mut file_edits = rename_in_scope(&lines, name, new_name, scope, skip_dotted);
-    if file_edits.is_empty() {
-        return None;
-    }
-    file_edits.sort_by_key(|edit| Reverse(edit.range.start));
-
-    let mut changes = HashMap::new();
-    changes.insert(uri.clone(), file_edits);
-    Some(WorkspaceEdit {
-        changes: Some(changes),
-        document_changes: None,
-        change_annotations: None,
-    })
-}
-
-fn definition_files_for_rename(
-    indexer: &Indexer,
-    name: &str,
-    parent_class: Option<&str>,
-) -> Vec<String> {
-    indexer
-        .definition_locations(name)
-        .into_iter()
-        .filter(|location| {
-            parent_class.is_none_or(|parent| {
-                indexer
-                    .enclosing_class_at(&location.uri, location.range.start.line)
-                    .as_deref()
-                    == Some(parent)
-            })
-        })
-        .filter_map(|location| location.uri.to_file_path().ok())
-        .filter_map(|path| path.to_str().map(str::to_owned))
-        .collect()
-}
-
-async fn collect_reference_locations(
-    indexer: &Arc<Indexer>,
-    uri: &Url,
-    rename_target: &RenameCursorSymbol,
-) -> Vec<Location> {
-    let declaration_files = definition_files_for_rename(
-        indexer,
-        &rename_target.name,
-        rename_target.parent_class.as_deref(),
-    );
-    let file_path = uri.to_file_path().ok();
-    let (workspace_root, source_paths, matcher) = indexer.rg_scope_for_path(file_path.as_deref());
-    let uri = uri.clone();
-    let name = rename_target.name.clone();
-    let parent_class = rename_target.parent_class.clone();
-    let declared_package = rename_target.declared_package.clone();
-    let mut reference_locations = tokio::task::spawn_blocking(move || {
-        let request = crate::rg::RgSearchRequest::new(
-            &name,
-            parent_class.as_deref(),
-            declared_package.as_deref(),
-            workspace_root.as_deref(),
-            true,
-            &uri,
-            &declaration_files,
-        )
-        .with_source_paths(&source_paths);
-        crate::rg::rg_find_references(&request, matcher.as_deref())
-    })
-    .await
-    .unwrap_or_default();
-
-    reference_locations.retain(|location| !indexer.is_library_uri(&location.uri));
-    reference_locations
-}
-
-fn reference_candidate_files(current_uri: &Url, reference_locations: &[Location]) -> Vec<Url> {
-    let mut files = vec![current_uri.clone()];
-    for location in reference_locations {
-        if !files.contains(&location.uri) {
-            files.push(location.uri.clone());
-        }
-    }
-    log::debug!(
-        "[rename] rg found {} locs across {} files",
-        reference_locations.len(),
-        files.len()
-    );
-    files
-}
-
-fn rename_lines_for_file(indexer: &Indexer, file_uri: &Url) -> Option<Vec<String>> {
-    if let Some(lines) = indexer.lines_for(file_uri) {
-        return Some(lines.as_slice().to_vec());
-    }
-
-    let path = file_uri.to_file_path().ok()?;
-    let content = std::fs::read_to_string(path).ok()?;
-    Some(content.lines().map(str::to_owned).collect())
-}
-
-fn build_workspace_edit(
-    indexer: &Indexer,
-    file_uris: &[Url],
-    name: &str,
-    new_name: &str,
-) -> Option<WorkspaceEdit> {
-    let mut changes = HashMap::new();
-
-    for file_uri in file_uris {
-        let Some(lines) = rename_lines_for_file(indexer, file_uri) else {
-            continue;
-        };
-        let scope = (0, lines.len().saturating_sub(1));
-        let mut edits = rename_in_scope(&lines, name, new_name, scope, false);
-        if edits.is_empty() {
-            continue;
-        }
-        edits.sort_by_key(|edit| Reverse(edit.range.start));
-        changes.insert(file_uri.clone(), edits);
-    }
-
-    (!changes.is_empty()).then_some(WorkspaceEdit {
-        changes: Some(changes),
-        document_changes: None,
-        change_annotations: None,
-    })
-}
 
 pub(crate) async fn prepare_rename_impl(
     indexer: &Indexer,
@@ -441,36 +39,251 @@ pub(crate) async fn prepare_rename_impl(
     }))
 }
 
+fn workspace_edit_from_locations(locations: &[Location], new_name: &str) -> WorkspaceEdit {
+    let mut changes: HashMap<Url, Vec<TextEdit>> = HashMap::new();
+    for location in locations {
+        changes
+            .entry(location.uri.clone())
+            .or_default()
+            .push(TextEdit {
+                range: location.range,
+                new_text: new_name.to_owned(),
+            });
+    }
+    for edits in changes.values_mut() {
+        edits.sort_by_key(|edit| Reverse(edit.range.start));
+    }
+    WorkspaceEdit {
+        changes: Some(changes),
+        document_changes: None,
+        change_annotations: None,
+    }
+}
+
+/// Build a user-facing rename refusal. Rename refusals are errors BY DESIGN
+/// (see the design doc's Global Constraints) — never `Ok(None)` — so the
+/// reason surfaces to the user (e.g. the Helix status line) instead of
+/// silently doing nothing. `panic_safe` (the only wrapper between this
+/// function and the LSP transport, see `src/backend/panic_guard.rs`) forwards
+/// any `Result::Err` unchanged, so no adapter change is needed for this to
+/// reach the client.
+///
+/// `InvalidRequest` matches the only existing `tower_lsp::jsonrpc::Error`
+/// construction in this codebase (`panic_guard.rs`'s raw struct literal for
+/// panics, which uses `InternalError` — not appropriate here since this is an
+/// expected business-rule refusal, not a bug). No other user-facing refusal
+/// code exists in this codebase to match instead.
+fn refusal(reason: &str) -> tower_lsp::jsonrpc::Error {
+    tower_lsp::jsonrpc::Error {
+        code: tower_lsp::jsonrpc::ErrorCode::InvalidRequest,
+        message: reason.to_owned().into(),
+        data: None,
+    }
+}
+
 pub(crate) async fn rename_impl(
     indexer: &Arc<Indexer>,
     uri: &Url,
     pos: Position,
     new_name: &str,
 ) -> Result<Option<WorkspaceEdit>> {
-    let Some(rename_target) = resolve_cursor_symbol(indexer, uri, pos) else {
+    // Local fast path: a real CST subtree walk over the enclosing
+    // function/lambda body. Never refuses, never crosses the scope boundary.
+    if let Some(locations) = local_scope_occurrences(indexer, uri, pos) {
+        return Ok(Some(workspace_edit_from_locations(&locations, new_name)));
+    }
+
+    let Some(symbol) = classify_cursor(indexer, uri, pos) else {
         return Ok(None);
     };
 
-    if rename_target.scope_limited_to_current_file {
-        return Ok(rename_local_symbol(
-            indexer,
-            uri,
-            pos,
-            &rename_target.name,
-            new_name,
+    let identity = resolve_identity(&symbol, indexer, uri);
+    let NavigationSource::CstResolved(definitions) = identity else {
+        return Err(refusal(
+            "identity is ambiguous — could not resolve a single definition",
+        ));
+    };
+    if definitions.len() != 1 {
+        return Err(refusal(
+            "identity is ambiguous — matches more than one definition",
+        ));
+    }
+    if indexer.is_library_uri(&definitions[0].uri) {
+        return Err(refusal(
+            "defined in a library — cannot rename a library symbol",
         ));
     }
 
-    let reference_locations = collect_reference_locations(indexer, uri, &rename_target).await;
-    if reference_locations.is_empty() {
+    let qualifier = None; // rename's cursor site has no dot-qualifier context today; matches prior behavior.
+    let (verified, _query_declaring_type, _query_declaring_type_uri) = verified_references_for(
+        &symbol.name,
+        qualifier,
+        uri,
+        pos,
+        true,
+        indexer,
+        usize::MAX,
+        true, // detect_reverse_overrides: rename needs proven_overrides populated
+    )
+    .await;
+
+    if !verified.proven_overrides.is_empty() {
+        return Err(refusal(
+            "renaming an override relationship is not supported — rename the exact \
+             declaration you need",
+        ));
+    }
+
+    let edit_locations: Vec<Location> = verified
+        .kept
+        .into_iter()
+        .map(|source| match source {
+            NavigationSource::CstResolved(location) => location,
+            NavigationSource::NameScan(location) => location,
+        })
+        .collect();
+    if edit_locations.is_empty() {
         return Ok(None);
     }
 
-    let files = reference_candidate_files(uri, &reference_locations);
-    Ok(build_workspace_edit(
-        indexer,
-        &files,
-        &rename_target.name,
+    Ok(Some(workspace_edit_from_locations(
+        &edit_locations,
         new_name,
-    ))
+    )))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn uri(path: &str) -> Url {
+        Url::parse(&format!("file:///t{path}")).unwrap()
+    }
+
+    // `#[tokio::test]` + `.await` rather than `futures::executor::block_on`:
+    // `verified_references_for`'s rg search runs on `tokio::task::spawn_blocking`,
+    // which panics ("no reactor running") without a real Tokio runtime driving
+    // it -- `block_on` alone doesn't provide one. Matches the convention already
+    // used by every other async feature test in this codebase (e.g.
+    // `definition_tests.rs`, `references_tests.rs`).
+    #[tokio::test]
+    async fn cross_file_rename_refuses_on_override_from_the_interface_side() {
+        let source = "open class User { fun save() {} }\n\
+                      class DerivedUser : User() { override fun save() {} }\n\
+                      fun caller(user: User) { user.save() }\n";
+        let file_uri = uri("/D.kt");
+        let indexer = std::sync::Arc::new(Indexer::new());
+        indexer.index_content(&file_uri, source);
+        indexer.store_live_tree(&file_uri, source);
+
+        // cursor on the interface's own declaration
+        let column = source.lines().next().unwrap().find("save").unwrap() as u32;
+        let result = rename_impl(&indexer, &file_uri, Position::new(0, column), "persist").await;
+        assert!(
+            result.is_err(),
+            "renaming an interface member with a real override must refuse, got {result:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn cross_file_rename_refuses_on_override_from_the_concrete_side() {
+        let source = "open class User { fun save() {} }\n\
+                      class DerivedUser : User() { override fun save() {} }\n";
+        let file_uri = uri("/D.kt");
+        let indexer = std::sync::Arc::new(Indexer::new());
+        indexer.index_content(&file_uri, source);
+        indexer.store_live_tree(&file_uri, source);
+
+        // cursor on the OVERRIDE's own declaration -- the symmetric direction
+        let column = source.lines().nth(1).unwrap().find("save").unwrap() as u32;
+        let result = rename_impl(&indexer, &file_uri, Position::new(1, column), "persist").await;
+        assert!(
+            result.is_err(),
+            "renaming FROM the override side must ALSO refuse -- symmetric with \
+             the interface side, got {result:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn cross_file_rename_renames_a_clean_no_override_multi_call_site_member() {
+        let source = "class Logger { fun log(message: String) {} }\n\
+                      fun a(logger: Logger) { logger.log(\"a\") }\n\
+                      fun b(logger: Logger) { logger.log(\"b\") }\n";
+        let file_uri = uri("/D.kt");
+        let indexer = std::sync::Arc::new(Indexer::new());
+        indexer.index_content(&file_uri, source);
+        indexer.store_live_tree(&file_uri, source);
+
+        let column = source.lines().next().unwrap().find("log").unwrap() as u32;
+        let result = rename_impl(&indexer, &file_uri, Position::new(0, column), "write")
+            .await
+            .expect("no override, no ambiguity -- must succeed")
+            .expect("must produce an edit");
+        let edits = result
+            .changes
+            .expect("must have changes")
+            .remove(&file_uri)
+            .expect("must edit this file");
+        assert_eq!(edits.len(), 3, "declaration + 2 call sites, got {edits:?}");
+    }
+
+    #[tokio::test]
+    async fn local_rename_uses_the_cst_fast_path_and_never_refuses() {
+        let source = "fun run() {\n    val total = 0\n    print(total)\n}\n";
+        let file_uri = uri("/D.kt");
+        let indexer = std::sync::Arc::new(Indexer::new());
+        indexer.index_content(&file_uri, source);
+        indexer.store_live_tree(&file_uri, source);
+
+        let result = rename_impl(&indexer, &file_uri, Position::new(1, 8), "sum")
+            .await
+            .expect("a local rename must never refuse")
+            .expect("must produce an edit");
+        let edits = result.changes.expect("must have changes");
+        assert_eq!(edits.get(&file_uri).map(Vec::len), Some(2));
+    }
+
+    /// KNOWN ACCEPTED RISK, pinned deliberately (see the spec's Policy gate):
+    /// a NameScan candidate whose receiver type is genuinely unresolvable
+    /// (not proven wrong, not proven right) is included in the rename edit
+    /// set at today's pre-6b trust level. This is NOT a "this is caught"
+    /// test -- it is a "this is the accepted gap" pin. If a future change
+    /// narrows this risk, update this test's expectation deliberately; it
+    /// must not be allowed to silently start passing for a different reason.
+    #[tokio::test]
+    async fn unresolvable_receiver_candidate_is_included_not_excluded() {
+        // `caller`'s parameter is named `ghost`, not `user` -- `find_var_type`'s
+        // scan (`infer_type_in_lines_raw`) is whole-file and position-blind, so
+        // reusing the same param name in two functions would make it return
+        // whichever declaration comes first in the file regardless of which
+        // one the cursor is actually in, corrupting BOTH sites' receiver-type
+        // resolution rather than exercising the intended "genuinely
+        // unresolvable receiver" case. Distinct names sidestep that
+        // (pre-existing, unrelated) collision -- same fix already applied in
+        // `references_verify.rs`'s `exact_reference_agreement_does_not_spend_walk_budget`.
+        let source = "class User { fun save() {} }\n\
+                      fun caller(ghost: Ghost) { ghost.save() }\n\
+                      fun real(user: User) { user.save() }\n";
+        let file_uri = uri("/D.kt");
+        let indexer = std::sync::Arc::new(Indexer::new());
+        indexer.index_content(&file_uri, source);
+        indexer.store_live_tree(&file_uri, source);
+
+        let column = source.lines().nth(2).unwrap().find("save").unwrap() as u32;
+        let result = rename_impl(&indexer, &file_uri, Position::new(2, column), "persist")
+            .await
+            .expect("must succeed -- no override, no proven-wrong candidate")
+            .expect("must produce an edit");
+        let edits = result.changes.expect("must have changes");
+        let file_edits = edits.get(&file_uri).expect("must edit this file");
+        // The declaration (line 0), the real call site (line 2), AND the
+        // Ghost-typed call site (line 1, receiver type unresolvable --
+        // classified NameScan, not rejected) are all present: 3 edits.
+        assert_eq!(
+            file_edits.len(),
+            3,
+            "the unresolvable-receiver candidate on line 1 must be included, \
+             per the accepted-risk policy, got {file_edits:?}"
+        );
+    }
 }

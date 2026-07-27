@@ -11,14 +11,17 @@ use tree_sitter::Node;
 
 use crate::indexer::{CstQuery, Indexer, NodeExt, Resolution, ResolveIo};
 use crate::queries::{
-    KIND_BINDING_PATTERN_KIND, KIND_CALL_EXPR, KIND_CLASS_DECL, KIND_CLASS_PARAM,
-    KIND_COMPANION_OBJ, KIND_ENUM_ENTRY, KIND_FUN_DECL, KIND_IDENTIFIER, KIND_IMPORT_HEADER,
+    KIND_BINDING_PATTERN_KIND, KIND_CALL_EXPR, KIND_CATCH_BLOCK, KIND_CLASS_DECL, KIND_CLASS_PARAM,
+    KIND_COMPANION_OBJ, KIND_CONTROL_STRUCTURE_BODY, KIND_ENUM_ENTRY, KIND_FINALLY_BLOCK,
+    KIND_FOR_STMT, KIND_FUN_DECL, KIND_IDENTIFIER, KIND_IMPORT_HEADER, KIND_LAMBDA_LIT,
     KIND_NAV_EXPR, KIND_NAV_SUFFIX, KIND_OBJECT_DECL, KIND_PARAMETER, KIND_SIMPLE_IDENT,
-    KIND_TYPE_ALIAS, KIND_TYPE_IDENT, KIND_TYPE_PARAM, KIND_VAR_DECL,
+    KIND_STATEMENTS, KIND_TRY_EXPR, KIND_TYPE_ALIAS, KIND_TYPE_IDENT, KIND_TYPE_PARAM,
+    KIND_VAR_DECL, KIND_WHEN_EXPR,
 };
 use crate::resolver::api::Definitions;
+use crate::semantic_tokens::is_named_argument_label;
 use crate::types::CursorPos;
-use tower_lsp::lsp_types::{Position, Url};
+use tower_lsp::lsp_types::{Location, Position, Url};
 
 use super::deps::InferDeps as _;
 use super::speculative::ResolutionDoc;
@@ -40,6 +43,7 @@ pub(crate) fn is_declaration_site(node: Node<'_>) -> bool {
         || pk == KIND_ENUM_ENTRY
         || pk == KIND_VAR_DECL
         || pk == KIND_CLASS_PARAM
+        || pk == KIND_CATCH_BLOCK
     {
         return node.kind() == KIND_SIMPLE_IDENT;
     }
@@ -319,295 +323,308 @@ pub(crate) fn resolve_identity(
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::indexer::Indexer;
-    use tower_lsp::lsp_types::Url;
-
-    fn uri(path: &str) -> Url {
-        Url::parse(&format!("file:///t{path}")).unwrap()
+/// For the local variable / lambda-parameter the cursor is on (either its
+/// declaration or any reference to it), collect every occurrence within its
+/// enclosing function/lambda body via a CST subtree walk — no rg, no index,
+/// no cross-file verification. Returns `None` when the name under the cursor
+/// isn't itself declared as a local inside an enclosing function/lambda body
+/// — callers fall through to the cross-file path in that case.
+///
+/// Every returned `Location` is `CstResolved` by construction: it comes from
+/// walking the actual parse tree, not a text scan. A nested function/lambda
+/// that redeclares the same name shadows it — occurrences inside that nested
+/// scope are excluded, since they refer to the shadowing declaration, not
+/// this one.
+pub(crate) fn local_scope_occurrences(
+    indexer: &Indexer,
+    uri: &Url,
+    cursor_position: Position,
+) -> Option<Vec<Location>> {
+    let doc = indexer.live_doc_or_parse(uri)?;
+    let cursor = CursorPos {
+        line: cursor_position.line as usize,
+        utf16_col: cursor_position.character as usize,
+    };
+    let cursor_node = crate::indexer::cursor_node_at(&doc, cursor)?;
+    if is_named_argument_label(cursor_node) {
+        return None; // names the callee's parameter, not the caller's local
     }
+    let name = cursor_node.utf8_text_owned(&doc.bytes)?;
 
-    fn indexed_with_live(path: &str, src: &str) -> (Url, Indexer) {
-        let u = uri(path);
-        let idx = Indexer::new();
-        idx.index_content(&u, src);
-        idx.store_live_tree(&u, src);
-        (u, idx)
+    // Never widen past a boundary that already owns `name` -- else an
+    // unrelated sibling for/when/if reusing the same name could be pulled in.
+    let body = ancestor_scope_boundaries(cursor_node)
+        .find(|scope| declares_name_directly(*scope, &name, &doc.bytes).is_some())?;
+
+    let mut occurrences: Vec<Occurrence> = Vec::new();
+    visit_unshadowed_name_matches(
+        body,
+        &name,
+        0,
+        false,
+        None,
+        &doc.bytes,
+        &mut |node, generation| occurrences.push(Occurrence { node, generation }),
+    );
+
+    let cursor_generation = occurrences
+        .iter()
+        .find(|occurrence| occurrence.node.id() == cursor_node.id())?
+        .generation;
+    let members = match generation_group(&occurrences, cursor_generation) {
+        GenerationGroup::Anchored(members) => members,
+        GenerationGroup::Forward => return None,
+    };
+
+    let full_text = std::str::from_utf8(&doc.bytes).ok()?;
+    let locations: Vec<Location> = members
+        .into_iter()
+        .filter_map(|occurrence| node_to_location(uri, occurrence.node, full_text))
+        .collect();
+    if locations.is_empty() {
+        None
+    } else {
+        Some(locations)
     }
+}
 
-    #[test]
-    fn classifies_a_class_declaration() {
-        let (u, idx) = indexed_with_live("/D.kt", "class User { val id: Int = 0 }\n");
-        // cursor on "User"
-        let sym = classify_symbol_at(
-            &idx,
-            &u,
-            CursorPos {
-                line: 0,
-                utf16_col: 8,
-            },
-        )
-        .unwrap();
-        assert_eq!(sym.name, "User");
-        assert!(matches!(
-            sym.role,
-            SymbolRole::Declaration { indexed: true }
-        ));
+/// One `simple_identifier` match for a name, tagged with its sequential
+/// re-declaration generation (see [`visit_statements_with_generations`]).
+#[derive(Clone, Copy)]
+struct Occurrence<'a> {
+    node: Node<'a>,
+    generation: usize,
+}
+
+/// Every occurrence sharing one generation, or proof that generation has no
+/// declaration of its own — a reference textually before any declaration of
+/// its name in scope (invalid Kotlin, real during mid-typing). No CST trick
+/// repairs `Forward`: nothing there is syntactically broken, just out of
+/// order, so callers fall through to the cross-file path.
+enum GenerationGroup<'a> {
+    Anchored(Vec<Occurrence<'a>>),
+    Forward,
+}
+
+fn generation_group<'a>(occurrences: &[Occurrence<'a>], generation: usize) -> GenerationGroup<'a> {
+    let members: Vec<Occurrence<'a>> = occurrences
+        .iter()
+        .copied()
+        .filter(|occurrence| occurrence.generation == generation)
+        .collect();
+    if members
+        .iter()
+        .any(|occurrence| is_declaration_site(occurrence.node))
+    {
+        GenerationGroup::Anchored(members)
+    } else {
+        GenerationGroup::Forward
     }
+}
 
-    #[test]
-    fn classifies_a_typed_member_reference() {
-        let src = "class User { fun save() {} }\nfun f(user: User) { user.save() }\n";
-        let (u, idx) = indexed_with_live("/D.kt", src);
-        // cursor on "save" in "user.save()"
-        let col = src.lines().nth(1).unwrap().find("save").unwrap() as u32;
-        let sym = classify_symbol_at(
-            &idx,
-            &u,
-            CursorPos {
-                line: 1,
-                utf16_col: col as usize,
-            },
-        )
-        .unwrap();
-        assert_eq!(sym.name, "save");
-        match sym.role {
-            SymbolRole::Reference {
-                receiver_type: Some(t),
-                is_call: true,
-            } => assert_eq!(t, "User"),
-            other => panic!("expected typed call reference, got {other:?}"),
+/// How a CST node introduces local scope for the rename local-scope walk.
+///
+/// Not every scope-boundary node has the same shape: a `for`/`when` binds a
+/// name in its own header (outside the `{}`), while a plain block's bound
+/// names are declared entirely inside it.
+enum ScopeBoundary<'a> {
+    /// The scope is the node's entire subtree, including a header-bound name
+    /// that sits outside its inner block (`function_declaration`'s own
+    /// parameters, `for_statement`'s loop variable, `when_expression`'s
+    /// subject binding).
+    WholeNode(Node<'a>),
+    /// The scope is exactly this node's subtree — a brace-delimited block
+    /// with no binding of its own outside it.
+    Block(Node<'a>),
+}
+
+impl<'a> ScopeBoundary<'a> {
+    fn node(self) -> Node<'a> {
+        match self {
+            ScopeBoundary::WholeNode(node) | ScopeBoundary::Block(node) => node,
         }
     }
+}
 
-    #[test]
-    fn no_symbol_inside_a_string_literal() {
-        let (u, idx) = indexed_with_live("/D.kt", "fun f() { val s = \"User\" }\n");
-        let col = "fun f() { val s = \"".len() as u32;
-        assert!(classify_symbol_at(
-            &idx,
-            &u,
-            CursorPos {
-                line: 0,
-                utf16_col: col as usize
+fn scope_boundary_at(node: Node<'_>) -> Option<ScopeBoundary<'_>> {
+    match node.kind() {
+        kind if kind == KIND_FUN_DECL
+            || kind == KIND_LAMBDA_LIT
+            || kind == KIND_FOR_STMT
+            || kind == KIND_WHEN_EXPR =>
+        {
+            Some(ScopeBoundary::WholeNode(node))
+        }
+        kind if kind == KIND_CONTROL_STRUCTURE_BODY
+            || kind == KIND_CATCH_BLOCK
+            || kind == KIND_FINALLY_BLOCK
+            || kind == KIND_TRY_EXPR =>
+        {
+            Some(ScopeBoundary::Block(node))
+        }
+        _ => None,
+    }
+}
+
+/// Ancestor scope boundaries of `node`, narrowest first.
+fn ancestor_scope_boundaries(node: Node<'_>) -> impl Iterator<Item = Node<'_>> {
+    let mut current = node;
+    std::iter::from_fn(move || loop {
+        let parent = current.parent()?;
+        let child = current;
+        current = parent;
+        if let Some(boundary) = scope_boundary_at(parent) {
+            if !is_functions_own_name(parent, child) {
+                return Some(boundary.node());
             }
-        )
-        .is_none());
-    }
+        }
+    })
+}
 
-    #[test]
-    fn classifies_an_import_segment() {
-        let (u, idx) = indexed_with_live("/D.kt", "import com.example.User\n");
-        let col = "import com.example.".len() as u32;
-        let sym = classify_symbol_at(
-            &idx,
-            &u,
-            CursorPos {
-                line: 0,
-                utf16_col: col as usize,
-            },
-        )
-        .unwrap();
-        assert_eq!(sym.name, "User");
-        assert!(matches!(sym.role, SymbolRole::ImportSegment));
-    }
+/// A function's own name is a direct `simple_identifier` child of its
+/// `KIND_FUN_DECL` — the cursor sitting on that name must not treat the
+/// function's own declaration as local to its own body. `for_statement`/
+/// `when_expression`'s bound names sit one level deeper (through
+/// `variable_declaration`), so this ambiguity is unique to `KIND_FUN_DECL`.
+fn is_functions_own_name(parent: Node<'_>, child: Node<'_>) -> bool {
+    parent.kind() == KIND_FUN_DECL && is_declaration_site(child)
+}
 
-    /// The cursor's own ancestor chain sits inside an `ERROR` node — deeply
-    /// nested unclosed call args (`foo(bar(baz(qux`), not just an unrelated
-    /// MISSING-semicolon artifact elsewhere in the file. `lambda_doc_at`'s
-    /// brace-repair only accepts a candidate whose cursor gains an enclosing
-    /// `lambda_literal`; none of these unclosed parens can ever become one
-    /// (they're call-argument lists, not lambda braces), so repair exhausts
-    /// `MAX_BRACE_REPAIRS` and `lambda_doc_at` returns `None` — the raw-tree
-    /// fallback in `classify_symbol_at` is what actually serves this request.
-    /// Verified empirically (see fix report): `lambda_doc_at` returns `None`
-    /// for this exact snippet/position, and the cursor's ancestor chain is
-    /// `["simple_identifier", "value_argument", "ERROR"]`.
-    ///
-    /// Every check in `classify_symbol_at` after acquiring the doc is an
-    /// exact `node.kind() == ...` match against the identifier's *parent*
-    /// kind; here that parent is `ERROR`, which matches none of them, so the
-    /// function falls closed to the bare-reference case with no fabricated
-    /// receiver/call info — never a wrong classification.
-    #[test]
-    fn safely_degrades_when_cursor_sits_inside_an_error_node() {
-        let src = "class User {\nfun f() {\nif (foo(bar(baz(qux\n";
-        let (u, idx) = indexed_with_live("/D.kt", src);
-        let col = src.lines().nth(2).unwrap().find("qux").unwrap();
-        let pos = CursorPos {
-            line: 2,
-            utf16_col: col,
+/// Whether `scope` itself — not any nested scope inside it — directly
+/// declares `name`: every `scope_boundary_at` match found while descending is
+/// treated as opaque and not searched into. Also the shadow-check primitive:
+/// a nested scope "shadows" `name` exactly when it directly declares it.
+fn declares_name_directly<'a>(scope: Node<'a>, name: &str, bytes: &[u8]) -> Option<Node<'a>> {
+    let mut stack = vec![scope];
+    while let Some(node) = stack.pop() {
+        if is_declaration_site(node) && node.utf8_text_owned(bytes).as_deref() == Some(name) {
+            return Some(node);
+        }
+        if node.id() != scope.id() && scope_boundary_at(node).is_some() {
+            continue;
+        }
+        for i in 0..node.child_count() {
+            if let Some(child) = node.child(i) {
+                stack.push(child);
+            }
+        }
+    }
+    None
+}
+
+/// Walk `statements`'s children in document order, incrementing `generation`
+/// after each one that declares `name`. A declaring statement's own
+/// initializer is visited at the OLD generation, then re-emitted at the new
+/// one — `val x: Any = "hello"; val x = x as String`'s own initializer
+/// reference must see the FIRST `x`, since the second doesn't exist yet
+/// while its own initializer runs.
+fn visit_statements_with_generations<'a>(
+    statements: Node<'a>,
+    name: &str,
+    mut generation: usize,
+    already_shadowed: bool,
+    bytes: &[u8],
+    visit: &mut impl FnMut(Node<'a>, usize),
+) {
+    for i in 0..statements.child_count() {
+        let Some(statement) = statements.child(i) else {
+            continue;
         };
-
-        // Empirical precondition: lambda_doc_at must actually fail here, or
-        // this test isn't exercising the raw-tree fallback at all.
-        assert!(
-            super::super::speculative::lambda_doc_at(&idx, &u, pos).is_none(),
-            "expected lambda_doc_at to return None (brace repair exhausted) \
-             so classify_symbol_at's raw-tree fallback is what's under test"
-        );
-
-        // Empirical precondition: the cursor's own node sits inside an ERROR
-        // node, not just somewhere unrelated in the tree.
-        let doc = idx.live_doc_or_parse(&u).unwrap();
-        let node = super::super::cst_lambda::cursor_node_at(&doc, pos).unwrap();
-        assert_eq!(node.kind(), KIND_SIMPLE_IDENT);
-        assert_eq!(node.utf8_text(&doc.bytes).unwrap(), "qux");
-        assert_eq!(node.parent().unwrap().parent().unwrap().kind(), "ERROR");
-
-        // The actual behavior under test: no panic, and no fabricated
-        // classification. `qux`'s immediate parent is `value_argument`
-        // inside the ERROR node — none of is_declaration_site's or the
-        // member-reference branch's exact-kind checks match an ERROR
-        // ancestor, so this falls through to the bare-reference case with
-        // name echoed verbatim and nothing fabricated (no receiver, not
-        // marked as a call).
-        let sym = classify_symbol_at(&idx, &u, pos).expect("falls to bare reference, not None");
-        assert_eq!(sym.name, "qux");
-        match sym.role {
-            SymbolRole::Reference {
-                receiver_type: None,
-                is_call: false,
-            } => {}
-            other => panic!("expected bare, unfabricated reference, got {other:?}"),
-        }
-    }
-
-    /// House decoy: an untypeable receiver must not silently attach a wrong
-    /// or stale receiver_type.
-    #[test]
-    fn untypeable_receiver_yields_no_receiver_type() {
-        let src = "fun f(x: Unknown) { x.save() }\n";
-        let (u, idx) = indexed_with_live("/D.kt", src);
-        let col = src.find("save").unwrap() as u32;
-        let sym = classify_symbol_at(
-            &idx,
-            &u,
-            CursorPos {
-                line: 0,
-                utf16_col: col as usize,
-            },
-        )
-        .unwrap();
-        match sym.role {
-            SymbolRole::Reference {
-                receiver_type: None,
-                ..
-            } => {}
-            other => panic!("expected no receiver_type, got {other:?}"),
-        }
-    }
-
-    /// House decoy: two classes with an identically-named member. A
-    /// receiver-typed reference must resolve to the RIGHT one only.
-    #[test]
-    fn typed_reference_resolves_to_the_correct_same_named_member() {
-        let src = "class User { fun save() {} }\n\
-                   class File { fun save() {} }\n\
-                   fun f(user: User) { user.save() }\n";
-        let (u, idx) = indexed_with_live("/D.kt", src);
-        let col = src.lines().nth(2).unwrap().find("save").unwrap() as u32;
-        let sym = classify_symbol_at(
-            &idx,
-            &u,
-            CursorPos {
-                line: 2,
-                utf16_col: col as usize,
-            },
-        )
-        .unwrap();
-        let identity = resolve_identity(&sym, &idx, &u);
-        match identity {
-            NavigationSource::CstResolved(defs) => {
-                assert_eq!(defs.len(), 1);
-                assert_eq!(
-                    defs[0].range.start.line, 0,
-                    "must resolve to User.save, not File.save"
+        match declares_name_directly(statement, name, bytes) {
+            Some(declaration_node) => {
+                visit_unshadowed_name_matches(
+                    statement,
+                    name,
+                    generation,
+                    already_shadowed,
+                    Some(declaration_node),
+                    bytes,
+                    visit,
                 );
+                generation += 1;
+                if !already_shadowed {
+                    visit(declaration_node, generation);
+                }
             }
-            NavigationSource::NameScan(_) => panic!("typed receiver should resolve CST-resolved"),
-        }
-    }
-
-    #[test]
-    fn declaration_resolves_to_its_own_location() {
-        let (u, idx) = indexed_with_live("/D.kt", "class User\n");
-        let sym = classify_symbol_at(
-            &idx,
-            &u,
-            CursorPos {
-                line: 0,
-                utf16_col: 8,
-            },
-        )
-        .unwrap();
-        match resolve_identity(&sym, &idx, &u) {
-            NavigationSource::CstResolved(defs) => assert_eq!(defs.len(), 1),
-            NavigationSource::NameScan(_) => panic!("declaration must be CstResolved"),
-        }
-    }
-
-    /// Reviewer-reported gap (task-3 review): a bare function parameter is a
-    /// `Declaration` per `is_declaration_site`, but `KOTLIN_DEFINITIONS`
-    /// (`queries.rs`) never indexes plain `parameter` nodes into `f.symbols`
-    /// — only class/object/interface/fun/property/enum-entry/companion/
-    /// type-alias and `val`/`var` constructor params are indexed. A
-    /// name-based lookup for an unindexed declaration falls through to
-    /// `find_local_declaration`'s same-file first-textual-match scan, which
-    /// isn't anchored to the cursor: with two functions that both declare a
-    /// parameter named `id`, the cursor on the SECOND function's `id`
-    /// parameter must not be silently resolved (as `CstResolved`) to the
-    /// FIRST function's `id`.
-    #[test]
-    fn unindexed_param_declaration_is_namescan_not_cst_resolved() {
-        let src = "fun a(id: Int) {}\nfun b(id: String) { println(id) }\n";
-        let (u, idx) = indexed_with_live("/D.kt", src);
-        // cursor on the declaration-site "id" of `b`'s parameter (first
-        // occurrence on line 1 — the parameter, not the `println(id)` usage).
-        let col = src.lines().nth(1).unwrap().find("id").unwrap() as u32;
-        let sym = classify_symbol_at(
-            &idx,
-            &u,
-            CursorPos {
-                line: 1,
-                utf16_col: col as usize,
-            },
-        )
-        .unwrap();
-        assert_eq!(sym.name, "id");
-        assert!(
-            matches!(sym.role, SymbolRole::Declaration { indexed: false }),
-            "expected an unindexed Declaration, got {:?}",
-            sym.role
-        );
-        match resolve_identity(&sym, &idx, &u) {
-            NavigationSource::NameScan(_) => {}
-            NavigationSource::CstResolved(defs) => panic!(
-                "unindexed param declaration must not be CstResolved (got line {:?}, expected NameScan)",
-                defs.first().map(|d| d.range.start.line)
+            None => visit_unshadowed_name_matches(
+                statement,
+                name,
+                generation,
+                already_shadowed,
+                None,
+                bytes,
+                visit,
             ),
         }
     }
+}
 
-    #[test]
-    fn untyped_receiver_falls_back_to_name_scan() {
-        let src = "fun f(x: Unknown) { x.save() }\n";
-        let (u, idx) = indexed_with_live("/D.kt", src);
-        let col = src.find("save").unwrap() as u32;
-        let sym = classify_symbol_at(
-            &idx,
-            &u,
-            CursorPos {
-                line: 0,
-                utf16_col: col as usize,
-            },
-        )
-        .unwrap();
-        assert!(matches!(
-            resolve_identity(&sym, &idx, &u),
-            NavigationSource::NameScan(_)
-        ));
+/// Walk `node`'s subtree, calling `visit` on every `simple_identifier`
+/// matching `name` (tagged with `generation`), skipping the subtree of any
+/// nested scope boundary that itself redeclares `name` (shadowing).
+/// `exclude` suppresses one node — a declaration re-emitted separately by
+/// [`visit_statements_with_generations`] at its own new generation.
+fn visit_unshadowed_name_matches<'a>(
+    node: Node<'a>,
+    name: &str,
+    generation: usize,
+    already_shadowed: bool,
+    exclude: Option<Node<'a>>,
+    bytes: &[u8],
+    visit: &mut impl FnMut(Node<'a>, usize),
+) {
+    let is_excluded = exclude.is_some_and(|excluded| excluded.id() == node.id());
+    if !already_shadowed
+        && !is_excluded
+        && node.kind() == KIND_SIMPLE_IDENT
+        && !is_named_argument_label(node)
+        && node.utf8_text_owned(bytes).as_deref() == Some(name)
+    {
+        visit(node, generation);
+    }
+    if node.kind() == KIND_STATEMENTS {
+        visit_statements_with_generations(node, name, generation, already_shadowed, bytes, visit);
+        return;
+    }
+    for i in 0..node.child_count() {
+        let Some(child) = node.child(i) else {
+            continue;
+        };
+        let child_shadowed = already_shadowed
+            || (scope_boundary_at(child).is_some()
+                && declares_name_directly(child, name, bytes).is_some());
+        visit_unshadowed_name_matches(
+            child,
+            name,
+            generation,
+            child_shadowed,
+            exclude,
+            bytes,
+            visit,
+        );
     }
 }
+
+/// Convert a tree-sitter node's byte-based position into an LSP `Location`
+/// with UTF-16 columns. Assumes `node` is single-line (true for every
+/// `simple_identifier` this module deals with).
+fn node_to_location(uri: &Url, node: Node<'_>, full_text: &str) -> Option<Location> {
+    let row = node.start_position().row;
+    let start_byte_column = node.start_position().column;
+    let end_byte_column = node.end_position().column;
+    let line_text = full_text.lines().nth(row)?;
+    let start_character =
+        crate::features::text_utils::utf16_column(&line_text[..start_byte_column]);
+    let end_character = crate::features::text_utils::utf16_column(&line_text[..end_byte_column]);
+    Some(Location {
+        uri: uri.clone(),
+        range: tower_lsp::lsp_types::Range::new(
+            Position::new(row as u32, start_character),
+            Position::new(row as u32, end_character),
+        ),
+    })
+}
+
+#[cfg(test)]
+#[path = "cst_symbol_tests.rs"]
+mod tests;
