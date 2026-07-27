@@ -13,11 +13,13 @@
 //! the same line, or from column 0 on a new line).  Tokens must be sorted by
 //! (line, col) before encoding.
 
-pub(crate) mod helpers;
+mod helpers;
 mod java;
 mod kotlin;
 mod params;
 mod resolve;
+
+pub(crate) use helpers::is_named_argument_label;
 
 use tower_lsp::lsp_types::{
     Range, SemanticToken, SemanticTokenModifier, SemanticTokenType, SemanticTokens,

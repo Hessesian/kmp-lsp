@@ -19,7 +19,7 @@ use crate::queries::{
     KIND_VAR_DECL, KIND_WHEN_EXPR,
 };
 use crate::resolver::api::Definitions;
-use crate::semantic_tokens::helpers::is_named_argument_label;
+use crate::semantic_tokens::is_named_argument_label;
 use crate::types::CursorPos;
 use tower_lsp::lsp_types::{Location, Position, Url};
 
@@ -448,17 +448,17 @@ impl<'a> ScopeBoundary<'a> {
 
 fn scope_boundary_at(node: Node<'_>) -> Option<ScopeBoundary<'_>> {
     match node.kind() {
-        k if k == KIND_FUN_DECL
-            || k == KIND_LAMBDA_LIT
-            || k == KIND_FOR_STMT
-            || k == KIND_WHEN_EXPR =>
+        kind if kind == KIND_FUN_DECL
+            || kind == KIND_LAMBDA_LIT
+            || kind == KIND_FOR_STMT
+            || kind == KIND_WHEN_EXPR =>
         {
             Some(ScopeBoundary::WholeNode(node))
         }
-        k if k == KIND_CONTROL_STRUCTURE_BODY
-            || k == KIND_CATCH_BLOCK
-            || k == KIND_FINALLY_BLOCK
-            || k == KIND_TRY_EXPR =>
+        kind if kind == KIND_CONTROL_STRUCTURE_BODY
+            || kind == KIND_CATCH_BLOCK
+            || kind == KIND_FINALLY_BLOCK
+            || kind == KIND_TRY_EXPR =>
         {
             Some(ScopeBoundary::Block(node))
         }
