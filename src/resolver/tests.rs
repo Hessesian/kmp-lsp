@@ -5375,6 +5375,114 @@ fn resolve_in_scope_strict_true_via_jar_indexed_default_import_function() {
     );
 }
 
+/// Regression: `resolvable_via_default_import` must promote a Tier-1-only
+/// (not-yet-materialized) JAR candidate before reading `jar_definitions`,
+/// not read it directly. The test above seeds `jar_definitions` straight —
+/// which passes even without the promote-before-read call, since the data is
+/// already there. This one seeds only `jar_bare_names` (the real Tier-1
+/// signal a lazily-loaded JAR starts in) and asserts the promotion actually
+/// ran (`idx.materialized`), the way `find_fun_return_type_reachable`'s own
+/// Tier-1-promotion regression test does.
+#[test]
+fn resolve_in_scope_strict_promotes_a_tier1_only_default_import_jar_candidate() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    crate::indexer::test_helpers::with_xdg_cache(tmp.path(), || {
+        let jar_path = tmp.path().join("kotlin-stdlib.jar");
+        std::fs::write(&jar_path, b"fake jar bytes").expect("write fake jar");
+        let jar_path_key = jar_path.to_string_lossy().to_string();
+
+        let symbols = vec![crate::sidecar::SidecarSymbol {
+            name: "error".to_owned(),
+            kind: "fun".to_owned(),
+            container: String::new(),
+            detail: "fun error(message: Any): Nothing".to_owned(),
+            doc: String::new(),
+            type_params: Vec::new(),
+            extension_receiver_type: String::new(),
+            trailing_lambda: false,
+            deprecated: false,
+            pkg: "kotlin".to_owned(),
+            top_level: true,
+            supers: vec![],
+        }];
+        let entry = crate::indexer::jar_cache::make_cache_entry(&jar_path, symbols)
+            .expect("cache entry for existing file");
+        let mut entries = std::collections::HashMap::new();
+        entries.insert(jar_path_key.clone(), entry);
+        crate::indexer::jar_cache::save_jar_cache(&entries);
+
+        let idx = Indexer::new();
+        let jar_id = idx.jar_table.intern(&jar_path_key);
+        idx.jar_bare_names
+            .entry("error".to_owned())
+            .or_default()
+            .push(jar_id);
+
+        let caller_uri = uri("/Caller.kt");
+        idx.index_content(&caller_uri, "package app\nfun use() { error(\"x\") }\n");
+
+        assert!(
+            resolve_in_scope_strict(&idx, "error", &caller_uri),
+            "kotlin.error must resolve as default-import even before Tier-2 materialization"
+        );
+        assert!(
+            idx.materialized.contains(&jar_id),
+            "resolve_in_scope_strict must promote a fresh-cache-backed Tier-1-only \
+             candidate, not read jar_definitions directly"
+        );
+    });
+}
+
+/// Regression: `receiver_provides_member`'s JAR-member step (3) must likewise
+/// promote before reading `jar_definitions`/`jar_files`, not read them
+/// directly — same contract, different call site.
+#[test]
+fn receiver_provides_member_promotes_a_tier1_only_jar_member() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    crate::indexer::test_helpers::with_xdg_cache(tmp.path(), || {
+        let jar_path = tmp.path().join("some-lib.jar");
+        std::fs::write(&jar_path, b"fake jar bytes").expect("write fake jar");
+        let jar_path_key = jar_path.to_string_lossy().to_string();
+
+        let symbols = vec![crate::sidecar::SidecarSymbol {
+            name: "someMethod".to_owned(),
+            kind: "fun".to_owned(),
+            container: "SomeClass".to_owned(),
+            detail: "fun someMethod(): Unit".to_owned(),
+            doc: String::new(),
+            type_params: Vec::new(),
+            extension_receiver_type: String::new(),
+            trailing_lambda: false,
+            deprecated: false,
+            pkg: "lib".to_owned(),
+            top_level: false,
+            supers: vec![],
+        }];
+        let entry = crate::indexer::jar_cache::make_cache_entry(&jar_path, symbols)
+            .expect("cache entry for existing file");
+        let mut entries = std::collections::HashMap::new();
+        entries.insert(jar_path_key.clone(), entry);
+        crate::indexer::jar_cache::save_jar_cache(&entries);
+
+        let idx = Indexer::new();
+        let jar_id = idx.jar_table.intern(&jar_path_key);
+        idx.jar_bare_names
+            .entry("someMethod".to_owned())
+            .or_default()
+            .push(jar_id);
+
+        assert!(
+            receiver_provides_member(&idx, "SomeClass", "someMethod"),
+            "someMethod is a real JAR member of SomeClass, even before Tier-2 materialization"
+        );
+        assert!(
+            idx.materialized.contains(&jar_id),
+            "receiver_provides_member must promote a fresh-cache-backed Tier-1-only \
+             candidate, not read jar_definitions directly"
+        );
+    });
+}
+
 #[test]
 fn receiver_provides_member_true_for_extension_function() {
     let modifier_uri = uri("/Modifier.kt");

@@ -471,6 +471,12 @@ fn resolvable_via_default_import(indexer: &Indexer, name: &str) -> bool {
     if is_default_import_type(name) {
         return true;
     }
+    // Promote-before-read (zero budget): this runs on the diagnostics/keystroke
+    // path — no blocking sidecar IPC here. Without this, a default-import
+    // top-level function (kotlin.error, kotlin.with, …) whose JAR hasn't been
+    // materialized yet reads as absent and gets flagged as a missing import.
+    let mut cache_backed_only = 0usize;
+    crate::indexer::jar::ensure_jar_definitions_for(indexer, name, &mut cache_backed_only);
     if let Some(locs) = indexer.jar_definitions.get(name) {
         for loc in locs.iter() {
             if jar_symbol_package(indexer, loc)
@@ -601,6 +607,11 @@ pub(crate) fn receiver_provides_member(indexer: &Indexer, receiver: &str, name: 
         }
     }
     // 3. Member of a compiled/sources JAR type (the symbol's recorded container).
+    // Promote-before-read (zero budget): diagnostics/keystroke path, no blocking
+    // sidecar IPC — without this a lazily-materialized JAR's member reads as
+    // absent and a real implicit-receiver call gets flagged as a missing import.
+    let mut cache_backed_only = 0usize;
+    crate::indexer::jar::ensure_jar_definitions_for(indexer, name, &mut cache_backed_only);
     if let Some(locs) = indexer.jar_definitions.get(name) {
         for loc in locs.iter() {
             let is_member = indexer

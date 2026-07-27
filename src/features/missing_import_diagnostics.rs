@@ -47,19 +47,19 @@ struct Candidate {
 /// The extension-receiver type of `fun Receiver.name(...)`, if any — the `user_type`
 /// immediately followed by `.` before the function name.
 fn extension_receiver_of(fn_node: Node, src: &[u8]) -> Option<String> {
-    let mut c = fn_node.walk();
-    let children: Vec<Node> = fn_node.children(&mut c).collect();
-    for (i, child) in children.iter().enumerate() {
+    let mut cursor = fn_node.walk();
+    let children: Vec<Node> = fn_node.children(&mut cursor).collect();
+    for (index, child) in children.iter().enumerate() {
         if child.kind() == KIND_USER_TYPE
             && children
-                .get(i + 1)
-                .map(|n| n.kind() == KIND_DOT)
+                .get(index + 1)
+                .map(|next| next.kind() == KIND_DOT)
                 .unwrap_or(false)
         {
-            let mut cc = child.walk();
-            for sub in child.children(&mut cc) {
-                if sub.kind() == KIND_TYPE_IDENT {
-                    return sub.utf8_text(src).ok().map(|s| s.to_owned());
+            let mut inner_cursor = child.walk();
+            for inner in child.children(&mut inner_cursor) {
+                if inner.kind() == KIND_TYPE_IDENT {
+                    return inner.utf8_text(src).ok().map(|text| text.to_owned());
                 }
             }
         }
@@ -70,17 +70,17 @@ fn extension_receiver_of(fn_node: Node, src: &[u8]) -> Option<String> {
 /// Names declared by a `type_parameters` node (`<State, Effect: Bound>` → State,
 /// Effect). The name is the first identifier child of each `type_parameter`; the
 /// (deeper) bound identifier is left for normal collection.
-fn collect_type_param_names(tp_node: Node, src: &[u8], out: &mut HashSet<String>) {
-    let mut c = tp_node.walk();
-    for tp in tp_node.children(&mut c) {
-        if tp.kind() != KIND_TYPE_PARAM {
+fn collect_type_param_names(type_params_node: Node, src: &[u8], out: &mut HashSet<String>) {
+    let mut cursor = type_params_node.walk();
+    for type_param in type_params_node.children(&mut cursor) {
+        if type_param.kind() != KIND_TYPE_PARAM {
             continue;
         }
-        let mut cc = tp.walk();
-        for child in tp.children(&mut cc) {
+        let mut inner_cursor = type_param.walk();
+        for child in type_param.children(&mut inner_cursor) {
             if child.kind() == KIND_TYPE_IDENT || child.kind() == KIND_SIMPLE_IDENT {
-                if let Ok(t) = child.utf8_text(src) {
-                    out.insert(t.to_owned());
+                if let Ok(name) = child.utf8_text(src) {
+                    out.insert(name.to_owned());
                 }
                 break; // first identifier is the parameter name
             }
@@ -110,12 +110,12 @@ fn collect_candidates(
     // scope for its whole subtree and must never be flagged as missing imports.
     let mut child_scope: Option<HashSet<String>> = None;
     {
-        let mut c = node.walk();
-        for child in node.children(&mut c) {
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
             if child.kind() == KIND_TYPE_PARAMS {
-                let mut s = type_params.clone();
-                collect_type_param_names(child, src, &mut s);
-                child_scope = Some(s);
+                let mut scope = type_params.clone();
+                collect_type_param_names(child, src, &mut scope);
+                child_scope = Some(scope);
                 break;
             }
         }
@@ -126,10 +126,10 @@ fn collect_candidates(
     // members in scope for the function body.
     let mut child_receivers: Option<Vec<String>> = None;
     if kind == KIND_FUN_DECL {
-        if let Some(r) = extension_receiver_of(node, src) {
-            let mut v = receivers.to_vec();
-            v.push(r);
-            child_receivers = Some(v);
+        if let Some(receiver) = extension_receiver_of(node, src) {
+            let mut receivers_with_this_one = receivers.to_vec();
+            receivers_with_this_one.push(receiver);
+            child_receivers = Some(receivers_with_this_one);
         }
     }
     let active_receivers = child_receivers.as_deref().unwrap_or(receivers);
@@ -137,7 +137,10 @@ fn collect_candidates(
     if kind == KIND_CALL_EXPR {
         if let Some(callee) = node.child(0) {
             // Only a *bare* callee (`Foo(...)` / `bar(...)`), not `recv.method(...)`.
-            if callee.kind() == KIND_SIMPLE_IDENT {
+            // Matches `NodeExt::call_fn_and_qualifier`'s accepted callee kinds —
+            // constructor-style calls can have a `type_identifier` callee, not just
+            // `simple_identifier`.
+            if matches!(callee.kind(), KIND_SIMPLE_IDENT | KIND_TYPE_IDENT) {
                 if let Ok(text) = callee.utf8_text(src) {
                     out.push(Candidate {
                         name: text.to_owned(),
@@ -153,7 +156,7 @@ fn collect_candidates(
         // sibling is a `.`, this identifier is already qualified and needs no import.
         let qualified = node
             .prev_sibling()
-            .map(|s| s.kind() == KIND_DOT)
+            .map(|sibling| sibling.kind() == KIND_DOT)
             .unwrap_or(false);
         if !qualified {
             if let Ok(text) = node.utf8_text(src) {
@@ -204,25 +207,26 @@ pub(crate) fn collect_missing_import_flags(
     let mut importable: std::collections::HashMap<&str, bool> = std::collections::HashMap::new();
     let mut in_scope: std::collections::HashMap<&str, bool> = std::collections::HashMap::new();
     let mut flagged: std::collections::HashMap<&str, (u32, u32)> = std::collections::HashMap::new();
-    for c in &candidates {
+    for candidate in &candidates {
         // (1) importable — we know a concrete FQN to add (excludes stdlib/unindexed).
         if !*importable
-            .entry(&c.name)
-            .or_insert_with(|| !fqns_for_name(indexer, &c.name).is_empty())
+            .entry(&candidate.name)
+            .or_insert_with(|| !fqns_for_name(indexer, &candidate.name).is_empty())
         {
             continue;
         }
         // (2) reachable from the file's own scope.
         if *in_scope
-            .entry(&c.name)
-            .or_insert_with(|| resolve_in_scope_strict(indexer, &c.name, uri))
+            .entry(&candidate.name)
+            .or_insert_with(|| resolve_in_scope_strict(indexer, &candidate.name, uri))
         {
             continue;
         }
         // (3) provided by an enclosing extension receiver (`fun Receiver.f()`).
-        if c.receivers
+        if candidate
+            .receivers
             .iter()
-            .any(|r| receiver_provides_member(indexer, r, &c.name))
+            .any(|receiver| receiver_provides_member(indexer, receiver, &candidate.name))
         {
             continue;
         }
@@ -232,16 +236,18 @@ pub(crate) fn collect_missing_import_flags(
         // first), so a bare `item()` inside `with(x) { }` nested in a builder belongs
         // to the outer `LazyListScope` even if `x` lacks it.
         let pos = CursorPos {
-            line: c.line as usize,
-            utf16_col: c.col as usize,
+            line: candidate.line as usize,
+            utf16_col: candidate.col as usize,
         };
         if all_lambda_receivers_at(pos, indexer, uri)
             .iter()
-            .any(|r| receiver_provides_member(indexer, r, &c.name))
+            .any(|receiver| receiver_provides_member(indexer, receiver, &candidate.name))
         {
             continue;
         }
-        flagged.entry(&c.name).or_insert((c.line, c.col));
+        flagged
+            .entry(&candidate.name)
+            .or_insert((candidate.line, candidate.col));
     }
     flagged
         .into_iter()
@@ -274,7 +280,7 @@ pub(crate) fn missing_import_diagnostics(
     if indexer
         .jar_phase
         .lock()
-        .map(|p| p.is_loading())
+        .map(|phase| phase.is_loading())
         .unwrap_or(false)
     {
         return Vec::new();

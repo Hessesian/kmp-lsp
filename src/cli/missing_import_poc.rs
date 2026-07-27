@@ -32,7 +32,10 @@ fn flags_for_file(indexer: &Indexer, uri: &Url, source: &str) -> Vec<(String, u3
     indexer.store_live_tree(uri, source);
     let flags = collect_missing_import_flags(indexer, uri, &doc);
     indexer.remove_live_tree(uri); // bound memory across the corpus
-    flags.into_iter().map(|f| (f.name, f.line)).collect()
+    flags
+        .into_iter()
+        .map(|flag| (flag.name, flag.line))
+        .collect()
 }
 
 /// Run the POC over every indexed workspace `.kt`/`.java` file under `root` and print
