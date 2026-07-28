@@ -409,9 +409,9 @@ pub(crate) async fn run(args: CliArgs) {
             run_tokens(json, &file, index.as_ref(), cst_only, phases, show_tree)
         }
         Subcommand::Tree { file } => run_tree(&file),
-        Subcommand::Diagnose { file } => {
+        Subcommand::Diagnose { file, only } => {
             let root = resolve_root_for_file(args.root.as_deref(), &file);
-            run_diagnose(&root, &file, verbose).await
+            run_diagnose(&root, &file, verbose, only.as_deref()).await
         }
         Subcommand::Sources => {
             let root = resolve_root(args.root.as_deref());
@@ -665,59 +665,38 @@ fn run_tree(file: &Path) {
     }
 }
 
-async fn run_diagnose(root: &Path, file: &Path, _verbose: bool) {
+/// Whether `name` should run, given the `--only` filter (`None` = run everything).
+fn diagnostic_enabled(only: Option<&[String]>, name: &str) -> bool {
+    only.is_none_or(|names| names.iter().any(|n| n == name))
+}
+
+async fn run_diagnose(root: &Path, file: &Path, _verbose: bool, only: Option<&[String]>) {
     use crate::features::call_arg_diagnostics::call_arg_diagnostics;
     use crate::features::fill_when::when_diagnostics;
+    use crate::features::missing_import_diagnostics::missing_import_diagnostics;
     use crate::features::nullable_call_diagnostics::nullable_dot_call_diagnostics;
     use tower_lsp::lsp_types::Url;
 
-    eprintln!("Indexing {}...", root.display());
-    let index = build_index(root, true).await;
-    eprintln!(
-        "Indexed: {} files, {} symbols",
-        index.files.len(),
-        index.definitions.len()
-    );
-
-    // Index Gradle JARs and resolve `jar_phase` to a TERMINAL state (same
-    // pattern as `run_find`). Without this, a machine with the sidecar
-    // binary installed leaves the phase at its initial `Pending` forever —
-    // and `call_arg_diagnostics`/`nullable_dot_call_diagnostics` suppress
-    // themselves while the phase reads as loading, so `diagnose` printed NO
-    // semantic diagnostics at all. (Machines WITHOUT the sidecar start at
-    // `Unavailable`, which is terminal — which is why the gap only showed up
-    // once a sidecar became present, e.g. in CI after the sidecar artifact
-    // was wired into the test jobs.)
-    let jars = crate::indexer::jar::scan_gradle_jars(None);
-    if let Ok(mut sidecar_guard) = index.jar_sidecar.lock() {
-        let total = if jars.is_empty() {
-            0
-        } else {
-            crate::indexer::jar::clear_jar_maps(&index);
-            crate::indexer::jar::index_jars(&index, &jars, &mut sidecar_guard)
-        };
-        if let Ok(mut phase) = index.jar_phase.lock() {
-            *phase = crate::indexer::jar_phase::JarPhase::Ready { count: total };
-        }
-    }
+    let syntax_enabled = diagnostic_enabled(only, "syntax");
+    let call_arg_enabled = diagnostic_enabled(only, "call-arg");
+    let nullable_enabled = diagnostic_enabled(only, "nullable");
+    let when_enabled = diagnostic_enabled(only, "when");
+    let missing_import_enabled = diagnostic_enabled(only, "missing-import");
+    // Building the index + JAR scan is the expensive part of this command —
+    // skip it entirely for a `--only syntax` request, same as `check`.
+    let needs_index =
+        call_arg_enabled || nullable_enabled || when_enabled || missing_import_enabled;
 
     let abs_path = if file.is_absolute() {
         file.to_path_buf()
     } else {
         std::env::current_dir().unwrap_or_default().join(file)
     };
-    let uri = Url::from_file_path(&abs_path).unwrap_or_else(|_| {
-        eprintln!("error: cannot convert path to URI: {}", abs_path.display());
-        std::process::exit(1);
-    });
-
     let source = std::fs::read_to_string(&abs_path).unwrap_or_else(|e| {
         eprintln!("error: cannot read file: {e}");
         std::process::exit(1);
     });
-
     let path_str = abs_path.to_string_lossy();
-    // Validate the extension now that the path is resolved.
     if crate::indexer::live_tree::lang_for_path(&path_str).is_none() {
         eprintln!("error: unsupported file extension");
         std::process::exit(1);
@@ -725,25 +704,75 @@ async fn run_diagnose(root: &Path, file: &Path, _verbose: bool) {
 
     // Emit syntax errors first (tree-sitter, no index required).
     let syntax_data = crate::parser::parse_by_extension(&path_str, &source);
-    for syntax_error in &syntax_data.syntax_errors {
-        let line = syntax_error.range.start.line + 1;
-        let col = syntax_error.range.start.character + 1;
-        println!("{}:{} [error]: {}", line, col, syntax_error.message);
+    if syntax_enabled {
+        for syntax_error in &syntax_data.syntax_errors {
+            let line = syntax_error.range.start.line + 1;
+            let col = syntax_error.range.start.character + 1;
+            println!("{}:{} [error]: {}", line, col, syntax_error.message);
+        }
     }
 
-    // store_live_tree parses the file once; retrieve the result via live_doc()
-    // so call_arg_diagnostics can use the same tree without a second parse.
-    index.store_live_tree(&uri, &source);
-    let doc = index.live_doc(&uri).unwrap_or_else(|| {
-        eprintln!("error: failed to parse file");
-        std::process::exit(1);
-    });
+    let mut diagnostics = Vec::new();
+    if needs_index {
+        eprintln!("Indexing {}...", root.display());
+        let index = build_index(root, true).await;
+        eprintln!(
+            "Indexed: {} files, {} symbols",
+            index.files.len(),
+            index.definitions.len()
+        );
 
-    let mut diagnostics = call_arg_diagnostics(&index, &uri, &doc);
-    diagnostics.extend(nullable_dot_call_diagnostics(&index, &uri, &doc));
-    diagnostics.extend(when_diagnostics(&index, &uri));
+        // Index Gradle JARs and resolve `jar_phase` to a TERMINAL state (same
+        // pattern as `run_find`). Without this, a machine with the sidecar
+        // binary installed leaves the phase at its initial `Pending` forever —
+        // and `call_arg_diagnostics`/`nullable_dot_call_diagnostics` suppress
+        // themselves while the phase reads as loading, so `diagnose` printed NO
+        // semantic diagnostics at all. (Machines WITHOUT the sidecar start at
+        // `Unavailable`, which is terminal — which is why the gap only showed up
+        // once a sidecar became present, e.g. in CI after the sidecar artifact
+        // was wired into the test jobs.)
+        let jars = crate::indexer::jar::scan_gradle_jars(None);
+        if let Ok(mut sidecar_guard) = index.jar_sidecar.lock() {
+            let total = if jars.is_empty() {
+                0
+            } else {
+                crate::indexer::jar::clear_jar_maps(&index);
+                crate::indexer::jar::index_jars(&index, &jars, &mut sidecar_guard)
+            };
+            if let Ok(mut phase) = index.jar_phase.lock() {
+                *phase = crate::indexer::jar_phase::JarPhase::Ready { count: total };
+            }
+        }
 
-    if syntax_data.syntax_errors.is_empty() && diagnostics.is_empty() {
+        let uri = Url::from_file_path(&abs_path).unwrap_or_else(|_| {
+            eprintln!("error: cannot convert path to URI: {}", abs_path.display());
+            std::process::exit(1);
+        });
+
+        // store_live_tree parses the file once; retrieve the result via live_doc()
+        // so call_arg_diagnostics can use the same tree without a second parse.
+        index.store_live_tree(&uri, &source);
+        let doc = index.live_doc(&uri).unwrap_or_else(|| {
+            eprintln!("error: failed to parse file");
+            std::process::exit(1);
+        });
+
+        if call_arg_enabled {
+            diagnostics.extend(call_arg_diagnostics(&index, &uri, &doc));
+        }
+        if nullable_enabled {
+            diagnostics.extend(nullable_dot_call_diagnostics(&index, &uri, &doc));
+        }
+        if when_enabled {
+            diagnostics.extend(when_diagnostics(&index, &uri));
+        }
+        if missing_import_enabled {
+            diagnostics.extend(missing_import_diagnostics(&index, &uri, &doc));
+        }
+    }
+
+    let printed_syntax_errors = syntax_enabled && !syntax_data.syntax_errors.is_empty();
+    if !printed_syntax_errors && diagnostics.is_empty() {
         println!("No diagnostics.");
     } else {
         for diag in &diagnostics {

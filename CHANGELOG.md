@@ -5,6 +5,7 @@
 ### Features
 
 - **Unused-import diagnostic** — an `import` statement whose name is never used anywhere in the file is now flagged (`HINT` severity, `UNNECESSARY` tag — grayed out rather than a squiggle in most editors), live, as you edit, with a "Remove unused import" quick-fix. Exempts star imports, Kotlin's operator-convention imports (`getValue`/`setValue`/`invoke`/`get`/… — needed for `by` delegation, Gradle Kotlin DSL sugar, and other operator syntax that never appears as literal identifier text), names referenced only via a KDoc `[Reference]` link, and names used only via bare `$identifier` string-template interpolation. Verified at scale: zero false positives on nowInAndroid; on a real ~13k-file monorepo (Moneta), every one of 392 flagged imports was deleted and the project recompiled clean (`BUILD SUCCESSFUL`, 0 errors) — the strongest precision validation available, not a sample.
+- **`kmp-lsp diagnose --only <names>`** — restrict a `diagnose` run to a comma-separated subset of diagnostics (`syntax`, `call-arg`, `nullable`, `when`, `missing-import`). An unknown name fails immediately with the valid list rather than silently running everything or nothing. `--only syntax` also skips building the workspace index and Gradle-JAR scan entirely, since neither is needed for a syntax-only check. `diagnose` now also runs the missing-import diagnostic, which it previously never included.
 
 ## 0.25.0
 
