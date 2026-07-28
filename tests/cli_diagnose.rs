@@ -50,6 +50,113 @@ fn diagnose(root: &Path, rel_path: &str) -> Vec<String> {
         .collect()
 }
 
+/// Same as `diagnose`, but with an explicit `--only <names>` filter, and
+/// returns the raw process output (not just stdout lines) so callers can
+/// also assert on exit status / stderr for the invalid-name error case.
+fn diagnose_only(root: &Path, rel_path: &str, only: &str) -> std::process::Output {
+    let file = root.join(rel_path);
+    Command::new(BIN)
+        .args(["diagnose", "--root"])
+        .arg(root)
+        .arg(&file)
+        .args(["--only", only])
+        .env("GRADLE_USER_HOME", root.join(".isolated-gradle"))
+        .env("XDG_CACHE_HOME", root.join(".isolated-cache"))
+        .output()
+        .expect("failed to spawn kmp-lsp")
+}
+
+// ── --only filtering ─────────────────────────────────────────────────────────
+
+/// `--only syntax` must not run call-arg diagnostics, even on a file with a
+/// real arity violation.
+#[test]
+fn only_syntax_skips_call_arg_diagnostics() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    write_fixture(root, "workspace.json", r#"{"sourcePaths":[]}"#);
+    write_fixture(
+        root,
+        "src/Missing.kt",
+        concat!(
+            "fun connect(host: String, port: Int) {}\n",
+            "fun test() {\n",
+            "    connect(\"localhost\")\n",
+            "}\n",
+        ),
+    );
+    let out = diagnose_only(root, "src/Missing.kt", "syntax");
+    assert!(
+        out.status.success(),
+        "diagnose failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        !stdout.lines().any(|line| line.contains("expected 2")),
+        "--only syntax must not report the call-arg diagnostic; got: {stdout}"
+    );
+    // Fast path: --only syntax needs no index, so it must never print the
+    // "Indexing..."/"Indexed:" lines the indexed path always emits.
+    assert!(
+        !stdout.contains("Indexed:"),
+        "--only syntax must skip index building entirely; got: {stdout}"
+    );
+}
+
+/// `--only call-arg` must still surface the call-arg diagnostic on the exact
+/// same fixture the previous test filtered it out of.
+#[test]
+fn only_call_arg_still_reports_call_arg_diagnostics() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    write_fixture(root, "workspace.json", r#"{"sourcePaths":[]}"#);
+    write_fixture(
+        root,
+        "src/Missing.kt",
+        concat!(
+            "fun connect(host: String, port: Int) {}\n",
+            "fun test() {\n",
+            "    connect(\"localhost\")\n",
+            "}\n",
+        ),
+    );
+    let out = diagnose_only(root, "src/Missing.kt", "call-arg");
+    assert!(
+        out.status.success(),
+        "diagnose failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout
+            .lines()
+            .any(|line| line.contains("expected 2") && line.contains("found 1")),
+        "--only call-arg must still report the diagnostic; got: {stdout}"
+    );
+}
+
+/// An unknown `--only` name must fail loudly (non-zero exit, clear message
+/// listing the valid names) rather than silently running everything or
+/// silently running nothing.
+#[test]
+fn only_rejects_an_unknown_diagnostic_name() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    write_fixture(root, "workspace.json", r#"{"sourcePaths":[]}"#);
+    write_fixture(root, "src/Empty.kt", "fun test() {}\n");
+    let out = diagnose_only(root, "src/Empty.kt", "bogus-name");
+    assert!(
+        !out.status.success(),
+        "unknown --only name must exit non-zero"
+    );
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("bogus-name") && stderr.contains("valid names"),
+        "error should name the bad value and list valid names; got: {stderr}"
+    );
+}
+
 // ── No false positives ───────────────────────────────────────────────────────
 
 /// Trailing lambda should not trigger missing-arg diagnostic.
