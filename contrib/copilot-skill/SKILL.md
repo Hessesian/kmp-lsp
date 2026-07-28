@@ -3,7 +3,7 @@ name: kmp-lsp
 description: 'Kotlin/Java/Swift LSP server for code navigation in Android and iOS codebases. Use when navigating Kotlin, Java, or Swift source files: finding class definitions, listing symbols, jumping to implementations, finding all usages, checking type signatures, or switching workspace between projects. Triggers for: "find this class", "go to definition", "find references", "list symbols", "switch to android/ios", "what implements this interface", "workspace symbol", "set workspace", "index kotlin files", "code navigation".'
 compatibility: 'Requires kmp-lsp binary on PATH. Run with `copilot --experimental` to activate the lsp tool. KMP_LSP_PREFER_CONFIG_ROOT=1 must be set in lsp-config.json env block for workspace switching to work correctly.'
 metadata:
-  version: "0.9.4"
+  version: "0.10.0"
   languages:
     - Kotlin
     - Java
@@ -46,11 +46,12 @@ This correctly handles mono-repos (e.g. `android/settings.gradle.kts` beats mono
 - **textDocument/documentSymbol** — list symbols in a file; always works (disk fallback for un-indexed files)
 - **textDocument/hover** — signature + doc comments; works before full index (on-demand index of current file)
 - **workspace/symbol** — find class/function by name; supports dot-qualified extension fn queries (e.g. `StoreState.isReady`); needs full index
-- **textDocument/definition** — go to source; works before full index (current file indexed on-demand); rg fallback for cross-file
-- **textDocument/references** — find all usages; needs index + rg fallback
+- **textDocument/definition** — go to source; works before full index (current file indexed on-demand); rg fallback for cross-file. CST-verified: two classes with an identically-named member (`User.save()` / `File.save()`) no longer cross-contaminate results.
+- **textDocument/references** — find all usages; needs index + rg fallback. Same CST verification as go-to-def — same-named-member false positives are filtered, an inherited member through a subtype still resolves.
 - **textDocument/implementation** — interface implementors (transitive BFS); needs index
-- **textDocument/rename** — cross-file rename; needs index
-- **textDocument/codeAction** — add missing import; uses rg, works without full index
+- **textDocument/rename** — CST-verified; needs index. A local variable/parameter rename recognizes full Kotlin block scoping (`if`/`for`/`while`/`when`/`try`/`catch`/`finally`, not just function/lambda bodies) and never touches a named-argument label that happens to share the local's name. Cross-file rename **refuses with an explicit reason** (surfaced as an LSP error — e.g. Helix's status line) instead of guessing wrong, when: the identity is ambiguous, the symbol is defined in a library/JAR, or it participates in an override relationship (rename the exact declaration you mean, on either the interface or the concrete side).
+- **textDocument/codeAction** — several quick-fixes, including "Import '\<fqn\>'" for a flagged missing-import diagnostic (see below — needs full index for the FQN lookup, one action per candidate FQN if the bare name is ambiguous) and `Add import alias` when the cursor is on an existing `import` line.
+- **Missing-import diagnostic** (live, via `textDocument/publishDiagnostics`, `source: "kmp-lsp"`) — flags a bare class/function reference with a known FQN elsewhere in the workspace that isn't reachable from the file's own scope. Recomputes on every edit, not just file-open. Scope is intentionally conservative: only bare calls (`Foo()`) and bare type annotations (`val x: Foo`, `List<Foo>`) are checked — a reference used only as a value or as a qualifier (`Foo.bar`, `val x = Foo`) is never flagged, even when genuinely unresolved.
 
 ### What works poorly or not at all ⚠️
 - **workspaceSymbol before index is ready** — returns empty; use `kmp_lsp_status` to check first
@@ -60,7 +61,8 @@ This correctly handles mono-repos (e.g. `android/settings.gradle.kts` beats mono
 - **Extension functions (dot-receiver, cross-file)** — use `lsp workspaceSymbol` with dot-qualified query (e.g. `ReceiverType.methodName`) instead of goToDefinition
 - **No type inference** — tree-sitter based, not compiler-backed; generic type params unresolved
 - **Java interop** — Java symbols indexed, but cross-language go-to-def is unreliable
-- **No compiler diagnostics** — tree-sitter only; use `kmp-lsp check <file>` (syntax errors, instant) or `kmp-lsp diagnose <file> --root .` (call-arg + syntax, needs index) for post-edit checks
+- **No compiler diagnostics** — tree-sitter only; use `kmp-lsp check <file>` (syntax errors, instant) or `kmp-lsp diagnose <file> --root .` (call-arg + syntax, needs index) for post-edit checks — note `diagnose` does **not** currently include the missing-import diagnostic, only the live editor `publishDiagnostics` does
+- **Missing-import diagnostic scope** — only bare calls and bare type annotations are checked (see above); an unresolved object/enum/constant reference used as a value or a qualifier is never flagged, even after waiting
 - **rg alternation syntax** — use `|` (not `\|`) in ripgrep; `\|` is GNU grep syntax
 
 ### Extension-provided tools

@@ -38,10 +38,10 @@ cargo build --profile profiling && samply record ./target/profiling/kmp-lsp inde
 |---|---|
 | `src/main.rs` | Entry point, stdio transport setup |
 | `src/backend/` | LSP protocol adapter — thin layer dispatching requests to `features/` |
-| `src/features/` | Per-feature LSP implementations: `completion`, `definition`, `references`, `hover`, `rename`, `implementation`, `fill_when`, `code_actions`, `call_arg_diagnostics`, … Pure reads via trait bounds |
+| `src/features/` | Per-feature LSP implementations: `completion`, `definition`, `references`/`references_verify` (CST identity verification pass), `hover`, `rename`, `implementation`, `fill_when`, `code_actions`, `call_arg_diagnostics`, `missing_import_diagnostics`, … Pure reads via trait bounds |
 | `src/workspace/` | MVI actor (`WorkspaceActor`) — owns all mutable state; event loop handles `FileChanged`, `Initialize`, `ChangeRoot`, etc. |
 | `src/indexer.rs` + `src/indexer/` | Tree-sitter parsing, in-memory index (`DashMap`), disk cache, type inference |
-| `src/indexer/infer/` | Lambda/`it`/`this` type inference split into `chain.rs`, `cst_lambda.rs`, `receiver.rs`, `type_subst.rs`, `args.rs`, `sig.rs` |
+| `src/indexer/infer/` | Type/scope inference, CST-first: `cst_symbol.rs` (declaration-vs-reference classification + receiver type, shared by go-to-def/goto-implementation/highlight/find-references/rename; `local_scope_occurrences` is the local-rename fast path), `cst_lambda.rs`/`cst_cursor.rs` (lambda `this`/`it` context, cursor→node), `chain.rs`/`expr_type.rs`/`type_subst.rs` (expression type resolution), `sig.rs`/`args.rs` (signature inference, call-site resolution), `speculative.rs` (marker-insertion + brace-repair for mid-typing states), `lambda.rs`/`lambda_resolution.rs` (stdlib scope-function receiver inference — a genuine heuristic, not string-parsing, kept per the "CST is the source of structure" principle below), `it_this.rs` (text-based fallback, used only where the CST path can't resolve) |
 | `src/parser.rs` | Tree-sitter query execution, `SymbolEntry` extraction, `extract_detail()` |
 | `src/queries.rs` | All tree-sitter S-expression queries and node-kind constants (Kotlin + Java + Swift) |
 | `src/resolver/` | Cross-file resolution, import handling, `rg` fallback |
