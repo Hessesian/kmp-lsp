@@ -265,6 +265,60 @@ impl LspClient {
             }),
         );
     }
+
+    /// Send a whole-document `textDocument/didChange` (single full-text change).
+    fn change_file(&mut self, uri: &str, version: i64, text: &str) {
+        self.notify(
+            "textDocument/didChange",
+            json!({
+                "textDocument": {"uri": uri, "version": version},
+                "contentChanges": [{"text": text}],
+            }),
+        );
+    }
+
+    /// Wait until a `textDocument/publishDiagnostics` for `uri` carries a
+    /// diagnostic whose message contains `needle`, or panic after `timeout`.
+    ///
+    /// Diagnostics recompute asynchronously (debounced re-index + possible
+    /// jar-phase settling), so this keeps consuming publishes for the same
+    /// uri rather than asserting on the first one, which may predate the
+    /// edit being reflected.
+    fn wait_for_diagnostic_containing(&mut self, uri: &str, needle: &str, timeout: Duration) {
+        let deadline = Instant::now() + timeout;
+        loop {
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            let msg = self.rx.recv_timeout(remaining).unwrap_or_else(|_| {
+                panic!(
+                    "timeout ({timeout:?}) waiting for a publishDiagnostics on {uri} \
+                     containing {needle:?}"
+                )
+            });
+            if msg.get("method").is_some() && msg.get("id").is_some() {
+                let server_id = msg["id"].clone();
+                self.write_raw(&json!({"jsonrpc": "2.0", "id": server_id, "result": null}));
+                continue;
+            }
+            if msg.get("method") != Some(&json!("textDocument/publishDiagnostics")) {
+                continue;
+            }
+            if msg["params"]["uri"].as_str() != Some(uri) {
+                continue;
+            }
+            let matched = msg["params"]["diagnostics"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .any(|d| {
+                    d["message"]
+                        .as_str()
+                        .is_some_and(|message| message.contains(needle))
+                });
+            if matched {
+                return;
+            }
+        }
+    }
 }
 
 impl Drop for LspClient {
@@ -720,4 +774,59 @@ fn smoke_completion_from_compiled_jar() {
         );
         std::thread::sleep(Duration::from_millis(200));
     }
+}
+
+/// Regression: `missing_import_diagnostics` was wired into the didOpen and
+/// jar-ready-republish paths (`document_handler.rs`) but not into the
+/// debounced `didChange` re-index path (`file_change_handler.rs`) — so a
+/// missing-import diagnostic only ever appeared once, at file-open time, and
+/// never again as the user kept editing (deleting an import via a live edit
+/// silently produced no diagnostic, no matter how long you waited).
+#[test]
+fn smoke_missing_import_diagnostic_on_edit() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+
+    write(root, "workspace.json", r#"{"sourcePaths":[]}"#);
+    write(
+        root,
+        "lib/Target.kt",
+        "package com.example.lib\n\nclass Target\n",
+    );
+
+    let with_import = concat!(
+        "package com.example.app\n",
+        "\n",
+        "import com.example.lib.Target\n",
+        "\n",
+        "fun demo() {\n",
+        "    val x = Target()\n",
+        "}\n",
+    );
+    write(root, "src/Main.kt", with_import);
+
+    let mut client = LspClient::spawn(root);
+    client.initialize(root);
+    client.wait_for_indexing();
+
+    let uri = file_uri(root, "src/Main.kt");
+    client.open_file(&uri, "kotlin", with_import);
+
+    // Delete the import via a live edit (didChange) -- this is the path that
+    // was never wired up. Bump generously past the 300ms debounce and any
+    // jar-phase settling.
+    let without_import = concat!(
+        "package com.example.app\n",
+        "\n",
+        "fun demo() {\n",
+        "    val x = Target()\n",
+        "}\n",
+    );
+    client.change_file(&uri, 2, without_import);
+
+    client.wait_for_diagnostic_containing(
+        &uri,
+        "'Target' is not imported and not in scope",
+        Duration::from_secs(20),
+    );
 }

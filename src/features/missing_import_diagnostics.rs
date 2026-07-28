@@ -15,7 +15,8 @@
 //! [`collect_missing_import_flags`] over an entire workspace to measure
 //! precision — see that module for the aggregate false-positive methodology.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
 use tower_lsp::lsp_types::*;
 use tree_sitter::Node;
@@ -28,6 +29,7 @@ use crate::queries::{
 };
 use crate::resolver::{fqns_for_name, receiver_provides_member, resolve_in_scope_strict};
 use crate::types::CursorPos;
+use crate::LinesExt;
 
 /// A flagged reference: the bare name and where it occurs.
 pub(crate) struct MissingImportFlag {
@@ -301,6 +303,73 @@ pub(crate) fn missing_import_diagnostics(
             ..Default::default()
         })
         .collect()
+}
+
+/// Quick-fix code actions for this module's own diagnostics: "Import 'Fqn'"
+/// for each known FQN of the flagged name, one candidate per action when a
+/// bare name is ambiguous across the workspace.
+///
+/// Reads the flagged name directly back out of the diagnostic message rather
+/// than re-walking the CST: the client already told us which of our own
+/// diagnostics apply at this position via `CodeActionContext::diagnostics`,
+/// and the message format is ours to parse (`missing_import_diagnostics`,
+/// above, is the only producer).
+pub(crate) fn missing_import_actions(
+    indexer: &Indexer,
+    uri: &Url,
+    diagnostics: &[Diagnostic],
+) -> Vec<CodeActionOrCommand> {
+    let Some(lines) = indexer.mem_lines_for(uri.as_str()) else {
+        return Vec::new();
+    };
+    let needs_semicolon = crate::Language::from_path(uri.path()) == crate::Language::Java;
+
+    diagnostics
+        .iter()
+        .filter(|diagnostic| diagnostic.source.as_deref() == Some("kmp-lsp"))
+        .filter_map(|diagnostic| {
+            let name = flagged_name_from_message(&diagnostic.message)?;
+            Some((diagnostic, name))
+        })
+        .flat_map(|(diagnostic, name)| {
+            fqns_for_name(indexer, name).into_iter().map({
+                let lines = Arc::clone(&lines);
+                move |fqn| import_action(uri, &lines, diagnostic, fqn, needs_semicolon)
+            })
+        })
+        .collect()
+}
+
+/// Extract `Foo` back out of `"'Foo' is not imported and not in scope"`.
+fn flagged_name_from_message(message: &str) -> Option<&str> {
+    message
+        .strip_prefix('\'')?
+        .split_once('\'')
+        .map(|(name, _)| name)
+}
+
+fn import_action(
+    uri: &Url,
+    lines: &[String],
+    diagnostic: &Diagnostic,
+    fqn: String,
+    needs_semicolon: bool,
+) -> CodeActionOrCommand {
+    let mut changes = HashMap::new();
+    changes.insert(
+        uri.clone(),
+        vec![lines.make_import_edit(&fqn, needs_semicolon)],
+    );
+    CodeActionOrCommand::CodeAction(CodeAction {
+        title: format!("Import '{fqn}'"),
+        kind: Some(CodeActionKind::QUICKFIX),
+        diagnostics: Some(vec![diagnostic.clone()]),
+        edit: Some(WorkspaceEdit {
+            changes: Some(changes),
+            ..Default::default()
+        }),
+        ..Default::default()
+    })
 }
 
 #[cfg(test)]

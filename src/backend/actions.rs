@@ -74,6 +74,13 @@ impl Backend {
             {
                 actions.push(action);
             }
+            actions.extend(
+                features::missing_import_diagnostics::missing_import_actions(
+                    self.indexer.as_ref(),
+                    uri,
+                    &params.context.diagnostics,
+                ),
+            );
         }
 
         let lang = crate::Language::from_path(uri.path());
