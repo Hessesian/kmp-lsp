@@ -32,6 +32,7 @@ mod output;
 mod run;
 mod sources;
 mod tokens;
+mod unused_import_poc;
 
 pub(crate) use args::CliArgs;
 pub(crate) use run::run;

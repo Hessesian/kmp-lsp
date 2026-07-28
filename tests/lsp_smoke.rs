@@ -830,3 +830,70 @@ fn smoke_missing_import_diagnostic_on_edit() {
         Duration::from_secs(20),
     );
 }
+
+/// Regression, same wiring-gap class as `smoke_missing_import_diagnostic_on_edit`:
+/// unused_import_diagnostics is wired into both the didOpen/republish path and
+/// the debounced didChange path from the start, but this pins it so a future
+/// change that only wires one of them (as actually happened for missing-import)
+/// gets caught immediately.
+#[test]
+fn smoke_unused_import_diagnostic_on_edit() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+
+    write(root, "workspace.json", r#"{"sourcePaths":[]}"#);
+    write(
+        root,
+        "lib/Target.kt",
+        "package com.example.lib\n\nclass Target\n",
+    );
+
+    let using_target = concat!(
+        "package com.example.app\n",
+        "\n",
+        "import com.example.lib.Target\n",
+        "\n",
+        "fun demo() {\n",
+        "    val x = Target()\n",
+        "    println(x)\n",
+        "}\n",
+    );
+    write(root, "src/Main.kt", using_target);
+
+    let mut client = LspClient::spawn(root);
+    client.initialize(root);
+    client.wait_for_indexing();
+
+    let uri = file_uri(root, "src/Main.kt");
+    client.open_file(&uri, "kotlin", using_target);
+
+    // Settle before editing: didOpen's own diagnostics pass, and an
+    // opportunistic early republish (on_became_ready can refire shortly after
+    // open), must both finish first. Without this wait, `did_change`'s
+    // synchronous live-state update (backend/mod.rs) can race ahead of that
+    // early republish, which then reads the ALREADY-EDITED content and
+    // publishes the correct diagnostic via a path OTHER than the debounced
+    // didChange handler this test means to exercise -- masking a regression
+    // in that handler specifically. 500ms clears both the debounce-adjacent
+    // timing and any such early republish.
+    std::thread::sleep(Duration::from_millis(500));
+
+    // Remove the only use of Target via a live edit (didChange) -- the import
+    // itself is untouched, so this only becomes unused because of the edit.
+    let no_longer_using_target = concat!(
+        "package com.example.app\n",
+        "\n",
+        "import com.example.lib.Target\n",
+        "\n",
+        "fun demo() {\n",
+        "    println(\"hi\")\n",
+        "}\n",
+    );
+    client.change_file(&uri, 2, no_longer_using_target);
+
+    client.wait_for_diagnostic_containing(
+        &uri,
+        "Unused import 'com.example.lib.Target'",
+        Duration::from_secs(20),
+    );
+}

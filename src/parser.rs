@@ -1709,6 +1709,20 @@ fn extract_package_and_imports(root: tree_sitter::Node, bytes: &[u8], data: &mut
 }
 
 fn parse_import_header(header: &tree_sitter::Node, bytes: &[u8], data: &mut FileData) {
+    if let Some(entry) = import_entry_from_header(*header, bytes) {
+        data.imports.push(entry);
+    }
+}
+
+/// Parse one Kotlin/Java `import_header` node into an [`ImportEntry`], pure
+/// (no `FileData` side effect) so callers that need the node's own position
+/// alongside the parsed entry — the unused-import diagnostic's declaration
+/// site, in particular — can use it directly instead of duplicating this
+/// node-shape walk.
+pub(crate) fn import_entry_from_header(
+    header: tree_sitter::Node,
+    bytes: &[u8],
+) -> Option<ImportEntry> {
     let mut path_text: Option<String> = None;
     let mut alias_text: Option<String> = None;
     let mut is_star = false;
@@ -1732,9 +1746,17 @@ fn parse_import_header(header: &tree_sitter::Node, bytes: &[u8], data: &mut File
         }
     }
 
-    if let Some(full_path) = path_text {
-        push_import(data, full_path, alias_text, is_star);
-    }
+    let full_path = path_text?;
+    let local_name = if is_star {
+        "*".to_owned()
+    } else {
+        alias_text.unwrap_or_else(|| full_path.last_segment().to_owned())
+    };
+    Some(ImportEntry {
+        full_path,
+        local_name,
+        is_star,
+    })
 }
 
 /// Push a single import entry, computing `local_name` from alias or last path segment.
