@@ -112,6 +112,35 @@ fn no_diagnostic_for_a_kdoc_reference_only_use() {
     );
 }
 
+/// Real build break found deleting every flagged import across a real
+/// ~13k-file monorepo (Moneta) and compiling the result: bare `$identifier`
+/// string-template interpolation parses to its own `interpolated_identifier`
+/// leaf node -- a genuine CST-shape gap, not a "nothing to widen to" case
+/// like the two exemptions above.
+#[test]
+fn no_diagnostic_for_a_bare_string_template_interpolation_use() {
+    let source = "package app\n\nimport com.example.lib.PATTERN\n\nfun demo() {\n    val regex = Regex(\"^$PATTERN$\")\n    println(regex)\n}\n";
+    let diags = run_diagnostics(source);
+    assert!(
+        diags.is_empty(),
+        "PATTERN is used via bare $PATTERN string interpolation: {diags:?}"
+    );
+}
+
+/// Braced `${...}` interpolation was already correctly handled before this
+/// fix -- pinned as a regression guard now that the bare-form fix landed
+/// alongside it, so a future change can't silently break one while fixing
+/// the other.
+#[test]
+fn no_diagnostic_for_a_braced_string_template_interpolation_use() {
+    let source = "package app\n\nimport com.example.lib.PATTERN\n\nfun demo() {\n    println(\"value: ${PATTERN}\")\n}\n";
+    let diags = run_diagnostics(source);
+    assert!(
+        diags.is_empty(),
+        "PATTERN is used only via ${{PATTERN}} braced string interpolation: {diags:?}"
+    );
+}
+
 #[test]
 fn star_imports_are_never_flagged() {
     let source =

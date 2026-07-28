@@ -52,9 +52,9 @@ this either. Only single-symbol imports are in scope, including aliased ones
 (`ImportEntry.local_name` already reports the alias, not the original name, so no special
 handling is needed there).
 
-**Two exemptions, both found (not guessed at) by running the benchmark against nowInAndroid**,
-folded in before merge rather than shipped as disclosed-but-unfixed gaps, since together they
-accounted for effectively all of that project's initial 62 flags:
+**Three fixes, all found (not guessed at) by running the benchmark and then, on the user's
+request, actually deleting every flagged import across a real project and compiling it**, folded
+in before merge rather than shipped as disclosed-but-unfixed gaps:
 
 1. **Operator-convention imports** (dominant source — 32 of 62 flags). Kotlin property-delegate
    syntax (`val x by lazy { }`) and Gradle's Kotlin-DSL analogues (`=`/`()`/`[]` sugar in
@@ -83,12 +83,26 @@ accounted for effectively all of that project's initial 62 flags:
    an `in_declaration_header` flag through the walk instead of returning early, so comment
    scanning still happens inside an import header's subtree even though identifier-text
    collection is suppressed there.
+3. **Bare `$identifier` string-template interpolation** — found the hard way, past what the
+   benchmark alone surfaced: after both exemptions above brought nowInAndroid to 0 flags, the
+   user asked to actually delete every flagged import across Moneta (392 flags, 253 files) and
+   compile the result. This produced exactly one real build break:
+   `Regex("^$REGEX_PHONE_WITH_OPTIONAL_PREFIX$")` in
+   `core/commonui/.../SimpleCzechPhoneNumberLengthValidator.kt` — `Unresolved reference
+   'REGEX_PHONE_WITH_OPTIONAL_PREFIX'`. Unlike the two exemptions above, this **is** a real
+   CST-shape gap, not a "nothing to widen to" case: dumping the parse tree for
+   `Regex("^$FOO$")` shows bare `$identifier` interpolation produces its own dedicated
+   `interpolated_identifier` leaf node — distinct from `simple_identifier`/`type_identifier` —
+   that the walk's kind filter simply didn't include. Braced `${identifier}`/`${expr.member}`
+   interpolation was already handled correctly (verified separately): it wraps a real
+   `navigation_expression`/`call_expression` whose own leaves are ordinary `simple_identifier`
+   nodes the walk already collects. Fixed by adding `KIND_INTERPOLATED_IDENT` to the kind match.
 
-Every other case not covered by the two exemptions above is disclosed but not fixed: any other
+Every other case not covered by the three fixes above is disclosed but not fixed: any other
 implicit/reflection-based use (e.g. `kotlinx.serialization`/data-binding fields, DI framework
-magic) that doesn't manifest as a literal identifier, a KDoc reference, or a known operator
-convention will still be flagged. Not attempted, since the benchmark found no evidence of this
-category on either corpus.
+magic) that doesn't manifest as a literal identifier, a KDoc reference, string-template
+interpolation, or a known operator convention will still be flagged. Not attempted, since the
+delete-and-compile validation (below) found no further evidence of this category.
 
 ## Diagnostic and code action
 
@@ -106,8 +120,13 @@ New `unused-imports` subcommand (`cli/unused_import_poc.rs`), same shape as
 (`collect_unused_import_flags`, shared with the live diagnostic, same pattern as
 `collect_missing_import_flags`) over every source file, print per-file flags plus an aggregate
 summary. Run against nowInAndroid and Moneta before merging — nowInAndroid's count is treated as
-a pure false-positive signal; Moneta's count is **not** — each flag gets spot-checked against
-the actual file content before being attributed to "real unused import" vs. "detector gap."
+a pure false-positive signal; Moneta's count is **not** — each flag needs corroboration before
+being attributed to "real unused import" vs. "detector gap." Two levels of corroboration were
+used, in increasing order of strength: spot-checking individual flags by hand (see "Benchmark
+results"), then — because the detector's whole value proposition is precision at scale — actually
+deleting every flagged import across the full Moneta checkout and running its real Kotlin
+compiler (see "Delete-and-compile validation"), the strongest ground truth available for a
+diagnostic whose entire job is knowing what's genuinely unused.
 
 ## Testing
 
@@ -133,21 +152,49 @@ the actual file content before being attributed to "real unused import" vs. "det
   that shape, no other use anywhere).
 - **nowInAndroid, after both exemptions**: **0 flags** across all 338 files — matches the design's
   original expectation for this project exactly.
-- **Moneta, after both exemptions**: 403 flags across 264 files (of 12,856 scanned). Per the
-  user's explicit warning going in, this is **not** treated as a pure false-positive signal.
-  Spot-checked three, chosen for variety (highest-frequency import, a same-package-cluster
-  pattern, an Android-resource-class import): `okhttp3.MultipartBody` in a Retrofit interface
-  (`ActivationApi.kt`) — genuinely never referenced beyond `@Multipart`/`@Part` annotations that
-  don't need the type itself; `cz.moneta.smartbanka.mobile.R` in `TaxResidenceItemView.kt` —
-  genuinely never referenced; and a cluster of four imports
+- **Moneta, after both exemptions (before the interpolation fix)**: 403 flags across 264 files
+  (of 12,856 scanned). Per the user's explicit warning going in, this is **not** treated as a
+  pure false-positive signal. Spot-checked three, chosen for variety (highest-frequency import,
+  a same-package-cluster pattern, an Android-resource-class import): `okhttp3.MultipartBody` in
+  a Retrofit interface (`ActivationApi.kt`) — genuinely never referenced beyond
+  `@Multipart`/`@Part` annotations that don't need the type itself; `cz.moneta.smartbanka.mobile.R`
+  in `TaxResidenceItemView.kt` — genuinely never referenced; and a cluster of four imports
   (`ResultState`/`loadResultState`/`safeFlowResultState`/`ISimpleLoadDataFlowInteractor`) in
   `MaintenanceInteractor.kt`, all flagged together — read the whole file and confirmed it's a
   real refactor leftover: an old error-handling pattern was replaced but its imports were never
   cleaned up. All three spot-checks are genuine dead imports, not detector gaps — consistent
   with the user's prediction that Moneta carries real unused-import debt.
 
+### Delete-and-compile validation (beyond spot-checking)
+
+Spot-checking a handful of flags is necessarily a sample. The user asked for the strongest
+possible validation instead: **delete every flagged import in Moneta and try to build it.** On a
+clean checkout (`git status` clean beforehand, working-tree-only edit, no commit — trivially
+reversible via `git checkout --`), all 403 flagged import lines were deleted by an exact
+file:line match (each line verified to actually start with `import` and contain the expected FQN
+before deletion — zero mismatches), then `./gradlew compileDebugKotlin compileKotlin --continue`
+was run across the whole multi-module project.
+
+**First run**: one real build failure — `core/commonui/.../SimpleCzechPhoneNumberLengthValidator.kt`,
+`Unresolved reference 'REGEX_PHONE_WITH_OPTIONAL_PREFIX'` (the bare-`$identifier`-interpolation
+gap described above). Everything else compiled clean. The broken file was restored
+(`git checkout --` on that one file) and the interpolation fix (`KIND_INTERPOLATED_IDENT`) was
+added.
+
+**Second run, from a clean checkout again, after the fix**: the benchmark's own count first
+dropped to 392 flags (11 fewer — the interpolation fix correctly stopped flagging those real
+uses). All 392 were deleted the same way and the build was re-run.
+
+**`BUILD SUCCESSFUL in 2m 13s`, 0 compiler errors.** Every one of the 392 flagged imports across
+253 files was genuinely dead, workspace-wide, confirmed by the strongest test available (a real
+compile, not a sample). The checkout was restored (`git checkout --`) immediately after — this
+was a validation exercise, not a change left applied. This is the actual precision result this
+feature's benchmark property was built to produce: not a spot-checked sample, but a
+whole-project ground truth.
+
 ## Risks
 
-- Any use that's neither a literal identifier, a KDoc reference, nor a known operator-convention
-  name (reflection-based frameworks, generated-code magic) is still a possible false positive —
-  disclosed, not fixed, since the benchmark found no evidence of this category on either corpus.
+- Any use that's neither a literal identifier, a KDoc reference, string-template interpolation,
+  nor a known operator-convention name (reflection-based frameworks, generated-code magic) is
+  still a possible false positive — disclosed, not fixed, since the delete-and-compile
+  validation found no further evidence of this category.

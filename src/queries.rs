@@ -502,3 +502,10 @@ pub(crate) const KIND_RBRACE: &str = "}";
 // ─── Comment kinds ────────────────────────────────────────────────────────────
 pub(crate) const KIND_LINE_COMMENT: &str = "line_comment";
 pub(crate) const KIND_MULTILINE_COMMENT: &str = "multiline_comment";
+
+/// Bare `$identifier` string-template interpolation (`"^$FOO$"`). A distinct
+/// leaf node kind, unlike braced `${...}` interpolation
+/// (`interpolated_expression`, wrapping a real expression whose own leaves
+/// are ordinary `simple_identifier`/`navigation_expression` nodes already
+/// covered elsewhere).
+pub(crate) const KIND_INTERPOLATED_IDENT: &str = "interpolated_identifier";

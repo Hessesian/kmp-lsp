@@ -15,10 +15,9 @@
 //! look "used" when it technically isn't — a false negative, the safe
 //! direction of error for a delete-this suggestion.
 //!
-//! Two further exemptions, both found by running the aggregate benchmark
-//! (below) against nowInAndroid, a real, actively-maintained, otherwise-clean
-//! project — the exact "run against a real project" step the design called
-//! for, not something guessed at upfront:
+//! Three further fixes, all found by running the aggregate benchmark (below)
+//! against real projects — the exact "run against a real project" step the
+//! design called for, not something guessed at upfront:
 //!
 //! - **Operator-convention imports** ([`OPERATOR_CONVENTION_NAMES`]) — Kotlin
 //!   property-delegate (`by lazy { }`) and Gradle's Kotlin-DSL analogues
@@ -38,6 +37,19 @@
 //!   receiver inference. This accounted for essentially all the remaining
 //!   nowInAndroid noise once the operator-convention exemption above was
 //!   added.
+//! - **Bare `$identifier` string-template interpolation** ([`KIND_INTERPOLATED_IDENT`])
+//!   — found the hard way: deleting every flagged import across a real
+//!   ~13k-file monorepo (Moneta) and running its Kotlin compiler surfaced one
+//!   genuine build break, `Regex("^$REGEX_PHONE_WITH_OPTIONAL_PREFIX$")`.
+//!   Unlike the two exemptions above, this one *is* a real CST-shape gap, not
+//!   a "nothing to widen to" case: bare `$identifier` interpolation parses to
+//!   its own dedicated `interpolated_identifier` leaf node (confirmed by
+//!   dumping the parse tree), distinct from `simple_identifier`/
+//!   `type_identifier` — the walk's kind filter simply didn't include it.
+//!   Braced `${identifier}`/`${expr.member}` interpolation was already
+//!   correctly handled: it wraps a real `navigation_expression`/
+//!   `call_expression` whose own leaves are ordinary `simple_identifier`
+//!   nodes the walk already collects.
 //!
 //! Star imports (`import com.example.*`) are never flagged — there is no
 //! single name to check usage of.
@@ -56,8 +68,8 @@ use crate::indexer::live_tree::LiveDoc;
 use crate::indexer::NodeExt;
 use crate::parser::import_entry_from_header;
 use crate::queries::{
-    KIND_IMPORT_HEADER, KIND_IMPORT_LIST, KIND_LINE_COMMENT, KIND_MULTILINE_COMMENT,
-    KIND_PACKAGE_HEADER, KIND_SIMPLE_IDENT, KIND_TYPE_IDENT,
+    KIND_IMPORT_HEADER, KIND_IMPORT_LIST, KIND_INTERPOLATED_IDENT, KIND_LINE_COMMENT,
+    KIND_MULTILINE_COMMENT, KIND_PACKAGE_HEADER, KIND_SIMPLE_IDENT, KIND_TYPE_IDENT,
 };
 
 /// Kotlin's operator-convention function names (`by`, `+`, `[]`, `()`, …) plus
@@ -166,7 +178,12 @@ fn collect_used_identifier_texts_inner<'a>(
     let in_declaration_header =
         in_declaration_header || kind == KIND_IMPORT_HEADER || kind == KIND_PACKAGE_HEADER;
 
-    if !in_declaration_header && matches!(kind, KIND_SIMPLE_IDENT | KIND_TYPE_IDENT) {
+    if !in_declaration_header
+        && matches!(
+            kind,
+            KIND_SIMPLE_IDENT | KIND_TYPE_IDENT | KIND_INTERPOLATED_IDENT
+        )
+    {
         if let Ok(text) = node.utf8_text(bytes) {
             out.insert(text);
         }
