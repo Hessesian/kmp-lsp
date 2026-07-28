@@ -69,6 +69,10 @@ pub(crate) enum Subcommand {
     MissingImports {
         root: Option<PathBuf>,
     },
+    /// POC: report unused import statements across the workspace.
+    UnusedImports {
+        root: Option<PathBuf>,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -295,6 +299,9 @@ fn build_subcommand(subcommand: &str, parsed: ParsedCliFlags) -> Result<Subcomma
         "missing-imports" => Ok(Subcommand::MissingImports {
             root: positionals.first().map(PathBuf::from),
         }),
+        "unused-imports" => Ok(Subcommand::UnusedImports {
+            root: positionals.first().map(PathBuf::from),
+        }),
         _ => unreachable!(),
     }
 }
@@ -404,6 +411,7 @@ fn is_subcommand(value: &str) -> bool {
             | "extract-sources"
             | "check"
             | "missing-imports"
+            | "unused-imports"
     )
 }
 

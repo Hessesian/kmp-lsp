@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Features
+
+- **Unused-import diagnostic** — an `import` statement whose name is never used anywhere in the file is now flagged (`HINT` severity, `UNNECESSARY` tag — grayed out rather than a squiggle in most editors), live, as you edit, with a "Remove unused import" quick-fix. Exempts star imports, Kotlin's operator-convention imports (`getValue`/`setValue`/`invoke`/`get`/… — needed for `by` delegation, Gradle Kotlin DSL sugar, and other operator syntax that never appears as literal identifier text), and names referenced only via a KDoc `[Reference]` link. Verified at scale: zero false positives on nowInAndroid; 403 flags across a real ~13k-file monorepo (Moneta), spot-checked and confirmed genuine (including a real refactor-leftover cluster of four dead imports in one file).
+
 ## 0.25.0
 
 ### Features

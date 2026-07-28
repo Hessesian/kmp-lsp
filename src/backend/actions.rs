@@ -81,6 +81,10 @@ impl Backend {
                     &params.context.diagnostics,
                 ),
             );
+            actions.extend(features::unused_import_diagnostics::unused_import_actions(
+                uri,
+                &params.context.diagnostics,
+            ));
         }
 
         let lang = crate::Language::from_path(uri.path());
