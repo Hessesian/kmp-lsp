@@ -97,6 +97,31 @@ fn no_diagnostic_for_a_gradle_dsl_operator_import() {
     );
 }
 
+/// PR review finding: `componentN` is unbounded (any class can declare
+/// `operator fun component6()` and beyond), not just component1..component5.
+#[test]
+fn no_diagnostic_for_a_component_n_import_beyond_five() {
+    let source = "package app\n\nimport com.example.lib.component6\n\nfun demo() {\n    println(\"hi\")\n}\n";
+    let diags = run_diagnostics(source);
+    assert!(
+        diags.is_empty(),
+        "component6 backs destructuring for a 6-property data class, used implicitly: {diags:?}"
+    );
+}
+
+/// `componentX` (non-digit suffix) is a real, ordinary name, not the
+/// destructuring convention -- must still be flagged when genuinely unused.
+#[test]
+fn flags_a_name_merely_starting_with_component_but_not_component_n() {
+    let source = "package app\n\nimport com.example.lib.componentDidMount\n\nfun demo() {\n    println(\"hi\")\n}\n";
+    let diags = run_diagnostics(source);
+    assert_eq!(
+        diags.len(),
+        1,
+        "componentDidMount is not a componentN operator convention: {diags:?}"
+    );
+}
+
 /// Found running the same benchmark: tree-sitter-kotlin does not parse KDoc
 /// comment bodies into structured sub-nodes at all (`multiline_comment` is
 /// one opaque leaf), so a name referenced only via a `[Reference]` KDoc link

@@ -15,9 +15,9 @@
 //! look "used" when it technically isn't — a false negative, the safe
 //! direction of error for a delete-this suggestion.
 //!
-//! Three further fixes, all found by running the aggregate benchmark (below)
-//! against real projects — the exact "run against a real project" step the
-//! design called for, not something guessed at upfront:
+//! Four further fixes, all found by running the aggregate benchmark (below)
+//! against real projects or by code review — the exact "verify, don't guess"
+//! discipline this feature was built with:
 //!
 //! - **Operator-convention imports** ([`OPERATOR_CONVENTION_NAMES`]) — Kotlin
 //!   property-delegate (`by lazy { }`) and Gradle's Kotlin-DSL analogues
@@ -50,6 +50,15 @@
 //!   correctly handled: it wraps a real `navigation_expression`/
 //!   `call_expression` whose own leaves are ordinary `simple_identifier`
 //!   nodes the walk already collects.
+//! - **`componentN` destructuring for arbitrary N** ([`is_component_n_name`])
+//!   — found in PR review, not the benchmark: the first cut of
+//!   `OPERATOR_CONVENTION_NAMES` hardcoded `component1`..`component5`, but
+//!   Kotlin's destructuring convention is unbounded — any class can declare
+//!   `operator fun component6()` and beyond, and a data class generates one
+//!   `componentN` per property, however many that is. Fixed by recognizing
+//!   the *shape* (`component` + a positive integer suffix) instead of
+//!   enumerating a fixed set, the same principle as the interpolation fix
+//!   above but caught by review instead of by compiling real code.
 //!
 //! Star imports (`import com.example.*`) are never flagged — there is no
 //! single name to check usage of.
@@ -110,12 +119,19 @@ const OPERATOR_CONVENTION_NAMES: &[&str] = &[
     "timesAssign",
     "divAssign",
     "remAssign",
-    "component1",
-    "component2",
-    "component3",
-    "component4",
-    "component5",
 ];
+
+/// Whether `name` is a Kotlin destructuring `componentN` operator function
+/// (`component1`, `component2`, …). Unlike the fixed-arity names in
+/// [`OPERATOR_CONVENTION_NAMES`], `componentN` is unbounded — any class can
+/// declare `operator fun component6()` and beyond, and data classes generate
+/// one per property, however many that is. A fixed `component1`..`component5`
+/// allowlist would still flag `component6`+ as unused even though its use is
+/// exactly as implicit as `component1`'s.
+fn is_component_n_name(name: &str) -> bool {
+    name.strip_prefix("component")
+        .is_some_and(|rest| !rest.is_empty() && rest.bytes().all(|byte| byte.is_ascii_digit()))
+}
 
 /// A flagged unused import: its fully-qualified path and declaration line.
 pub(crate) struct UnusedImportFlag {
@@ -141,7 +157,8 @@ pub(crate) fn collect_unused_import_flags(doc: &LiveDoc) -> Vec<UnusedImportFlag
         .filter_map(|header| {
             let entry = import_entry_from_header(header, bytes)?;
             let is_used = used_names.contains(entry.local_name.as_str())
-                || OPERATOR_CONVENTION_NAMES.contains(&entry.local_name.as_str());
+                || OPERATOR_CONVENTION_NAMES.contains(&entry.local_name.as_str())
+                || is_component_n_name(&entry.local_name);
             if entry.is_star || is_used {
                 return None;
             }
