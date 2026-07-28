@@ -48,9 +48,12 @@ pub(crate) enum Subcommand {
     Tree {
         file: PathBuf,
     },
-    /// Run call-argument diagnostics on a file (debug).
+    /// Run diagnostics on a file (debug).
     Diagnose {
         file: PathBuf,
+        /// Restrict to a subset of diagnostics by name (see `DIAGNOSTIC_NAMES`).
+        /// `None` means run everything.
+        only: Option<Vec<String>>,
     },
     /// List resolved source roots for the workspace.
     Sources,
@@ -138,6 +141,7 @@ struct ParsedCliFlags {
     eol: bool,
     no_stdlib: bool,
     exclude_imports: bool,
+    only: Option<Vec<String>>,
 }
 
 fn parse_first_argument(args: &mut lexopt::Parser) -> Result<Option<std::ffi::OsString>, String> {
@@ -186,6 +190,7 @@ fn parse_cli_flags(args: &mut lexopt::Parser) -> Result<ParsedCliFlags, String> 
         eol: false,
         no_stdlib: false,
         exclude_imports: false,
+        only: None,
     };
 
     loop {
@@ -216,6 +221,16 @@ fn parse_cli_flags(args: &mut lexopt::Parser) -> Result<ParsedCliFlags, String> 
             Some(lexopt::Arg::Short('e') | lexopt::Arg::Long("eol")) => parsed.eol = true,
             Some(lexopt::Arg::Long("no-stdlib")) => parsed.no_stdlib = true,
             Some(lexopt::Arg::Long("exclude-imports")) => parsed.exclude_imports = true,
+            Some(lexopt::Arg::Long("only")) => {
+                let value = args.value().map_err(|e| e.to_string())?;
+                let names: Vec<String> = value
+                    .to_string_lossy()
+                    .split(',')
+                    .map(|name| name.trim().to_owned())
+                    .filter(|name| !name.is_empty())
+                    .collect();
+                parsed.only = Some(names);
+            }
             Some(lexopt::Arg::Short('h') | lexopt::Arg::Long("help")) => {
                 print_help();
                 std::process::exit(0);
@@ -247,6 +262,7 @@ fn build_subcommand(subcommand: &str, parsed: ParsedCliFlags) -> Result<Subcomma
         eol,
         no_stdlib,
         exclude_imports,
+        only,
         ..
     } = parsed;
     match subcommand {
@@ -276,12 +292,16 @@ fn build_subcommand(subcommand: &str, parsed: ParsedCliFlags) -> Result<Subcomma
                 "tree requires a FILE argument",
             )?),
         }),
-        "diagnose" => Ok(Subcommand::Diagnose {
-            file: PathBuf::from(first_positional(
+        "diagnose" => {
+            let file = PathBuf::from(first_positional(
                 positionals,
                 "diagnose requires a FILE argument",
-            )?),
-        }),
+            )?);
+            if let Some(names) = &only {
+                validate_diagnostic_names(names)?;
+            }
+            Ok(Subcommand::Diagnose { file, only })
+        }
         "sources" => Ok(Subcommand::Sources),
         "extract-sources" => Ok(Subcommand::ExtractSources {
             gradle_home,
@@ -389,6 +409,27 @@ fn first_positional(
         .ok_or_else(|| missing_message.to_string())
 }
 
+/// Names accepted by `diagnose --only <names>`, in the order they run.
+///
+/// `unused-import` isn't listed yet: `features::unused_import_diagnostics`
+/// hasn't merged to `main` (PR #239) as of this writing. Add it here and wire
+/// it into `run_diagnose` in one line once that lands — same pattern as
+/// `missing-import` below.
+pub(crate) const DIAGNOSTIC_NAMES: &[&str] =
+    &["syntax", "call-arg", "nullable", "when", "missing-import"];
+
+fn validate_diagnostic_names(names: &[String]) -> Result<(), String> {
+    for name in names {
+        if !DIAGNOSTIC_NAMES.contains(&name.as_str()) {
+            return Err(format!(
+                "unknown diagnostic name '{name}' — valid names: {}",
+                DIAGNOSTIC_NAMES.join(", ")
+            ));
+        }
+    }
+    Ok(())
+}
+
 fn is_subcommand(value: &str) -> bool {
     matches!(
         value,
@@ -423,7 +464,7 @@ SUBCOMMANDS:
     find    <name>              Find declarations of a symbol
     refs    <name>              Find all references to a symbol
     check   <file|dir>…        Syntax-check files (no index needed; exit 1 on errors)
-    diagnose <file>             Call-arg + syntax diagnostics (requires index)
+    diagnose <file>             Diagnostics on a file — see --only (requires index)
     hover   <file> <line> <col> Show type/doc info at a position
     complete <file> <line> [col] Show completion candidates at a position
     index                       Build and cache the workspace index
@@ -438,6 +479,8 @@ OPTIONS:
     --json              Output results as JSON array
     --root <dir>        Workspace root (default: nearest .git dir or cwd)
     --exclude-imports   (refs) Strip import-statement matches from results
+    --only <names>      (diagnose) Comma-separated diagnostic names to run
+                         (default: all). Valid names: {}
     --resolve           (tokens) Load index for Phase 2 cross-file resolution
     --cst-only          (tokens) Force CST-only mode (default, kept for clarity)
     --phases            (tokens) Show per-phase token breakdown with dedup markers
@@ -459,6 +502,7 @@ EXAMPLES:
     kmp-lsp check src/Foo.kt
     kmp-lsp check src/ --json
     kmp-lsp diagnose src/Foo.kt --root ./android
+    kmp-lsp diagnose src/Foo.kt --only missing-import --root ./android
     kmp-lsp hover src/Foo.kt 42 10 --json
     kmp-lsp complete src/Foo.kt 42 10
     kmp-lsp complete src/Foo.kt 42 --dot --json
@@ -474,6 +518,7 @@ EXAMPLES:
     kmp-lsp tokens --resolve src/Foo.kt
     kmp-lsp tokens src/Foo.kt --tree
     kmp-lsp tree src/Foo.kt",
-        env!("CARGO_PKG_VERSION")
+        env!("CARGO_PKG_VERSION"),
+        DIAGNOSTIC_NAMES.join(", ")
     );
 }

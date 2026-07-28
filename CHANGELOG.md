@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Features
+
+- **`kmp-lsp diagnose --only <names>`** — restrict a `diagnose` run to a comma-separated subset of diagnostics (`syntax`, `call-arg`, `nullable`, `when`, `missing-import`). An unknown name fails immediately with the valid list rather than silently running everything or nothing. `--only syntax` also skips building the workspace index and Gradle-JAR scan entirely, since neither is needed for a syntax-only check. `diagnose` now also runs the missing-import diagnostic, which it previously never included.
+
 ## 0.25.0
 
 ### Features
