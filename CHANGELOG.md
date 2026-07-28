@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.25.0
+
 ### Features
 
 - **CST-verified go-to-definition, goto-implementation, document-highlight, find-references, and rename** — these five features now classify the cursor's symbol from the actual parse tree (declaration vs. member reference, with the receiver's resolved type) instead of a pure name-based `rg`/index scan, and verify each candidate's identity against that classification before returning it. Two classes with an identically-named member (`User.save()` / `File.save()`) no longer bleed into each other's results; an inherited member accessed through a subtype still resolves correctly via the supertype chain. Every feature keeps its existing recall guarantee — a candidate the CST can't verify (untyped receiver, JAR symbol, etc.) is still returned, just unlabeled, so nothing that worked before regresses. Rename additionally **refuses with a clear reason** (surfaced in the editor, e.g. Helix's status line) rather than guessing, on: an ambiguous/unresolvable identity, a library-defined symbol, or a symbol that participates in an override relationship (either the interface or the concrete side) — cross-type rename-through-inheritance isn't supported yet.
