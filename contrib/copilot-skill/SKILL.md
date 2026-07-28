@@ -3,7 +3,7 @@ name: kmp-lsp
 description: 'Kotlin/Java/Swift LSP server for code navigation in Android and iOS codebases. Use when navigating Kotlin, Java, or Swift source files: finding class definitions, listing symbols, jumping to implementations, finding all usages, checking type signatures, or switching workspace between projects. Triggers for: "find this class", "go to definition", "find references", "list symbols", "switch to android/ios", "what implements this interface", "workspace symbol", "set workspace", "index kotlin files", "code navigation".'
 compatibility: 'Requires kmp-lsp binary on PATH. Run with `copilot --experimental` to activate the lsp tool. KMP_LSP_PREFER_CONFIG_ROOT=1 must be set in lsp-config.json env block for workspace switching to work correctly.'
 metadata:
-  version: "0.10.0"
+  version: "0.13.0"
   languages:
     - Kotlin
     - Java
@@ -67,6 +67,19 @@ This correctly handles mono-repos (e.g. `android/settings.gradle.kts` beats mono
 
 ### Extension-provided tools
 
+#### `kmp_lsp_complete`
+Show completion candidates at a file position — the primary tool for discovering what APIs are available in scope.
+- Takes an absolute file path, 1-based line and col (cursor position **after** the last typed character)
+- Returns JSON: `[{label, kind, detail?, import?}]` where `import` is the auto-import text edit
+- Works for bare-word completion (class names, functions, annotations), dot-completion, and annotation context
+- Requires the index to be built first (`kmp_lsp_status` phase=done, or run `kmp-lsp index`)
+- Use to answer: "what classes match prefix X?", "does `@Composable` exist in scope?", "what's available after this dot?"
+- Library symbols from `~/.kmp-lsp/sources` (populated by `kmp-lsp extract-sources`) appear here with import edits
+
+```
+kmp_lsp_complete file="/path/Screen.kt" line=10 col=14 root="/path/android"
+```
+
 #### `kmp_lsp_set_workspace`
 Switch the Copilot CLI kmp-lsp instance to a different workspace directory.
 - Writes the path to `~/.config/kmp-lsp/workspace`
@@ -99,9 +112,10 @@ Restricted ripgrep for Kotlin/Java/Swift files — **fallback only** when LSP ca
 5. **`lsp goToDefinition file.kt line col`** — jump to source
 6. **`lsp findReferences file.kt line col`** — all usages cross-project; for common names (`Event`, `Result`, `State`) use `kmp-lsp refs <Name> --exclude-imports` instead to strip import noise
 7. **`lsp goToImplementation file.kt line col`** — interface subtypes (transitive)
-8. **`view` with line range** — read code at known location
-9. **`kmp-lsp check <file>`** — verify syntax after edits (instant, no index needed)
-10. **`kotlin_rg`** — only for free-text, extension fns, generated code (provide reason)
+8. **`kmp_lsp_complete file line col`** — discover available APIs / check what's in scope
+9. **`view` with line range** — read code at known location
+10. **`kmp-lsp check <file>`** — verify syntax after edits (instant, no index needed)
+11. **`kotlin_rg`** — only for free-text, extension fns, generated code (provide reason)
 
 #### Swift (iOS)
 1. **`lsp documentSymbol file.swift`** — always works immediately; get symbols + line numbers
@@ -112,6 +126,36 @@ Restricted ripgrep for Kotlin/Java/Swift files — **fallback only** when LSP ca
 6. **`kotlin_rg`** — for free-text, protocol conformance patterns (provide reason)
 
 **Note**: For Swift, `documentSymbol` + `view` is often more reliable than waiting for full indexing.
+
+### Serena MCP integration (when available)
+
+When Serena is active (`.mcp.json` present at repo root, tools prefixed `serena-`), both layers are available simultaneously. They are complementary — use them in the same task turn without hesitation.
+
+| Task | Preferred tool |
+|---|---|
+| List symbols in a file (no line needed) | `serena-get_symbols_overview` |
+| Find all callers / referencing symbols | `serena-find_referencing_symbols` |
+| Replace a method or class body | `serena-replace_symbol_body` |
+| Find which files implement an interface | `lsp goToImplementation` (type-safe, transitive) |
+| Cross-file semantic rename | `lsp rename` (compiler-aware, atomic) |
+| Locate a symbol's exact file + line | `lsp workspaceSymbol` |
+| Type signatures and doc comments | `lsp hover` |
+| All usages of a symbol | `lsp findReferences` |
+
+**Division of responsibility:**
+- **Serena** — structural orientation and body-level edits (tree-sitter, instant, no index wait)
+- **kmp-lsp** — type-safe navigation, rename, and implementation lookup (needs index)
+
+**Practical combined workflow** (e.g. rename interface method + patch implementations):
+1. `lsp goToImplementation` → find all implementors (transitive, type-safe)
+2. `lsp rename` → atomic cross-file rename
+3. `serena-get_symbols_overview` → locate method bodies without knowing line numbers
+4. `serena-replace_symbol_body` → patch any body logic that changed semantically
+
+**Caveats:**
+- `serena-replace_symbol_body` is reliable for focused swaps; fall back to `edit` for large structural rewrites
+- Serena's LSP backend (kmp-lsp) provides structural symbol awareness only — it does not feed type information back through Serena's MCP tools
+- `lsp rename` requires full index; check `kmp_lsp_status` if called cold
 
 ### Hook behavior — what gets blocked vs allowed
 The `onPreToolUse` hook enforces LSP-first for Kotlin/Java/Swift symbol navigation.
