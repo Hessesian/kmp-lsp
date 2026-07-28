@@ -1,9 +1,9 @@
-use tower_lsp::lsp_types::Url;
+use tower_lsp::lsp_types::{CodeActionKind, CodeActionOrCommand, Diagnostic, Url};
 
 use crate::indexer::live_tree::parse_live;
 use crate::indexer::Indexer;
 
-use super::missing_import_diagnostics;
+use super::{missing_import_actions, missing_import_diagnostics};
 
 fn uri(path: &str) -> Url {
     Url::parse(&format!("file:///test{path}")).unwrap()
@@ -105,5 +105,61 @@ fn diagnostics_suppressed_while_jars_loading() {
     assert!(
         !diags.is_empty(),
         "diagnostics must resume once JAR indexing is done"
+    );
+}
+
+#[test]
+fn offers_an_import_quickfix_for_a_flagged_diagnostic() {
+    let (uri, idx, src) = setup(&[
+        ("/lib/Foo.kt", "package com.example.lib\nclass Foo\n"),
+        ("/app/Caller.kt", "package app\nfun use(): Foo = Foo()\n"),
+    ]);
+    let diags = run_diagnostics(&idx, &uri, &src);
+    assert_eq!(diags.len(), 1, "expected one diagnostic: {diags:?}");
+
+    let actions = missing_import_actions(&idx, &uri, &diags);
+    assert_eq!(
+        actions.len(),
+        1,
+        "expected exactly one import candidate: {actions:?}"
+    );
+    let CodeActionOrCommand::CodeAction(action) = &actions[0] else {
+        panic!("expected a CodeAction, got {:?}", actions[0]);
+    };
+    assert_eq!(action.title, "Import 'com.example.lib.Foo'");
+    assert_eq!(action.kind, Some(CodeActionKind::QUICKFIX));
+    assert_eq!(
+        action.diagnostics.as_deref(),
+        Some(&diags[..]),
+        "quickfix must be associated back to the diagnostic it fixes"
+    );
+    let file_edits = action
+        .edit
+        .as_ref()
+        .and_then(|edit| edit.changes.as_ref())
+        .and_then(|changes| changes.get(&uri))
+        .expect("edit must target the caller file");
+    assert_eq!(file_edits.len(), 1);
+    assert!(
+        file_edits[0]
+            .new_text
+            .contains("import com.example.lib.Foo"),
+        "expected an import insertion, got {:?}",
+        file_edits[0].new_text
+    );
+}
+
+#[test]
+fn no_import_action_for_an_unrelated_diagnostic() {
+    let (uri, idx, _src) = setup(&[("/app/Caller.kt", "package app\nfun use() {}\n")]);
+    let unrelated = vec![Diagnostic {
+        message: "some other diagnostic".to_owned(),
+        source: Some("kmp-lsp".to_owned()),
+        ..Default::default()
+    }];
+    let actions = missing_import_actions(&idx, &uri, &unrelated);
+    assert!(
+        actions.is_empty(),
+        "must not fire for diagnostics that aren't ours: {actions:?}"
     );
 }
