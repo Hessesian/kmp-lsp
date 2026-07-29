@@ -166,6 +166,22 @@ fn no_diagnostic_for_a_braced_string_template_interpolation_use() {
     );
 }
 
+/// Real build break found deleting every flagged import across Moneta and
+/// compiling: a bodyless `fun interface Factory : Supertype<A, B>` that isn't
+/// the last member of its enclosing class hits a tree-sitter-kotlin grammar
+/// gap where `Supertype` never appears anywhere in the CST (confirmed via
+/// parse-tree dump) -- error recovery drops it silently rather than routing
+/// it through any node kind the walk could widen to.
+#[test]
+fn no_diagnostic_for_a_bodyless_fun_interface_generic_supertype_use() {
+    let source = "package app\n\nimport com.example.lib.AssistedViewModelFactory\n\nclass RetentionViewModel {\n\n  @AssistedFactory\n  fun interface Factory : AssistedViewModelFactory<RepaymentInitialData, RetentionViewModel>\n\n  override fun createInitialState() = mapper.createInitialState()\n}\n";
+    let diags = run_diagnostics(source);
+    assert!(
+        diags.is_empty(),
+        "AssistedViewModelFactory is used as the fun interface's supertype: {diags:?}"
+    );
+}
+
 #[test]
 fn star_imports_are_never_flagged() {
     let source =

@@ -59,6 +59,24 @@
 //!   the *shape* (`component` + a positive integer suffix) instead of
 //!   enumerating a fixed set, the same principle as the interpolation fix
 //!   above but caught by review instead of by compiling real code.
+//! - **Bodyless generic `fun interface` supertypes** ([`error_node_desugared_supertype_name`])
+//!   — found the same way as the interpolation fix: deleting every flag
+//!   across Moneta and compiling broke `RetentionViewModel.Factory` and two
+//!   siblings, all `fun interface Factory : AssistedViewModelFactory<A, B>`
+//!   with no class body. tree-sitter-kotlin's grammar has no rule for this
+//!   shape when it isn't the last member of its enclosing scope: error
+//!   recovery produces an `ERROR` node ending in a bare `:` token whose own
+//!   byte range extends past it to cover the supertype name, but with no
+//!   child token representing that name — the text is genuinely unreachable
+//!   by walking named children, unlike the interpolation case where the
+//!   identifier at least had its own (uncollected) node kind. Rather than
+//!   scanning the whole `ERROR` span for arbitrary identifier-shaped noise,
+//!   the fix desugars the specific shape the CST already tells us we're in:
+//!   an `ERROR` node ending in `:` means everything from right after that `:`
+//!   to the node's own end is the malformed supertype clause, so its leading
+//!   identifier run is exactly the supertype name. Purely additive to the
+//!   "used" set, so it can only suppress flags, never introduce new ones —
+//!   consistent with this feature's false-negative-safe bias.
 //!
 //! Star imports (`import com.example.*`) are never flagged — there is no
 //! single name to check usage of.
@@ -210,10 +228,35 @@ fn collect_used_identifier_texts_inner<'a>(
             collect_kdoc_reference_names(text, out);
         }
     }
+    if node.is_error() {
+        if let Some(name) = error_node_desugared_supertype_name(node, bytes) {
+            out.insert(name);
+        }
+    }
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         collect_used_identifier_texts_inner(child, bytes, in_declaration_header, out);
     }
+}
+
+/// Desugar a `fun interface Name : Supertype<...>` parse error into the
+/// supertype name it represents. See the module doc for why tree-sitter-kotlin
+/// drops this identifier from the tree entirely. Only matches an `ERROR` node
+/// whose last child is a bare `:` — anything else is a different parse error
+/// shape this isn't meant to (and shouldn't) interpret.
+fn error_node_desugared_supertype_name<'a>(node: Node<'a>, bytes: &'a [u8]) -> Option<&'a str> {
+    let mut cursor = node.walk();
+    let last_child = node.children(&mut cursor).last()?;
+    if last_child.utf8_text(bytes).ok()? != ":" {
+        return None;
+    }
+    let trailing = bytes.get(last_child.end_byte()..node.end_byte())?;
+    let text = std::str::from_utf8(trailing).ok()?.trim_start();
+    let ident_len = text
+        .char_indices()
+        .find(|(_, c)| !(c.is_alphanumeric() || *c == '_'))
+        .map_or(text.len(), |(i, _)| i);
+    (ident_len > 0).then(|| &text[..ident_len])
 }
 
 /// Extract every identifier token found inside a `[...]` KDoc reference span

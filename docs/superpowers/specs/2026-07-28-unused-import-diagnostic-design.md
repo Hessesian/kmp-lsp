@@ -175,6 +175,16 @@ file:line match (each line verified to actually start with `import` and contain 
 before deletion — zero mismatches), then `./gradlew compileDebugKotlin compileKotlin --continue`
 was run across the whole multi-module project.
 
+The deletion step is `scripts/delete-flagged-imports.py` (checked into this repo): given a
+project root and the `unused-imports` POC's stdout, it groups flags by file, deletes bottom-to-top
+so line numbers don't shift, and verifies each targeted line actually starts with `import` and
+contains the expected FQN before touching it.
+
+```
+kmp-lsp unused-imports --root /path/to/project > flags.txt
+scripts/delete-flagged-imports.py /path/to/project flags.txt
+```
+
 **First run**: one real build failure — `core/commonui/.../SimpleCzechPhoneNumberLengthValidator.kt`,
 `Unresolved reference 'REGEX_PHONE_WITH_OPTIONAL_PREFIX'` (the bare-`$identifier`-interpolation
 gap described above). Everything else compiled clean. The broken file was restored
@@ -183,18 +193,41 @@ added.
 
 **Second run, from a clean checkout again, after the fix**: the benchmark's own count first
 dropped to 392 flags (11 fewer — the interpolation fix correctly stopped flagging those real
-uses). All 392 were deleted the same way and the build was re-run.
+uses). All 392 were deleted the same way and the build was re-run — one more real build failure
+surfaced, `KspAAWorkerAction`/`@AssistedFactory` errors in `feature/loan_repayment/.../retention/`
+— `Expected exactly one factory method for RetentionViewModel.Factory but found: []`, and two
+sibling files with the same shape. Root cause:
+`fun interface Factory : AssistedViewModelFactory<RepaymentInitialData, RetentionViewModel>` — a
+bodyless generic `fun interface` supertype, not the last member of its enclosing class.
+tree-sitter-kotlin has no grammar rule for this shape: dumping the parse tree (`kmp-lsp tree`)
+showed `AssistedViewModelFactory` does not appear *anywhere* in the CST — not even as an
+uncollected node kind (the interpolation case's problem) — error recovery silently drops it. The
+one saving grace: the surrounding `ERROR` node's own byte range still covers the dropped text, it
+just has no child token representing it. Fixed by desugaring the shape directly
+([`error_node_desugared_supertype_name`](../../../src/features/unused_import_diagnostics.rs)):
+an `ERROR` node ending in a bare `:` means the bytes from right after it to the node's own end are
+the malformed supertype clause, so its leading identifier run is the supertype name — a targeted
+extraction of exactly one identifier per match, not a blanket scan of the `ERROR` node's text for
+arbitrary identifier-shaped noise (rejected as an initial draft in favor of this more precise
+approach). The checkout was restored, the fix added with a regression test, and the benchmark
+re-run: 387 flags (3 fewer, matching the 3 `AssistedViewModelFactory` occurrences exactly), zero
+remaining occurrences of that FQN in the output.
 
-**`BUILD SUCCESSFUL in 2m 13s`, 0 compiler errors.** Every one of the 392 flagged imports across
-253 files was genuinely dead, workspace-wide, confirmed by the strongest test available (a real
-compile, not a sample). The checkout was restored (`git checkout --`) immediately after — this
-was a validation exercise, not a change left applied. This is the actual precision result this
-feature's benchmark property was built to produce: not a spot-checked sample, but a
-whole-project ground truth.
+**Third run, from a clean checkout again, after this fix**: all 387 flagged imports deleted
+(zero mismatches), `./gradlew compileDebugKotlin` run again.
+
+**`BUILD SUCCESSFUL in 31s`, 0 compiler errors** (mostly Gradle build-cache hits from the prior
+run's unaffected modules, with the previously-failing module and its dependents re-executed and
+passing). Every one of the 387 flagged imports across 248 files was genuinely dead,
+workspace-wide, confirmed by the strongest test available (a real compile, not a sample). The
+checkout was restored (`git checkout --`) immediately after — this was a validation exercise, not
+a change left applied. This is the actual precision result this feature's benchmark property was
+built to produce: not a spot-checked sample, but a whole-project ground truth.
 
 ## Risks
 
 - Any use that's neither a literal identifier, a KDoc reference, string-template interpolation,
-  nor a known operator-convention name (reflection-based frameworks, generated-code magic) is
-  still a possible false positive — disclosed, not fixed, since the delete-and-compile
-  validation found no further evidence of this category.
+  a known operator-convention name, nor one of the two disclosed CST-error-recovery shapes
+  (reflection-based frameworks, generated-code magic, or a *different* tree-sitter-kotlin parse
+  gap than the one found and fixed here) is still a possible false positive — disclosed, not
+  fixed, since the delete-and-compile validation found no further evidence of this category.
