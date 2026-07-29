@@ -96,7 +96,8 @@ use crate::indexer::NodeExt;
 use crate::parser::import_entry_from_header;
 use crate::queries::{
     KIND_IMPORT_HEADER, KIND_IMPORT_LIST, KIND_INTERPOLATED_IDENT, KIND_LINE_COMMENT,
-    KIND_MULTILINE_COMMENT, KIND_PACKAGE_HEADER, KIND_SIMPLE_IDENT, KIND_TYPE_IDENT,
+    KIND_MULTILINE_COMMENT, KIND_PACKAGE_HEADER, KIND_SIMPLE_IDENT, KIND_STRING_CONTENT,
+    KIND_TYPE_IDENT,
 };
 
 /// Kotlin's operator-convention function names (`by`, `+`, `[]`, `()`, …) plus
@@ -193,7 +194,7 @@ pub(crate) fn collect_unused_import_flags(doc: &LiveDoc) -> Vec<UnusedImportFlag
 /// reference token found inside comment-leaf text, skipping the import/package
 /// headers themselves. Deliberately unstructured — see the module doc for why.
 fn collect_used_identifier_texts<'a>(node: Node<'a>, bytes: &'a [u8], out: &mut HashSet<&'a str>) {
-    collect_used_identifier_texts_inner(node, bytes, false, out);
+    collect_used_identifier_texts_inner(node, bytes, false, false, out);
 }
 
 /// `in_declaration_header` suppresses identifier-text collection while inside
@@ -203,10 +204,15 @@ fn collect_used_identifier_texts<'a>(node: Node<'a>, bytes: &'a [u8], out: &mut 
 /// `import_header` node, not a leading child of the next declaration — a
 /// naive early-return-and-skip-the-whole-subtree would silently drop exactly
 /// the KDoc `[Reference]` comments this function exists to scan.
+///
+/// `parent_has_error` flags that this node's *parent* contains a parse error
+/// somewhere among its children — see [`KIND_STRING_CONTENT`] handling below
+/// for why a node can need this about its parent rather than itself.
 fn collect_used_identifier_texts_inner<'a>(
     node: Node<'a>,
     bytes: &'a [u8],
     in_declaration_header: bool,
+    parent_has_error: bool,
     out: &mut HashSet<&'a str>,
 ) {
     let kind = node.kind();
@@ -229,13 +235,72 @@ fn collect_used_identifier_texts_inner<'a>(
         }
     }
     if node.is_error() {
-        if let Some(name) = error_node_desugared_supertype_name(node, bytes) {
-            out.insert(name);
+        match error_node_desugared_supertype_name(node, bytes) {
+            Some(name) => {
+                out.insert(name);
+            }
+            // No recognized shape to desugar precisely -- fall back to a
+            // broad scan of the error node's own text. Found necessary by a
+            // second real corruption case (see module doc): unlike the
+            // `fun interface` shape, an assignment through a call result
+            // (`expr(...).prop = value`) can collapse to an *opaque* ERROR
+            // leaf with no children at all, so there's no fixed single
+            // identifier to extract -- only a defensive "harvest everything
+            // identifier-shaped" pass is possible here.
+            None => {
+                if let Ok(text) = node.utf8_text(bytes) {
+                    collect_identifier_like_tokens(text, out);
+                }
+            }
         }
     }
+    // A malformed `expr(...).prop = value` assignment can make tree-sitter
+    // lose track of a string literal's boundary, so a *different*, otherwise
+    // well-formed `string_content` node ends up holding real code as its raw
+    // text (confirmed by dumping the parse tree for exactly this shape) --
+    // structurally fine on its own, but a sibling of the ERROR nodes that
+    // caused it. Scanning it is the only way to recover identifiers from
+    // inside it; gated on the *parent* having an error (not this node) since
+    // the swallowed content itself contains no error marker of its own.
+    if kind == KIND_STRING_CONTENT && parent_has_error {
+        if let Ok(text) = node.utf8_text(bytes) {
+            collect_identifier_like_tokens(text, out);
+        }
+    }
+    let this_has_error = node.has_error();
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
-        collect_used_identifier_texts_inner(child, bytes, in_declaration_header, out);
+        collect_used_identifier_texts_inner(
+            child,
+            bytes,
+            in_declaration_header,
+            this_has_error,
+            out,
+        );
+    }
+}
+
+/// Extract every maximal identifier-shaped token (ASCII/Unicode alphanumeric
+/// or `_`, not starting with a digit) from arbitrary text. A deliberately
+/// blunt fallback for text whose structure tree-sitter-kotlin lost entirely —
+/// see the two call sites in [`collect_used_identifier_texts_inner`] for why
+/// no more precise extraction is possible in either case. Purely additive to
+/// the "used" set, consistent with this feature's false-negative-safe bias.
+fn collect_identifier_like_tokens<'a>(text: &'a str, out: &mut HashSet<&'a str>) {
+    let mut token_start: Option<usize> = None;
+    for (byte_index, character) in text.char_indices() {
+        let is_ident_char = character.is_alphanumeric() || character == '_';
+        match (is_ident_char, token_start) {
+            (true, None) if !character.is_ascii_digit() => token_start = Some(byte_index),
+            (false, Some(start)) => {
+                out.insert(&text[start..byte_index]);
+                token_start = None;
+            }
+            _ => {}
+        }
+    }
+    if let Some(start) = token_start {
+        out.insert(&text[start..]);
     }
 }
 

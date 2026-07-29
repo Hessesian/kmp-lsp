@@ -485,6 +485,7 @@ pub(crate) const KIND_LONG_LITERAL: &str = "long_literal";
 pub(crate) const KIND_REAL_LITERAL: &str = "real_literal";
 pub(crate) const KIND_STRING_LITERAL: &str = "string_literal";
 pub(crate) const KIND_MULTILINE_STRING_LITERAL: &str = "multiline_string_literal";
+pub(crate) const KIND_STRING_CONTENT: &str = "string_content";
 pub(crate) const KIND_BOOLEAN_LITERAL: &str = "boolean_literal";
 pub(crate) const KIND_NULL_LITERAL: &str = "null";
 pub(crate) const KIND_CHARACTER_LITERAL: &str = "character_literal";
