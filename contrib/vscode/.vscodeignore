@@ -2,3 +2,4 @@
 node_modules/
 *.tar.gz
 bin/
+extension.js
