@@ -291,7 +291,7 @@ fn collect_identifier_like_tokens<'a>(text: &'a str, out: &mut HashSet<&'a str>)
     for (byte_index, character) in text.char_indices() {
         let is_ident_char = character.is_alphanumeric() || character == '_';
         match (is_ident_char, token_start) {
-            (true, None) if !character.is_ascii_digit() => token_start = Some(byte_index),
+            (true, None) if !character.is_numeric() => token_start = Some(byte_index),
             (false, Some(start)) => {
                 out.insert(&text[start..byte_index]);
                 token_start = None;

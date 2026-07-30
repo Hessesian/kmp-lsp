@@ -46,7 +46,7 @@ def main() -> int:
     skipped = []
     for rel_path, entries in by_file.items():
         full_path = root / rel_path
-        text = full_path.read_text()
+        text = full_path.read_text(encoding="utf-8")
         lines = text.split("\n")
         # Delete bottom-to-top so earlier deletions don't shift later line numbers.
         for line_no, fqn in sorted(entries, reverse=True):
@@ -60,7 +60,7 @@ def main() -> int:
                 continue
             del lines[idx]
             deleted += 1
-        full_path.write_text("\n".join(lines))
+        full_path.write_text("\n".join(lines), encoding="utf-8")
 
     print(f"deleted {deleted} import lines", file=sys.stderr)
     if skipped:

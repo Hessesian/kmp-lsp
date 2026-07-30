@@ -192,10 +192,10 @@ fn no_diagnostic_for_a_bodyless_fun_interface_generic_supertype_use() {
 #[test]
 fn no_diagnostic_for_a_type_check_after_a_malformed_call_result_assignment() {
     let source = "package app\n\nimport com.example.lib.Thing\n\nfun demo(view: Any, mortgage: Any) {\n    view.findViewById(id).text = \"hello\"\n\n    if (mortgage is Thing) {\n        println(\"yes\")\n    }\n}\n";
-    let diags = run_diagnostics(source);
+    let diagnostics = run_diagnostics(source);
     assert!(
-        diags.is_empty(),
-        "Thing is used in an `is` type-check, just after the malformed assignment: {diags:?}"
+        diagnostics.is_empty(),
+        "Thing is used in an `is` type-check, just after the malformed assignment: {diagnostics:?}"
     );
 }
 
@@ -209,10 +209,10 @@ fn no_diagnostic_for_a_type_check_after_a_malformed_call_result_assignment() {
 #[test]
 fn no_diagnostic_for_a_use_swallowed_into_a_corrupted_string_literal() {
     let source = "package app\n\nimport com.example.lib.Thing\n\nfun demo(view: Any) {\n    view.findViewById(id).text = \"hello\"\n\n    println(Thing::class)\n}\n";
-    let diags = run_diagnostics(source);
+    let diagnostics = run_diagnostics(source);
     assert!(
-        diags.is_empty(),
-        "Thing is used after the malformed assignment corrupted string-literal boundaries: {diags:?}"
+        diagnostics.is_empty(),
+        "Thing is used after the malformed assignment corrupted string-literal boundaries: {diagnostics:?}"
     );
 }
 
