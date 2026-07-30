@@ -166,6 +166,56 @@ fn no_diagnostic_for_a_braced_string_template_interpolation_use() {
     );
 }
 
+/// Real build break found deleting every flagged import across Moneta and
+/// compiling: a bodyless `fun interface Factory : Supertype<A, B>` that isn't
+/// the last member of its enclosing class hits a tree-sitter-kotlin grammar
+/// gap where `Supertype` never appears anywhere in the CST (confirmed via
+/// parse-tree dump) -- error recovery drops it silently rather than routing
+/// it through any node kind the walk could widen to.
+#[test]
+fn no_diagnostic_for_a_bodyless_fun_interface_generic_supertype_use() {
+    let source = "package app\n\nimport com.example.lib.AssistedViewModelFactory\n\nclass RetentionViewModel {\n\n  @AssistedFactory\n  fun interface Factory : AssistedViewModelFactory<RepaymentInitialData, RetentionViewModel>\n\n  override fun createInitialState() = mapper.createInitialState()\n}\n";
+    let diags = run_diagnostics(source);
+    assert!(
+        diags.is_empty(),
+        "AssistedViewModelFactory is used as the fun interface's supertype: {diags:?}"
+    );
+}
+
+/// Real false positive found via a `compileDebugKotlin` check reported in
+/// lsp_tasks/2026-07-29-broken-imports-from-unused-import-removal.md: an
+/// assignment through a call result (`expr(...).prop = value`) breaks
+/// tree-sitter-kotlin's assignment grammar and can collapse an entire
+/// following statement -- here a type-check (`is WustenrotMortgage`) -- into
+/// one opaque `ERROR` leaf with no children at all, so there is no single
+/// identifier to desugar precisely (unlike the `fun interface` case above).
+#[test]
+fn no_diagnostic_for_a_type_check_after_a_malformed_call_result_assignment() {
+    let source = "package app\n\nimport com.example.lib.Thing\n\nfun demo(view: Any, mortgage: Any) {\n    view.findViewById(id).text = \"hello\"\n\n    if (mortgage is Thing) {\n        println(\"yes\")\n    }\n}\n";
+    let diagnostics = run_diagnostics(source);
+    assert!(
+        diagnostics.is_empty(),
+        "Thing is used in an `is` type-check, just after the malformed assignment: {diagnostics:?}"
+    );
+}
+
+/// Same root cause as above, but here the malformed assignment causes
+/// tree-sitter-kotlin to lose track of a *later* string literal's boundary,
+/// so a subsequent, structurally well-formed `string_content` node ends up
+/// holding real code (including a real identifier use) as its raw text --
+/// this needs the broader identifier-token scan, not the single-identifier
+/// desugar, since the swallowed span is arbitrary-length code, not one fixed
+/// shape.
+#[test]
+fn no_diagnostic_for_a_use_swallowed_into_a_corrupted_string_literal() {
+    let source = "package app\n\nimport com.example.lib.Thing\n\nfun demo(view: Any) {\n    view.findViewById(id).text = \"hello\"\n\n    println(Thing::class)\n}\n";
+    let diagnostics = run_diagnostics(source);
+    assert!(
+        diagnostics.is_empty(),
+        "Thing is used after the malformed assignment corrupted string-literal boundaries: {diagnostics:?}"
+    );
+}
+
 #[test]
 fn star_imports_are_never_flagged() {
     let source =
