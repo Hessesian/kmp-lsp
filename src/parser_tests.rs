@@ -895,6 +895,49 @@ fn swift_class_no_init_synthesized_when_property_lacks_default() {
 }
 
 #[test]
+fn swift_bare_extension_gets_no_synthesized_init() {
+    // `extension` reuses the same `class_declaration`/`SymbolKind::CLASS`
+    // representation as an actual class in this grammar — must not be
+    // mistaken for a type needing its own synthesized initializer.
+    let data = parse_swift("extension Foo {\n    func bar() {}\n}\n");
+    assert!(
+        sym(&data, "init").is_none(),
+        "a bare extension must not get a bogus synthesized init()"
+    );
+}
+
+#[test]
+fn swift_extension_convenience_init_does_not_suppress_memberwise_synthesis() {
+    // Swift's own rule: the memberwise initializer is only discarded by
+    // initializers declared in the struct's *original* implementation — one
+    // added later via an `extension` does not suppress it.
+    let data = parse_swift(concat!(
+        "struct Point {\n",
+        "    let x: Int\n",
+        "    let y: Int\n",
+        "}\n",
+        "extension Point {\n",
+        "    init(other: Point) { self.x = other.x; self.y = other.y }\n",
+        "}\n",
+    ));
+    let inits: Vec<_> = data.symbols.iter().filter(|s| s.name == "init").collect();
+    assert_eq!(
+        inits.len(),
+        2,
+        "expected both the struct's own memberwise init and the extension's \
+         convenience init: {inits:?}"
+    );
+    assert!(
+        inits.iter().any(|s| s.param_counts == (2, 2)),
+        "memberwise init (x, y) missing: {inits:?}"
+    );
+    assert!(
+        inits.iter().any(|s| s.param_counts == (1, 1)),
+        "extension's convenience init(other:) missing: {inits:?}"
+    );
+}
+
+#[test]
 fn swift_imports() {
     let data = parse_swift("import Foundation\nimport UIKit\nclass A {}");
     assert_eq!(data.imports.len(), 2);

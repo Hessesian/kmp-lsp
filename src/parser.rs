@@ -10,18 +10,18 @@ use crate::queries::{
     self, KIND_ANNOTATION_TYPE_DECL, KIND_CALLABLE_REF, KIND_CALL_EXPR, KIND_CALL_SUFFIX,
     KIND_CLASS_BODY, KIND_CLASS_DECL, KIND_CLASS_PARAM, KIND_COMPANION_OBJ, KIND_COMPUTED_PROPERTY,
     KIND_CTOR_DECL, KIND_DELEGATION_SPEC, KIND_ENUM_CONSTANT, KIND_ENUM_DECL, KIND_EQ,
-    KIND_EXTENDS_INTERFACES, KIND_FIELD_DECL, KIND_FORMAL_PARAM, KIND_FORMAL_PARAMS, KIND_FUN,
-    KIND_FUNCTION_TYPE, KIND_FUN_BODY, KIND_FUN_DECL, KIND_FUN_VALUE_PARAMS, KIND_IDENTIFIER,
-    KIND_IMPORT_ALIAS, KIND_IMPORT_DECL, KIND_IMPORT_HEADER, KIND_IMPORT_LIST, KIND_INFIX_EXPR,
-    KIND_INHERITANCE_SPEC, KIND_INHERITANCE_SPECS, KIND_INIT_DECL, KIND_INTERFACE_DECL,
-    KIND_LAMBDA_LIT, KIND_LPAREN, KIND_METHOD_DECL, KIND_MODIFIERS, KIND_MOD_FINAL,
-    KIND_MOD_STATIC, KIND_NAV_EXPR, KIND_NULLABLE_TYPE, KIND_OBJECT_DECL, KIND_PACKAGE_DECL,
-    KIND_PACKAGE_HEADER, KIND_PARAMETER, KIND_PREFIX_EXPR, KIND_PRIMARY_CTOR, KIND_PROP_DECL,
-    KIND_PROP_DELEGATE, KIND_PROTOCOL_DECL, KIND_PROTOCOL_FUNC_DECL, KIND_RECORD_DECL,
-    KIND_SCOPED_IDENT, KIND_SECONDARY_CTOR, KIND_SIMPLE_IDENT, KIND_SOURCE_FILE, KIND_STATEMENTS,
-    KIND_SUPERCLASS, KIND_SUPER_INTERFACES, KIND_TYPE_IDENT, KIND_USER_TYPE, KIND_VALUE_ARG,
-    KIND_VALUE_ARGS, KIND_VAR_DECL, KIND_VAR_DECLARATOR, KIND_WILDCARD_IMPORT, KOTLIN_DEFINITIONS,
-    SWIFT_DEFINITIONS,
+    KIND_EXTENDS_INTERFACES, KIND_EXTENSION_KW, KIND_FIELD_DECL, KIND_FORMAL_PARAM,
+    KIND_FORMAL_PARAMS, KIND_FUN, KIND_FUNCTION_TYPE, KIND_FUN_BODY, KIND_FUN_DECL,
+    KIND_FUN_VALUE_PARAMS, KIND_IDENTIFIER, KIND_IMPORT_ALIAS, KIND_IMPORT_DECL,
+    KIND_IMPORT_HEADER, KIND_IMPORT_LIST, KIND_INFIX_EXPR, KIND_INHERITANCE_SPEC,
+    KIND_INHERITANCE_SPECS, KIND_INIT_DECL, KIND_INTERFACE_DECL, KIND_LAMBDA_LIT, KIND_LPAREN,
+    KIND_METHOD_DECL, KIND_MODIFIERS, KIND_MOD_FINAL, KIND_MOD_STATIC, KIND_NAV_EXPR,
+    KIND_NULLABLE_TYPE, KIND_OBJECT_DECL, KIND_PACKAGE_DECL, KIND_PACKAGE_HEADER, KIND_PARAMETER,
+    KIND_PREFIX_EXPR, KIND_PRIMARY_CTOR, KIND_PROP_DECL, KIND_PROP_DELEGATE, KIND_PROTOCOL_DECL,
+    KIND_PROTOCOL_FUNC_DECL, KIND_RECORD_DECL, KIND_SCOPED_IDENT, KIND_SECONDARY_CTOR,
+    KIND_SIMPLE_IDENT, KIND_SOURCE_FILE, KIND_STATEMENTS, KIND_SUPERCLASS, KIND_SUPER_INTERFACES,
+    KIND_TYPE_IDENT, KIND_USER_TYPE, KIND_VALUE_ARG, KIND_VALUE_ARGS, KIND_VAR_DECL,
+    KIND_VAR_DECLARATOR, KIND_WILDCARD_IMPORT, KOTLIN_DEFINITIONS, SWIFT_DEFINITIONS,
 };
 use crate::StrExt;
 
@@ -538,15 +538,28 @@ fn primary_ctor_class_params(root: Node, bytes: &[u8], cls: &SymbolEntry) -> Vec
 /// call-arg diagnostics to falsely treat every non-empty struct/class
 /// construction as a 0-argument call.
 fn synthesize_swift_implicit_init(root: Node, bytes: &[u8], symbols: &mut Vec<SymbolEntry>) {
+    // `extension Foo { ... }` is indexed with the same `SymbolKind::CLASS` as
+    // an actual `class`/`struct` (both are `class_declaration` in the Swift
+    // grammar, see `SWIFT_DEFINITIONS`) — exclude it here. An extension can
+    // only add *convenience* initializers, never a designated one, and per
+    // Swift's own rule it never suppresses or replaces the type's own
+    // memberwise/default initializer (only initializers declared in the
+    // type's *original* implementation do that).
     let types: Vec<SymbolEntry> = symbols
         .iter()
         .filter(|s| matches!(s.kind, SymbolKind::STRUCT | SymbolKind::CLASS))
+        .filter(|s| !swift_class_decl_is_extension(root, &s.range))
         .cloned()
         .collect();
 
     for ty in types {
+        // Only an `init` declared inside the type's own body counts — one
+        // added by a same-named `extension` elsewhere must not suppress
+        // synthesis (see comment above).
         let has_explicit_init = symbols.iter().any(|s| {
-            s.kind == SymbolKind::CONSTRUCTOR && s.container.as_deref() == Some(ty.name.as_str())
+            s.kind == SymbolKind::CONSTRUCTOR
+                && s.container.as_deref() == Some(ty.name.as_str())
+                && range_contains_lines(&ty.range, &s.range)
         });
         if has_explicit_init {
             continue;
@@ -591,6 +604,42 @@ fn synthesize_swift_implicit_init(root: Node, bytes: &[u8], symbols: &mut Vec<Sy
             deprecated: ty.deprecated,
         });
     }
+}
+
+/// Returns `true` when `outer` fully encloses `inner` by line range — the
+/// same nesting test `assign_containers` uses to determine containment.
+fn range_contains_lines(outer: &Range, inner: &Range) -> bool {
+    outer.start.line <= inner.start.line && outer.end.line >= inner.end.line
+}
+
+/// Returns `true` if the Swift `class`/`struct`/`extension` declaration
+/// starting at `range` is actually an `extension` — the Swift grammar
+/// reuses the same `class_declaration` node kind for all four, distinguished
+/// only by an anonymous keyword child (see `SWIFT_DEFINITIONS`).
+fn swift_class_decl_is_extension(root: Node, range: &Range) -> bool {
+    let start_point = tree_sitter::Point {
+        row: range.start.line as usize,
+        column: range.start.character as usize,
+    };
+    let Some(node) = root.descendant_for_point_range(start_point, start_point) else {
+        return false;
+    };
+    let decl = find_ancestor_decl(node);
+    if decl.kind() != KIND_CLASS_DECL {
+        return false;
+    }
+    let mut cursor = decl.walk();
+    if cursor.goto_first_child() {
+        loop {
+            if cursor.node().kind() == KIND_EXTENSION_KW {
+                return true;
+            }
+            if !cursor.goto_next_sibling() {
+                break;
+            }
+        }
+    }
+    false
 }
 
 /// For a Swift stored property whose declaration starts at `range`, return

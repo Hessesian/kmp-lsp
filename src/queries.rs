@@ -393,6 +393,7 @@ pub(crate) const KIND_INHERITANCE_SPEC: &str = "inheritance_specifier";
 pub(crate) const KIND_INIT_DECL: &str = "init_declaration";
 pub(crate) const KIND_PROTOCOL_FUNC_DECL: &str = "protocol_function_declaration";
 pub(crate) const KIND_COMPUTED_PROPERTY: &str = "computed_property";
+pub(crate) const KIND_EXTENSION_KW: &str = "extension";
 
 // ─── Generic / type parameter node kinds (shared across Kotlin, Java, Swift) ─
 pub(crate) const KIND_TYPE_PARAMS: &str = "type_parameters";

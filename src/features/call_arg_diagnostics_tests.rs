@@ -1368,7 +1368,7 @@ fn call_arg_diagnostics_suppresses_when_unmaterialized_jar_has_same_named_candid
     );
 }
 
-// ── Swift reproduction scratch (temporary, will be replaced by real tests) ──
+// ── Swift call-arg diagnostics ───────────────────────────────────────────────
 
 /// Run diagnostics using a Swift-parsed live tree (mirrors production flow
 /// for `.swift` files, where `run_diagnostics` above hardcodes Kotlin).
