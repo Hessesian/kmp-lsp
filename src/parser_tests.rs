@@ -780,6 +780,120 @@ fn swift_init() {
     assert!(sym(&data, "init").is_some());
 }
 
+// ── Swift params / param_counts CST extraction ──────────────────────────────
+//
+// tree-sitter-swift has no `function_value_parameters`/`formal_parameters`
+// wrapper node like Kotlin/Java — `(`, `parameter`, `)` are direct children
+// of the declaration node itself. Regression coverage for that mismatch.
+
+#[test]
+fn swift_func_param_signature() {
+    let data = parse_swift("func greet(name: String, age: Int) {}");
+    let s = sym(&data, "greet").unwrap();
+    assert_eq!(s.params, "name: String, age: Int");
+    assert_eq!(s.param_counts, (2, 2));
+}
+
+#[test]
+fn swift_func_params_zero_args() {
+    let data = parse_swift("func noop() {}");
+    let s = sym(&data, "noop").unwrap();
+    assert_eq!(s.params, "");
+    assert_eq!(s.param_counts, (0, 0));
+}
+
+#[test]
+fn swift_func_params_with_default_value() {
+    let data = parse_swift("func create(name: String, age: Int = 0) {}");
+    let s = sym(&data, "create").unwrap();
+    assert_eq!(s.param_counts, (1, 2));
+}
+
+#[test]
+fn swift_init_param_signature() {
+    let data = parse_swift("class Foo { init(a: Int, b: String) {} }");
+    let s = sym(&data, "init").unwrap();
+    assert_eq!(s.params, "a: Int, b: String");
+    assert_eq!(s.param_counts, (2, 2));
+}
+
+#[test]
+fn swift_protocol_func_param_signature() {
+    let data = parse_swift("protocol Greeter { func greet(name: String, times: Int) -> String }");
+    let s = sym(&data, "greet").unwrap();
+    assert_eq!(s.param_counts, (2, 2));
+}
+
+#[test]
+fn swift_method_params_in_struct() {
+    let data = parse_swift(
+        "struct Point { func distance(to other: Point, scale: Double = 1.0) -> Double { 0 } }",
+    );
+    let s = sym(&data, "distance").unwrap();
+    assert_eq!(s.param_counts, (1, 2));
+}
+
+// ── Swift implicit-initializer synthesis ────────────────────────────────────
+
+#[test]
+fn swift_struct_memberwise_init_synthesized_when_no_explicit_init() {
+    let data = parse_swift("struct Point {\n    let x: Int\n    let y: Int\n}");
+    let init = sym(&data, "init").expect("memberwise init should be synthesized");
+    assert_eq!(init.kind, SymbolKind::CONSTRUCTOR);
+    assert_eq!(init.container.as_deref(), Some("Point"));
+    assert_eq!(init.param_counts, (2, 2));
+    assert_eq!(init.params, "x: Int, y: Int");
+}
+
+#[test]
+fn swift_struct_memberwise_init_default_value_is_optional() {
+    let data = parse_swift("struct Point {\n    let x: Int\n    var y: Int = 0\n}");
+    let init = sym(&data, "init").unwrap();
+    assert_eq!(init.param_counts, (1, 2));
+}
+
+#[test]
+fn swift_struct_computed_property_excluded_from_memberwise_init() {
+    let data = parse_swift(
+        "struct Point {\n    let x: Int\n    let y: Int\n    var sum: Int { return x + y }\n}",
+    );
+    let init = sym(&data, "init").unwrap();
+    assert_eq!(
+        init.param_counts,
+        (2, 2),
+        "computed property must not count toward the memberwise init"
+    );
+}
+
+#[test]
+fn swift_struct_explicit_init_suppresses_memberwise_synthesis() {
+    let data = parse_swift("struct Point {\n    let x: Int\n    init(x: Int) { self.x = x }\n}");
+    let inits: Vec<_> = data.symbols.iter().filter(|s| s.name == "init").collect();
+    assert_eq!(
+        inits.len(),
+        1,
+        "explicit init present — must not also synthesize a memberwise one: {inits:?}"
+    );
+    assert_eq!(inits[0].param_counts, (1, 1));
+}
+
+#[test]
+fn swift_class_default_init_synthesized_when_all_properties_have_defaults() {
+    let data = parse_swift("class Config {\n    var retries: Int = 3\n}");
+    let init = sym(&data, "init").expect("zero-arg default init should be synthesized");
+    assert_eq!(init.param_counts, (0, 0));
+}
+
+#[test]
+fn swift_class_no_init_synthesized_when_property_lacks_default() {
+    let data = parse_swift("class Config {\n    var retries: Int\n}");
+    assert!(
+        sym(&data, "init").is_none(),
+        "no explicit init and a non-defaulted property — Swift has no valid \
+         initializer here, so none should be synthesized"
+    );
+}
+
 #[test]
 fn swift_imports() {
     let data = parse_swift("import Foundation\nimport UIKit\nclass A {}");

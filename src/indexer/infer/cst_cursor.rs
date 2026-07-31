@@ -4,7 +4,8 @@ use tree_sitter::Point;
 use crate::indexer::live_tree::utf16_col_to_byte;
 use crate::indexer::{Indexer, NodeExt};
 use crate::queries::{
-    KIND_CALL_EXPR, KIND_FORMAL_PARAMS, KIND_FUN_VALUE_PARAMS, KIND_LAMBDA_LIT, KIND_PRIMARY_CTOR,
+    KIND_CALL_EXPR, KIND_FORMAL_PARAMS, KIND_FUN_DECL, KIND_FUN_VALUE_PARAMS, KIND_INIT_DECL,
+    KIND_LAMBDA_LIT, KIND_LPAREN, KIND_PRIMARY_CTOR, KIND_PROTOCOL_FUNC_DECL, KIND_RPAREN,
     KIND_VALUE_ARG,
 };
 
@@ -73,6 +74,18 @@ fn cst_call_info_skip(pos: Position, indexer: &Indexer, uri: &Url, skip: u32) ->
                 in_definition = true;
                 break None;
             }
+            // Swift has no such wrapper node — `(`, `parameter`, `)` are direct
+            // children of the declaration itself, which also encloses the
+            // function/init body. Only treat this as a definition when the
+            // cursor sits within the declaration's own parameter-list span,
+            // not merely somewhere inside its body (a call there must still
+            // resolve normally, e.g. live-typing an unclosed call).
+            KIND_FUN_DECL | KIND_INIT_DECL | KIND_PROTOCOL_FUNC_DECL
+                if swift_point_in_own_param_list(cur, point) =>
+            {
+                in_definition = true;
+                break None;
+            }
             _ => match cur.parent() {
                 Some(parent) => cur = parent,
                 None => break None,
@@ -113,6 +126,36 @@ fn cst_call_info_skip(pos: Position, indexer: &Indexer, uri: &Url, skip: u32) ->
         return text_based_call_info(full_text, cursor_byte);
     }
     None
+}
+
+/// Returns `true` when `point` falls within `decl`'s own `(...)` parameter
+/// span — as opposed to elsewhere in `decl` (e.g. its function body), which
+/// for Swift's flat `function_declaration`/`init_declaration`/
+/// `protocol_function_declaration` nodes is also part of the same node.
+fn swift_point_in_own_param_list(decl: tree_sitter::Node, point: Point) -> bool {
+    let mut open: Option<tree_sitter::Node> = None;
+    let mut close: Option<tree_sitter::Node> = None;
+    let mut cursor = decl.walk();
+    if cursor.goto_first_child() {
+        loop {
+            let child = cursor.node();
+            match child.kind() {
+                KIND_LPAREN if open.is_none() => open = Some(child),
+                KIND_RPAREN if open.is_some() && close.is_none() => close = Some(child),
+                _ => {}
+            }
+            if !cursor.goto_next_sibling() {
+                break;
+            }
+        }
+    }
+    let (Some(open), Some(close)) = (open, close) else {
+        return false;
+    };
+    let p = (point.row, point.column);
+    let start = open.start_position();
+    let end = close.end_position();
+    p >= (start.row, start.column) && p <= (end.row, end.column)
 }
 
 fn count_active_param(value_arguments: &tree_sitter::Node, cursor_byte: usize) -> u32 {

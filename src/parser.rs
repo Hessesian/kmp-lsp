@@ -8,18 +8,19 @@ use tree_sitter::{Node, Parser, Query, QueryCursor};
 use crate::indexer::NodeExt;
 use crate::queries::{
     self, KIND_ANNOTATION_TYPE_DECL, KIND_CALLABLE_REF, KIND_CALL_EXPR, KIND_CALL_SUFFIX,
-    KIND_CLASS_BODY, KIND_CLASS_DECL, KIND_CLASS_PARAM, KIND_COMPANION_OBJ, KIND_CTOR_DECL,
-    KIND_DELEGATION_SPEC, KIND_ENUM_CONSTANT, KIND_ENUM_DECL, KIND_EQ, KIND_EXTENDS_INTERFACES,
-    KIND_FIELD_DECL, KIND_FORMAL_PARAM, KIND_FORMAL_PARAMS, KIND_FUN, KIND_FUNCTION_TYPE,
-    KIND_FUN_BODY, KIND_FUN_DECL, KIND_FUN_VALUE_PARAMS, KIND_IDENTIFIER, KIND_IMPORT_ALIAS,
-    KIND_IMPORT_DECL, KIND_IMPORT_HEADER, KIND_IMPORT_LIST, KIND_INFIX_EXPR, KIND_INHERITANCE_SPEC,
-    KIND_INHERITANCE_SPECS, KIND_INTERFACE_DECL, KIND_LAMBDA_LIT, KIND_METHOD_DECL, KIND_MODIFIERS,
-    KIND_MOD_FINAL, KIND_MOD_STATIC, KIND_NAV_EXPR, KIND_NULLABLE_TYPE, KIND_OBJECT_DECL,
-    KIND_PACKAGE_DECL, KIND_PACKAGE_HEADER, KIND_PARAMETER, KIND_PREFIX_EXPR, KIND_PRIMARY_CTOR,
-    KIND_PROP_DECL, KIND_PROP_DELEGATE, KIND_PROTOCOL_DECL, KIND_RECORD_DECL, KIND_SCOPED_IDENT,
-    KIND_SECONDARY_CTOR, KIND_SIMPLE_IDENT, KIND_SOURCE_FILE, KIND_STATEMENTS, KIND_SUPERCLASS,
-    KIND_SUPER_INTERFACES, KIND_TYPE_IDENT, KIND_USER_TYPE, KIND_VALUE_ARG, KIND_VALUE_ARGS,
-    KIND_VAR_DECL, KIND_VAR_DECLARATOR, KIND_WILDCARD_IMPORT, KOTLIN_DEFINITIONS,
+    KIND_CLASS_BODY, KIND_CLASS_DECL, KIND_CLASS_PARAM, KIND_COMPANION_OBJ, KIND_COMPUTED_PROPERTY,
+    KIND_CTOR_DECL, KIND_DELEGATION_SPEC, KIND_ENUM_CONSTANT, KIND_ENUM_DECL, KIND_EQ,
+    KIND_EXTENDS_INTERFACES, KIND_FIELD_DECL, KIND_FORMAL_PARAM, KIND_FORMAL_PARAMS, KIND_FUN,
+    KIND_FUNCTION_TYPE, KIND_FUN_BODY, KIND_FUN_DECL, KIND_FUN_VALUE_PARAMS, KIND_IDENTIFIER,
+    KIND_IMPORT_ALIAS, KIND_IMPORT_DECL, KIND_IMPORT_HEADER, KIND_IMPORT_LIST, KIND_INFIX_EXPR,
+    KIND_INHERITANCE_SPEC, KIND_INHERITANCE_SPECS, KIND_INIT_DECL, KIND_INTERFACE_DECL,
+    KIND_LAMBDA_LIT, KIND_LPAREN, KIND_METHOD_DECL, KIND_MODIFIERS, KIND_MOD_FINAL,
+    KIND_MOD_STATIC, KIND_NAV_EXPR, KIND_NULLABLE_TYPE, KIND_OBJECT_DECL, KIND_PACKAGE_DECL,
+    KIND_PACKAGE_HEADER, KIND_PARAMETER, KIND_PREFIX_EXPR, KIND_PRIMARY_CTOR, KIND_PROP_DECL,
+    KIND_PROP_DELEGATE, KIND_PROTOCOL_DECL, KIND_PROTOCOL_FUNC_DECL, KIND_RECORD_DECL,
+    KIND_SCOPED_IDENT, KIND_SECONDARY_CTOR, KIND_SIMPLE_IDENT, KIND_SOURCE_FILE, KIND_STATEMENTS,
+    KIND_SUPERCLASS, KIND_SUPER_INTERFACES, KIND_TYPE_IDENT, KIND_USER_TYPE, KIND_VALUE_ARG,
+    KIND_VALUE_ARGS, KIND_VAR_DECL, KIND_VAR_DECLARATOR, KIND_WILDCARD_IMPORT, KOTLIN_DEFINITIONS,
     SWIFT_DEFINITIONS,
 };
 use crate::StrExt;
@@ -279,6 +280,9 @@ pub(crate) fn parse_swift(content: &str) -> FileData {
         // ── container assignment (parent class/struct for each member) ───────
         assign_containers(&mut data.symbols);
 
+        // ── synthesize compiler-generated init() for types with no explicit one ─
+        synthesize_swift_implicit_init(root, bytes, &mut data.symbols);
+
         finalize_parse(data, root, bytes);
     })
 }
@@ -512,6 +516,127 @@ fn primary_ctor_class_params(root: Node, bytes: &[u8], cls: &SymbolEntry) -> Vec
             Some(stripped)
         })
         .collect()
+}
+
+// ─── Swift implicit-initializer synthesis ────────────────────────────────────
+
+/// Synthesize the compiler-provided initializer for Swift `struct`/`class`
+/// types that declare no explicit `init`.
+///
+/// Swift gives every `struct` a memberwise initializer — one parameter per
+/// stored property, in declaration order, required unless the property has a
+/// default value — when the struct declares no initializer of its own. A
+/// `class` only gets a synthesized zero-arg `init()` when every stored
+/// property already has a default value (Swift's "default initializers"
+/// rule); otherwise it has no usable initializer without one being declared
+/// explicitly, so nothing is synthesized. Computed properties
+/// (`var x: Int { … }`) hold no storage and are excluded either way.
+///
+/// Without this, a call like `Point(x: 1, y: 2)` has no signature to
+/// validate against (the struct's own CST node never carries constructor
+/// params — Swift has no Kotlin-style inline primary constructor), causing
+/// call-arg diagnostics to falsely treat every non-empty struct/class
+/// construction as a 0-argument call.
+fn synthesize_swift_implicit_init(root: Node, bytes: &[u8], symbols: &mut Vec<SymbolEntry>) {
+    let types: Vec<SymbolEntry> = symbols
+        .iter()
+        .filter(|s| matches!(s.kind, SymbolKind::STRUCT | SymbolKind::CLASS))
+        .cloned()
+        .collect();
+
+    for ty in types {
+        let has_explicit_init = symbols.iter().any(|s| {
+            s.kind == SymbolKind::CONSTRUCTOR && s.container.as_deref() == Some(ty.name.as_str())
+        });
+        if has_explicit_init {
+            continue;
+        }
+
+        let props: Vec<(String, bool)> = symbols
+            .iter()
+            .filter(|s| {
+                s.kind == SymbolKind::PROPERTY && s.container.as_deref() == Some(ty.name.as_str())
+            })
+            .filter_map(|p| swift_stored_property_signature(root, bytes, &p.range))
+            .collect();
+
+        let (params, param_counts) = if ty.kind == SymbolKind::STRUCT {
+            let total = props.len() as u8;
+            let required = props.iter().filter(|(_, has_default)| !has_default).count() as u8;
+            let text = props
+                .iter()
+                .map(|(text, _)| text.clone())
+                .collect::<Vec<_>>()
+                .join(", ");
+            (text, (required, total))
+        } else {
+            if props.iter().any(|(_, has_default)| !has_default) {
+                continue;
+            }
+            (String::new(), (0, 0))
+        };
+
+        symbols.push(SymbolEntry {
+            name: queries::SWIFT_INIT_NAME.to_owned(),
+            kind: SymbolKind::CONSTRUCTOR,
+            visibility: ty.visibility,
+            range: ty.range,
+            selection_range: ty.selection_range,
+            detail: format!("init({params})"),
+            params,
+            param_counts,
+            container: Some(ty.name.clone()),
+            cold: None,
+            trailing_lambda: false,
+            deprecated: ty.deprecated,
+        });
+    }
+}
+
+/// For a Swift stored property whose declaration starts at `range`, return
+/// `(param_text, has_default_value)` for use in a synthesized initializer, or
+/// `None` if the property is computed (`var x: Int { … }`) and therefore
+/// holds no storage.
+fn swift_stored_property_signature(
+    root: Node,
+    bytes: &[u8],
+    range: &Range,
+) -> Option<(String, bool)> {
+    let start_point = tree_sitter::Point {
+        row: range.start.line as usize,
+        column: range.start.character as usize,
+    };
+    let node = root.descendant_for_point_range(start_point, start_point)?;
+    let decl = find_ancestor_decl(node);
+    if decl.kind() != KIND_PROP_DECL {
+        return None;
+    }
+    let mut has_default = false;
+    let mut is_computed = false;
+    let mut cursor = decl.walk();
+    if cursor.goto_first_child() {
+        loop {
+            match cursor.node().kind() {
+                KIND_COMPUTED_PROPERTY => is_computed = true,
+                KIND_EQ => has_default = true,
+                _ => {}
+            }
+            if !cursor.goto_next_sibling() {
+                break;
+            }
+        }
+    }
+    if is_computed {
+        return None;
+    }
+    let text = decl.utf8_text(bytes).ok()?;
+    let text: String = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    let stripped = text
+        .strip_prefix("let ")
+        .or_else(|| text.strip_prefix("var "))
+        .unwrap_or(text.as_str())
+        .to_owned();
+    Some((stripped, has_default))
 }
 
 // ─── Container assignment (post-extraction pass) ─────────────────────────────
@@ -1378,25 +1503,51 @@ fn extract_params_and_counts(root: Node, bytes: &[u8], range: &Range) -> (String
         return (String::new(), (0, 0));
     };
     let decl = find_ancestor_decl(node);
+    match params_container_node(decl) {
+        Some(container) => (
+            extract_inner_text(&container, bytes),
+            count_params_from_node(&container),
+        ),
+        None => (String::new(), (0, 0)),
+    }
+}
+
+/// Locate the node that directly holds a declaration's parameter list.
+///
+/// Kotlin/Java wrap parameters in a dedicated child node
+/// (`function_value_parameters` / `formal_parameters` / `primary_constructor`).
+/// Swift's grammar has no such wrapper — `(`, `parameter`, `)` are direct
+/// children of the declaration node itself (`function_declaration`,
+/// `init_declaration`, `protocol_function_declaration`) — so fall back to
+/// `decl` itself when it directly contains a `(` token.
+fn params_container_node(decl: Node) -> Option<Node> {
     let mut cursor = decl.walk();
     if cursor.goto_first_child() {
         loop {
-            let child = cursor.node();
-            let kind = child.kind();
+            let kind = cursor.node().kind();
             if kind == KIND_FUN_VALUE_PARAMS
                 || kind == KIND_FORMAL_PARAMS
                 || kind == KIND_PRIMARY_CTOR
             {
-                let text = extract_inner_text(&child, bytes);
-                let counts = count_params_from_node(&child);
-                return (text, counts);
+                return Some(cursor.node());
             }
             if !cursor.goto_next_sibling() {
                 break;
             }
         }
     }
-    (String::new(), (0, 0))
+    let mut cursor = decl.walk();
+    if cursor.goto_first_child() {
+        loop {
+            if cursor.node().kind() == KIND_LPAREN {
+                return Some(decl);
+            }
+            if !cursor.goto_next_sibling() {
+                break;
+            }
+        }
+    }
+    None
 }
 
 /// Returns `true` when the last value parameter of the function at `range` has a function
@@ -1410,7 +1561,7 @@ fn last_value_param_is_function_type(root: Node, _bytes: &[u8], range: &Range) -
         return false;
     };
     let decl = find_ancestor_decl(node);
-    let Some(params) = decl.first_child_of_kind(KIND_FUN_VALUE_PARAMS) else {
+    let Some(params) = params_container_node(decl) else {
         return false;
     };
     let param_nodes = params.children_of_kind(KIND_PARAMETER);
@@ -1538,6 +1689,8 @@ fn find_ancestor_decl(mut node: Node) -> Node {
                 | KIND_CTOR_DECL
                 | KIND_METHOD_DECL
                 | KIND_RECORD_DECL
+                | KIND_INIT_DECL
+                | KIND_PROTOCOL_FUNC_DECL
                 | KIND_SOURCE_FILE
         ) {
             return node;
