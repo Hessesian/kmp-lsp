@@ -1367,3 +1367,283 @@ fn call_arg_diagnostics_suppresses_when_unmaterialized_jar_has_same_named_candid
          positive; got: {diags:?}"
     );
 }
+
+// ── Swift call-arg diagnostics ───────────────────────────────────────────────
+
+/// Run diagnostics using a Swift-parsed live tree (mirrors production flow
+/// for `.swift` files, where `run_diagnostics` above hardcodes Kotlin).
+fn run_swift_diagnostics(
+    idx: &Indexer,
+    uri: &Url,
+    source: &str,
+) -> Vec<tower_lsp::lsp_types::Diagnostic> {
+    let doc = parse_live(source, tree_sitter_swift_bundled::language()).unwrap();
+    call_arg_diagnostics(idx, uri, &doc)
+}
+
+#[test]
+fn swift_func_call_matching_args_ok() {
+    let (uri, idx, src) = setup(&[(
+        "/a.swift",
+        concat!(
+            "func greet(name: String, age: Int) {}\n",
+            "func main() {\n",
+            "    greet(\"Alice\", 30)\n",
+            "}\n",
+        ),
+    )]);
+    let diags = run_swift_diagnostics(&idx, &uri, &src);
+    assert!(diags.is_empty(), "expected no diagnostics: {diags:?}");
+}
+
+#[test]
+fn swift_func_call_too_few_args_warns() {
+    let (uri, idx, src) = setup(&[(
+        "/a.swift",
+        concat!(
+            "func greet(name: String, age: Int) {}\n",
+            "func main() {\n",
+            "    greet(\"Alice\")\n",
+            "}\n",
+        ),
+    )]);
+    let diags = run_swift_diagnostics(&idx, &uri, &src);
+    assert_eq!(diags.len(), 1, "expected 1 diagnostic: {diags:?}");
+    assert!(
+        diags[0].message.contains("expected 2"),
+        "msg: {}",
+        diags[0].message
+    );
+    assert!(
+        diags[0].message.contains("found 1"),
+        "msg: {}",
+        diags[0].message
+    );
+}
+
+#[test]
+fn swift_struct_memberwise_init_matching_args_ok() {
+    // No explicit `init` — call resolution must fall back to the
+    // synthesized memberwise initializer instead of treating the struct as
+    // a 0-argument callable.
+    let (uri, idx, src) = setup(&[(
+        "/a.swift",
+        concat!(
+            "struct Point {\n",
+            "    let x: Int\n",
+            "    let y: Int\n",
+            "}\n",
+            "func main() {\n",
+            "    let p = Point(x: 1, y: 2)\n",
+            "}\n",
+        ),
+    )]);
+    let diags = run_swift_diagnostics(&idx, &uri, &src);
+    assert!(diags.is_empty(), "expected no diagnostics: {diags:?}");
+}
+
+#[test]
+fn swift_struct_memberwise_init_too_few_args_warns() {
+    let (uri, idx, src) = setup(&[(
+        "/a.swift",
+        concat!(
+            "struct Point {\n",
+            "    let x: Int\n",
+            "    let y: Int\n",
+            "}\n",
+            "func main() {\n",
+            "    let p = Point(x: 1)\n",
+            "}\n",
+        ),
+    )]);
+    let diags = run_swift_diagnostics(&idx, &uri, &src);
+    assert_eq!(diags.len(), 1, "expected 1 diagnostic: {diags:?}");
+    assert!(
+        diags[0].message.contains("expected 2"),
+        "msg: {}",
+        diags[0].message
+    );
+    assert!(
+        diags[0].message.contains("found 1"),
+        "msg: {}",
+        diags[0].message
+    );
+}
+
+#[test]
+fn swift_struct_memberwise_init_too_many_args_warns() {
+    let (uri, idx, src) = setup(&[(
+        "/a.swift",
+        concat!(
+            "struct Point {\n",
+            "    let x: Int\n",
+            "    let y: Int\n",
+            "}\n",
+            "func main() {\n",
+            "    let p = Point(x: 1, y: 2, z: 3)\n",
+            "}\n",
+        ),
+    )]);
+    let diags = run_swift_diagnostics(&idx, &uri, &src);
+    assert_eq!(diags.len(), 1, "expected 1 diagnostic: {diags:?}");
+    assert!(
+        diags[0].message.contains("found 3"),
+        "msg: {}",
+        diags[0].message
+    );
+}
+
+#[test]
+fn swift_struct_memberwise_init_default_value_makes_param_optional() {
+    let (uri, idx, src) = setup(&[(
+        "/a.swift",
+        concat!(
+            "struct Point {\n",
+            "    let x: Int\n",
+            "    var y: Int = 0\n",
+            "}\n",
+            "func main() {\n",
+            "    let p = Point(x: 1)\n",
+            "}\n",
+        ),
+    )]);
+    let diags = run_swift_diagnostics(&idx, &uri, &src);
+    assert!(
+        diags.is_empty(),
+        "y has a default value, so omitting it must not warn: {diags:?}"
+    );
+}
+
+#[test]
+fn swift_struct_computed_property_excluded_from_memberwise_init() {
+    let (uri, idx, src) = setup(&[(
+        "/a.swift",
+        concat!(
+            "struct Point {\n",
+            "    let x: Int\n",
+            "    let y: Int\n",
+            "    var sum: Int { return x + y }\n",
+            "}\n",
+            "func main() {\n",
+            "    let p = Point(x: 1, y: 2)\n",
+            "}\n",
+        ),
+    )]);
+    let diags = run_swift_diagnostics(&idx, &uri, &src);
+    assert!(
+        diags.is_empty(),
+        "computed property must not count toward memberwise init arity: {diags:?}"
+    );
+}
+
+#[test]
+fn swift_explicit_init_used_for_call_arg_diagnostics() {
+    let (uri, idx, src) = setup(&[(
+        "/a.swift",
+        concat!(
+            "class Foo {\n",
+            "    init(a: Int, b: String) {}\n",
+            "}\n",
+            "func main() {\n",
+            "    let f = Foo(a: 1)\n",
+            "}\n",
+        ),
+    )]);
+    let diags = run_swift_diagnostics(&idx, &uri, &src);
+    assert_eq!(diags.len(), 1, "expected 1 diagnostic: {diags:?}");
+    assert!(
+        diags[0].message.contains("expected 2"),
+        "msg: {}",
+        diags[0].message
+    );
+    assert!(
+        diags[0].message.contains("found 1"),
+        "msg: {}",
+        diags[0].message
+    );
+}
+
+#[test]
+fn swift_class_default_init_zero_args_ok() {
+    // No explicit init, every stored property has a default — Swift
+    // synthesizes a zero-arg `init()`.
+    let (uri, idx, src) = setup(&[(
+        "/a.swift",
+        concat!(
+            "class Config {\n",
+            "    var retries: Int = 3\n",
+            "}\n",
+            "func main() {\n",
+            "    let c = Config()\n",
+            "}\n",
+        ),
+    )]);
+    let diags = run_swift_diagnostics(&idx, &uri, &src);
+    assert!(diags.is_empty(), "expected no diagnostics: {diags:?}");
+}
+
+#[test]
+fn swift_class_default_init_rejects_args() {
+    let (uri, idx, src) = setup(&[(
+        "/a.swift",
+        concat!(
+            "class Config {\n",
+            "    var retries: Int = 3\n",
+            "}\n",
+            "func main() {\n",
+            "    let c = Config(5)\n",
+            "}\n",
+        ),
+    )]);
+    let diags = run_swift_diagnostics(&idx, &uri, &src);
+    assert_eq!(diags.len(), 1, "expected 1 diagnostic: {diags:?}");
+    assert!(
+        diags[0].message.contains("found 1"),
+        "msg: {}",
+        diags[0].message
+    );
+}
+
+#[test]
+fn swift_class_no_usable_init_suppresses_diagnostic() {
+    // No explicit init, and a stored property with no default — Swift has no
+    // valid initializer to call here (a real compiler error), so there is no
+    // signature to validate against; must not guess and false-positive.
+    let (uri, idx, src) = setup(&[(
+        "/a.swift",
+        concat!(
+            "class Config {\n",
+            "    var retries: Int\n",
+            "}\n",
+            "func main() {\n",
+            "    let c = Config(5, 6, 7)\n",
+            "}\n",
+        ),
+    )]);
+    let diags = run_swift_diagnostics(&idx, &uri, &src);
+    assert!(
+        diags.is_empty(),
+        "no known signature — must suppress: {diags:?}"
+    );
+}
+
+#[test]
+fn swift_overloaded_explicit_init_suppresses_diagnostic() {
+    let (uri, idx, src) = setup(&[(
+        "/a.swift",
+        concat!(
+            "class Foo {\n",
+            "    init(a: Int) {}\n",
+            "    init(a: Int, b: Int) {}\n",
+            "}\n",
+            "func main() {\n",
+            "    let f = Foo(a: 1, b: 2, c: 3)\n",
+            "}\n",
+        ),
+    )]);
+    let diags = run_swift_diagnostics(&idx, &uri, &src);
+    assert!(
+        diags.is_empty(),
+        "ambiguous between two init arities — must suppress: {diags:?}"
+    );
+}

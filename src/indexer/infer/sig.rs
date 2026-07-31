@@ -778,6 +778,7 @@ fn collect_params_from_file(
         false
     };
     let is_java = file_uri.ends_with(".java");
+    let is_swift = file_uri.ends_with(".swift");
 
     // Compiled-JAR (sidecar) symbols carry parameter *types* in their signature
     // `detail` but no default-value markers (e.g. `fun WindowInsets(left: Int, …)`
@@ -823,29 +824,55 @@ fn collect_params_from_file(
         .iter()
         .filter(name_matches)
         .filter(receiver_matches)
-        .filter_map(|s| {
-            let params_text = if !s.params.is_empty() {
-                s.params.clone()
-            } else {
-                extract_params_from_detail(&s.detail)
-                    .or_else(|| collect_params_from_line(&data.lines, s.range.start.line as usize))
-                    .or_else(|| {
-                        // 0-arg constructors (e.g. `class Foo`) may lack explicit `()`.
-                        if s.param_counts == (0, 0) {
-                            Some(String::new())
-                        } else {
-                            None
-                        }
-                    })?
+        .flat_map(|s| -> Vec<(String, (u8, u8))> {
+            // Swift structs/classes never carry constructor params on their own
+            // CST node (no Kotlin-style inline primary constructor) — the real
+            // signature lives on a nested `init` (explicit or synthesized at
+            // parse time; see `synthesize_swift_implicit_init`). Resolve through
+            // those instead of the type's own (always-empty) params/counts.
+            // Emitting one candidate per `init` lets the caller's arity-envelope
+            // dedup correctly detect an overloaded initializer as ambiguous.
+            if is_swift && matches!(s.kind, SymbolKind::STRUCT | SymbolKind::CLASS) {
+                return data
+                    .symbols
+                    .iter()
+                    .filter(|c| {
+                        c.kind == SymbolKind::CONSTRUCTOR
+                            && c.container.as_deref() == Some(s.name.as_str())
+                    })
+                    .map(|c| (c.params.clone(), c.param_counts))
+                    .collect();
+            }
+            let params_text = match extract_params_or_fallback(s, &data.lines) {
+                Some(text) => text,
+                None => return vec![],
             };
             let counts = if is_compiled_jar {
                 (0, s.param_counts.1)
             } else {
                 s.param_counts
             };
-            Some((params_text, counts))
+            vec![(params_text, counts)]
         })
         .collect()
+}
+
+/// Extract a symbol's parameter text, falling back to detail/line scanning,
+/// then to an explicit `()` for a genuine 0-arg constructor.
+fn extract_params_or_fallback(s: &SymbolEntry, lines: &[String]) -> Option<String> {
+    if !s.params.is_empty() {
+        return Some(s.params.clone());
+    }
+    extract_params_from_detail(&s.detail)
+        .or_else(|| collect_params_from_line(lines, s.range.start.line as usize))
+        .or_else(|| {
+            // 0-arg constructors (e.g. `class Foo`) may lack explicit `()`.
+            if s.param_counts == (0, 0) {
+                Some(String::new())
+            } else {
+                None
+            }
+        })
 }
 
 /// Number of indexed definitions (workspace + JAR) for a call name.

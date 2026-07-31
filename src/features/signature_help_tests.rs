@@ -295,3 +295,68 @@ fn no_sig_help_inside_primary_constructor() {
         "sig help must NOT fire inside primary constructor; got: {result:?}"
     );
 }
+
+// ── Swift: sig help must not fire inside a definition's parameter list ────────
+//
+// tree-sitter-swift has no `function_value_parameters`/`primary_constructor`
+// wrapper node — `(`, `parameter`, `)` are direct children of the
+// declaration node itself (`function_declaration`/`init_declaration`), which
+// also encloses the function/init body. Without special handling, the CST
+// walk never recognizes "cursor is inside a definition" for Swift and falls
+// through to the text-based `(`-scanning fallback, which treats the
+// definition's own parameter list as an unclosed call — firing bogus sig
+// help while simply typing a Swift function signature.
+
+#[test]
+fn swift_no_sig_help_inside_func_declaration_params() {
+    let src = "func greet(ha: String, ba: String) {\n    greet(ha: \"\", ba: \"\")\n}";
+    let (u, idx) = setup_with_live_lines("/Greet.swift", src);
+    // col 17 = inside "String" in the first parameter's type.
+    let pos = Position::new(0, 17);
+    let result = compute_signature_help(&u, pos, &idx);
+    assert!(
+        result.is_none(),
+        "sig help must NOT fire inside a Swift func's own parameter list; got: {result:?}"
+    );
+}
+
+#[test]
+fn swift_no_sig_help_inside_init_declaration_params() {
+    let src = "class Foo {\n    init(x: Int, y: Int) {}\n}\n";
+    let (u, idx) = setup_with_live_lines("/Foo.swift", src);
+    // col 13 = inside "Int" in the first parameter's type.
+    let pos = Position::new(1, 13);
+    let result = compute_signature_help(&u, pos, &idx);
+    assert!(
+        result.is_none(),
+        "sig help must NOT fire inside a Swift init's own parameter list; got: {result:?}"
+    );
+}
+
+#[test]
+fn swift_sig_help_fires_after_open_paren() {
+    let src = "func greet(name: String, age: Int) {}\nfunc main() {\n    greet()\n}";
+    let (u, idx) = setup_with_live_lines("/Greet.swift", src);
+    let pos = Position::new(2, 10);
+    let result = compute_signature_help(&u, pos, &idx);
+    assert!(result.is_some(), "expected sig help after `(`, got None");
+    assert_eq!(result.unwrap().active_parameter, Some(0));
+}
+
+#[test]
+fn swift_sig_help_fires_for_unclosed_call_inside_function_body() {
+    // Regression guard: suppressing sig help inside a Swift function's OWN
+    // parameter list must not also suppress it for an unclosed call inside
+    // a *different* (enclosing) function's body — e.g. live-typing `greet(`
+    // inside `main()`. `main`'s own declaration node encloses this call
+    // site too (Swift has no narrow param-list wrapper to bound it), so this
+    // exercises that the point-in-param-span check is precise.
+    let src = "func greet(name: String) {}\nfunc main() {\n    greet(\n}\n";
+    let (u, idx) = setup_with_live_lines("/Main.swift", src);
+    let pos = Position::new(2, 10);
+    let result = compute_signature_help(&u, pos, &idx);
+    assert!(
+        result.is_some(),
+        "sig help must still fire for an unclosed call inside a function body; got: {result:?}"
+    );
+}

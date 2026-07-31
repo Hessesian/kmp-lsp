@@ -390,6 +390,10 @@ pub(crate) const KIND_TYPE_LIST: &str = "type_list";
 pub(crate) const KIND_PROTOCOL_DECL: &str = "protocol_declaration";
 pub(crate) const KIND_INHERITANCE_SPECS: &str = "inheritance_specifiers";
 pub(crate) const KIND_INHERITANCE_SPEC: &str = "inheritance_specifier";
+pub(crate) const KIND_INIT_DECL: &str = "init_declaration";
+pub(crate) const KIND_PROTOCOL_FUNC_DECL: &str = "protocol_function_declaration";
+pub(crate) const KIND_COMPUTED_PROPERTY: &str = "computed_property";
+pub(crate) const KIND_EXTENSION_KW: &str = "extension";
 
 // ─── Generic / type parameter node kinds (shared across Kotlin, Java, Swift) ─
 pub(crate) const KIND_TYPE_PARAMS: &str = "type_parameters";
@@ -428,6 +432,8 @@ pub(crate) const KIND_MODIFIERS: &str = "modifiers";
 pub(crate) const KIND_COLON: &str = ":";
 pub(crate) const KIND_EQ: &str = "=";
 pub(crate) const KIND_DOT: &str = ".";
+pub(crate) const KIND_LPAREN: &str = "(";
+pub(crate) const KIND_RPAREN: &str = ")";
 pub(crate) const KIND_PARAMETER: &str = "parameter";
 pub(crate) const KIND_FUN_VALUE_PARAMS: &str = "function_value_parameters";
 pub(crate) const KIND_FUNCTION_TYPE: &str = "function_type";
