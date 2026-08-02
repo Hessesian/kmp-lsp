@@ -23,8 +23,12 @@
 //! - `it_this`     — resolving `it`/`this` element types inside Kotlin lambda bodies
 //! - `type_subst`  — generic type-parameter substitution
 //! - `chain`       — CST navigation-chain type resolution
+//! - `cst_cursor`  — shared tree-sitter cursor-walk helpers
+//! - `cst_symbol`  — CST identifier classification (declaration vs. reference, receiver type)
 //! - `cst_lambda`         — CST-backed ThisLambdaCtx + lambda context helpers
 //! - `lambda_resolution`  — `LambdaParamResolution` typed intermediate (Phase 2)
+//! - `expr_type`   — expression-node type inference (backs `CstQuery::expr_type`)
+//! - `speculative`  — marker-insertion speculative reparse for dot-completion receivers
 
 pub(super) mod args;
 pub(super) mod chain;

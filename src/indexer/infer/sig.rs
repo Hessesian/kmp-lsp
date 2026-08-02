@@ -618,13 +618,14 @@ pub(crate) fn find_fun_signature_with_receiver(
     name: &str,
     receiver: Option<&str>,
 ) -> Option<String> {
-    if let Some(recv) = receiver {
-        let Some(rt) = infer_receiver_type(idx, ReceiverKind::Variable(recv), uri) else {
+    if let Some(receiver) = receiver {
+        let Some(receiver_type) = infer_receiver_type(idx, ReceiverKind::Variable(receiver), uri)
+        else {
             // Receiver present but type could not be resolved — avoid a global
             // name-only scan that may return a completely unrelated function.
             return None;
         };
-        let locs = idx.resolve_symbol(&rt.outer, None, uri);
+        let locs = idx.resolve_symbol(&receiver_type.outer, None, uri);
         for loc in &locs {
             if let Some(data) = idx.files.get(loc.uri.as_str()) {
                 if let Some(sig) = collect_fun_params_text(name, loc.uri.as_str(), idx) {
@@ -634,7 +635,7 @@ pub(crate) fn find_fun_signature_with_receiver(
                 let type_end = data
                     .symbols
                     .iter()
-                    .find(|s| s.name == rt.outer)
+                    .find(|s| s.name == receiver_type.outer)
                     .map(|s| s.range.end.line)
                     .unwrap_or(u32::MAX);
                 for symbol_entry in data
@@ -669,7 +670,7 @@ pub(crate) fn find_method_params_in_class(
     method_name: &str,
 ) -> Option<String> {
     let (container, type_base) = match class_name.rsplit_once('.') {
-        Some((c, b)) => (Some(c), b),
+        Some((container, base)) => (Some(container), base),
         None => (None, class_name),
     };
     let locations = idx.definitions.get(type_base)?;
@@ -749,10 +750,10 @@ fn collect_params_from_file(
 ) -> Vec<(String, (u8, u8))> {
     // Look up data from source files first, then the compiled-JAR cache. Track which:
     // only compiled-JAR (sidecar) symbols lack default-value markers.
-    let (data, is_compiled_jar) = if let Some(d) = idx.files.get(file_uri) {
-        (d, false)
-    } else if let Some(d) = idx.jar_files.get(file_uri) {
-        (d, true)
+    let (data, is_compiled_jar) = if let Some(file_data) = idx.files.get(file_uri) {
+        (file_data, false)
+    } else if let Some(file_data) = idx.jar_files.get(file_uri) {
+        (file_data, true)
     } else {
         return vec![];
     };

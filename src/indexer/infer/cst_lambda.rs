@@ -76,66 +76,92 @@ pub(crate) fn classify_this_lambda_context(
     let callee_raw = strip_trailing_call_args(trimmed).replace("?.", ".");
     let callee = callee_raw.trim();
 
-    // ── Case A: `receiver.method` ────────────────────────────────────────────
     if let Some(dot_pos) = find_last_dot_at_depth_zero(callee) {
-        let receiver_expr = callee[..dot_pos].trim_end();
-        let receiver_var = last_ident_in(receiver_expr);
-        let method = callee[dot_pos + 1..].trim_start().ident_prefix();
-
-        if !receiver_var.is_empty() && !method.is_empty() {
-            // Indexed function with a receiver-lambda last param → always Resolved.
-            if let Some(this_type) = fun_trailing_lambda_this_type(&method, deps, uri) {
-                return ThisLambdaCtx::Resolved(this_type);
-            }
-            // Known stdlib scope functions (`run`, `apply`).
-            if RECEIVER_THIS_FNS.contains(&method.as_str()) {
-                if let Some(raw) = deps.find_var_type(receiver_var, uri) {
-                    let base = raw.ident_prefix();
-                    if !base.is_empty() {
-                        return ThisLambdaCtx::Resolved(base);
-                    }
-                }
-                if receiver_var.starts_with_uppercase() {
-                    return ThisLambdaCtx::Resolved(receiver_var.to_owned());
-                }
-                // In a known scope-fn lambda but type not found.
-                return ThisLambdaCtx::Receiver;
-            }
-        }
-        // Other dot-call (forEach, map, …): `this` = enclosing class.
-        return ThisLambdaCtx::NotReceiver;
+        return classify_dot_call_receiver(callee, dot_pos, deps, uri);
     }
 
-    // ── Case B: `with(receiver) { this }` ───────────────────────────────────
     let trailing_fn = last_ident_in(callee);
     if trailing_fn == "with" {
-        if let Some(recv_name) = extract_first_arg(trimmed) {
-            if let Some(raw) = deps.find_var_type(recv_name, uri) {
+        return classify_with_call_receiver(trimmed, deps, uri);
+    }
+
+    classify_bare_builder_call(trailing_fn, deps, uri)
+}
+
+/// Case A: `receiver.method { this }`. If `method` has an indexed
+/// receiver-lambda type → `Resolved`. If `method` ∈ `RECEIVER_THIS_FNS`
+/// (`run`, `apply`): resolve the receiver variable's type → `Resolved`; if
+/// unresolvable → `Receiver`. Any other dot-call method (`forEach`, `map`,
+/// …) means `this` is the enclosing class → `NotReceiver`.
+fn classify_dot_call_receiver(
+    callee: &str,
+    dot_pos: usize,
+    deps: &impl InferDeps,
+    uri: &Url,
+) -> ThisLambdaCtx {
+    let receiver_expr = callee[..dot_pos].trim_end();
+    let receiver_var = last_ident_in(receiver_expr);
+    let method = callee[dot_pos + 1..].trim_start().ident_prefix();
+
+    if !receiver_var.is_empty() && !method.is_empty() {
+        // Indexed function with a receiver-lambda last param → always Resolved.
+        if let Some(this_type) = fun_trailing_lambda_this_type(&method, deps, uri) {
+            return ThisLambdaCtx::Resolved(this_type);
+        }
+        // Known stdlib scope functions (`run`, `apply`).
+        if RECEIVER_THIS_FNS.contains(&method.as_str()) {
+            if let Some(raw) = deps.find_var_type(receiver_var, uri) {
                 let base = raw.ident_prefix();
                 if !base.is_empty() {
                     return ThisLambdaCtx::Resolved(base);
                 }
             }
-            let base = recv_name.ident_prefix();
-            if base.starts_with_uppercase() {
+            if receiver_var.starts_with_uppercase() {
+                return ThisLambdaCtx::Resolved(receiver_var.to_owned());
+            }
+            // In a known scope-fn lambda but type not found.
+            return ThisLambdaCtx::Receiver;
+        }
+    }
+    // Other dot-call (forEach, map, …): `this` = enclosing class.
+    ThisLambdaCtx::NotReceiver
+}
+
+/// Case B: `with(receiver) { this }`. Resolves the receiver's type from the
+/// call's first argument → `Resolved`; falls back to `Receiver` when the
+/// call is confirmed `with` but the receiver's type can't be determined.
+fn classify_with_call_receiver(trimmed: &str, deps: &impl InferDeps, uri: &Url) -> ThisLambdaCtx {
+    if let Some(recv_name) = extract_first_arg(trimmed) {
+        if let Some(raw) = deps.find_var_type(recv_name, uri) {
+            let base = raw.ident_prefix();
+            if !base.is_empty() {
                 return ThisLambdaCtx::Resolved(base);
             }
         }
-        return ThisLambdaCtx::Receiver;
+        let base = recv_name.ident_prefix();
+        if base.starts_with_uppercase() {
+            return ThisLambdaCtx::Resolved(base);
+        }
     }
+    ThisLambdaCtx::Receiver
+}
 
-    // ── Case C: bare builder call `Foo { this }` ────────────────────────────
-    // A plain (non-`receiver.method`, non-`with`) call whose last parameter is a
-    // receiver-lambda — Compose builders (`Column`, `LazyColumn`, `Box`, …) and any
-    // DSL of the form `fun Foo(content: Receiver.() -> Unit)`. Reuses the same
-    // signature-derived receiver resolution as Case A (works for JAR functions, whose
-    // `detail` carries the rendered `Receiver.() -> R` last param).
+/// Case C: bare builder call `Foo { this }` — a plain (non-`receiver.method`,
+/// non-`with`) call whose last parameter is a receiver-lambda. Covers Compose
+/// builders (`Column`, `LazyColumn`, `Box`, …) and any DSL of the form
+/// `fun Foo(content: Receiver.() -> Unit)`. Reuses the same signature-derived
+/// receiver resolution as Case A (works for JAR functions, whose `detail`
+/// carries the rendered `Receiver.() -> R` last param).
+fn classify_bare_builder_call(
+    trailing_fn: &str,
+    deps: &impl InferDeps,
+    uri: &Url,
+) -> ThisLambdaCtx {
     if !trailing_fn.is_empty() {
         if let Some(this_type) = fun_trailing_lambda_this_type(trailing_fn, deps, uri) {
             return ThisLambdaCtx::Resolved(this_type);
         }
     }
-
     ThisLambdaCtx::NotReceiver
 }
 
@@ -624,8 +650,8 @@ pub(super) fn cst_this_context(
                 ThisLambdaCtx::NotReceiver => {}
             }
         }
-        let Some(p) = cur.parent() else { break };
-        cur = p;
+        let Some(parent) = cur.parent() else { break };
+        cur = parent;
     }
     ThisContext::NotFound
 }

@@ -32,8 +32,8 @@ pub(super) fn build_type_arg_subst(
     };
     let type_args: Vec<String> = split_top_level_commas(inner)
         .into_iter()
-        .map(|s| s.trim().strip_nullable().to_owned())
-        .filter(|s| !s.is_empty())
+        .map(|raw_arg| raw_arg.trim().strip_nullable().to_owned())
+        .filter(|trimmed_arg| !trimmed_arg.is_empty())
         .collect();
     type_params.into_iter().zip(type_args).collect()
 }
@@ -49,22 +49,22 @@ pub(super) fn type_args_inner(type_name: &str) -> Option<&str> {
 }
 
 /// Split a generic parameter list at top-level commas, respecting nested `<>`.
-pub(super) fn split_top_level_commas(s: &str) -> Vec<&str> {
+pub(super) fn split_top_level_commas(param_list: &str) -> Vec<&str> {
     let mut result = Vec::new();
     let mut depth = 0i32;
     let mut start = 0;
-    for (i, c) in s.char_indices() {
-        match c {
+    for (i, char) in param_list.char_indices() {
+        match char {
             '<' => depth += 1,
             '>' => depth -= 1,
             ',' if depth == 0 => {
-                result.push(&s[start..i]);
+                result.push(&param_list[start..i]);
                 start = i + 1;
             }
             _ => {}
         }
     }
-    result.push(&s[start..]);
+    result.push(&param_list[start..]);
     result
 }
 
@@ -80,8 +80,8 @@ pub(super) fn build_fn_subst(
     params
         .iter()
         .zip(args.iter())
-        .filter(|(_, a)| a.as_str() != "_")
-        .map(|(p, a)| (p.clone(), a.clone()))
+        .filter(|(_, argument)| argument.as_str() != "_")
+        .map(|(param, argument)| (param.clone(), argument.clone()))
         .collect()
 }
 
@@ -134,7 +134,7 @@ fn match_type_args_recursive(
         return;
     }
     // If the declared type is one of the function's type params, map it directly.
-    if params.iter().any(|p| p == decl_base) {
+    if params.iter().any(|param| param == decl_base) {
         map.insert(decl_base.to_owned(), conc_base.to_owned());
         return;
     }
@@ -143,21 +143,21 @@ fn match_type_args_recursive(
     {
         let d_args = split_top_level_commas(d_inner);
         let c_args = split_top_level_commas(c_inner);
-        for (d, c) in d_args.iter().zip(c_args.iter()) {
-            match_type_args_recursive(d, c, params, map);
+        for (declared_arg, concrete_arg) in d_args.iter().zip(c_args.iter()) {
+            match_type_args_recursive(declared_arg, concrete_arg, params, map);
         }
     }
 }
 
 /// Check whether `name` is a declared type parameter of the given function.
 pub(super) fn is_declared_type_param(name: &str, fun_type_params: &[String]) -> bool {
-    fun_type_params.iter().any(|p| p == name)
+    fun_type_params.iter().any(|param| param == name)
 }
 
 /// Returns `true` if `name` looks like a generic type parameter: a short
 /// all-uppercase identifier like `T`, `R`, `IN`, `OUT`, `KEY`, `VAL`.
 pub(crate) fn is_generic_param(name: &str) -> bool {
-    !name.is_empty() && name.len() <= 3 && name.chars().all(|c| c.is_uppercase())
+    !name.is_empty() && name.len() <= 3 && name.chars().all(|char| char.is_uppercase())
 }
 
 /// Extract the first type argument from `type_name`, preserving the full generic
@@ -229,7 +229,7 @@ pub(super) fn resolve_chain_receiver_type(
     }
 
     // Strip trailing lambda `{ ... }` and call args `(...)`.
-    let stripped = strip_trailing_lambda_and_args(receiver_expr);
+    let stripped = strip_trailing_args(strip_trailing_lambda(receiver_expr));
     if stripped.is_empty() {
         return None;
     }
@@ -268,27 +268,30 @@ pub(super) fn resolve_chain_receiver_type(
     None
 }
 
-/// Strip trailing lambda `{ ... }` and call args `(...)` from a receiver expression.
+/// Strip a trailing lambda `{ ... }` from a receiver expression, if present.
 ///
-/// Handles: `expr(args) { lambda }` → `expr`
-// TODO: split into strip_trailing_lambda() + strip_trailing_args() per design-rules
-fn strip_trailing_lambda_and_args(s: &str) -> &str {
-    let mut result = s.trim_end();
-    // Strip trailing `{ ... }` (trailing lambda)
+/// Handles: `expr { lambda }` → `expr`
+fn strip_trailing_lambda(string: &str) -> &str {
+    let result = string.trim_end();
     if result.ends_with('}') {
         if let Some(open) = rfind_balanced(result, '{', '}') {
-            result = result[..open].trim_end();
+            return result[..open].trim_end();
         }
     }
-    // Strip trailing `(...)` (call args)
-    result = strip_trailing_call_args(result);
-    result.trim_end()
+    result
+}
+
+/// Strip trailing call args `(...)` from a receiver expression, if present.
+///
+/// Handles: `expr(args)` → `expr`
+fn strip_trailing_args(string: &str) -> &str {
+    strip_trailing_call_args(string).trim_end()
 }
 
 /// Find the matching opening delimiter scanning right-to-left.
-fn rfind_balanced(s: &str, open: char, close: char) -> Option<usize> {
+fn rfind_balanced(string: &str, open: char, close: char) -> Option<usize> {
     let mut depth = 0i32;
-    for (i, ch) in s.char_indices().rev() {
+    for (i, ch) in string.char_indices().rev() {
         if ch == close {
             depth += 1;
         } else if ch == open {
@@ -305,10 +308,10 @@ fn rfind_balanced(s: &str, open: char, close: char) -> Option<usize> {
 
 /// Capitalize the first character of a string (Kotlin naming convention:
 /// `buildingSavingsReducer` → `BuildingSavingsReducer`).
-pub(super) fn capitalize_first_char(s: &str) -> String {
-    let mut chars = s.chars();
+pub(super) fn capitalize_first_char(string: &str) -> String {
+    let mut chars = string.chars();
     match chars.next() {
-        Some(c) => c.to_uppercase().collect::<String>() + chars.as_str(),
+        Some(char) => char.to_uppercase().collect::<String>() + chars.as_str(),
         None => String::new(),
     }
 }
@@ -316,10 +319,10 @@ pub(super) fn capitalize_first_char(s: &str) -> String {
 /// Find the position of the last `.` that is at parenthesis/bracket depth 0
 /// (scanning left-to-right so that `fn(Enum.VALUE,` returns None — the dot
 /// is at depth 1 inside the argument list).
-pub(crate) fn find_last_dot_at_depth_zero(s: &str) -> Option<usize> {
+pub(crate) fn find_last_dot_at_depth_zero(string: &str) -> Option<usize> {
     let mut depth: i32 = 0;
     let mut last_dot: Option<usize> = None;
-    for (i, ch) in s.char_indices() {
+    for (i, ch) in string.char_indices() {
         match ch {
             '(' | '[' => depth += 1,
             ')' | ']' => depth -= 1,

@@ -196,9 +196,19 @@ fn infer_navigation_expr_type(
 /// Return the receiver sub-node of a `navigation_expression` (the part before
 /// the final `.`).  Equivalent to `semantic_tokens::helpers::navigation_receiver_node`.
 fn nav_receiver_node(node: Node<'_>) -> Option<Node<'_>> {
-    (0..node.child_count())
-        .filter_map(|i| node.child(i))
-        .find(|child| child.is_named() && child.kind() != KIND_NAV_SUFFIX)
+    let mut cursor = node.walk();
+    if cursor.goto_first_child() {
+        loop {
+            let child = cursor.node();
+            if child.is_named() && child.kind() != KIND_NAV_SUFFIX {
+                return Some(child);
+            }
+            if !cursor.goto_next_sibling() {
+                break;
+            }
+        }
+    }
+    None
 }
 
 /// Return the member identifier inside the `navigation_suffix` of a
@@ -206,9 +216,19 @@ fn nav_receiver_node(node: Node<'_>) -> Option<Node<'_>> {
 /// `semantic_tokens::helpers::navigation_member_ident`.
 fn nav_member_ident(node: Node<'_>) -> Option<Node<'_>> {
     let suffix = node.first_child_of_kind(KIND_NAV_SUFFIX)?;
-    (0..suffix.child_count())
-        .filter_map(|i| suffix.child(i))
-        .find(|child| child.kind() == KIND_SIMPLE_IDENT || child.kind() == KIND_TYPE_IDENT)
+    let mut cursor = suffix.walk();
+    if cursor.goto_first_child() {
+        loop {
+            let child = cursor.node();
+            if child.kind() == KIND_SIMPLE_IDENT || child.kind() == KIND_TYPE_IDENT {
+                return Some(child);
+            }
+            if !cursor.goto_next_sibling() {
+                break;
+            }
+        }
+    }
+    None
 }
 
 /// Return `true` if `node` is the callee (first child) of a `call_expression`.
@@ -241,16 +261,11 @@ fn infer_if_expr_type<D: InferDeps>(
     deps: &D,
     uri: &Url,
 ) -> Option<String> {
-    let has_else = (0..node.child_count())
-        .filter_map(|i| node.child(i))
-        .any(|child| child.kind() == KIND_ELSE);
-    if !has_else {
-        return None;
-    }
+    node.first_child_of_kind(KIND_ELSE)?;
 
-    let mut bodies = (0..node.child_count())
-        .filter_map(|i| node.child(i))
-        .filter(|child| child.kind() == KIND_CONTROL_STRUCTURE_BODY);
+    let mut bodies = node
+        .children_of_kind(KIND_CONTROL_STRUCTURE_BODY)
+        .into_iter();
     let then_expr = bodies.next()?.child(0)?;
     let else_expr = bodies.next()?.child(0)?;
     let then_type = infer_expr_type(then_expr, bytes, deps, uri)?;
