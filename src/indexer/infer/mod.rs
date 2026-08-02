@@ -189,4 +189,15 @@ impl<'a, D: InferDeps> CstQuery<'a, D> {
             None => Resolution::Unresolved,
         }
     }
+
+    /// Every enclosing lambda receiver type at the bound node, innermost-first —
+    /// the order Kotlin resolves an implicit-receiver call in (nearest wins). An
+    /// unresolvable or non-receiver lambda is skipped; the walk continues outward.
+    ///
+    /// Used to check a bare call/type reference against every candidate receiver
+    /// in scope (e.g. `item()` inside `with(x) { }` nested in a builder belongs to
+    /// the outer receiver even when `x`'s type can't be resolved).
+    pub(crate) fn all_this_receivers(&self) -> Vec<String> {
+        cst_lambda::all_this_receivers_at(self.node, self.doc, self.deps, self.uri)
+    }
 }
