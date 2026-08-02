@@ -726,24 +726,6 @@ impl Indexer {
         }
     }
 
-    /// Test-only constructor that marks any URI whose path starts with
-    /// `library_prefix` as a library source (excluded from rename/references).
-    ///
-    /// ```rust
-    /// let indexer = Indexer::for_test_with_library("/sdk/");
-    /// indexer.index_content(&uri("/sdk/Foo.kt"), "class Foo");  // Library
-    /// indexer.index_content(&uri("/src/Bar.kt"), "class Bar");  // Main
-    /// ```
-    #[cfg(test)]
-    #[allow(dead_code)] // test helper; not yet used but kept for future subtype tests
-    pub(crate) fn for_test_with_library(library_prefix: &str) -> Self {
-        let indexer = Self::new();
-        if let Ok(mut raw) = indexer.source_paths_raw.write() {
-            *raw = vec![library_prefix.to_string()];
-        }
-        indexer
-    }
-
     /// Clear all index maps. Called before a full workspace re-index and on root switch.
     ///
     /// Clears workspace-source data (files, definitions, packages, subtypes, …) and caches.

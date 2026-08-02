@@ -539,15 +539,9 @@ fn build_workspace_result(
     all_results.append(&mut parsed_results);
 
     let stats = IndexStats {
-        files_discovered: discovered.total,
         cache_hits,
         files_parsed,
         symbols_extracted: all_results.iter().map(|f| f.data.symbols.len()).sum(),
-        packages_found: all_results
-            .iter()
-            .filter_map(|f| f.data.package.as_ref())
-            .count(),
-        errors: parse_errors,
     };
 
     log::info!(
