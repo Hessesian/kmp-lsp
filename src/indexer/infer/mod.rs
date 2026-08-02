@@ -10,9 +10,33 @@
 //! | Type              | Role                                                         |
 //! |-------------------|--------------------------------------------------------------|
 //! | `CstQuery`        | Bound CST query: node + doc + deps + URI + IO policy        |
-//! | `Fqn`             | Importable fully-qualified name (newtype over `String`)      |
+//! | `Fqn`             | `Ambiguous` candidate identifier (newtype over `String`, defining-URI placeholder today) |
 //! | `Resolution<T>`   | Three-way outcome: `Resolved(T)` / `Ambiguous(Vec<Fqn>)` / `Unresolved` |
 //! | `ResolvedType`    | A resolved expression type with its nullable flag            |
+//!
+//! ## Known gaps
+//!
+//! These capability families are still exported flat from `src/indexer.rs` instead of through
+//! `CstQuery` — an agent looking for "type of X" should know they exist before reinventing them:
+//!
+//! - `it_this` (`find_it_element_type`, `find_this_context`, `find_this_element_type`,
+//!   `find_named_lambda_param_type`, `is_lambda_param`, `all_lambda_receivers_at`) — CST-driven
+//!   internally already (delegates to `cst_lambda`), but takes a `CursorPos` + does its own
+//!   repair-gated node acquisition; folding into `CstQuery`'s bound-`Node` model needs a
+//!   `CstQuery::at_position` bridge — deferred, see the design doc's lambda-triad/`LambdaScope`-
+//!   promotion step.
+//! - `sig` (signature/param-text helpers) — pure string/slice helpers, several IO-bound
+//!   (`find_fun_signature_full` may trigger on-demand rg indexing); not expression-type
+//!   resolution, out of `CstQuery`'s "type of a bound node" remit.
+//! - `cst_symbol` (`classify_cursor`, `resolve_identity`, navigation helpers) — the symbol-identity
+//!   navigation family's own facade (design doc step 6, already CST-first with string+rg
+//!   fallback); intentionally a peer of `CstQuery`, not a submodule of it.
+//! - `args`, `type_subst`, `lambda` — low-level primitives (`extract_first_arg`,
+//!   generic-substitution string ops, lambda-type-string decomposition) consumed mostly *by* the
+//!   CST engine's own submodules (`cst_lambda.rs`, `chain.rs`); the one exception is
+//!   `find_as_call_arg_type` (from `args.rs`), which reaches a feature directly through
+//!   `Indexer::infer_lambda_param_type_at` in `src/indexer/scope.rs` (used by hover and
+//!   go-to-definition for lambda params) — not judged to need a facade.
 //!
 //! ## Submodules
 //!
@@ -62,18 +86,27 @@ use crate::StrExt as _;
 
 use self::deps::InferDeps;
 
-/// Importable fully-qualified name (newtype over the FQN string).
-#[allow(dead_code)] // produced by Ambiguous; consumed by later catalogue methods
-pub(crate) struct Fqn(pub(crate) String);
+/// Identifies one candidate in a `Resolution::Ambiguous` result. Named for its
+/// intended end state (an importable fully-qualified name), but today's only
+/// producer (`sig.rs`'s `build_result`) populates it with the candidate's
+/// defining-file URI plus its arity envelope (`"<uri>#<required>/<total>"`) as
+/// a placeholder identifier — not yet a real FQN-shaped value. The arity
+/// suffix keeps candidates unique when two overloads share a defining file
+/// (same URI, different arity would otherwise collide). Field constructed by
+/// `Ambiguous` candidates; not yet read by any consumer.
+#[derive(Debug, Clone)]
+pub(crate) struct Fqn(#[allow(dead_code)] pub(crate) String);
 
 /// Outcome of resolving something to `T`. Reused across the catalogue so an
 /// agent learns the three outcomes once and reads them off every signature.
+#[derive(Debug, Clone)]
 pub(crate) enum Resolution<T> {
     Resolved(T),
     /// Multiple candidates — callers may surface all or pick one heuristically.
-    /// Unused by `expr_type` today; present for later catalogue methods.
-    #[allow(dead_code)] // present for completeness; consumed by later catalogue methods
-    Ambiguous(Vec<Fqn>),
+    /// The `Vec<Fqn>` payload is constructed (`sig.rs::build_result`) but every
+    /// current matcher (`resolved`, `resolved_ref`, `call_arg_diagnostics.rs`)
+    /// discards it via `_` — no consumer inspects candidates yet.
+    Ambiguous(#[allow(dead_code)] Vec<Fqn>),
     Unresolved,
 }
 

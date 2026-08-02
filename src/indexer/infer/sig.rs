@@ -8,6 +8,7 @@
 
 use tower_lsp::lsp_types::{SymbolKind, Url};
 
+use super::{Fqn, Resolution};
 use crate::indexer::Indexer;
 use crate::resolver::{infer_receiver_type, ReceiverKind};
 use crate::types::{SourceSet, SymbolEntry};
@@ -39,20 +40,13 @@ pub(crate) struct CallSite<'a> {
     pub caller_uri: &'a Url,
 }
 
-/// Result of resolving a call site's signature.
+/// A resolved call-site signature — exactly one arity envelope, safe to emit
+/// a diagnostic against. The `Resolution::Resolved` payload for
+/// `resolve_call_signature`.
 #[derive(Debug, Clone)]
-pub(crate) enum SignatureResult {
-    /// Exactly one arity envelope — safe to emit a diagnostic.
-    Unique {
-        params_text: String,
-        param_counts: (usize, usize),
-    },
-    /// Multiple distinct arity envelopes found — overloaded, skip.
-    Overloaded,
-    /// No definition found — skip.
-    NotFound,
-    /// Qualified call whose receiver type could not be resolved — skip.
-    UnresolvableReceiver,
+pub(crate) struct Signature {
+    pub(crate) params_text: String,
+    pub(crate) param_counts: (usize, usize),
 }
 
 // ─── Multiline signature collector ───────────────────────────────────────────
@@ -747,7 +741,7 @@ fn collect_params_from_file(
     caller_uri: &str,
     scope: ResolutionScope,
     receiver_base: Option<&str>,
-) -> Vec<(String, (u8, u8))> {
+) -> Vec<(String, (u8, u8), String /* defining uri */)> {
     // Look up data from source files first, then the compiled-JAR cache. Track which:
     // only compiled-JAR (sidecar) symbols lack default-value markers.
     let (data, is_compiled_jar) = if let Some(file_data) = idx.files.get(file_uri) {
@@ -825,7 +819,7 @@ fn collect_params_from_file(
         .iter()
         .filter(name_matches)
         .filter(receiver_matches)
-        .flat_map(|s| -> Vec<(String, (u8, u8))> {
+        .flat_map(|s| -> Vec<(String, (u8, u8), String)> {
             // Swift structs/classes never carry constructor params on their own
             // CST node (no Kotlin-style inline primary constructor) — the real
             // signature lives on a nested `init` (explicit or synthesized at
@@ -841,7 +835,7 @@ fn collect_params_from_file(
                         c.kind == SymbolKind::CONSTRUCTOR
                             && c.container.as_deref() == Some(s.name.as_str())
                     })
-                    .map(|c| (c.params.clone(), c.param_counts))
+                    .map(|c| (c.params.clone(), c.param_counts, file_uri.to_string()))
                     .collect();
             }
             let params_text = match extract_params_or_fallback(s, &data.lines) {
@@ -853,7 +847,7 @@ fn collect_params_from_file(
             } else {
                 s.param_counts
             };
-            vec![(params_text, counts)]
+            vec![(params_text, counts, file_uri.to_string())]
         })
         .collect()
 }
@@ -903,12 +897,12 @@ fn total_definition_count(call_name: &str, idx: &Indexer) -> usize {
 /// - Searches `definitions` and `extension_by_receiver` for matching
 ///   member (container == type) or extension (extension_receiver == type)
 ///   symbols, filtered by import reachability
-/// - Deduplicates by arity envelope and returns `Overloaded` when ambiguous
-fn resolve_qualified(call: &CallSite<'_>, qualifier: &str, idx: &Indexer) -> SignatureResult {
+/// - Deduplicates by arity envelope and returns `Resolution::Ambiguous` when ambiguous
+fn resolve_qualified(call: &CallSite<'_>, qualifier: &str, idx: &Indexer) -> Resolution<Signature> {
     let receiver =
         match infer_receiver_type(idx, ReceiverKind::Variable(qualifier), call.caller_uri) {
             Some(receiver) => receiver,
-            None => return SignatureResult::UnresolvableReceiver,
+            None => return Resolution::Unresolved,
         };
     // container and extension_receiver store simple class names (no package),
     // and extension_by_receiver is keyed by simple name — so leaf is correct.
@@ -929,10 +923,12 @@ fn resolve_qualified(call: &CallSite<'_>, qualifier: &str, idx: &Indexer) -> Sig
     crate::indexer::jar::ensure_jar_definitions_for(idx, call.name, &mut cache_backed_only);
 
     if total_definition_count(call.name, idx) > crate::indexer::MAX_BY_NAME_DEFS {
-        return SignatureResult::Overloaded;
+        // known-ambiguous (ubiquitous name), candidates not enumerated for
+        // performance — see `total_definition_count`.
+        return Resolution::Ambiguous(vec![]);
     }
 
-    let mut found: Vec<(String, (u8, u8))> = Vec::new();
+    let mut found: Vec<(String, (u8, u8), String)> = Vec::new();
 
     // Phase 1: definitions + jar_definitions — source and JAR symbols.
     {
@@ -993,8 +989,8 @@ fn resolve_qualified(call: &CallSite<'_>, qualifier: &str, idx: &Indexer) -> Sig
 /// 1. Current file (same-file definitions are exact — no import filtering needed).
 /// 2. Definitions map, cross-file with import-aware filtering.
 ///
-/// If multiple distinct arity envelopes are found, returns `Overloaded`.
-fn resolve_unqualified(call: &CallSite<'_>, idx: &Indexer) -> SignatureResult {
+/// If multiple distinct arity envelopes are found, returns `Resolution::Ambiguous`.
+fn resolve_unqualified(call: &CallSite<'_>, idx: &Indexer) -> Resolution<Signature> {
     // Same-file first: if defined here, use only those — avoids workspace-wide
     // overload explosion (e.g. 945 `loadData` implementations).
     let same_file = collect_params_from_file(
@@ -1017,10 +1013,12 @@ fn resolve_unqualified(call: &CallSite<'_>, idx: &Indexer) -> SignatureResult {
 
     // Ubiquitous name (hundreds of source-JAR overloads of `create`, `loadData`, …):
     // scanning every cross-file definition is a multi-second stall on the diagnostics
-    // hot path, and the wide arity envelope would resolve to `Overloaded` regardless —
+    // hot path, and the wide arity envelope would resolve to `Ambiguous` regardless —
     // so bail without scanning. (Same-file calls above already resolved exactly.)
     if total_definition_count(call.name, idx) > crate::indexer::MAX_BY_NAME_DEFS {
-        return SignatureResult::Overloaded;
+        // known-ambiguous (ubiquitous name), candidates not enumerated for
+        // performance — see `total_definition_count`.
+        return Resolution::Ambiguous(vec![]);
     }
 
     let caller_source_set = idx
@@ -1030,7 +1028,7 @@ fn resolve_unqualified(call: &CallSite<'_>, idx: &Indexer) -> SignatureResult {
         .unwrap_or_default();
 
     // Cross-file: definitions + jar_definitions with import + nested-class filtering.
-    let mut all: Vec<(String, (u8, u8))> = Vec::new();
+    let mut all: Vec<(String, (u8, u8), String)> = Vec::new();
     let mut locations: Vec<tower_lsp::lsp_types::Location> = Vec::new();
     if let Some(locs) = idx.definitions.get(call.name) {
         // Reconstitute interned `SymbolLoc`s at this boundary.
@@ -1065,44 +1063,54 @@ fn resolve_unqualified(call: &CallSite<'_>, idx: &Indexer) -> SignatureResult {
     build_result(all)
 }
 
-/// Build a `SignatureResult` from a list of `(params_text, param_counts)` pairs.
+/// Build a `Resolution<Signature>` from a list of `(params_text, param_counts,
+/// defining_uri)` triples.
 ///
 /// Deduplicates by arity envelope. If there are multiple distinct envelopes,
-/// the function is considered overloaded and the caller should skip the diagnostic.
-fn build_result(entries: Vec<(String, (u8, u8))>) -> SignatureResult {
+/// the function is considered overloaded (`Ambiguous`) and the caller should
+/// skip the diagnostic.
+fn build_result(entries: Vec<(String, (u8, u8), String)>) -> Resolution<Signature> {
     if entries.is_empty() {
-        return SignatureResult::NotFound;
+        return Resolution::Unresolved;
     }
     // Deduplicate by arity envelope.
     let mut seen: std::collections::HashSet<(u8, u8)> = std::collections::HashSet::new();
-    let mut deduped: Vec<(String, (u8, u8))> = Vec::new();
-    for (text, counts) in entries {
+    let mut deduped: Vec<(String, (u8, u8), String)> = Vec::new();
+    for (text, counts, defining_uri) in entries {
         if seen.insert(counts) {
-            deduped.push((text, counts));
+            deduped.push((text, counts, defining_uri));
         }
     }
     if deduped.len() > 1 {
-        return SignatureResult::Overloaded;
+        // Arity suffix keeps candidates unique when two overloads share a
+        // defining file — the URI alone collides for same-file overloads.
+        let candidates = deduped
+            .into_iter()
+            .map(|(_, (required, total), defining_uri)| {
+                Fqn(format!("{defining_uri}#{required}/{total}"))
+            })
+            .collect();
+        return Resolution::Ambiguous(candidates);
     }
-    let (params_text, (required, total)) = deduped.into_iter().next().unwrap();
-    SignatureResult::Unique {
+    let (params_text, (required, total), _defining_uri) = deduped.into_iter().next().unwrap();
+    Resolution::Resolved(Signature {
         params_text,
         param_counts: (required as usize, total as usize),
-    }
+    })
 }
 
 /// Resolve the call site's signature using a unified, single-entry-point pipeline.
 ///
 /// Resolution strategy:
 /// - **Qualified** (`qualifier.name(…)`): resolve receiver type, find method within it.
-///   Returns `UnresolvableReceiver` when the receiver type is unknown to prevent
+///   Returns `Resolution::Unresolved` when the receiver type is unknown to prevent
 ///   a fallback global-name scan from matching unrelated functions.
 /// - **Unqualified** (`name(…)`): check the current file first, then cross-file
 ///   definitions filtered by import reachability and nested-class exclusion.
 ///
 /// This function does NOT trigger on-demand indexing (`rg` / disk reads).
 /// Use `find_fun_signature_full` for hover/completion where latency is acceptable.
-pub(crate) fn resolve_call_signature(call: &CallSite<'_>, idx: &Indexer) -> SignatureResult {
+pub(crate) fn resolve_call_signature(call: &CallSite<'_>, idx: &Indexer) -> Resolution<Signature> {
     if let Some(qualifier) = call.qualifier {
         resolve_qualified(call, qualifier, idx)
     } else {
