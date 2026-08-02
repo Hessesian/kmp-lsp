@@ -30,24 +30,24 @@ pub(crate) fn is_declaration_site(node: Node<'_>) -> bool {
     let Some(parent) = node.parent() else {
         return false;
     };
-    let pk = parent.kind();
-    if pk == KIND_CLASS_DECL
-        || pk == KIND_OBJECT_DECL
-        || pk == KIND_COMPANION_OBJ
-        || pk == KIND_TYPE_ALIAS
+    let parent_kind = parent.kind();
+    if parent_kind == KIND_CLASS_DECL
+        || parent_kind == KIND_OBJECT_DECL
+        || parent_kind == KIND_COMPANION_OBJ
+        || parent_kind == KIND_TYPE_ALIAS
     {
         return node.kind() == KIND_TYPE_IDENT;
     }
-    if pk == KIND_FUN_DECL
-        || pk == KIND_PARAMETER
-        || pk == KIND_ENUM_ENTRY
-        || pk == KIND_VAR_DECL
-        || pk == KIND_CLASS_PARAM
-        || pk == KIND_CATCH_BLOCK
+    if parent_kind == KIND_FUN_DECL
+        || parent_kind == KIND_PARAMETER
+        || parent_kind == KIND_ENUM_ENTRY
+        || parent_kind == KIND_VAR_DECL
+        || parent_kind == KIND_CLASS_PARAM
+        || parent_kind == KIND_CATCH_BLOCK
     {
         return node.kind() == KIND_SIMPLE_IDENT;
     }
-    if pk == KIND_TYPE_PARAM {
+    if parent_kind == KIND_TYPE_PARAM {
         return node.kind() == KIND_SIMPLE_IDENT || node.kind() == KIND_TYPE_IDENT;
     }
     false
@@ -90,16 +90,36 @@ pub(crate) fn is_indexed_declaration_site(node: Node<'_>) -> bool {
 }
 
 pub(crate) fn navigation_receiver_node(node: Node<'_>) -> Option<Node<'_>> {
-    (0..node.child_count())
-        .filter_map(|i| node.child(i))
-        .find(|child| child.is_named() && child.kind() != crate::queries::KIND_NAV_SUFFIX)
+    let mut cursor = node.walk();
+    if cursor.goto_first_child() {
+        loop {
+            let child = cursor.node();
+            if child.is_named() && child.kind() != crate::queries::KIND_NAV_SUFFIX {
+                return Some(child);
+            }
+            if !cursor.goto_next_sibling() {
+                break;
+            }
+        }
+    }
+    None
 }
 
 pub(crate) fn navigation_member_ident(node: Node<'_>) -> Option<Node<'_>> {
     let suffix = node.first_child_of_kind(crate::queries::KIND_NAV_SUFFIX)?;
-    (0..suffix.child_count())
-        .filter_map(|i| suffix.child(i))
-        .find(|child| child.kind() == KIND_SIMPLE_IDENT || child.kind() == KIND_TYPE_IDENT)
+    let mut cursor = suffix.walk();
+    if cursor.goto_first_child() {
+        loop {
+            let child = cursor.node();
+            if child.kind() == KIND_SIMPLE_IDENT || child.kind() == KIND_TYPE_IDENT {
+                return Some(child);
+            }
+            if !cursor.goto_next_sibling() {
+                break;
+            }
+        }
+    }
+    None
 }
 
 pub(crate) fn is_call_callee(node: Node<'_>) -> bool {
@@ -202,10 +222,12 @@ pub(crate) fn classify_symbol_at(
     // not directly nested one-per-dot — check both the node's parent (in case
     // the grammar ever emits a bare single-segment import directly under
     // `import_header`) and its grandparent through that `identifier` wrapper.
-    let is_import_segment = node.parent().is_some_and(|p| {
-        p.kind() == KIND_IMPORT_HEADER
-            || (p.kind() == KIND_IDENTIFIER
-                && p.parent().is_some_and(|gp| gp.kind() == KIND_IMPORT_HEADER))
+    let is_import_segment = node.parent().is_some_and(|parent| {
+        parent.kind() == KIND_IMPORT_HEADER
+            || (parent.kind() == KIND_IDENTIFIER
+                && parent
+                    .parent()
+                    .is_some_and(|grandparent| grandparent.kind() == KIND_IMPORT_HEADER))
     });
     if is_import_segment {
         return Some(SymbolAtCursor {
@@ -253,8 +275,9 @@ pub(crate) fn classify_symbol_at(
     // Bare reference (local var, top-level name, etc.) — no receiver, scope
     // resolution deferred (see Global Constraints). Callers fall through to
     // today's NameScan path for these.
-    let is_call = node.parent().is_some_and(|p| {
-        p.kind() == KIND_CALL_EXPR && p.child(0).map(|c| c.id()) == Some(node.id())
+    let is_call = node.parent().is_some_and(|parent| {
+        parent.kind() == KIND_CALL_EXPR
+            && parent.child(0).map(|child| child.id()) == Some(node.id())
     });
     Some(SymbolAtCursor {
         name,
@@ -275,7 +298,7 @@ pub(crate) enum NavigationSource<T> {
     NameScan(T),
 }
 
-/// Resolve `sym`'s identity to its definition site(s).
+/// Resolve `symbol`'s identity to its definition site(s).
 ///
 /// `CstResolved` when the CST gave enough information to trust the result
 /// (a declaration is trivially its own definition; a receiver-typed member
@@ -284,33 +307,34 @@ pub(crate) enum NavigationSource<T> {
 /// today's name-based `find_definition_qualified(name, None, uri)` (which
 /// can span multiple same-named workspace symbols).
 pub(crate) fn resolve_identity(
-    sym: &SymbolAtCursor,
+    symbol: &SymbolAtCursor,
     indexer: &Indexer,
     uri: &Url,
 ) -> NavigationSource<Definitions> {
-    match &sym.role {
+    match &symbol.role {
         SymbolRole::Declaration { indexed } => {
-            let locs = Definitions(indexer.find_definition_qualified(&sym.name, None, uri));
+            let locations = Definitions(indexer.find_definition_qualified(&symbol.name, None, uri));
             // Only declarations `KOTLIN_DEFINITIONS` actually indexes can be
             // trusted CST-resolved; an unindexed one (bare param, val/var-less
             // constructor param, type param) falls through to an unanchored
             // same-file scan or workspace-wide scan — label it NameScan (see
             // `is_indexed_declaration_site`).
             if *indexed {
-                NavigationSource::CstResolved(locs)
+                NavigationSource::CstResolved(locations)
             } else {
-                NavigationSource::NameScan(locs)
+                NavigationSource::NameScan(locations)
             }
         }
         SymbolRole::Reference {
             receiver_type: Some(receiver_type),
             ..
         } => {
-            let locs = indexer.find_definition_qualified(&sym.name, Some(receiver_type), uri);
-            if locs.is_empty() {
-                NavigationSource::NameScan(Definitions(locs))
+            let locations =
+                indexer.find_definition_qualified(&symbol.name, Some(receiver_type), uri);
+            if locations.is_empty() {
+                NavigationSource::NameScan(Definitions(locations))
             } else {
-                NavigationSource::CstResolved(Definitions(locs))
+                NavigationSource::CstResolved(Definitions(locations))
             }
         }
         SymbolRole::Reference {
@@ -318,7 +342,7 @@ pub(crate) fn resolve_identity(
             ..
         }
         | SymbolRole::ImportSegment => NavigationSource::NameScan(Definitions(
-            indexer.find_definition_qualified(&sym.name, None, uri),
+            indexer.find_definition_qualified(&symbol.name, None, uri),
         )),
     }
 }
@@ -503,10 +527,9 @@ fn declares_name_directly<'a>(scope: Node<'a>, name: &str, bytes: &[u8]) -> Opti
         if node.id() != scope.id() && scope_boundary_at(node).is_some() {
             continue;
         }
-        for i in 0..node.child_count() {
-            if let Some(child) = node.child(i) {
-                stack.push(child);
-            }
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            stack.push(child);
         }
     }
     None
@@ -526,10 +549,8 @@ fn visit_statements_with_generations<'a>(
     bytes: &[u8],
     visit: &mut impl FnMut(Node<'a>, usize),
 ) {
-    for i in 0..statements.child_count() {
-        let Some(statement) = statements.child(i) else {
-            continue;
-        };
+    let mut cursor = statements.walk();
+    for statement in statements.children(&mut cursor) {
         match declares_name_directly(statement, name, bytes) {
             Some(declaration_node) => {
                 visit_unshadowed_name_matches(
@@ -586,10 +607,8 @@ fn visit_unshadowed_name_matches<'a>(
         visit_statements_with_generations(node, name, generation, already_shadowed, bytes, visit);
         return;
     }
-    for i in 0..node.child_count() {
-        let Some(child) = node.child(i) else {
-            continue;
-        };
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
         let child_shadowed = already_shadowed
             || (scope_boundary_at(child).is_some()
                 && declares_name_directly(child, name, bytes).is_some());

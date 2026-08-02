@@ -380,7 +380,7 @@ fn cst_call_arg_type(pos: CursorPos, idx: &Indexer, uri: &Url) -> Option<String>
             KIND_VALUE_ARG => break Some(cur),
             KIND_LAMBDA_LIT => break None,
             _ => match cur.parent() {
-                Some(p) => cur = p,
+                Some(parent) => cur = parent,
                 None => break None,
             },
         }
@@ -390,8 +390,8 @@ fn cst_call_arg_type(pos: CursorPos, idx: &Indexer, uri: &Url) -> Option<String>
     let mut node = value_arg;
     let call_expr = loop {
         match node.parent() {
-            Some(p) if p.kind() == KIND_CALL_EXPR => break Some(p),
-            Some(p) => node = p,
+            Some(parent) if parent.kind() == KIND_CALL_EXPR => break Some(parent),
+            Some(parent) => node = parent,
             None => break None,
         }
     }?;
