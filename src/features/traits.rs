@@ -13,7 +13,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use tower_lsp::lsp_types::{CompletionItem, Location, Position, Range, Url};
+use tower_lsp::lsp_types::{CompletionItem, Location, Position, Url};
 
 use crate::indexer::IgnoreMatcher;
 use crate::types::{FileData, SymbolEntry};
@@ -41,7 +41,6 @@ pub(crate) trait SymbolIndex {
     fn file_data_for(&self, uri: &str) -> Option<Arc<FileData>>;
 
     /// All top-level symbols indexed for `uri`.
-    #[allow(dead_code)]
     fn file_symbols(&self, uri: &Url) -> Vec<SymbolEntry>;
 
     /// Iterate all indexed files, calling `f(uri_str, file_data)`.
@@ -150,26 +149,6 @@ pub(crate) trait DocumentAccess {
     /// Lines from the in-memory caches only (no disk I/O).
     /// Prefers live (unsaved) buffer; falls back to indexed snapshot.
     fn mem_lines_for(&self, uri: &str) -> Option<Arc<Vec<String>>>;
-
-    /// Lines for `uri`, including disk fallback if not live.
-    #[allow(dead_code)]
-    fn lines_for(&self, uri: &Url) -> Option<Arc<Vec<String>>>;
-
-    // TODO(per-rule-5): Split into separate functions (e.g. extract_word and extract_qualifier)
-
-    /// Extract the identifier and optional dot-qualifier at `pos`.
-    #[allow(dead_code)]
-    fn word_and_qualifier_at(&self, uri: &Url, pos: Position) -> Option<(String, Option<String>)>;
-
-    /// Extract just the identifier token at `pos`.
-    #[allow(dead_code)]
-    fn word_at(&self, uri: &Url, pos: Position) -> Option<String>;
-
-    // TODO(per-rule-5): Split into separate functions (e.g. extract_word and get_range)
-
-    /// Extract the identifier token and its source range at `pos`.
-    #[allow(dead_code)]
-    fn word_and_range_at(&self, uri: &Url, pos: Position) -> Option<(String, Range)>;
 }
 
 // ─── ScopeQuery ──────────────────────────────────────────────────────────────
