@@ -31,11 +31,6 @@ pub(crate) struct ReadyState {
     /// Resolved, deduplicated list of source paths (output of
     /// [`Config::resolve_sources`]).
     pub source_paths: Vec<String>,
-
-    /// Ignore patterns in effect for this workspace.
-    // Read by Wave 3 handlers; field exists for completeness of the snapshot.
-    #[allow(dead_code)]
-    pub ignore_patterns: Vec<String>,
 }
 
 impl ReadyState {
@@ -43,7 +38,6 @@ impl ReadyState {
         Self {
             root: config.root.clone(),
             source_paths: config.resolve_sources(),
-            ignore_patterns: config.ignore_patterns.clone(),
         }
     }
 }
@@ -80,17 +74,6 @@ impl State {
             State::Ready(data) => Some(data),
             State::Uninitialized => None,
         }
-    }
-
-    /// Apply `f` if the workspace is `Ready`, returning the result.
-    /// Returns `None` and does nothing when `Uninitialized`.
-    // Used by Wave 3 read handlers; present here for the pattern to be complete.
-    #[allow(dead_code)]
-    pub(crate) fn ready_or_none<F, T>(&self, f: F) -> Option<T>
-    where
-        F: FnOnce(&ReadyState) -> T,
-    {
-        self.ready().map(f)
     }
 
     /// Transition to `Ready` (or replace the current `Ready`).
