@@ -57,6 +57,7 @@ use crate::indexer::live_tree::LiveDoc;
 use crate::StrExt as _;
 
 use self::deps::InferDeps;
+use crate::resolver::api::ReturnType;
 use crate::resolver::infer::ReceiverType;
 
 /// Importable fully-qualified name (newtype over the FQN string).
@@ -212,6 +213,37 @@ impl<'a, D: InferDeps> CstQuery<'a, D> {
             }
             Resolution::Ambiguous(candidates) => Resolution::Ambiguous(candidates),
             Resolution::Unresolved => Resolution::Unresolved,
+        }
+    }
+
+    /// Resolve the return type of a call named `name`, optionally against a
+    /// known `receiver` type.
+    ///
+    /// Mirrors the receiver-known chain `expr_type.rs::infer_navigation_expr_type`
+    /// already uses (method-on-type, then reachable-by-name, then global-by-name),
+    /// and applies the same reachable→by-name fallback order when there is no
+    /// receiver — matching `expr_type.rs`'s own comment about mirroring
+    /// `Resolver::function_return_type`.
+    #[allow(dead_code)] // wiring seam; consumed by later catalogue tasks
+    pub(crate) fn call_return_type(
+        &self,
+        receiver: Option<&ReceiverType>,
+        name: &str,
+    ) -> Resolution<ReturnType> {
+        let result = match receiver {
+            Some(receiver_type) => self
+                .deps
+                .find_method_return_type_for_type(&receiver_type.qualified, name, self.uri)
+                .or_else(|| self.deps.find_fun_return_type_reachable(name, self.uri))
+                .or_else(|| self.deps.find_fun_return_type(name)),
+            None => self
+                .deps
+                .find_fun_return_type_reachable(name, self.uri)
+                .or_else(|| self.deps.find_fun_return_type(name)),
+        };
+        match result {
+            Some(raw) => Resolution::Resolved(ReturnType(raw)),
+            None => Resolution::Unresolved,
         }
     }
 }
