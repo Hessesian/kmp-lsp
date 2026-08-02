@@ -14,6 +14,29 @@
 //! | `Resolution<T>`   | Three-way outcome: `Resolved(T)` / `Ambiguous(Vec<Fqn>)` / `Unresolved` |
 //! | `ResolvedType`    | A resolved expression type with its nullable flag            |
 //!
+//! ## Known gaps
+//!
+//! These capability families are still exported flat from `src/indexer.rs` instead of through
+//! `CstQuery` — an agent looking for "type of X" should know they exist before reinventing them:
+//!
+//! - `it_this` (`find_it_element_type`, `find_this_context`, `find_this_element_type`,
+//!   `find_named_lambda_param_type`, `is_lambda_param`, `all_lambda_receivers_at`) — CST-driven
+//!   internally already (delegates to `cst_lambda`), but takes a `CursorPos` + does its own
+//!   repair-gated node acquisition; folding into `CstQuery`'s bound-`Node` model needs a
+//!   `CstQuery::at_position` bridge — deferred, see the design doc's lambda-triad/`LambdaScope`-
+//!   promotion step.
+//! - `sig` (signature/param-text helpers other than `Signature`/`Resolution<Signature>` — see
+//!   below) — pure string/slice helpers, several IO-bound (`find_fun_signature_full` may trigger
+//!   on-demand rg indexing); not expression-type resolution, out of `CstQuery`'s "type of a bound
+//!   node" remit.
+//! - `cst_symbol` (`classify_cursor`, `resolve_identity`, navigation helpers) — the symbol-identity
+//!   navigation family's own facade (design doc step 6, already CST-first with string+rg
+//!   fallback); intentionally a peer of `CstQuery`, not a submodule of it.
+//! - `args`, `type_subst`, `lambda` — low-level primitives (`extract_first_arg`,
+//!   generic-substitution string ops, lambda-type-string decomposition) consumed *by* the CST
+//!   engine's own submodules (`cst_lambda.rs`, `chain.rs`), not independently by features; not
+//!   judged to need a facade.
+//!
 //! ## Submodules
 //!
 //! - `deps`        — `InferDeps` trait + `TestDeps` stub for unit-testing leaf helpers
