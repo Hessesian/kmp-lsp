@@ -224,6 +224,67 @@ pub(super) fn forward_resolve_segments(
     Some((receiver_type, method))
 }
 
+/// How `resolve_callee_chain` must treat a navigation chain's final segment
+/// to report `(receiver_type, method_name)` correctly.
+///
+/// A chain's final segment plays one of two distinct roles, and
+/// `forward_resolve_segments`'s Suffix handling treats them very
+/// differently: it tries `resolve_member_type_on` first and only falls back
+/// to "flow the receiver type through unchanged" for names in
+/// `SCOPE_FUNCTIONS`. Deciding which role applies up front — instead of
+/// always walking the full list and hoping the fallback fires — is what this
+/// type exists to make explicit.
+enum FinalCalleeSegment<'segments, 'node> {
+    /// The final segment is a plain (non-scope-function) method name being
+    /// invoked as the call itself (e.g. "map" in `container.items.map { }`),
+    /// not a member to fold into the receiver's type. It must never reach
+    /// `forward_resolve_segments`'s member-lookup: were it walked, a
+    /// same-named field or method on the receiver would be resolved as if
+    /// it were a further navigation step, corrupting the receiver type.
+    /// Resolve `receiver_segments` alone to get `receiver_type`, and report
+    /// `method_name` as-is.
+    CallTarget {
+        receiver_segments: &'segments [NavSegment<'node>],
+        method_name: String,
+    },
+    /// The final segment must be visited by a full forward walk over every
+    /// segment, not excluded: either it is a scope function
+    /// (`let`/`also`/`run`/`apply`/`takeIf`/`takeUnless`), whose Suffix
+    /// handling both flows the receiver type through unchanged *and* applies
+    /// side effects tied to actually visiting that segment (e.g.
+    /// `?.`-driven nullability stripping) — dropping it via slicing silently
+    /// loses those effects, which is what broke
+    /// `nullable_let_chain_it_type_resolves`,
+    /// `this_type_apply_on_constructor_call_infers_receiver`, and 7 other
+    /// scope-function-terminated chain tests the one time this was tried —
+    /// or the chain's last element isn't a Suffix at all (`Root`/`CallExpr`).
+    /// `forward_resolve_segments` already reports `(receiver_type,
+    /// method_name)` for the whole chain, so hand it the untouched list.
+    WalkFull,
+}
+
+/// Classify how `resolve_callee_chain` should treat `segments`' final entry.
+/// See `FinalCalleeSegment` for what each outcome means and why.
+///
+/// This classification must NOT be pushed down into
+/// `forward_resolve_segments`/`resolve_segments_type` themselves: their
+/// "resolve every segment I'm handed" contract is relied on elsewhere (see
+/// mod_tests.rs's `unresolved_final_suffix_fails_the_strict_walk`) and by
+/// `resolve_call_expr_type`'s own already-correct pre-sliced call.
+fn classify_final_callee_segment<'segments, 'node>(
+    segments: &'segments [NavSegment<'node>],
+) -> FinalCalleeSegment<'segments, 'node> {
+    match segments.last() {
+        Some(NavSegment::Suffix { name, .. }) if !SCOPE_FUNCTIONS.contains(&name.as_str()) => {
+            FinalCalleeSegment::CallTarget {
+                receiver_segments: &segments[..segments.len() - 1],
+                method_name: name.clone(),
+            }
+        }
+        _ => FinalCalleeSegment::WalkFull,
+    }
+}
+
 /// Resolve the callee navigation chain left-to-right, returning the type
 /// of the expression before the final method call, and the final method name.
 ///
@@ -243,41 +304,13 @@ pub(super) fn resolve_callee_chain(
             if segments.is_empty() {
                 return None;
             }
-            // Mirror resolve_call_expr_type's pre-slice (this same file,
-            // ~line 436-449): when the final segment is a plain
-            // (non-scope-function) method name -- e.g. "map" in
-            // `container.items.map { }` -- it is the method being called
-            // with the trailing lambda, not itself a member access to fold
-            // into the receiver's type, so exclude it before resolving.
-            //
-            // Scope functions (let/also/run/apply/takeIf/takeUnless) are
-            // deliberately NOT excluded here, exactly like
-            // resolve_call_expr_type's own SCOPE_FUNCTIONS check gates its
-            // pre-slice: forward_resolve_segments already flows the
-            // receiver type through a scope-function Suffix unchanged, and
-            // that full-list walk also carries side effects tied to
-            // processing that exact segment (e.g. `?.`-driven nullability
-            // stripping) that only fire while it is actually visited.
-            // Slicing it away unconditionally silently drops those side
-            // effects -- caught by running the full suite after the initial
-            // unconditional-slice attempt, which broke
-            // `nullable_let_chain_it_type_resolves`,
-            // `this_type_apply_on_constructor_call_infers_receiver`, and 7
-            // other scope-function-terminated chain tests.
-            //
-            // Do NOT push this exclusion into
-            // forward_resolve_segments/resolve_segments_type themselves --
-            // their "resolve every segment I'm handed" contract is relied on
-            // elsewhere (see mod_tests.rs's
-            // unresolved_final_suffix_fails_the_strict_walk) and by
-            // resolve_call_expr_type's own already-correct pre-sliced call.
-            match segments.last() {
-                Some(NavSegment::Suffix { name, .. })
-                    if !SCOPE_FUNCTIONS.contains(&name.as_str()) =>
-                {
-                    let method_name = name.clone();
+            match classify_final_callee_segment(&segments) {
+                FinalCalleeSegment::CallTarget {
+                    receiver_segments,
+                    method_name,
+                } => {
                     let receiver_type = resolve_segments_type(
-                        &segments[..segments.len() - 1],
+                        receiver_segments,
                         bytes,
                         deps,
                         uri,
@@ -285,7 +318,7 @@ pub(super) fn resolve_callee_chain(
                     )?;
                     Some((receiver_type, method_name))
                 }
-                _ => forward_resolve_segments(
+                FinalCalleeSegment::WalkFull => forward_resolve_segments(
                     &segments,
                     bytes,
                     deps,
