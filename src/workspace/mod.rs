@@ -27,8 +27,6 @@ pub(crate) mod contract;
 pub(crate) mod document_handler;
 pub(crate) mod event;
 pub(crate) mod file_change_handler;
-#[allow(dead_code)]
-pub(crate) mod handle;
 pub(crate) mod phase;
 pub(crate) mod scan_handler;
 pub(crate) mod scan_queue;
@@ -37,7 +35,7 @@ pub(crate) mod scan_queue;
 #[allow(unused_imports)]
 pub(crate) use actor::Actor;
 #[allow(unused_imports)]
-pub(crate) use contract::{Effect, ReadyState, State};
+pub(crate) use contract::{ReadyState, State};
 #[allow(unused_imports)]
 pub(crate) use event::Event;
 
@@ -45,8 +43,6 @@ use std::path::PathBuf;
 
 // ─── Config ─────────────────────────────────────────────────────────
 
-// Config is unused until Wave 2 wires this module in (ws-backend, ws-cli, ws-main).
-#[allow(dead_code)]
 /// Immutable snapshot of workspace configuration collected at startup.
 ///
 /// Passed inside [`Event::Initialize`]; not mutated after construction.

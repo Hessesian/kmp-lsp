@@ -10,14 +10,11 @@
 //! |---|---|
 //! | [`Event`] | Inputs — every write to workspace state |
 //! | [`State`] | State — `Uninitialized` or `Ready(ReadyState)` |
-//! | [`Effect`] | Outputs — one-shot side-effects from the actor |
 //!
 //! # Compiler enforcement
 //!
 //! * Adding a [`Event`] variant → compile error in `Actor::run`
 //!   until the handler is implemented.
-//! * Adding a [`Effect`] variant → compile error in every site that
-//!   matches on the effect channel.
 //! * Accessing [`State::Ready`] data requires an explicit `match` or
 //!   a call to [`State::ready`] — there is no way to get a
 //!   `&ReadyState` without acknowledging the `Uninitialized` case.
@@ -29,24 +26,3 @@
 pub(crate) use super::event::Event;
 #[allow(unused_imports)]
 pub(crate) use super::phase::{ReadyState, State};
-
-// ─── Effect ─────────────────────────────────────────────────────────
-
-/// One-shot effects emitted by the workspace actor.
-///
-/// Effects are distinct from state: they are not accumulated and are consumed
-/// exactly once by a subscriber (CLI wait-for-scan, test poll loop, etc.).
-///
-/// This mirrors `BusinessEffect` / `UiEffect` from Moneta: the actor sends
-/// effects for transient events that don't belong in the persistent state.
-#[allow(dead_code)] // consumed by Wave 3 CLI and test subscribers
-pub(crate) enum Effect {
-    /// Emitted when a workspace scan finishes (initial or reindex).
-    ///
-    /// CLI mode waits for this before returning to the interactive prompt.
-    /// Tests can poll for it instead of sleeping.
-    ScanComplete,
-
-    /// The workspace root was switched to a new path.
-    RootChanged { new_root: std::path::PathBuf },
-}

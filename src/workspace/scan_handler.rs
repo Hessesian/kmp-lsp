@@ -82,12 +82,6 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
         self.scan_queue.lock().unwrap().is_in_progress()
     }
 
-    /// Returns true while JAR indexing is in progress.
-    #[allow(dead_code)]
-    pub(crate) fn is_jar_indexing(&self) -> bool {
-        self.jar_indexing_in_progress.load(Ordering::Acquire)
-    }
-
     /// Called by the actor when `scan_done_rx` fires.
     ///
     /// Marks the current scan complete and starts any pending follow-up.

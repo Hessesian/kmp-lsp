@@ -8,7 +8,6 @@ fn stub_data(root: &str) -> ReadyState {
     ReadyState {
         root: PathBuf::from(root),
         source_paths: vec![format!("{root}/src")],
-        ignore_patterns: vec![],
     }
 }
 
@@ -24,17 +23,6 @@ fn set_state_transitions_to_ready() {
     phase.set_state(stub_data("/workspace"));
     assert!(phase.ready().is_some());
     assert_eq!(phase.ready().unwrap().root, PathBuf::from("/workspace"));
-}
-
-#[test]
-fn ready_or_none_runs_block_only_when_ready() {
-    let uninitialized = State::default();
-    assert!(uninitialized.ready_or_none(|d| d.root.clone()).is_none());
-
-    let mut ready = State::default();
-    ready.set_state(stub_data("/project"));
-    let root = ready.ready_or_none(|d| d.root.clone());
-    assert_eq!(root, Some(PathBuf::from("/project")));
 }
 
 #[test]
