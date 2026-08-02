@@ -304,21 +304,6 @@ impl TestDeps {
         self
     }
 
-    /// Register `(class_name, method_name)` → raw params text.
-    #[allow(dead_code)]
-    pub(crate) fn with_method_params(
-        mut self,
-        class_name: &str,
-        method_name: &str,
-        params: &str,
-    ) -> Self {
-        self.method_params.insert(
-            (class_name.to_string(), method_name.to_string()),
-            params.to_string(),
-        );
-        self
-    }
-
     /// Register `name` → `type_name` as a contextual type for `uri`.
     ///
     /// Used to stub `find_contextual_type` for `this`, `it`, and named lambda
@@ -338,7 +323,6 @@ impl TestDeps {
     }
 
     /// Register `fn_name` → callable info for generic extension function tests.
-    #[allow(dead_code)]
     pub(crate) fn with_callable_info(
         mut self,
         fn_name: &str,
