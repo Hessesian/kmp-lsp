@@ -10,7 +10,7 @@
 //! | Type              | Role                                                         |
 //! |-------------------|--------------------------------------------------------------|
 //! | `CstQuery`        | Bound CST query: node + doc + deps + URI + IO policy        |
-//! | `Fqn`             | Importable fully-qualified name (newtype over `String`)      |
+//! | `Fqn`             | `Ambiguous` candidate identifier (newtype over `String`, defining-URI placeholder today) |
 //! | `Resolution<T>`   | Three-way outcome: `Resolved(T)` / `Ambiguous(Vec<Fqn>)` / `Unresolved` |
 //! | `ResolvedType`    | A resolved expression type with its nullable flag            |
 //!
@@ -84,8 +84,11 @@ use self::deps::InferDeps;
 use crate::resolver::api::ReturnType;
 use crate::resolver::infer::ReceiverType;
 
-/// Importable fully-qualified name (newtype over the FQN string).
-// Field constructed by `Ambiguous` candidates; not yet read by any consumer.
+/// Identifies one candidate in a `Resolution::Ambiguous` result. Named for its
+/// intended end state (an importable fully-qualified name), but today's only
+/// producer (`sig.rs`'s `build_result`) populates it with the candidate's raw
+/// defining-file URI as a placeholder identifier — not yet a real FQN-shaped
+/// value. Field constructed by `Ambiguous` candidates; not yet read by any consumer.
 #[derive(Debug, Clone)]
 pub(crate) struct Fqn(#[allow(dead_code)] pub(crate) String);
 

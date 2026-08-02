@@ -171,12 +171,12 @@ fn check_call_args(
         Resolution::Ambiguous(_) | Resolution::Unresolved => return None,
     };
 
-    // A `Unique` result only reflects what's resolvable from the workspace and
+    // A `Resolved` result only reflects what's resolvable from the workspace and
     // any already-materialized JARs. IndexOnly (diagnostics) policy forbids
     // triggering JAR materialization here (no IO on the diagnostics path), but
     // `jar_bare_names` (Tier 1) is a cheap in-memory lookup, not IO. If a
     // same-named candidate exists in a JAR that hasn't been materialized yet,
-    // its real signature is unknown — treat this the same as `Overloaded` and
+    // its real signature is unknown — treat this the same as `Ambiguous` and
     // suppress rather than risk a false "wrong parameter count" positive.
     if let Some(candidate_jars) = indexer.jar_bare_names.get(&fn_name) {
         let has_unmaterialized_candidate = candidate_jars

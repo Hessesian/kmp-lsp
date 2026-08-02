@@ -376,10 +376,10 @@ fn resolve_qualified_skips_extension_from_unimported_package() {
 #[test]
 fn resolve_unqualified_bails_on_ubiquitous_name() {
     // A name with hundreds of cross-file definitions (the source-JAR explosion that
-    // stalled the diagnostics path) must short-circuit to `Overloaded` instead of
+    // stalled the diagnostics path) must short-circuit to `Ambiguous` instead of
     // scanning every definition's file. The distinguishing signal: WITHOUT the cap this
     // scan visits all (fabricated, un-indexed) files, finds nothing, and returns
-    // `NotFound`; WITH the cap it returns `Overloaded` before scanning.
+    // `Unresolved`; WITH the cap it returns `Ambiguous` before scanning.
     use tower_lsp::lsp_types::{Location, Range};
 
     let caller_uri = test_uri("/Caller.kt");
@@ -413,7 +413,7 @@ fn resolve_unqualified_bails_on_ubiquitous_name() {
             resolve_call_signature(&call, &idx),
             Resolution::Ambiguous(_)
         ),
-        "a name with > MAX_BY_NAME_DEFS definitions must bail to Overloaded, not scan them all"
+        "a name with > MAX_BY_NAME_DEFS definitions must bail to Ambiguous, not scan them all"
     );
 }
 
@@ -421,7 +421,7 @@ fn resolve_unqualified_bails_on_ubiquitous_name() {
 fn resolve_qualified_jar_extension_overloads_with_source_member() {
     // A JAR-indexed extension (Phase 2) with different arity than a
     // source-indexed member (Phase 1) must be treated as an overload —
-    // both arities end up in `found`, producing Overloaded.
+    // both arities end up in `found`, producing Ambiguous.
     // Regression: the old `found.is_empty()` gate skipped Phase 2 entirely
     // when Phase 1 found anything, causing the member arity to win.
     use crate::types::{ExtensionEntry, FileData, Visibility};
@@ -512,10 +512,10 @@ fn resolve_qualified_jar_extension_overloads_with_source_member() {
         caller_uri: &caller_uri,
     };
 
-    // Both 0-arg member + 1-arg extension → Overloaded.
+    // Both 0-arg member + 1-arg extension → Ambiguous.
     match resolve_call_signature(&call, &idx) {
         Resolution::Ambiguous(_) => {}
-        other => panic!("expected Overloaded (0-arg member + 1-arg extension), got {other:?}"),
+        other => panic!("expected Ambiguous (0-arg member + 1-arg extension), got {other:?}"),
     }
 }
 
@@ -523,12 +523,12 @@ fn resolve_qualified_jar_extension_overloads_with_source_member() {
 fn resolve_qualified_bails_on_ubiquitous_name_even_with_receiver_extension() {
     // When the by-name cap is hit, Phase 1 (members) must not be skipped while
     // Phase 2 (the receiver-scoped extension lookup) still runs — that combination
-    // could return a `Unique` signature based solely on the extension, ignoring a
+    // could return a `Resolved` signature based solely on the extension, ignoring a
     // same-named member of a different arity that members-win-over-extensions
     // semantics in Kotlin would actually call. Members live in `definitions`, which
     // is exactly the map the cap inflates here, so this reproduces that case: a
     // capped `loadData` name with a one-arity JAR extension on `Repository` must
-    // still bail to `Overloaded`, not trust the extension's arity alone.
+    // still bail to `Ambiguous`, not trust the extension's arity alone.
     use crate::types::{ExtensionEntry, FileData, Visibility};
     use tower_lsp::lsp_types::{Location, Position, Range};
 
@@ -630,7 +630,7 @@ fn resolve_qualified_bails_on_ubiquitous_name_even_with_receiver_extension() {
         caller_uri: &caller_uri,
     };
 
-    // Must bail to Overloaded, not resolve to the 1-arg extension as Unique —
+    // Must bail to Ambiguous, not resolve to the 1-arg extension as Resolved —
     // doing so would ignore the 0-arg member that members-win-over-extensions
     // semantics would actually call.
     assert!(
@@ -638,7 +638,7 @@ fn resolve_qualified_bails_on_ubiquitous_name_even_with_receiver_extension() {
             resolve_call_signature(&call, &idx),
             Resolution::Ambiguous(_)
         ),
-        "capped qualified path must bail entirely, not return Unique from Phase 2 alone"
+        "capped qualified path must bail entirely, not return Resolved from Phase 2 alone"
     );
 }
 
