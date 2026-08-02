@@ -152,30 +152,6 @@ impl SidecarHandle {
         })
     }
 
-    /// Send one JAR path to the sidecar and receive the symbol list.
-    /// Returns `Err` on any I/O or parse failure; caller should set the
-    /// handle to `None` and stop using it.
-    #[allow(dead_code)]
-    pub(crate) fn index_jar(&mut self, path: &Path) -> Result<Vec<SidecarSymbol>, String> {
-        let req = jar_request(path)?;
-        self.stdin
-            .write_all(req.as_bytes())
-            .map_err(|e| e.to_string())?;
-        self.stdin.flush().map_err(|e| e.to_string())?;
-
-        let mut line = String::new();
-        self.stdout
-            .as_mut()
-            .expect("stdout taken")
-            .read_line(&mut line)
-            .map_err(|e| e.to_string())?;
-
-        if line.is_empty() {
-            return Err("sidecar closed stdout unexpectedly".to_owned());
-        }
-        serde_json::from_str::<Vec<SidecarSymbol>>(&line).map_err(|e| e.to_string())
-    }
-
     /// Send multiple JAR paths sequentially: write one request, flush,
     /// read one response, repeat.
     ///

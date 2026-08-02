@@ -15,10 +15,6 @@ pub(crate) trait LinesExt {
     #[allow(dead_code)]
     fn visibility_at(&self, line_no: usize) -> Visibility;
 
-    /// Swift visibility of the declaration on `line_no`.
-    #[allow(dead_code)]
-    fn swift_visibility_at(&self, line_no: usize) -> Visibility;
-
     /// Names declared in these lines (for fast lookup without full parsing).
     #[allow(dead_code)]
     fn declared_names(&self) -> Vec<String>;
@@ -28,14 +24,6 @@ pub(crate) trait LinesExt {
 
     /// Collect a multi-line function/class signature starting at `start_line`.
     fn collect_signature(&self, start_line: usize) -> String;
-
-    /// Collect parameters from the function starting at `start_line`.
-    #[allow(dead_code)]
-    fn collect_params_from_line(&self, start_line: usize) -> Option<String>;
-
-    /// Find the name of the call expression that encloses `(line_no, col)`.
-    #[allow(dead_code)]
-    fn find_enclosing_call_name(&self, line_no: usize, col: usize) -> Option<String>;
 
     /// Line number at which a new `import` statement should be inserted.
     fn import_insertion_line(&self) -> u32;
@@ -65,10 +53,6 @@ impl LinesExt for [String] {
         crate::parser::visibility_at_line(self, line_no)
     }
 
-    fn swift_visibility_at(&self, line_no: usize) -> Visibility {
-        crate::parser::swift_visibility_at_line(self, line_no)
-    }
-
     fn declared_names(&self) -> Vec<String> {
         crate::parser::extract_declared_names(self)
     }
@@ -79,14 +63,6 @@ impl LinesExt for [String] {
 
     fn collect_signature(&self, start_line: usize) -> String {
         crate::indexer::collect_signature(self, start_line)
-    }
-
-    fn collect_params_from_line(&self, start_line: usize) -> Option<String> {
-        crate::indexer::collect_params_from_line(self, start_line)
-    }
-
-    fn find_enclosing_call_name(&self, line_no: usize, col: usize) -> Option<String> {
-        crate::indexer::find_enclosing_call_name(self, line_no, col)
     }
 
     fn import_insertion_line(&self) -> u32 {
