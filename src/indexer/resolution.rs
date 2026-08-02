@@ -30,9 +30,6 @@ pub(crate) struct ResolvedSymbol {
     #[allow(dead_code)]
     pub raw_signature: String,
     pub signature: String,
-    /// Substitution map used to build `signature`; kept for test assertions.
-    #[allow(dead_code)]
-    pub subst: HashMap<String, String>,
     pub doc: String,
     /// True when the declaration carries an `@Deprecated` annotation
     /// (joined from `SymbolEntry::deprecated`). Rendered as a hover marker.
@@ -416,7 +413,6 @@ fn enrich_symbol<I: IndexRead>(
         kind: sym.kind,
         raw_signature,
         signature,
-        subst,
         doc,
         deprecated: sym.deprecated,
         container: sym.container.clone(),

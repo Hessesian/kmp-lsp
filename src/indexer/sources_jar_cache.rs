@@ -16,10 +16,6 @@
 //! and the loser re-parses on its next start.  Accepted trade-off (same as
 //! `jar_cache.rs`) — no lock file.
 
-// Wired into `index_sources_jars` by the parse-cache integration task; until
-// then only tests reference this module.
-#![cfg_attr(not(test), allow(dead_code))]
-
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
