@@ -1081,9 +1081,13 @@ fn build_result(entries: Vec<(String, (u8, u8), String)>) -> Resolution<Signatur
         }
     }
     if deduped.len() > 1 {
+        // Arity suffix keeps candidates unique when two overloads share a
+        // defining file — the URI alone collides for same-file overloads.
         let candidates = deduped
             .into_iter()
-            .map(|(_, _, defining_uri)| Fqn(defining_uri))
+            .map(|(_, (required, total), defining_uri)| {
+                Fqn(format!("{defining_uri}#{required}/{total}"))
+            })
             .collect();
         return Resolution::Ambiguous(candidates);
     }
