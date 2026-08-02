@@ -618,8 +618,8 @@ pub(crate) fn find_fun_signature_with_receiver(
     name: &str,
     receiver: Option<&str>,
 ) -> Option<String> {
-    if let Some(recv) = receiver {
-        let Some(receiver_type) = infer_receiver_type(idx, ReceiverKind::Variable(recv), uri)
+    if let Some(receiver) = receiver {
+        let Some(receiver_type) = infer_receiver_type(idx, ReceiverKind::Variable(receiver), uri)
         else {
             // Receiver present but type could not be resolved — avoid a global
             // name-only scan that may return a completely unrelated function.
