@@ -12,7 +12,7 @@
 use tower_lsp::lsp_types::*;
 
 use crate::indexer::{
-    live_tree::LiveDoc, resolve_call_signature, CallSite, Indexer, NodeExt, SignatureResult,
+    live_tree::LiveDoc, resolve_call_signature, CallSite, Indexer, NodeExt, Resolution, Signature,
 };
 use crate::queries::{
     KIND_CALL_EXPR, KIND_CALL_SUFFIX, KIND_FUN_DECL, KIND_LAMBDA_LIT, KIND_SIMPLE_IDENT,
@@ -43,7 +43,7 @@ pub(crate) fn call_arg_diagnostics(indexer: &Indexer, uri: &Url, doc: &LiveDoc) 
     // Cache resolve_call_signature results within one diagnostic run.
     // Many call_expression nodes call the same function; caching avoids O(N×K)
     // symbol-index scans where N = distinct names and K = definition locations.
-    let mut sig_cache: std::collections::HashMap<(String, Option<String>), SignatureResult> =
+    let mut sig_cache: std::collections::HashMap<(String, Option<String>), Resolution<Signature>> =
         std::collections::HashMap::new();
     let mut diagnostics = Vec::new();
     collect_call_nodes(
@@ -80,7 +80,7 @@ fn collect_call_nodes(
     uri: &Url,
     diagnostics: &mut Vec<Diagnostic>,
     stats: &mut DiagStats,
-    sig_cache: &mut std::collections::HashMap<(String, Option<String>), SignatureResult>,
+    sig_cache: &mut std::collections::HashMap<(String, Option<String>), Resolution<Signature>>,
 ) {
     if node.kind() == KIND_CALL_EXPR {
         if let Some(diag) = check_call_args(&node, bytes, indexer, uri, stats, sig_cache) {
@@ -113,7 +113,7 @@ fn check_call_args(
     indexer: &Indexer,
     uri: &Url,
     stats: &mut DiagStats,
-    sig_cache: &mut std::collections::HashMap<(String, Option<String>), SignatureResult>,
+    sig_cache: &mut std::collections::HashMap<(String, Option<String>), Resolution<Signature>>,
 ) -> Option<Diagnostic> {
     stats.total += 1;
 
@@ -164,13 +164,11 @@ fn check_call_args(
         result
     };
     let (params_text, (required, total)) = match sig_result {
-        SignatureResult::Unique {
+        Resolution::Resolved(Signature {
             params_text,
             param_counts,
-        } => (params_text, param_counts),
-        SignatureResult::Overloaded
-        | SignatureResult::NotFound
-        | SignatureResult::UnresolvableReceiver => return None,
+        }) => (params_text, param_counts),
+        Resolution::Ambiguous(_) | Resolution::Unresolved => return None,
     };
 
     // A `Unique` result only reflects what's resolvable from the workspace and

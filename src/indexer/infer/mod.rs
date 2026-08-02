@@ -85,16 +85,16 @@ use crate::resolver::api::ReturnType;
 use crate::resolver::infer::ReceiverType;
 
 /// Importable fully-qualified name (newtype over the FQN string).
-#[allow(dead_code)] // produced by Ambiguous; consumed by later catalogue methods
-pub(crate) struct Fqn(pub(crate) String);
+// Field constructed by `Ambiguous` candidates; not yet read by any consumer.
+#[derive(Debug, Clone)]
+pub(crate) struct Fqn(#[allow(dead_code)] pub(crate) String);
 
 /// Outcome of resolving something to `T`. Reused across the catalogue so an
 /// agent learns the three outcomes once and reads them off every signature.
+#[derive(Debug, Clone)]
 pub(crate) enum Resolution<T> {
     Resolved(T),
     /// Multiple candidates — callers may surface all or pick one heuristically.
-    /// Unused by `expr_type` today; present for later catalogue methods.
-    #[allow(dead_code)] // present for completeness; consumed by later catalogue methods
     Ambiguous(Vec<Fqn>),
     Unresolved,
 }

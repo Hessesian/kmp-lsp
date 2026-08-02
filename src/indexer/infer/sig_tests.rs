@@ -287,10 +287,10 @@ fn resolve_qualified_skips_top_level_function_before_type_body() {
     };
 
     match resolve_call_signature(&call, &idx) {
-        SignatureResult::Unique {
+        Resolution::Resolved(Signature {
             param_counts,
             params_text,
-        } => {
+        }) => {
             assert_eq!(param_counts, (1, 1));
             assert_eq!(params_text, "name: String");
         }
@@ -314,10 +314,10 @@ fn resolve_qualified_matches_method_via_container() {
     };
 
     match resolve_call_signature(&call, &idx) {
-        SignatureResult::Unique {
+        Resolution::Resolved(Signature {
             param_counts,
             params_text,
-        } => {
+        }) => {
             assert_eq!(param_counts, (1, 2));
             assert_eq!(params_text, "id: String, force: Boolean = false");
         }
@@ -357,10 +357,10 @@ fn resolve_qualified_skips_extension_from_unimported_package() {
     };
 
     match resolve_call_signature(&call, &idx) {
-        SignatureResult::Unique {
+        Resolution::Resolved(Signature {
             param_counts,
             params_text,
-        } => {
+        }) => {
             // Must match the 0-arg member, NOT the 2-arg extension from the
             // unrelated package.
             assert_eq!(param_counts, (0, 0));
@@ -411,7 +411,7 @@ fn resolve_unqualified_bails_on_ubiquitous_name() {
     assert!(
         matches!(
             resolve_call_signature(&call, &idx),
-            SignatureResult::Overloaded
+            Resolution::Ambiguous(_)
         ),
         "a name with > MAX_BY_NAME_DEFS definitions must bail to Overloaded, not scan them all"
     );
@@ -514,7 +514,7 @@ fn resolve_qualified_jar_extension_overloads_with_source_member() {
 
     // Both 0-arg member + 1-arg extension → Overloaded.
     match resolve_call_signature(&call, &idx) {
-        SignatureResult::Overloaded => {}
+        Resolution::Ambiguous(_) => {}
         other => panic!("expected Overloaded (0-arg member + 1-arg extension), got {other:?}"),
     }
 }
@@ -636,7 +636,7 @@ fn resolve_qualified_bails_on_ubiquitous_name_even_with_receiver_extension() {
     assert!(
         matches!(
             resolve_call_signature(&call, &idx),
-            SignatureResult::Overloaded
+            Resolution::Ambiguous(_)
         ),
         "capped qualified path must bail entirely, not return Unique from Phase 2 alone"
     );
@@ -658,10 +658,10 @@ fn resolve_unqualified_data_class_constructor() {
     };
 
     match resolve_call_signature(&call, &idx) {
-        SignatureResult::Unique {
+        Resolution::Resolved(Signature {
             param_counts,
             params_text,
-        } => {
+        }) => {
             assert_eq!(param_counts, (1, 2));
             assert!(params_text.contains("host: String"));
         }
@@ -695,10 +695,10 @@ fn resolve_unqualified_test_definition_visible_only_to_test_callers() {
         caller_uri: &test_caller_uri,
     };
     match resolve_call_signature(&test_call, &idx) {
-        SignatureResult::Unique {
+        Resolution::Resolved(Signature {
             param_counts,
             params_text,
-        } => {
+        }) => {
             assert_eq!(param_counts, (1, 1));
             assert_eq!(params_text, "arg: String");
         }
@@ -713,7 +713,7 @@ fn resolve_unqualified_test_definition_visible_only_to_test_callers() {
     assert!(
         matches!(
             resolve_call_signature(&main_call, &idx),
-            SignatureResult::NotFound
+            Resolution::Unresolved
         ),
         "main caller must not resolve same-package test helper"
     );

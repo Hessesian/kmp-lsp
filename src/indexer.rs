@@ -54,7 +54,7 @@ pub(crate) use self::infer::{
         find_fun_params_text_fast, find_fun_signature_full, find_fun_signature_with_receiver,
         is_import_reachable, last_fun_param_type_str, nth_fun_param_type_str,
         resolve_call_signature, split_params_at_depth_zero, strip_trailing_call_args, CallSite,
-        ResolutionScope, SignatureResult,
+        ResolutionScope, Signature,
     },
     type_subst::find_last_dot_at_depth_zero,
 };
