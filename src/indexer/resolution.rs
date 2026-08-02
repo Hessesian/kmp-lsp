@@ -7,7 +7,7 @@ use tower_lsp::lsp_types::{SymbolKind, Url};
 
 use crate::indexer::doc::extract_doc_comment;
 use crate::indexer::Location;
-use crate::resolver::InferenceChain;
+use crate::resolver::infer::infer_variable_type;
 use crate::types::{CallerContext, FileData, SymbolEntry};
 use crate::LinesExt;
 
@@ -730,7 +730,7 @@ impl IndexRead for super::Indexer {
     }
 
     fn infer_variable_type_for(&self, name: &str, uri: &Url) -> Option<String> {
-        self.infer_variable_type(name, uri)
+        infer_variable_type(self, name, uri)
     }
 
     fn ensure_indexed_on_demand(&self, uri: &str) {
