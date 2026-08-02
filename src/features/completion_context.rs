@@ -4,8 +4,7 @@ use crate::features::completion::param_names_from_sig;
 use crate::features::traits::{LiveTreeAccess, SignatureIndex};
 use crate::indexer::{
     cursor_node_at, find_this_context, lambda_doc_at, receiver_node_for_marker, speculative_doc,
-    split_params_at_depth_zero, CstQuery, Indexer, LambdaScopeInfo, Resolution, ResolveIo,
-    ThisContext,
+    split_params_at_depth_zero, CstQuery, Indexer, LambdaScopeInfo, Resolution, ThisContext,
 };
 use crate::queries::{KIND_CALL_EXPR, KIND_SIMPLE_IDENT, KIND_SUPER_EXPR, KIND_THIS_EXPR};
 use crate::resolver::complete::DotReceiver;
@@ -136,7 +135,7 @@ pub(crate) fn derive_dot_receiver(
     let resolved = if node.kind() == KIND_SIMPLE_IDENT {
         None
     } else {
-        match CstQuery::new(node, &doc, index, uri, ResolveIo::NoRg).expr_type() {
+        match CstQuery::new(node, &doc, index, uri).expr_type() {
             Resolution::Resolved(resolved_type) => Some(resolved_type.as_type_str().to_owned()),
             _ => None,
         }
@@ -282,7 +281,7 @@ fn collect_lambda_scopes(index: &Indexer, uri: &Url, position: Position) -> Vec<
     let Some(node) = cursor_node_at(doc, cursor) else {
         return Vec::new();
     };
-    CstQuery::new(node, doc, index, uri, ResolveIo::NoRg)
+    CstQuery::new(node, doc, index, uri)
         .lambda_scope()
         .into_iter()
         .map(LambdaScope::from)
