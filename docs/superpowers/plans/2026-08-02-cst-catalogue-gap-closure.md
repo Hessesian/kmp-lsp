@@ -4,6 +4,18 @@
 > (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use
 > checkbox (`- [ ]`) syntax for tracking.
 
+> **POST-IMPLEMENTATION REVERT (2026-08-02):** Tasks 1-2 (`CstQuery::receiver_type()`/
+> `call_return_type()`) were implemented, reviewed, and then removed after a post-review challenge:
+> neither method had a real consumer, and this plan's own "wire a consumer later" Roadmap note named
+> no concrete task, owner, or candidate — it was aspirational, not scheduled. Re-checking candidate
+> consumers (`chain.rs`, `type_subst.rs`) found none were actual drop-in replacements — they wrap the
+> same `InferDeps` calls with generic-substitution logic these thin methods don't do; the one exact
+> match, `expr_type.rs::infer_navigation_expr_type`, is the core recursive walk `CstQuery::expr_type()`
+> already sits on top of, so routing it back through the facade is a circular internals-rewrite, not a
+> wiring change. Only Gap 2 (Tasks 4-5, the `SignatureResult` migration) shipped. If Gap 1 is revisited,
+> do it only once a real consumer is identified up front — build the method and wire it in the same
+> slice, not speculatively ahead of one.
+
 **Goal:** Close the two structural gaps a 2026-08-02 audit found between
 `docs/superpowers/specs/2026-06-30-cst-resolution-unification-design.md` and the current state of
 `src/indexer/infer/mod.rs`:
