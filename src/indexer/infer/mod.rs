@@ -57,6 +57,7 @@ use crate::indexer::live_tree::LiveDoc;
 use crate::StrExt as _;
 
 use self::deps::InferDeps;
+use crate::resolver::infer::ReceiverType;
 
 /// Importable fully-qualified name (newtype over the FQN string).
 #[allow(dead_code)] // produced by Ambiguous; consumed by later catalogue methods
@@ -195,6 +196,22 @@ impl<'a, D: InferDeps> CstQuery<'a, D> {
         ) {
             Some(raw) => Resolution::Resolved(ResolvedType::from_inferred(raw)),
             None => Resolution::Unresolved,
+        }
+    }
+
+    /// Infer the receiver type of the bound expression node, split into its
+    /// qualified/outer/leaf/nullable parts for member/import lookup.
+    ///
+    /// Thin delegation: reuses `expr_type()` for the raw inference, then hands
+    /// the resolved type string to `ReceiverType::from_raw` for the split.
+    #[allow(dead_code)] // wiring seam; consumed by later catalogue tasks
+    pub(crate) fn receiver_type(&self) -> Resolution<ReceiverType> {
+        match self.expr_type() {
+            Resolution::Resolved(resolved) => {
+                Resolution::Resolved(ReceiverType::from_raw(resolved.as_type_str().to_owned()))
+            }
+            Resolution::Ambiguous(candidates) => Resolution::Ambiguous(candidates),
+            Resolution::Unresolved => Resolution::Unresolved,
         }
     }
 }
