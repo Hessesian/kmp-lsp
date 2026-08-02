@@ -110,46 +110,6 @@ fn resolved_type_non_nullable() {
     assert!(!resolved.is_nullable(), "Int should not be nullable");
 }
 
-#[test]
-fn cst_query_receiver_type_splits_qualified_generic_nullable() {
-    let source = "fun f() = holder\n"; // `holder: Outer.Inner<Param>?`
-    let live_doc = live_doc_for(source);
-    let ident_node = first_expr_in_fun(&live_doc.tree).expect("expr node");
-
-    let uri = test_url("/Receiver.kt");
-    // Contextual-type seam: the only `InferDeps` path that hands `expr_type()`
-    // the raw type string untouched by `dotted_ident_prefix()` (the `find_var_type`
-    // branch strips generics before `ResolvedType` ever sees them, which would
-    // lose the nullable marker this test is pinning).
-    let deps =
-        super::deps::TestDeps::new().with_contextual(uri.as_str(), "holder", "Outer.Inner<Param>?");
-
-    let receiver = CstQuery::new(ident_node, &live_doc, &deps, &uri, ResolveIo::IndexOnly)
-        .receiver_type()
-        .resolved()
-        .expect("holder should resolve");
-    assert_eq!(receiver.qualified, "Outer.Inner");
-    assert_eq!(receiver.outer, "Outer");
-    assert_eq!(receiver.leaf, "Inner");
-    assert!(receiver.nullable);
-}
-
-#[test]
-fn cst_query_call_return_type_resolves_method_on_known_receiver() {
-    let source = "fun f() = 1\n"; // node content unused by this arm; CstQuery still needs a bound node
-    let live_doc = live_doc_for(source);
-    let any_node = first_expr_in_fun(&live_doc.tree).expect("expr node");
-
-    let uri = test_url("/CallReturn.kt");
-    let deps =
-        super::deps::TestDeps::new().with_method_return_for_type("Repository", "load", "Item");
-    let receiver = super::ReceiverType::from_raw("Repository".to_owned());
-
-    let query = CstQuery::new(any_node, &live_doc, &deps, &uri, ResolveIo::IndexOnly);
-    let resolved = query.call_return_type(Some(&receiver), "load").resolved();
-    assert_eq!(resolved.map(|r| r.0).as_deref(), Some("Item"));
-}
-
 // ─── SuffixStrictness (chain forward walk) ───────────────────────────────────
 
 fn find_first_node_of_kind<'a>(

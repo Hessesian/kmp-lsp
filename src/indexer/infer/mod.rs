@@ -81,8 +81,6 @@ use crate::indexer::live_tree::LiveDoc;
 use crate::StrExt as _;
 
 use self::deps::InferDeps;
-use crate::resolver::api::ReturnType;
-use crate::resolver::infer::ReceiverType;
 
 /// Identifies one candidate in a `Resolution::Ambiguous` result. Named for its
 /// intended end state (an importable fully-qualified name), but today's only
@@ -98,7 +96,10 @@ pub(crate) struct Fqn(#[allow(dead_code)] pub(crate) String);
 pub(crate) enum Resolution<T> {
     Resolved(T),
     /// Multiple candidates — callers may surface all or pick one heuristically.
-    Ambiguous(Vec<Fqn>),
+    /// The `Vec<Fqn>` payload is constructed (`sig.rs::build_result`) but every
+    /// current matcher (`resolved`, `resolved_ref`, `call_arg_diagnostics.rs`)
+    /// discards it via `_` — no consumer inspects candidates yet.
+    Ambiguous(#[allow(dead_code)] Vec<Fqn>),
     Unresolved,
 }
 
@@ -223,53 +224,6 @@ impl<'a, D: InferDeps> CstQuery<'a, D> {
             self.uri,
         ) {
             Some(raw) => Resolution::Resolved(ResolvedType::from_inferred(raw)),
-            None => Resolution::Unresolved,
-        }
-    }
-
-    /// Infer the receiver type of the bound expression node, split into its
-    /// qualified/outer/leaf/nullable parts for member/import lookup.
-    ///
-    /// Thin delegation: reuses `expr_type()` for the raw inference, then hands
-    /// the resolved type string to `ReceiverType::from_raw` for the split.
-    #[allow(dead_code)] // wiring seam; consumed by later catalogue tasks
-    pub(crate) fn receiver_type(&self) -> Resolution<ReceiverType> {
-        match self.expr_type() {
-            Resolution::Resolved(resolved) => {
-                Resolution::Resolved(ReceiverType::from_raw(resolved.as_type_str().to_owned()))
-            }
-            Resolution::Ambiguous(candidates) => Resolution::Ambiguous(candidates),
-            Resolution::Unresolved => Resolution::Unresolved,
-        }
-    }
-
-    /// Resolve the return type of a call named `name`, optionally against a
-    /// known `receiver` type.
-    ///
-    /// Mirrors the receiver-known chain `expr_type.rs::infer_navigation_expr_type`
-    /// already uses (method-on-type, then reachable-by-name, then global-by-name),
-    /// and applies the same reachable→by-name fallback order when there is no
-    /// receiver — matching `expr_type.rs`'s own comment about mirroring
-    /// `Resolver::function_return_type`.
-    #[allow(dead_code)] // wiring seam; consumed by later catalogue tasks
-    pub(crate) fn call_return_type(
-        &self,
-        receiver: Option<&ReceiverType>,
-        name: &str,
-    ) -> Resolution<ReturnType> {
-        let result = match receiver {
-            Some(receiver_type) => self
-                .deps
-                .find_method_return_type_for_type(&receiver_type.qualified, name, self.uri)
-                .or_else(|| self.deps.find_fun_return_type_reachable(name, self.uri))
-                .or_else(|| self.deps.find_fun_return_type(name)),
-            None => self
-                .deps
-                .find_fun_return_type_reachable(name, self.uri)
-                .or_else(|| self.deps.find_fun_return_type(name)),
-        };
-        match result {
-            Some(raw) => Resolution::Resolved(ReturnType(raw)),
             None => Resolution::Unresolved,
         }
     }
