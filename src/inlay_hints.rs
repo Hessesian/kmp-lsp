@@ -340,17 +340,38 @@ fn hint_property(ctx: &HintCtx<'_>, node: &tree_sitter::Node<'_>, hints: &mut Ve
     }
 
     // Fallback: text-based inference (handles `val x: Type` pattern aliases etc.)
-    if let Some(rt) = infer_receiver_type(idx, ReceiverKind::Variable(name), uri) {
-        let base: String = rt
-            .raw
-            .chars()
-            .take_while(|&c| c.is_alphanumeric() || c == '_' || c == '<' || c == '>')
-            .collect();
-        if !base.is_empty() {
-            let subst = subst_at(idx, uri, end_pos.line);
-            let ty = subst_type(&base, &subst);
-            hints.push(type_hint(end_pos, &ty));
-        }
+    // Logged at `info` (never `debug`, so it surfaces on both this crate's
+    // default stderr filter and its file-log filter without extra config):
+    // inlay hints is meant to be CST-only end-to-end, so `infer_expr_type`
+    // returning `None` here at all -- on a real project, not a synthetic test
+    // -- is signal that it has a gap worth closing on the CST side, not
+    // evidence `infer_receiver_type`'s fallback chain should stay. (That
+    // chain is itself STRING-primary/CST-secondary internally, so "resolved"
+    // below doesn't by itself prove STRING specifically was the one that hit —
+    // just that `infer_expr_type` alone was not enough.)
+    let Some(rt) = infer_receiver_type(idx, ReceiverKind::Variable(name), uri) else {
+        log::info!(
+            "inlay hint fallback: hint_property('{name}') at {uri} -- CST \
+             (infer_expr_type) returned None AND the infer_receiver_type \
+             fallback chain also failed"
+        );
+        return;
+    };
+    log::info!(
+        "inlay hint fallback: hint_property('{name}') at {uri} -- CST \
+         (infer_expr_type) returned None, infer_receiver_type fallback \
+         chain resolved {:?}",
+        rt.raw
+    );
+    let base: String = rt
+        .raw
+        .chars()
+        .take_while(|&c| c.is_alphanumeric() || c == '_' || c == '<' || c == '>')
+        .collect();
+    if !base.is_empty() {
+        let subst = subst_at(idx, uri, end_pos.line);
+        let ty = subst_type(&base, &subst);
+        hints.push(type_hint(end_pos, &ty));
     }
 }
 
