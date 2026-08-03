@@ -1,6 +1,6 @@
 use tower_lsp::lsp_types::Url;
 
-use crate::indexer::infer::{CstQuery, ResolveIo};
+use crate::indexer::infer::CstQuery;
 use crate::indexer::Indexer;
 use crate::queries::KIND_FUN_BODY;
 
@@ -34,15 +34,9 @@ fn cst_query_expr_type_resolves_int_literal() {
     let uri = test_url("/CstQuery.kt");
     indexer.index_content(&uri, source);
 
-    let resolved = CstQuery::new(
-        int_literal_node,
-        &live_doc,
-        &indexer,
-        &uri,
-        ResolveIo::IndexOnly,
-    )
-    .expr_type()
-    .resolved();
+    let resolved = CstQuery::new(int_literal_node, &live_doc, &indexer, &uri)
+        .expr_type()
+        .resolved();
     assert_eq!(
         resolved.map(|t| t.as_type_str().to_owned()).as_deref(),
         Some("Int")
@@ -59,15 +53,9 @@ fn cst_query_expr_type_unresolved_for_unknown_nav() {
     let uri = test_url("/B.kt");
     indexer.index_content(&uri, source);
 
-    let resolved = CstQuery::new(
-        nav_expr_node,
-        &live_doc,
-        &indexer,
-        &uri,
-        ResolveIo::IndexOnly,
-    )
-    .expr_type()
-    .resolved();
+    let resolved = CstQuery::new(nav_expr_node, &live_doc, &indexer, &uri)
+        .expr_type()
+        .resolved();
     assert!(
         resolved.is_none(),
         "unresolvable nav expr should yield Unresolved"
@@ -84,8 +72,7 @@ fn resolved_type_nullable_flag() {
     let uri = test_url("/C.kt");
     indexer.index_content(&uri, source);
 
-    let resolution =
-        CstQuery::new(null_node, &live_doc, &indexer, &uri, ResolveIo::IndexOnly).expr_type();
+    let resolution = CstQuery::new(null_node, &live_doc, &indexer, &uri).expr_type();
     let resolved = resolution
         .resolved()
         .expect("null should resolve to Nothing?");
@@ -103,7 +90,7 @@ fn resolved_type_non_nullable() {
     let uri = test_url("/D.kt");
     indexer.index_content(&uri, source);
 
-    let resolved = CstQuery::new(int_node, &live_doc, &indexer, &uri, ResolveIo::IndexOnly)
+    let resolved = CstQuery::new(int_node, &live_doc, &indexer, &uri)
         .expr_type()
         .resolved()
         .expect("Int should resolve");
@@ -265,7 +252,7 @@ fn scope_fn_callee_nav_resolves_via_the_segment_walk() {
         )
         .expect("node covering the let call");
     assert_eq!(call.kind(), "call_expression", "got {}", call.kind());
-    let resolved = CstQuery::new(call, &live_doc, &indexer, &uri, ResolveIo::NoRg)
+    let resolved = CstQuery::new(call, &live_doc, &indexer, &uri)
         .expr_type()
         .resolved();
     assert_eq!(

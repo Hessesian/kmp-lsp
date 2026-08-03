@@ -8,7 +8,7 @@
 
 use tower_lsp::lsp_types::{SymbolKind, Url};
 
-use super::{Fqn, Resolution};
+use super::Resolution;
 use crate::indexer::Indexer;
 use crate::resolver::{infer_receiver_type, ReceiverKind};
 use crate::types::{SourceSet, SymbolEntry};
@@ -741,7 +741,7 @@ fn collect_params_from_file(
     caller_uri: &str,
     scope: ResolutionScope,
     receiver_base: Option<&str>,
-) -> Vec<(String, (u8, u8), String /* defining uri */)> {
+) -> Vec<(String, (u8, u8))> {
     // Look up data from source files first, then the compiled-JAR cache. Track which:
     // only compiled-JAR (sidecar) symbols lack default-value markers.
     let (data, is_compiled_jar) = if let Some(file_data) = idx.files.get(file_uri) {
@@ -819,7 +819,7 @@ fn collect_params_from_file(
         .iter()
         .filter(name_matches)
         .filter(receiver_matches)
-        .flat_map(|s| -> Vec<(String, (u8, u8), String)> {
+        .flat_map(|s| -> Vec<(String, (u8, u8))> {
             // Swift structs/classes never carry constructor params on their own
             // CST node (no Kotlin-style inline primary constructor) — the real
             // signature lives on a nested `init` (explicit or synthesized at
@@ -835,7 +835,7 @@ fn collect_params_from_file(
                         c.kind == SymbolKind::CONSTRUCTOR
                             && c.container.as_deref() == Some(s.name.as_str())
                     })
-                    .map(|c| (c.params.clone(), c.param_counts, file_uri.to_string()))
+                    .map(|c| (c.params.clone(), c.param_counts))
                     .collect();
             }
             let params_text = match extract_params_or_fallback(s, &data.lines) {
@@ -847,7 +847,7 @@ fn collect_params_from_file(
             } else {
                 s.param_counts
             };
-            vec![(params_text, counts, file_uri.to_string())]
+            vec![(params_text, counts)]
         })
         .collect()
 }
@@ -923,12 +923,11 @@ fn resolve_qualified(call: &CallSite<'_>, qualifier: &str, idx: &Indexer) -> Res
     crate::indexer::jar::ensure_jar_definitions_for(idx, call.name, &mut cache_backed_only);
 
     if total_definition_count(call.name, idx) > crate::indexer::MAX_BY_NAME_DEFS {
-        // known-ambiguous (ubiquitous name), candidates not enumerated for
-        // performance — see `total_definition_count`.
-        return Resolution::Ambiguous(vec![]);
+        // known-ambiguous (ubiquitous name) — see `total_definition_count`.
+        return Resolution::Ambiguous;
     }
 
-    let mut found: Vec<(String, (u8, u8), String)> = Vec::new();
+    let mut found: Vec<(String, (u8, u8))> = Vec::new();
 
     // Phase 1: definitions + jar_definitions — source and JAR symbols.
     {
@@ -1016,9 +1015,8 @@ fn resolve_unqualified(call: &CallSite<'_>, idx: &Indexer) -> Resolution<Signatu
     // hot path, and the wide arity envelope would resolve to `Ambiguous` regardless —
     // so bail without scanning. (Same-file calls above already resolved exactly.)
     if total_definition_count(call.name, idx) > crate::indexer::MAX_BY_NAME_DEFS {
-        // known-ambiguous (ubiquitous name), candidates not enumerated for
-        // performance — see `total_definition_count`.
-        return Resolution::Ambiguous(vec![]);
+        // known-ambiguous (ubiquitous name) — see `total_definition_count`.
+        return Resolution::Ambiguous;
     }
 
     let caller_source_set = idx
@@ -1028,7 +1026,7 @@ fn resolve_unqualified(call: &CallSite<'_>, idx: &Indexer) -> Resolution<Signatu
         .unwrap_or_default();
 
     // Cross-file: definitions + jar_definitions with import + nested-class filtering.
-    let mut all: Vec<(String, (u8, u8), String)> = Vec::new();
+    let mut all: Vec<(String, (u8, u8))> = Vec::new();
     let mut locations: Vec<tower_lsp::lsp_types::Location> = Vec::new();
     if let Some(locs) = idx.definitions.get(call.name) {
         // Reconstitute interned `SymbolLoc`s at this boundary.
@@ -1063,36 +1061,27 @@ fn resolve_unqualified(call: &CallSite<'_>, idx: &Indexer) -> Resolution<Signatu
     build_result(all)
 }
 
-/// Build a `Resolution<Signature>` from a list of `(params_text, param_counts,
-/// defining_uri)` triples.
+/// Build a `Resolution<Signature>` from a list of `(params_text, param_counts)` pairs.
 ///
 /// Deduplicates by arity envelope. If there are multiple distinct envelopes,
 /// the function is considered overloaded (`Ambiguous`) and the caller should
 /// skip the diagnostic.
-fn build_result(entries: Vec<(String, (u8, u8), String)>) -> Resolution<Signature> {
+fn build_result(entries: Vec<(String, (u8, u8))>) -> Resolution<Signature> {
     if entries.is_empty() {
         return Resolution::Unresolved;
     }
     // Deduplicate by arity envelope.
     let mut seen: std::collections::HashSet<(u8, u8)> = std::collections::HashSet::new();
-    let mut deduped: Vec<(String, (u8, u8), String)> = Vec::new();
-    for (text, counts, defining_uri) in entries {
+    let mut deduped: Vec<(String, (u8, u8))> = Vec::new();
+    for (text, counts) in entries {
         if seen.insert(counts) {
-            deduped.push((text, counts, defining_uri));
+            deduped.push((text, counts));
         }
     }
     if deduped.len() > 1 {
-        // Arity suffix keeps candidates unique when two overloads share a
-        // defining file — the URI alone collides for same-file overloads.
-        let candidates = deduped
-            .into_iter()
-            .map(|(_, (required, total), defining_uri)| {
-                Fqn(format!("{defining_uri}#{required}/{total}"))
-            })
-            .collect();
-        return Resolution::Ambiguous(candidates);
+        return Resolution::Ambiguous;
     }
-    let (params_text, (required, total), _defining_uri) = deduped.into_iter().next().unwrap();
+    let (params_text, (required, total)) = deduped.into_iter().next().unwrap();
     Resolution::Resolved(Signature {
         params_text,
         param_counts: (required as usize, total as usize),

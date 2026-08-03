@@ -5,7 +5,7 @@
 //! `.run`, `.apply`, `.map`, `listOf`, etc. work out of the box without
 //! requiring stdlib sources to be present in the project.
 
-/// A single stdlib entry: name, signature (shown in hover), and kind.
+/// A single stdlib entry: name and signature (shown in hover).
 #[derive(Clone, Copy)]
 pub(crate) struct StdlibEntry {
     pub name: &'static str,

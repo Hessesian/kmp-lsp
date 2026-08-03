@@ -168,7 +168,7 @@ fn check_call_args(
             params_text,
             param_counts,
         }) => (params_text, param_counts),
-        Resolution::Ambiguous(_) | Resolution::Unresolved => return None,
+        Resolution::Ambiguous | Resolution::Unresolved => return None,
     };
 
     // A `Resolved` result only reflects what's resolvable from the workspace and
