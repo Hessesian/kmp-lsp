@@ -665,9 +665,24 @@ async fn parse_work_item(
 // ─── impl Indexer ─────────────────────────────────────────────────────────────
 
 impl Indexer {
-    /// Full reindex passing `MAX_FILES_UNLIMITED` as the default file cap —
-    /// used by `--index-only` CLI mode and the `kmp-lsp/reindex` workspace command.
-    /// The `KMP_LSP_MAX_FILES` environment variable can still override the count.
+    /// Full reindex of workspace **source files only**, passing
+    /// `MAX_FILES_UNLIMITED` as the default file cap (the `KMP_LSP_MAX_FILES`
+    /// environment variable can still override the count).
+    ///
+    /// Does not touch JAR/library Tier-1 state (`jar_qualified`,
+    /// `jar_bare_names`, `jar_extension_receivers`, `materialized`,
+    /// `materialization_failed`) or re-trigger a JAR crawl — that lives in
+    /// `ScanHandler::spawn_jar_indexing` (`workspace/scan_handler.rs`), which
+    /// depends on actor-only coordination state. One-shot CLI callers
+    /// (`--index-only`, `cli/run.rs`) call this directly and correctly: the
+    /// process indexes once and exits, so there is no "JAR data going stale"
+    /// concern for a live session. Any caller reindexing a **running**
+    /// session (an LSP command, a file-watcher trigger, …) must route
+    /// through the actor instead — send `Event::Reindex` and let
+    /// `ScanHandler::handle_reindex` pair this call with the JAR-state
+    /// clearing and re-crawl. Calling this directly from a long-lived
+    /// session is the exact bug `backend::commands`/`backend::git_watcher`
+    /// had before both were fixed to go through the actor.
     pub(crate) async fn index_workspace_full<R: ProgressReporter + 'static>(
         self: Arc<Self>,
         root: &Path,
