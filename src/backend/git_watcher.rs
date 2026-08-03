@@ -80,9 +80,9 @@ fn read_git_commit(git_dir: &Path) -> Option<String> {
 
 /// Spawns a background task that polls `.git/HEAD` every 2 seconds.
 /// When the resolved commit SHA changes (branch switch or new commit),
-/// triggers a full workspace reindex through the actor (`Event::Reindex`) —
-/// not a direct `Indexer` call, so the actor's Tier-1/materialization
-/// clearing and JAR re-crawl actually run instead of being silently skipped.
+/// triggers a full workspace reindex through the actor (`Event::Reindex`).
+/// Must go through the actor rather than calling `Indexer` directly — see
+/// `Indexer::index_workspace_full`'s doc comment for why.
 pub(super) fn spawn_git_head_watcher(root: PathBuf, event_tx: mpsc::Sender<Event>, client: Client) {
     let Some(git_dir) = resolve_git_dir(&root) else {
         return;
