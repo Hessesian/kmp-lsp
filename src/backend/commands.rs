@@ -22,10 +22,18 @@ impl Backend {
             // clearing and spawn_jar_indexing() re-crawl actually run — a direct
             // call here bypassed both, silently freezing JAR/library data at
             // whatever it was during LSP startup for the rest of the session.
-            let _ = self.event_tx.send(Event::Reindex).await;
-            self.client
-                .show_message(MessageType::INFO, "kmp-lsp: reindexing workspace…")
-                .await;
+            if self.event_tx.send(Event::Reindex).await.is_ok() {
+                self.client
+                    .show_message(MessageType::INFO, "kmp-lsp: reindexing workspace…")
+                    .await;
+            } else {
+                self.client
+                    .show_message(
+                        MessageType::ERROR,
+                        "kmp-lsp: reindex failed — the workspace actor is not running",
+                    )
+                    .await;
+            }
         } else if params.command == "kmp-lsp/clearCache" {
             let arg = params
                 .arguments
@@ -80,13 +88,22 @@ impl Backend {
                             // `kmp-lsp/reindex` above: a direct reset_index_state()
                             // + index_workspace() call here never re-triggered JAR
                             // indexing, freezing library data at LSP-startup state.
-                            let _ = self.event_tx.send(Event::Reindex).await;
-                            self.client
-                                .show_message(
-                                    MessageType::INFO,
-                                    "kmp-lsp: cache cleared, reindexing workspace…",
-                                )
-                                .await;
+                            if self.event_tx.send(Event::Reindex).await.is_ok() {
+                                self.client
+                                    .show_message(
+                                        MessageType::INFO,
+                                        "kmp-lsp: cache cleared, reindexing workspace…",
+                                    )
+                                    .await;
+                            } else {
+                                self.client
+                                    .show_message(
+                                        MessageType::ERROR,
+                                        "kmp-lsp: cache cleared, but reindex failed — the \
+                                         workspace actor is not running",
+                                    )
+                                    .await;
+                            }
                         } else {
                             self.client
                                 .show_message(
