@@ -1,6 +1,6 @@
 use tower_lsp::lsp_types::{Position, SymbolKind, Url};
 
-use crate::indexer::Indexer;
+use crate::indexer::{Indexer, InferDeps};
 use crate::types::FileData;
 use crate::LinesExt;
 use crate::StrExt;
@@ -352,27 +352,10 @@ fn infer_var_from_rhs_data(
         // already return regardless of `keep_generics` for this same reason.
         if let Some(recv_type_raw) = infer_variable_type_core(indexer, &recv, uri, depth - 1, true)
         {
-            let recv_base = recv_type_raw
-                .dotted_ident_prefix()
-                .last_segment()
-                .to_owned();
-            // `find_method_return_type` alone misses an extension declared on a
-            // *supertype* of `recv_base` (e.g. `asSharedFlow` on `SharedFlow` for
-            // a `MutableSharedFlow` receiver) -- fall back to the supertype walk,
-            // same as the `Resolver::method_return_type` catalog composite does.
-            if let Some(raw_ret) = find_method_return_type(indexer, &recv_base, &method, Some(uri))
-                .or_else(|| {
-                    find_method_return_type_via_supertypes(indexer, &recv_base, &method, Some(uri))
-                })
+            if let Some(ret) =
+                resolve_method_return_type_substituted(indexer, &recv_type_raw, &method, uri)
             {
-                // Substitute the receiver's own concrete type argument(s)
-                // (e.g. `Unit` in `MutableSharedFlow<Unit>`) into the raw,
-                // as-declared return type -- without this, a generic
-                // extension's return type keeps its literal type parameter
-                // name instead of the caller's concrete instantiation.
-                let subst =
-                    crate::indexer::build_type_arg_subst(indexer, &recv_base, &recv_type_raw);
-                return Some(crate::indexer::apply_type_subst(&raw_ret, &subst));
+                return Some(ret);
             }
         }
     }
@@ -392,6 +375,41 @@ fn infer_var_from_rhs_data(
         }
     }
     None
+}
+
+/// Resolve `method_name`'s return type on a receiver whose raw (generics-
+/// preserving) type is `recv_type_raw`, substituting the receiver's own
+/// concrete type argument(s) into the result.
+///
+/// The "own class, then supertypes" fallback is delegated to
+/// [`crate::indexer::InferDeps::find_method_return_type_for_type`] -- the
+/// exact composite the CST engine's `resolve_call_expr_type`
+/// (`indexer/infer/chain.rs`) reaches for the same receiver-method shape --
+/// rather than hand-chaining `find_method_return_type` and
+/// `find_method_return_type_via_supertypes` here too. Shared by both STRING
+/// call sites below (`infer_var_from_rhs_data`'s `method_match` branch and
+/// `infer_method_return_type`'s line-scan fallback) so a future change to
+/// that fallback policy can't silently diverge between the two STRING call
+/// sites, or between the STRING and CST engines -- which is exactly how the
+/// supertype-walk fallback itself went missing from this file before it was
+/// added back (see `find_method_return_type_via_supertypes`'s callers).
+fn resolve_method_return_type_substituted(
+    indexer: &Indexer,
+    recv_type_raw: &str,
+    method: &str,
+    uri: &Url,
+) -> Option<String> {
+    let recv_base = recv_type_raw
+        .dotted_ident_prefix()
+        .last_segment()
+        .to_owned();
+    let raw_ret = indexer.find_method_return_type_for_type(&recv_base, method, uri)?;
+    // Substitute the receiver's own concrete type argument(s) (e.g. `Unit` in
+    // `MutableSharedFlow<Unit>`) into the raw, as-declared return type --
+    // without this, a generic extension's return type keeps its literal type
+    // parameter name instead of the caller's concrete instantiation.
+    let subst = crate::indexer::build_type_arg_subst(indexer, &recv_base, recv_type_raw);
+    Some(crate::indexer::apply_type_subst(&raw_ret, &subst))
 }
 
 /// CST fallback for variable type inference: find `val <var_name> = <init>` in
@@ -686,24 +704,20 @@ fn infer_method_return_type(
                     continue;
                 }
 
-                // Recursively infer the receiver type (DashMap guards already dropped).
-                if let Some(receiver_type) = infer_variable_type_impl(indexer, receiver, uri, depth)
+                // Recursively infer the RAW receiver type (generics kept; DashMap
+                // guards already dropped) -- see `resolve_method_return_type_substituted`:
+                // without the raw form, a generic extension's return type (e.g.
+                // `asSharedFlow`'s `SharedFlow<T>`) would keep its literal type
+                // parameter instead of the receiver's own concrete argument.
+                if let Some(receiver_type_raw) =
+                    infer_variable_type_raw_impl(indexer, receiver, uri, depth)
                 {
-                    // See the `method_call_rhs` branch in `infer_var_from_rhs_data`:
-                    // this needs the same supertype fallback for extensions declared
-                    // on a supertype of `receiver_type`.
-                    if let Some(ret) =
-                        find_method_return_type(indexer, &receiver_type, method, Some(uri)).or_else(
-                            || {
-                                find_method_return_type_via_supertypes(
-                                    indexer,
-                                    &receiver_type,
-                                    method,
-                                    Some(uri),
-                                )
-                            },
-                        )
-                    {
+                    if let Some(ret) = resolve_method_return_type_substituted(
+                        indexer,
+                        &receiver_type_raw,
+                        method,
+                        uri,
+                    ) {
                         return Some(ret);
                     }
                 }

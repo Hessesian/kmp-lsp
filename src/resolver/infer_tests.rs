@@ -830,3 +830,113 @@ fn infer_variable_type_substitutes_supertype_extension_generic_arg() {
          the literal type parameter (SharedFlow<T>)"
     );
 }
+
+/// Same generic-erasure bug as `infer_variable_type_substitutes_supertype_extension_generic_arg`,
+/// but reproduced through `infer_method_return_type` — the cruder whole-line
+/// regex scan `infer_var_from_rhs_data` falls back to when the calling file has
+/// no indexed `FileData` at all (live-editor content only, e.g. a buffer whose
+/// `didOpen`/index pass hasn't completed yet). This path never went through
+/// `infer_var_from_rhs_data`'s `method_call_rhs` map (there is none — nothing
+/// indexed this file), so the SharedFlow fix's substitution step, which only
+/// touched `infer_var_from_rhs_data`, never reached it.
+#[test]
+fn infer_method_return_type_line_scan_substitutes_supertype_extension_generic_arg() {
+    use crate::indexer::Indexer;
+    use crate::types::FileData;
+    use std::sync::Arc;
+    use tower_lsp::lsp_types::Url;
+
+    let idx = Indexer::new();
+
+    // `SharedFlow`/`MutableSharedFlow`/`asSharedFlow` must be indexed somewhere
+    // so the supertype walk and extension lookup can find them.
+    let decls = Url::parse("file:///app/Flow.kt").unwrap();
+    idx.index_content(
+        &decls,
+        "package app\n\
+         interface SharedFlow<T>\n\
+         interface MutableSharedFlow<T> : SharedFlow<T>\n\
+         fun <T> SharedFlow<T>.asSharedFlow(): SharedFlow<T> = TODO()\n",
+    );
+
+    // The calling file is deliberately NOT indexed via `index_content` (which
+    // would populate `method_call_rhs` and let `infer_var_from_rhs_data` handle
+    // `flow` directly) — instead its `FileData` is hand-built with an empty
+    // `method_call_rhs`, forcing `infer_var_from_rhs_data` to find no match and
+    // `infer_variable_type_core` to fall through to the line-scan
+    // `infer_method_return_type`. `package` is still set (as a normal indexed
+    // file would have it) so the same-package extension-visibility check that
+    // `find_extension_fn_return_type_scoped` performs still passes.
+    let caller = Url::parse("file:///app/Repo.kt").unwrap();
+    let src = "package app\n\
+               class Repo {\n\
+               \x20   val _flow: MutableSharedFlow<Unit> = MutableSharedFlow()\n\
+               \x20   val flow = _flow.asSharedFlow()\n\
+               }\n";
+    idx.set_live_lines(&caller, src);
+    idx.files.insert(
+        caller.to_string(),
+        Arc::new(FileData {
+            package: Some("app".to_owned()),
+            lines: Arc::new(src.lines().map(str::to_owned).collect()),
+            ..Default::default()
+        }),
+    );
+
+    assert_eq!(
+        super::infer_variable_type_raw(&idx, "flow", &caller),
+        Some("SharedFlow<Unit>".to_string()),
+        "infer_method_return_type (the line-scan fallback) must substitute the \
+         receiver's own concrete type argument (Unit) into the extension's \
+         declared return type too, not just infer_var_from_rhs_data's \
+         indexed-data path — otherwise the two STRING-side call sites disagree \
+         with each other (and with the CST engine, which always substitutes)"
+    );
+}
+
+/// Drift guard, not a bug reproduction: the STRING engine
+/// (`infer_variable_type_raw`, what hover's `enrich_symbol` uses) and the CST
+/// engine (`infer_variable_type_from_cst`, which resolves a `val`
+/// initializer's type via `indexer/infer/chain.rs`'s `resolve_call_expr_type`
+/// -- the same path inlay hints use) must agree on this "generic extension
+/// declared on a supertype" shape. Both engines happen to reach the same
+/// underlying composite today (`InferDeps::find_method_return_type_for_type`)
+/// after the `resolve_method_return_type_substituted` refactor, so this is
+/// green now -- its job is to catch a *future* change that lands on only one
+/// side, which is exactly the class of bug that made hover show
+/// `SharedFlow<T>` while inlay hints already showed `SharedFlow<Unit>`.
+#[test]
+fn string_and_cst_engines_agree_on_supertype_extension_generic_arg() {
+    use crate::indexer::Indexer;
+    use tower_lsp::lsp_types::Url;
+
+    let idx = Indexer::new();
+    let f = Url::parse("file:///app/Flow.kt").unwrap();
+    let src = "package app\n\
+         interface SharedFlow<T>\n\
+         interface MutableSharedFlow<T> : SharedFlow<T>\n\
+         fun <T> SharedFlow<T>.asSharedFlow(): SharedFlow<T> = TODO()\n\
+         class Repo {\n\
+         \x20   private val _flow = MutableSharedFlow<Unit>()\n\
+         \x20   val flow = _flow.asSharedFlow()\n\
+         }\n";
+    idx.index_content(&f, src);
+    idx.store_live_tree(&f, src);
+
+    let string_result = super::infer_variable_type_raw(&idx, "flow", &f);
+    let cst_result = super::infer_variable_type_from_cst(&idx, "flow", &f);
+
+    assert_eq!(
+        string_result, cst_result,
+        "hover's STRING-path inference and inlay-hints' CST-path inference \
+         must agree on the same generic-return-type scenario -- a divergence \
+         here means one engine's fallback/substitution policy changed \
+         without the other"
+    );
+    assert_eq!(
+        string_result,
+        Some("SharedFlow<Unit>".to_string()),
+        "both engines must substitute the receiver's concrete type argument, \
+         not just agree with each other on the wrong answer"
+    );
+}
