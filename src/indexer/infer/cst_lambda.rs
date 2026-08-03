@@ -518,16 +518,18 @@ fn this_lambda_ancestor_ctxs(
     deps: &impl InferDeps,
     uri: &Url,
 ) -> Vec<ThisLambdaCtx> {
-    let mut ctxs = Vec::new();
-    let mut cur = start_node;
+    let mut contexts = Vec::new();
+    let mut current_node = start_node;
     loop {
-        if cur.kind() == KIND_LAMBDA_LIT {
-            ctxs.push(lambda_this_ctx(cur, doc, deps, uri));
+        if current_node.kind() == KIND_LAMBDA_LIT {
+            contexts.push(lambda_this_ctx(current_node, doc, deps, uri));
         }
-        let Some(parent) = cur.parent() else { break };
-        cur = parent;
+        let Some(parent) = current_node.parent() else {
+            break;
+        };
+        current_node = parent;
     }
-    ctxs
+    contexts
 }
 
 /// Every enclosing lambda receiver type at `start_node`, innermost-first — the
@@ -545,7 +547,7 @@ pub(crate) fn all_this_receivers_at(
 ) -> Vec<String> {
     this_lambda_ancestor_ctxs(start_node, doc, deps, uri)
         .into_iter()
-        .filter_map(|ctx| match ctx {
+        .filter_map(|context| match context {
             ThisLambdaCtx::Resolved(receiver_type) => Some(receiver_type),
             ThisLambdaCtx::Receiver | ThisLambdaCtx::NotReceiver => None,
         })
@@ -660,9 +662,9 @@ pub(super) fn cst_this_context(
     idx: &impl InferDeps,
     uri: &Url,
 ) -> ThisContext {
-    for ctx in this_lambda_ancestor_ctxs(start_node, doc, idx, uri) {
-        match ctx {
-            ThisLambdaCtx::Resolved(t) => return ThisContext::Resolved(t),
+    for context in this_lambda_ancestor_ctxs(start_node, doc, idx, uri) {
+        match context {
+            ThisLambdaCtx::Resolved(receiver_type) => return ThisContext::Resolved(receiver_type),
             ThisLambdaCtx::Receiver => return ThisContext::InsideReceiver,
             ThisLambdaCtx::NotReceiver => {}
         }
