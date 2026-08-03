@@ -379,23 +379,6 @@ pub(super) fn cst_forward_resolve_receiver_type(
     extract_collection_element_type(&root_type)
 }
 
-/// Resolve the receiver type that flows into a call expression's lambda.
-/// For scope functions, this is the type of the expression before `.let`/`.also`/etc.
-#[allow(dead_code)]
-pub(super) fn resolve_callee_receiver_type(
-    call_expr: &tree_sitter::Node<'_>,
-    bytes: &[u8],
-    deps: &impl InferDeps,
-    uri: &Url,
-) -> Option<String> {
-    let callee = call_expr.child(0)?;
-    let (receiver_type, final_method) = resolve_callee_chain(callee, bytes, deps, uri)?;
-    if SCOPE_FUNCTIONS.contains(&final_method.as_str()) {
-        return Some(receiver_type);
-    }
-    None
-}
-
 /// Given a current receiver type string, resolve a member access (field or method) and
 /// return the resulting type with type substitution applied.
 ///

@@ -13,32 +13,6 @@ fn indexed(path: &str, src: &str) -> (Url, Indexer) {
     (u, idx)
 }
 
-/// Returns the sorted names of all known direct subtypes of `supertype`.
-///
-/// Uses the file base name (without extension) as a proxy for the class name,
-/// which matches the test convention of one class per file.
-#[allow(dead_code)] // test helper; not yet used but kept for subtype assertion tests
-fn sorted_subtype_names(idx: &Indexer, supertype: &str) -> Vec<String> {
-    let mut names: Vec<_> = idx
-        .subtypes
-        .get(supertype)
-        .map(|v| {
-            v.iter()
-                .filter_map(|loc| {
-                    idx.file_table
-                        .url(loc.file)?
-                        .to_file_path()
-                        .ok()?
-                        .file_stem()
-                        .map(|s| s.to_string_lossy().into_owned())
-                })
-                .collect()
-        })
-        .unwrap_or_default();
-    names.sort_unstable();
-    names
-}
-
 #[test]
 fn symbol_found_after_indexing() {
     let (u, idx) = indexed("/t.kt", "class MyViewModel");

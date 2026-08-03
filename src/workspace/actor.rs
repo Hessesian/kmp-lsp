@@ -80,12 +80,6 @@ impl<R: ProgressReporter + 'static> Actor<R> {
         }
     }
 
-    /// Expose the shared phase handle for read-path consumers introduced in Wave 3.
-    #[allow(dead_code)]
-    pub(crate) fn state_stream(&self) -> Arc<RwLock<State>> {
-        self.scan_handler.state_stream()
-    }
-
     /// Run the event loop until the sender side is dropped.
     ///
     /// The exhaustive `match` is the architectural guarantee: every new

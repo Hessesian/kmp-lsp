@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
-use tower_lsp::lsp_types::{CompletionItem, Location, Position, Range, Url};
+use tower_lsp::lsp_types::{CompletionItem, Location, Position, Url};
 
 use crate::indexer::{find_fun_signature_with_receiver, IgnoreMatcher, Indexer};
 use crate::types::{FileData, SymbolEntry};
@@ -66,26 +66,6 @@ impl SymbolIndex for Indexer {
 impl DocumentAccess for Indexer {
     fn mem_lines_for(&self, uri: &str) -> Option<Arc<Vec<String>>> {
         self.mem_lines_for(uri)
-    }
-
-    fn lines_for(&self, uri: &Url) -> Option<Arc<Vec<String>>> {
-        self.lines_for(uri)
-    }
-
-    // TODO(per-rule-5): Split into separate functions (e.g. extract_word and extract_qualifier)
-
-    fn word_and_qualifier_at(&self, uri: &Url, pos: Position) -> Option<(String, Option<String>)> {
-        self.word_and_qualifier_at(uri, pos)
-    }
-
-    fn word_at(&self, uri: &Url, pos: Position) -> Option<String> {
-        self.word_at(uri, pos)
-    }
-
-    // TODO(per-rule-5): Split into separate functions (e.g. extract_word and get_range)
-
-    fn word_and_range_at(&self, uri: &Url, pos: Position) -> Option<(String, Range)> {
-        self.word_and_range_at(uri, pos)
     }
 }
 

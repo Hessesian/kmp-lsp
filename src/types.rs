@@ -484,28 +484,18 @@ pub(crate) struct FileIndexResult {
     /// Content hash for cache invalidation.
     pub content_hash: u64,
     /// Parse error if tree-sitter failed.
-    #[allow(dead_code)]
     pub error: Option<String>,
 }
 
 /// Statistics about an indexing run.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct IndexStats {
-    /// Total files discovered.
-    #[allow(dead_code)]
-    pub files_discovered: usize,
     /// Files loaded from cache (mtime unchanged).
     pub cache_hits: usize,
     /// Files actually parsed by tree-sitter.
     pub files_parsed: usize,
     /// Total symbols extracted.
     pub symbols_extracted: usize,
-    /// Total packages found.
-    #[allow(dead_code)]
-    pub packages_found: usize,
-    /// Parse errors encountered.
-    #[allow(dead_code)]
-    pub errors: usize,
 }
 
 /// Result of indexing an entire workspace. Pure data, no side effects.
@@ -517,7 +507,6 @@ pub(crate) struct WorkspaceIndexResult {
     /// Statistics about the indexing run.
     pub stats: IndexStats,
     /// Workspace root that was indexed.
-    #[allow(dead_code)]
     pub workspace_root: std::path::PathBuf,
     /// True if the run was aborted mid-way (e.g. root generation changed).
     /// Callers must NOT call apply_workspace_result when this is true — doing
@@ -640,16 +629,12 @@ impl FileTable {
 /// [`FileTable`] — same double-checked-locking intern, same append-only
 /// growth (JAR identity doesn't change mid-session; reindex rebuilds the
 /// whole table, see Task 11).
-// `dead_code` allowed until Task 2 wires `jar_table` onto `Indexer`.
-#[allow(dead_code)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub(crate) struct JarId(u32);
 
 /// Append-only interning table mapping JAR paths to [`JarId`]s and back.
 /// Mirrors [`FileTable`] precisely, substituting plain path strings for
 /// `Url`s since JAR paths don't need URL parsing.
-// `dead_code` allowed until Task 2 wires `jar_table` onto `Indexer`.
-#[allow(dead_code)]
 pub(crate) struct JarTable {
     by_id: std::sync::RwLock<Vec<String>>,
     by_path: dashmap::DashMap<String, JarId>,
@@ -662,7 +647,6 @@ impl Default for JarTable {
 }
 
 impl JarTable {
-    #[allow(dead_code)]
     pub(crate) fn new() -> Self {
         Self {
             by_id: std::sync::RwLock::new(Vec::new()),
@@ -676,8 +660,6 @@ impl JarTable {
     /// race-free — the re-check happens inside the critical section, so a
     /// losing concurrent caller observes the winner's id, never mints a
     /// second one).
-    // `dead_code` allowed until Task 2 wires readers through it.
-    #[allow(dead_code)]
     pub(crate) fn intern(&self, path: &str) -> JarId {
         if let Some(existing) = self.by_path.get(path) {
             return *existing;
@@ -702,8 +684,6 @@ impl JarTable {
     }
 
     /// The interned path for `id`, or `None` if `id` is not from this table.
-    // `dead_code` allowed until Task 2 wires readers through it.
-    #[allow(dead_code)]
     pub(crate) fn path(&self, id: JarId) -> Option<String> {
         self.by_id
             .read()
