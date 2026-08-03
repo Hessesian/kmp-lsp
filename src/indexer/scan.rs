@@ -689,6 +689,14 @@ impl Indexer {
         Arc::clone(&self).run_pending_reindex(reporter).await;
     }
 
+    /// Bounded-file-count variant of [`Self::index_workspace_full`]. No
+    /// production caller remains: `kmp-lsp/reindex`/`clearCache` and the
+    /// git-HEAD watcher used to call this directly, bypassing the actor's
+    /// `handle_reindex` (which always uses `index_workspace_full` via
+    /// `ScanKind::Full`) — now routed through `Event::Reindex` instead.
+    /// Exercised only by `scan_tests.rs`'s `DEFAULT_MAX_INDEX_FILES` cap
+    /// coverage.
+    #[allow(dead_code)]
     pub(crate) async fn index_workspace<R: ProgressReporter + 'static>(
         self: Arc<Self>,
         root: &Path,

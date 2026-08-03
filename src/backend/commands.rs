@@ -1,11 +1,9 @@
-use std::sync::Arc;
-
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::*;
 
-use super::progress::LspProgressReporter;
 use super::Backend;
 use crate::indexer::workspace_cache_path;
+use crate::workspace::Event;
 
 impl Backend {
     pub(super) async fn execute_command_impl(
@@ -13,20 +11,18 @@ impl Backend {
         params: ExecuteCommandParams,
     ) -> Result<Option<serde_json::Value>> {
         if params.command == "kmp-lsp/reindex" {
-            let root = self.indexer.workspace_root.get();
-            let Some(root) = root else {
+            if self.indexer.workspace_root.get().is_none() {
                 self.client
                     .show_message(MessageType::WARNING, "kmp-lsp: no workspace root set")
                     .await;
                 return Ok(None);
-            };
-            let idx = Arc::clone(&self.indexer);
-            let client = self.client.clone();
-            idx.reset_index_state();
-            tokio::spawn(async move {
-                idx.index_workspace(&root, Arc::new(LspProgressReporter(client)))
-                    .await;
-            });
+            }
+            // Routed through the actor (not a direct reset_index_state() +
+            // index_workspace() call) so handle_reindex's Tier-1/materialization
+            // clearing and spawn_jar_indexing() re-crawl actually run — a direct
+            // call here bypassed both, silently freezing JAR/library data at
+            // whatever it was during LSP startup for the rest of the session.
+            let _ = self.event_tx.send(Event::Reindex).await;
             self.client
                 .show_message(MessageType::INFO, "kmp-lsp: reindexing workspace…")
                 .await;
@@ -80,22 +76,11 @@ impl Backend {
                             .get()
                             .is_some_and(|r| canon(&r) == canon(&target_root));
                         if is_current_root {
-                            let idx = Arc::clone(&self.indexer);
-                            let client = self.client.clone();
-                            tokio::spawn(async move {
-                                // Run the (DashMap-clearing) reset on the blocking pool so
-                                // it can't starve the async executor, then scan from clean state.
-                                let reset_idx = Arc::clone(&idx);
-                                let _ = tokio::task::spawn_blocking(move || {
-                                    reset_idx.reset_index_state()
-                                })
-                                .await;
-                                idx.index_workspace(
-                                    &target_root,
-                                    Arc::new(LspProgressReporter(client)),
-                                )
-                                .await;
-                            });
+                            // Routed through the actor for the same reason as
+                            // `kmp-lsp/reindex` above: a direct reset_index_state()
+                            // + index_workspace() call here never re-triggered JAR
+                            // indexing, freezing library data at LSP-startup state.
+                            let _ = self.event_tx.send(Event::Reindex).await;
                             self.client
                                 .show_message(
                                     MessageType::INFO,
