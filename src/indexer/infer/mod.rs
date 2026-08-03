@@ -19,11 +19,13 @@
 //! `CstQuery` — an agent looking for "type of X" should know they exist before reinventing them:
 //!
 //! - `it_this` (`find_it_element_type`, `find_this_context`, `find_this_element_type`,
-//!   `find_named_lambda_param_type`, `is_lambda_param`, `all_lambda_receivers_at`) — CST-driven
-//!   internally already (delegates to `cst_lambda`), but takes a `CursorPos` + does its own
-//!   repair-gated node acquisition; folding into `CstQuery`'s bound-`Node` model needs a
-//!   `CstQuery::at_position` bridge — deferred, see the design doc's lambda-triad/`LambdaScope`-
-//!   promotion step.
+//!   `find_named_lambda_param_type`, `is_lambda_param`) — CST-driven internally already
+//!   (delegates to `cst_lambda`), but takes a `CursorPos` + does its own repair-gated node
+//!   acquisition; folding into `CstQuery`'s bound-`Node` model needs a `CstQuery::at_position`
+//!   bridge — deferred, see the design doc's lambda-triad/`LambdaScope`-promotion step.
+//!   `all_lambda_receivers_at` is the one exception: its position→node bridge now constructs a
+//!   `CstQuery` and calls `all_this_receivers()` directly (2026-08-03) — still a flat
+//!   `CursorPos`-taking export by name, but no longer bypasses the catalogue underneath.
 //! - `sig` (signature/param-text helpers) — pure string/slice helpers, several IO-bound
 //!   (`find_fun_signature_full` may trigger on-demand rg indexing); not expression-type
 //!   resolution, out of `CstQuery`'s "type of a bound node" remit.
@@ -188,5 +190,16 @@ impl<'a, D: InferDeps> CstQuery<'a, D> {
             Some(raw) => Resolution::Resolved(ResolvedType::from_inferred(raw)),
             None => Resolution::Unresolved,
         }
+    }
+
+    /// Every enclosing lambda receiver type at the bound node, innermost-first —
+    /// the order Kotlin resolves an implicit-receiver call in (nearest wins). An
+    /// unresolvable or non-receiver lambda is skipped; the walk continues outward.
+    ///
+    /// Used to check a bare call/type reference against every candidate receiver
+    /// in scope (e.g. `item()` inside `with(x) { }` nested in a builder belongs to
+    /// the outer receiver even when `x`'s type can't be resolved).
+    pub(crate) fn all_this_receivers(&self) -> Vec<String> {
+        cst_lambda::all_this_receivers_at(self.node, self.doc, self.deps, self.uri)
     }
 }

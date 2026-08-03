@@ -500,6 +500,38 @@ pub(super) fn cst_lambda_scopes(
     scopes
 }
 
+/// Ancestor `lambda_literal` nodes from `start_node` outward (innermost first —
+/// `start_node` itself first if it IS a `lambda_literal`), each classified via
+/// [`lambda_this_ctx`]. The shared walk step behind [`all_this_receivers_at`]
+/// (collects every `Resolved`) and [`cst_this_context`] (stops at the first
+/// `Resolved`/`Receiver`) — previously two separate copies of the same
+/// ancestor-walk-and-classify loop.
+///
+/// Always walks the full ancestor chain before either caller inspects the
+/// result, trading `cst_this_context`'s previous early-exit for one shared
+/// shape. Lambda nesting in real Kotlin code is shallow (rarely >3-4 levels),
+/// so the extra `lambda_this_ctx` calls on ancestors past the first match are
+/// cheap.
+fn this_lambda_ancestor_ctxs(
+    start_node: tree_sitter::Node<'_>,
+    doc: &crate::indexer::live_tree::LiveDoc,
+    deps: &impl InferDeps,
+    uri: &Url,
+) -> Vec<ThisLambdaCtx> {
+    let mut contexts = Vec::new();
+    let mut current_node = start_node;
+    loop {
+        if current_node.kind() == KIND_LAMBDA_LIT {
+            contexts.push(lambda_this_ctx(current_node, doc, deps, uri));
+        }
+        let Some(parent) = current_node.parent() else {
+            break;
+        };
+        current_node = parent;
+    }
+    contexts
+}
+
 /// Every enclosing lambda receiver type at `start_node`, innermost-first — the
 /// order Kotlin actually resolves an implicit-receiver call in (nearest
 /// receiver wins; an unresolvable or non-receiver lambda is simply skipped,
@@ -513,24 +545,13 @@ pub(crate) fn all_this_receivers_at(
     deps: &impl InferDeps,
     uri: &Url,
 ) -> Vec<String> {
-    let mut receivers = Vec::new();
-    let mut cur = start_node;
-    loop {
-        if cur.kind() == KIND_LAMBDA_LIT {
-            // lambda_this_ctx (not the weaker text-only classify_this_lambda_context
-            // directly) — it resolves the callee via the CST call node first
-            // (enclosing_call_expression + call_fn_name), which is robust to
-            // multi-line call headers with named arguments before the trailing
-            // lambda (e.g. `LazyColumn(contentPadding = ..., ...) { item {} }`);
-            // the text-only path only ever sees the brace's own line.
-            if let ThisLambdaCtx::Resolved(receiver_type) = lambda_this_ctx(cur, doc, deps, uri) {
-                receivers.push(receiver_type);
-            }
-        }
-        let Some(parent) = cur.parent() else { break };
-        cur = parent;
-    }
-    receivers
+    this_lambda_ancestor_ctxs(start_node, doc, deps, uri)
+        .into_iter()
+        .filter_map(|context| match context {
+            ThisLambdaCtx::Resolved(receiver_type) => Some(receiver_type),
+            ThisLambdaCtx::Receiver | ThisLambdaCtx::NotReceiver => None,
+        })
+        .collect()
 }
 
 /// Build the completion scope for a single `lambda_literal`, or `None` when it
@@ -641,17 +662,12 @@ pub(super) fn cst_this_context(
     idx: &impl InferDeps,
     uri: &Url,
 ) -> ThisContext {
-    let mut cur = start_node;
-    loop {
-        if cur.kind() == KIND_LAMBDA_LIT {
-            match lambda_this_ctx(cur, doc, idx, uri) {
-                ThisLambdaCtx::Resolved(t) => return ThisContext::Resolved(t),
-                ThisLambdaCtx::Receiver => return ThisContext::InsideReceiver,
-                ThisLambdaCtx::NotReceiver => {}
-            }
+    for context in this_lambda_ancestor_ctxs(start_node, doc, idx, uri) {
+        match context {
+            ThisLambdaCtx::Resolved(receiver_type) => return ThisContext::Resolved(receiver_type),
+            ThisLambdaCtx::Receiver => return ThisContext::InsideReceiver,
+            ThisLambdaCtx::NotReceiver => {}
         }
-        let Some(parent) = cur.parent() else { break };
-        cur = parent;
     }
     ThisContext::NotFound
 }

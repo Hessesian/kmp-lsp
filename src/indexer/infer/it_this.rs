@@ -23,18 +23,18 @@ pub(super) use super::args::has_named_params_not_it;
 #[allow(unused_imports)]
 pub(super) use super::chain::resolve_member_type_on;
 pub(crate) use super::cst_lambda::ThisContext;
-use super::cst_lambda::{
-    all_this_receivers_at, cst_it_element_type, cst_named_lambda_param_type, cst_this_context,
-    cursor_node_at,
-};
 #[cfg(test)]
 #[allow(unused_imports)]
 pub(super) use super::cst_lambda::{
     classify_this_lambda_context, cst_lambda_param_type_via_call, cst_lambda_scopes,
     is_inside_receiver_lambda, lambda_before_brace_context, LambdaScopeInfo, ThisLambdaCtx,
 };
+use super::cst_lambda::{
+    cst_it_element_type, cst_named_lambda_param_type, cst_this_context, cursor_node_at,
+};
 use super::speculative::lambda_doc_at;
 use super::type_subst::is_generic_param;
+use super::CstQuery;
 
 /// Guard: the inference resolved to a bare generic placeholder (T, R, E).
 /// Without receiver context, this is not a meaningful type — fall through so
@@ -112,7 +112,7 @@ pub(crate) fn all_lambda_receivers_at(pos: CursorPos, idx: &Indexer, uri: &Url) 
     let Some(node) = cursor_node_at(doc, pos) else {
         return vec![];
     };
-    all_this_receivers_at(node, doc, idx, uri)
+    CstQuery::new(node, doc, idx, uri).all_this_receivers()
 }
 
 /// Resolve the element/receiver type for an EXPLICITLY NAMED lambda parameter
