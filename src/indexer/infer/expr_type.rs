@@ -34,12 +34,12 @@ use tree_sitter::Node;
 
 use crate::indexer::NodeExt;
 use crate::queries::{
-    KIND_BOOLEAN_LITERAL, KIND_CALL_EXPR, KIND_CHARACTER_LITERAL, KIND_CHECK_EXPR,
-    KIND_COMPARISON_EXPR, KIND_CONJUNCTION_EXPR, KIND_CONTROL_STRUCTURE_BODY,
+    KIND_ADDITIVE_EXPR, KIND_BOOLEAN_LITERAL, KIND_CALL_EXPR, KIND_CHARACTER_LITERAL,
+    KIND_CHECK_EXPR, KIND_COMPARISON_EXPR, KIND_CONJUNCTION_EXPR, KIND_CONTROL_STRUCTURE_BODY,
     KIND_DISJUNCTION_EXPR, KIND_ELSE, KIND_IF_EXPR, KIND_INTEGER_LITERAL, KIND_LONG_LITERAL,
-    KIND_MULTILINE_STRING_LITERAL, KIND_NAV_EXPR, KIND_NAV_SUFFIX, KIND_NULL_LITERAL,
-    KIND_PREFIX_EXPR, KIND_RANGE_EXPR, KIND_REAL_LITERAL, KIND_SIMPLE_IDENT, KIND_STRING_LITERAL,
-    KIND_THIS_EXPR, KIND_TYPE_IDENT,
+    KIND_MULTILINE_STRING_LITERAL, KIND_MULTIPLICATIVE_EXPR, KIND_NAV_EXPR, KIND_NAV_SUFFIX,
+    KIND_NULL_LITERAL, KIND_PARENTHESIZED_EXPR, KIND_PREFIX_EXPR, KIND_RANGE_EXPR,
+    KIND_REAL_LITERAL, KIND_SIMPLE_IDENT, KIND_STRING_LITERAL, KIND_THIS_EXPR, KIND_TYPE_IDENT,
 };
 use crate::StrExt as _;
 
@@ -81,6 +81,10 @@ pub(crate) fn infer_expr_type(
         k if k == KIND_PREFIX_EXPR => infer_prefix_expr_type(node, bytes),
         k if k == KIND_IF_EXPR => infer_if_expr_type(node, bytes, deps, uri),
         k if k == KIND_RANGE_EXPR => infer_range_expr_type(node, bytes, deps, uri),
+        k if k == KIND_ADDITIVE_EXPR || k == KIND_MULTIPLICATIVE_EXPR => {
+            infer_arithmetic_expr_type(node, bytes, deps, uri)
+        }
+        k if k == KIND_PARENTHESIZED_EXPR => infer_parenthesized_expr_type(node, bytes, deps, uri),
         _ => None,
     }
 }
@@ -292,6 +296,65 @@ fn infer_range_expr_type<D: InferDeps>(
         ("Char", "Char") => Some("CharRange".to_owned()),
         _ => None,
     }
+}
+
+/// `(expr)`: the parenthesized form has the same type as its inner expression.
+/// tree-sitter-kotlin wraps the inner expression as this node's only named
+/// child (no separate node for the parens themselves).
+fn infer_parenthesized_expr_type<D: InferDeps>(
+    node: Node<'_>,
+    bytes: &[u8],
+    deps: &D,
+    uri: &Url,
+) -> Option<String> {
+    let inner = node.named_child(0)?;
+    infer_expr_type(inner, bytes, deps, uri)
+}
+
+/// Numeric rank for Kotlin's arithmetic operand-promotion, highest wins
+/// (`Int + Long` → `Long`, `Int + Double` → `Double`). Types outside this set
+/// (custom classes, `Char`, `Boolean`, …) return `None` — arithmetic operators
+/// on them are either overloads this function can't see without the operand's
+/// declared class (`Char`) or not arithmetic at all.
+fn numeric_rank(ty: &str) -> Option<u8> {
+    match ty {
+        "Byte" | "Short" => Some(0),
+        "Int" => Some(1),
+        "Long" => Some(2),
+        "Float" => Some(3),
+        "Double" => Some(4),
+        _ => None,
+    }
+}
+
+/// `a op b` for `+ - * / %` (`additive_expression` / `multiplicative_expression`,
+/// both shaped `(lhs) (operator token) (rhs)`).
+///
+/// Two cases, matching real Kotlin usage found via production-code testing
+/// (see `additive_identifier_operands_promote_to_long` / `multiplicative_int_literals_infers_int`):
+/// - Both operands numeric → the higher-ranked type wins (`numeric_rank`).
+/// - `+` with a `String` left operand → `String` (`String.plus(Any?): String`;
+///   Kotlin has no analogous `Any.plus(String)`, so only the left side counts).
+///
+/// Anything else (unresolvable operand, non-numeric non-`String` operand,
+/// `String` only on the right) returns `None` rather than guessing.
+fn infer_arithmetic_expr_type<D: InferDeps>(
+    node: Node<'_>,
+    bytes: &[u8],
+    deps: &D,
+    uri: &Url,
+) -> Option<String> {
+    let lhs = node.child(0)?;
+    let op = node.child(1)?.utf8_text(bytes).ok()?;
+    let rhs = node.child(2)?;
+    let lhs_ty = infer_expr_type(lhs, bytes, deps, uri)?;
+    if op == "+" && lhs_ty == "String" {
+        return Some("String".to_owned());
+    }
+    let rhs_ty = infer_expr_type(rhs, bytes, deps, uri)?;
+    let lhs_rank = numeric_rank(&lhs_ty)?;
+    let rhs_rank = numeric_rank(&rhs_ty)?;
+    Some(if lhs_rank >= rhs_rank { lhs_ty } else { rhs_ty })
 }
 
 #[cfg(test)]

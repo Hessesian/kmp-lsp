@@ -205,6 +205,95 @@ fn when_expr_no_hint() {
     assert_eq!(infer(r#"when { x > 0 -> "pos"; else -> "neg" }"#), None);
 }
 
+// ─── arithmetic expressions ───────────────────────────────────────────────────
+//
+// Both shapes below are verbatim (minus identifier names) from a real project
+// file (`FxMoneyVM.kt`), found by adding observational logging to
+// `hint_property`'s STRING fallback and running against real production code:
+// `infer_expr_type` returned `None` for both, live, in the editor.
+
+#[test]
+fn multiplicative_int_literals_infers_int() {
+    // `private const val TIMER_TICK_MILLIS = 1000 / 2` — verbatim shape.
+    assert_eq!(infer("1000 / 2"), Some("Int".into()));
+}
+
+#[test]
+fn additive_int_literals_infers_int() {
+    assert_eq!(infer("1000 + 2"), Some("Int".into()));
+}
+
+#[test]
+fn multiplicative_unresolvable_operands_no_hint() {
+    // Operand types unknown (no deps registered) — must not guess.
+    assert_eq!(infer("a * b"), None);
+}
+
+#[test]
+fn additive_identifier_operands_promote_to_long() {
+    // `if (mMillisUntilFinished > 0) mMillisUntilFinished else (timeoutSeconds * 1000).toLong()`
+    // reduced to its arithmetic core: `Int * Int` promoted through `.toLong()`
+    // must agree with the `Long`-typed `mMillisUntilFinished` operand.
+    let deps = TestDeps::new().with_var("file:///tmp/test.kt", "timeoutSeconds", "Int");
+    assert_eq!(
+        infer_with_deps("(timeoutSeconds * 1000).toLong()", &deps).as_deref(),
+        Some("Long")
+    );
+}
+
+#[test]
+fn additive_mixed_int_long_promotes_to_long() {
+    let deps = TestDeps::new()
+        .with_var("file:///tmp/test.kt", "a", "Int")
+        .with_var("file:///tmp/test.kt", "b", "Long");
+    assert_eq!(infer_with_deps("a + b", &deps).as_deref(), Some("Long"));
+}
+
+#[test]
+fn additive_mixed_int_double_promotes_to_double() {
+    let deps = TestDeps::new()
+        .with_var("file:///tmp/test.kt", "a", "Int")
+        .with_var("file:///tmp/test.kt", "b", "Double");
+    assert_eq!(infer_with_deps("a + b", &deps).as_deref(), Some("Double"));
+}
+
+#[test]
+fn additive_string_concat_infers_string() {
+    // `"Error: " + errorCode` — Kotlin's `String.plus(Any?): String`.
+    assert_eq!(infer(r#""Error: " + 42"#), Some("String".into()));
+}
+
+#[test]
+fn additive_non_numeric_operand_no_hint() {
+    // `Foo() + 1` — `Foo` isn't a known numeric/String type, no guess.
+    assert_eq!(infer("Foo() + 1"), None);
+}
+
+#[test]
+fn parenthesized_expr_unwraps_to_inner_type() {
+    assert_eq!(infer("(42)"), Some("Int".into()));
+}
+
+// ─── numeric/char conversion functions (`toLong()`, `toInt()`, …) ─────────────
+
+#[test]
+fn to_long_on_unresolvable_receiver_infers_long() {
+    // `x.toLong()` where `x`'s type/`toLong` itself is not indexed anywhere —
+    // the conversion function's name alone determines its return type.
+    assert_eq!(
+        infer_with_deps("x.toLong()", &TestDeps::new()).as_deref(),
+        Some("Long")
+    );
+}
+
+#[test]
+fn to_int_on_unresolvable_receiver_infers_int() {
+    assert_eq!(
+        infer_with_deps("x.toInt()", &TestDeps::new()).as_deref(),
+        Some("Int")
+    );
+}
+
 // ─── constructor + lambda-result (remember) ───────────────────────────────────
 
 #[test]
@@ -234,6 +323,60 @@ fn remember_saveable_infers_lambda_result() {
 #[test]
 fn remember_empty_lambda_is_none() {
     assert_eq!(infer("remember { }"), None);
+}
+
+// ─── generic DI-factory calls (`get<T>()`, `inject<T>()`, …) ──────────────────
+//
+// See `resolver::infer_lines::infer_from_rhs_assignment`'s "Pattern 2": DI
+// frameworks like Koin expose `inline fun <reified T> get(): T` as a top-level
+// function, so when it isn't indexed (external/unpromoted JAR, or simply
+// absent from a test fixture) `resolve_call_expr_type` has no return type to
+// substitute into and no receiver to fall back on. TestDeps registers nothing
+// for "get", reproducing that exact "unindexed DI call" shape — resolved via
+// `GENERIC_FACTORY_FNS` reading the call's own `<T>` type argument directly.
+#[test]
+fn generic_factory_call_with_unindexed_fn_infers_type_arg() {
+    assert_eq!(infer("get<Foo>()"), Some("Foo".into()));
+}
+
+#[test]
+fn generic_factory_call_multi_type_arg_no_hint() {
+    // Only single reified-type-arg factory calls are covered by the heuristic;
+    // a multi-arg generic call isn't a DI-factory shape, so no guess is made.
+    assert_eq!(infer("get<Foo, Bar>()"), None);
+}
+
+#[test]
+fn generic_call_to_unknown_non_factory_fn_no_hint() {
+    // `frobnicate<Foo>()` isn't in the known DI-factory name list — no guess.
+    assert_eq!(infer("frobnicate<Foo>()"), None);
+}
+
+// ─── Retrofit-style class-literal argument (`recv.create(Foo::class.java)`) ──
+//
+// See `resolver::infer_lines::infer_from_rhs_assignment`'s "Pattern 3": when
+// neither `retrofit`'s type nor `create` itself is indexed (external Retrofit
+// dependency, unpromoted JAR, or absent from a test fixture), member/by-name
+// return-type lookup finds nothing. The call's own argument list carries the
+// answer directly: `Foo::class.java` names the exact type `create` returns.
+#[test]
+fn retrofit_style_create_with_class_literal_arg_infers_type() {
+    assert_eq!(
+        infer("retrofit.create(DashboardApi::class.java)"),
+        Some("DashboardApi".into())
+    );
+}
+
+#[test]
+fn bare_class_literal_arg_without_java_suffix_infers_type() {
+    // `::class` without a trailing `.java` — still a class-literal argument.
+    assert_eq!(infer("factory.build(Widget::class)"), Some("Widget".into()));
+}
+
+#[test]
+fn call_with_no_class_literal_arg_unaffected() {
+    // Ordinary argument (not a class literal) — no bogus guess.
+    assert_eq!(infer("retrofit.create(someService)"), None);
 }
 
 // ─── this_expression ──────────────────────────────────────────────────────────

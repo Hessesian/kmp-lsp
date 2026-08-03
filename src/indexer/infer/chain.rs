@@ -4,14 +4,17 @@ use tower_lsp::lsp_types::Url;
 
 use crate::indexer::NodeExt;
 use crate::queries::{
-    KIND_CALL_EXPR, KIND_CALL_SUFFIX, KIND_CLASS_DECL, KIND_LAMBDA_LIT, KIND_NAV_EXPR,
-    KIND_NAV_SUFFIX, KIND_OBJECT_DECL, KIND_SIMPLE_IDENT, KIND_STATEMENTS, KIND_TYPE_IDENT,
+    KIND_CALLABLE_REF, KIND_CALL_EXPR, KIND_CALL_SUFFIX, KIND_CLASS_DECL, KIND_LAMBDA_LIT,
+    KIND_NAV_EXPR, KIND_NAV_SUFFIX, KIND_OBJECT_DECL, KIND_SIMPLE_IDENT, KIND_STATEMENTS,
+    KIND_TYPE_IDENT, KIND_VALUE_ARG, KIND_VALUE_ARGS,
 };
 use crate::resolver::extract_collection_element_type;
 use crate::StrExt;
 
 use super::deps::InferDeps;
-use super::lambda::{LAMBDA_RESULT_FNS, SCOPE_FUNCTIONS};
+use super::lambda::{
+    GENERIC_FACTORY_FNS, LAMBDA_RESULT_FNS, NUMERIC_CONVERSION_FNS, SCOPE_FUNCTIONS,
+};
 use super::type_subst::{
     apply_simple_subst, build_fn_subst, build_type_arg_subst, capitalize_first_char,
     first_type_arg_raw, is_generic_param, split_top_level_commas, type_args_inner,
@@ -556,7 +559,77 @@ pub(super) fn resolve_call_expr_type(
     {
         return Some(fn_name);
     }
+    // Numeric conversion fallback: `x.toLong()`/`.toInt()`/etc. — the function
+    // name alone fixes the return type (see `NUMERIC_CONVERSION_FNS`'s doc
+    // comment), regardless of whether the receiver or the function itself is
+    // indexed anywhere.
+    if result.is_none() {
+        if let Some((_, ret_ty)) = NUMERIC_CONVERSION_FNS
+            .iter()
+            .find(|(name, _)| *name == fn_name)
+        {
+            return Some((*ret_ty).to_owned());
+        }
+    }
+    // DI-factory fallback: `get<Foo>()`/`inject<Foo>()`/etc. with no indexed
+    // signature (see `GENERIC_FACTORY_FNS`'s doc comment) — read the type
+    // argument straight off the call site instead of giving up.
+    if result.is_none() && GENERIC_FACTORY_FNS.contains(&fn_name.as_str()) {
+        if let Some(type_args) = node.call_site_type_arg_strings(bytes) {
+            if let [single] = type_args.as_slice() {
+                if single.starts_with_uppercase() {
+                    return Some(single.clone());
+                }
+            }
+        }
+    }
+    // Retrofit-style class-literal fallback: `retrofit.create(Foo::class.java)`
+    // with neither the receiver's type nor `create` itself indexed. The
+    // argument itself names the answer — see `find_class_literal_arg_type`.
+    if result.is_none() {
+        if let Some(class_arg_ty) = find_class_literal_arg_type(node, bytes) {
+            return Some(class_arg_ty);
+        }
+    }
     result
+}
+
+/// Find a `Foo::class` (optionally `.java`-suffixed) argument inside a call's
+/// argument list and return `Foo`.
+///
+/// Purely syntactic, mirroring `infer_lines::infer_from_rhs_assignment`'s
+/// "Pattern 3": this is deliberately unconditional on the callee/receiver
+/// resolving to anything, since the pattern's whole point is recovering a type
+/// when the actual `create`/factory method is not indexed (e.g. an external
+/// Retrofit-style library). Returns the first class-literal argument found;
+/// callers only reach this after every signature-based resolution has failed.
+fn find_class_literal_arg_type(call: tree_sitter::Node<'_>, bytes: &[u8]) -> Option<String> {
+    let call_suffix = call.first_child_of_kind(KIND_CALL_SUFFIX)?;
+    let value_args = call_suffix.first_child_of_kind(KIND_VALUE_ARGS)?;
+    for arg in value_args.children_of_kind(KIND_VALUE_ARG) {
+        let mut cursor = arg.walk();
+        for expr in arg.children(&mut cursor) {
+            let callable_ref = if expr.kind() == KIND_CALLABLE_REF {
+                Some(expr)
+            } else if expr.kind() == KIND_NAV_EXPR {
+                // `Foo::class.java` parses as navigation_expression(callable_reference, .java)
+                expr.named_child(0)
+                    .filter(|c| c.kind() == KIND_CALLABLE_REF)
+            } else {
+                None
+            };
+            if let Some(callable_ref) = callable_ref {
+                if let Some(type_id) = callable_ref.first_child_of_kind(KIND_TYPE_IDENT) {
+                    if let Some(name) = type_id.utf8_text_owned(bytes) {
+                        if name.starts_with_uppercase() {
+                            return Some(name);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    None
 }
 
 /// Locate the trailing `lambda_literal` of a call expression, handling the
