@@ -134,11 +134,7 @@ impl LanguageServer for Backend {
         // when it changes — branch switches swap many files at once without sending
         // per-file workspace/didChangeWatchedFiles notifications.
         if let Some(root) = self.indexer.workspace_root.get() {
-            git_watcher::spawn_git_head_watcher(
-                root,
-                Arc::clone(&self.indexer),
-                self.client.clone(),
-            );
+            git_watcher::spawn_git_head_watcher(root, self.event_tx.clone(), self.client.clone());
         }
     }
 

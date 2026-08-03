@@ -776,6 +776,109 @@ fn smoke_completion_from_compiled_jar() {
     }
 }
 
+/// Regression: `kmp-lsp/reindex` used to call `Indexer::reset_index_state()` +
+/// `index_workspace()` directly, bypassing the `WorkspaceActor` entirely. That
+/// meant `handle_reindex`'s Tier-1/materialization clearing AND
+/// `spawn_jar_indexing()` (the only thing that ever re-crawls JARs) never
+/// ran — a `kmp-lsp/reindex` invocation was a no-op for library data, forever,
+/// no matter how many times you ran it. Fixed by routing the command through
+/// `Event::Reindex` on the actor's `event_tx`, the same channel every other
+/// workspace mutation already uses.
+///
+/// This test starts the server with NO jar configured, confirms the compiled
+/// fixture's `LazyLibType` is absent, adds it to `workspace.json`'s
+/// `jarPaths` on disk (simulating a dependency added mid-session), invokes
+/// `kmp-lsp/reindex`, and asserts `LazyLibType` appears. Before the fix this
+/// hangs until `INDEXING_TIMEOUT` and fails — `workspace.json`'s `jarPaths`
+/// is read fresh on every `spawn_jar_indexing()` call
+/// (`workspace_json::load_configured_jar_paths`), so the only reason this
+/// wouldn't pick up the new jar is `spawn_jar_indexing()` never running.
+#[test]
+fn smoke_reindex_command_picks_up_newly_configured_jar() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+
+    let fixture_jar =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/jars/lazylib-fixture.jar");
+    assert!(
+        fixture_jar.is_file(),
+        "fixture jar missing at {}; see tests/fixtures/jars/ for how it was built",
+        fixture_jar.display()
+    );
+
+    write(
+        root,
+        "workspace.json",
+        r#"{"sourcePaths":[],"jarPaths":[]}"#,
+    );
+    let edit_text = "package com.example\nfun use() {\n    LazyLi\n}\n";
+    write(root, "src/Screen.kt", edit_text);
+
+    let mut client = LspClient::spawn(root);
+    client.initialize(root);
+    client.wait_for_indexing();
+
+    let uri = file_uri(root, "src/Screen.kt");
+    client.open_file(&uri, "kotlin", edit_text);
+
+    let completion_labels = |client: &mut LspClient| -> Vec<String> {
+        let resp = client.request(
+            "textDocument/completion",
+            json!({
+                "textDocument": {"uri": uri},
+                "position": pos(edit_text, 2, 10),
+            }),
+        );
+        let result = &resp["result"];
+        let items = if result.is_array() {
+            result.as_array().unwrap().clone()
+        } else {
+            result["items"].as_array().cloned().unwrap_or_default()
+        };
+        items
+            .iter()
+            .filter_map(|v| v["label"].as_str().map(str::to_owned))
+            .collect()
+    };
+
+    assert!(
+        !completion_labels(&mut client)
+            .iter()
+            .any(|l| l == "LazyLibType"),
+        "LazyLibType must be absent before any jar is configured"
+    );
+
+    // Simulate a dependency added mid-session: rewrite workspace.json with
+    // the fixture jar now in jarPaths, then ask the running server to reindex.
+    write(
+        root,
+        "workspace.json",
+        &format!(
+            r#"{{"sourcePaths":[],"jarPaths":["{}"]}}"#,
+            fixture_jar.to_string_lossy().replace('\\', "\\\\")
+        ),
+    );
+    client.request(
+        "workspace/executeCommand",
+        json!({"command": "kmp-lsp/reindex", "arguments": []}),
+    );
+
+    let deadline = Instant::now() + INDEXING_TIMEOUT;
+    loop {
+        let last_labels = completion_labels(&mut client);
+        if last_labels.iter().any(|l| l == "LazyLibType") {
+            return;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "LazyLibType never appeared after kmp-lsp/reindex within \
+             {INDEXING_TIMEOUT:?} of adding it to workspace.json's jarPaths; \
+             last response: {last_labels:?}"
+        );
+        std::thread::sleep(Duration::from_millis(200));
+    }
+}
+
 /// Regression: `missing_import_diagnostics` was wired into the didOpen and
 /// jar-ready-republish paths (`document_handler.rs`) but not into the
 /// debounced `didChange` re-index path (`file_change_handler.rs`) — so a

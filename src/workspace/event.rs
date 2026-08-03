@@ -25,13 +25,10 @@ pub(crate) enum Event {
     /// Re-scan the current workspace from scratch.
     ///
     /// Equivalent to the `kmp-lsp/reindex` execute-command. Keeps the
-    /// long-lived `Indexer` so live-document state is preserved.
-    // Not constructed by production code today: `kmp-lsp/reindex`
-    // (backend/commands.rs) and the git-HEAD watcher (backend/git_watcher.rs)
-    // both call the indexer directly instead of routing through the actor.
-    // `Actor::handle_event` still matches this variant exhaustively, so
-    // wiring either caller through `Event::Reindex` is a drop-in change.
-    #[allow(dead_code)]
+    /// long-lived `Indexer` so live-document state is preserved. Also sent by
+    /// `kmp-lsp/clearCache` (on the current root) and the git-HEAD watcher
+    /// (branch switch) — all three need `handle_reindex`'s Tier-1 and
+    /// materialization clearing, not just a plain rescan.
     Reindex,
 
     /// Switch to a new workspace root and restart the scan.

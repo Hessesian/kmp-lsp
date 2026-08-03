@@ -168,7 +168,7 @@ async fn queued_reindex_executes_after_first_scan_completes_issue_scan() {
 
     // A concurrent scan request queues itself and returns immediately (aborted).
     Arc::clone(&idx)
-        .index_workspace(&workspace, Arc::new(NoopReporter))
+        .index_workspace_full(&workspace, Arc::new(NoopReporter))
         .await;
 
     assert!(
@@ -215,7 +215,7 @@ async fn index_workspace_skips_second_concurrent_run_issue_scan() {
     idx.indexing_in_progress.store(true, Ordering::Release);
 
     Arc::clone(&idx)
-        .index_workspace(&workspace, Arc::new(NoopReporter))
+        .index_workspace_full(&workspace, Arc::new(NoopReporter))
         .await;
 
     // indexing_in_progress was already true → impl returned early WITHOUT creating
