@@ -689,35 +689,6 @@ impl Indexer {
         Arc::clone(&self).run_pending_reindex(reporter).await;
     }
 
-    /// Bounded-file-count variant of [`Self::index_workspace_full`]. No
-    /// production caller remains: `kmp-lsp/reindex`/`clearCache` and the
-    /// git-HEAD watcher used to call this directly, bypassing the actor's
-    /// `handle_reindex` (which always uses `index_workspace_full` via
-    /// `ScanKind::Full`) — now routed through `Event::Reindex` instead.
-    /// Exercised only by `scan_tests.rs`'s `DEFAULT_MAX_INDEX_FILES` cap
-    /// coverage.
-    #[allow(dead_code)]
-    pub(crate) async fn index_workspace<R: ProgressReporter + 'static>(
-        self: Arc<Self>,
-        root: &Path,
-        reporter: Arc<R>,
-    ) {
-        let max = resolve_max_files(DEFAULT_MAX_INDEX_FILES);
-        let (result, guard_opt) = Arc::clone(&self)
-            .index_workspace_impl(root, max, Arc::clone(&reporter))
-            .await;
-        if let Some(guard) = guard_opt {
-            if result.aborted {
-                Self::cancel_progress(&*reporter).await;
-            } else {
-                Arc::clone(&self)
-                    .finalize_workspace_scan(result, guard, Arc::clone(&reporter))
-                    .await;
-            }
-        }
-        Arc::clone(&self).run_pending_reindex(reporter).await;
-    }
-
     /// Prioritized indexing: parse `initial_paths` first (high-priority files such as the
     /// currently-open document and its supertypes), then continue with normal bounded indexing.
     /// This gives fast symbol availability for the files the user is actually working on.
