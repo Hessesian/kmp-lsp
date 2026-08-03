@@ -102,8 +102,17 @@ pub(super) fn spawn_git_head_watcher(root: PathBuf, event_tx: mpsc::Sender<Event
             if event_tx.send(Event::Reindex).await.is_err() {
                 // The actor's receiver is gone — it has exited, so no future
                 // send on this channel can ever succeed either. Stop polling
-                // instead of silently no-op'ing every 2s forever.
+                // instead of silently no-op'ing every 2s forever, and tell the
+                // user directly: without this, an unexpected actor death looks
+                // like the branch change was silently ignored, with no clue why.
                 log::warn!("git watcher: workspace actor is gone, stopping HEAD polling");
+                client
+                    .show_message(
+                        MessageType::ERROR,
+                        "kmp-lsp: branch changed, but the workspace actor has stopped — \
+                         reindex did not run; restart the server",
+                    )
+                    .await;
                 return;
             }
             client

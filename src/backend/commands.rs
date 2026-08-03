@@ -53,19 +53,31 @@ impl Backend {
             return Ok(None);
         };
 
-        if let Err(error) = std::fs::remove_dir_all(cache_dir) {
-            log::warn!(
-                "Failed to remove cache dir {}: {}",
-                cache_dir.display(),
-                error
-            );
-            self.client
-                .show_message(
-                    MessageType::WARNING,
-                    format!("kmp-lsp: failed to clear cache: {error}"),
-                )
-                .await;
-            return Ok(None);
+        // Run on the blocking pool: `remove_dir_all` is synchronous I/O and a
+        // large cache directory could otherwise stall a tokio worker thread.
+        let cache_dir_owned = cache_dir.to_path_buf();
+        let remove_result =
+            tokio::task::spawn_blocking(move || std::fs::remove_dir_all(&cache_dir_owned))
+                .await
+                .unwrap_or_else(|join_error| Err(std::io::Error::other(join_error)));
+
+        // clearCache must be idempotent: clearing an already-clear (or
+        // never-created) cache directory is success, not failure.
+        if let Err(error) = remove_result {
+            if error.kind() != std::io::ErrorKind::NotFound {
+                log::warn!(
+                    "Failed to remove cache dir {}: {}",
+                    cache_dir.display(),
+                    error
+                );
+                self.client
+                    .show_message(
+                        MessageType::WARNING,
+                        format!("kmp-lsp: failed to clear cache: {error}"),
+                    )
+                    .await;
+                return Ok(None);
+            }
         }
         log::info!("Cleared workspace cache directory: {}", cache_dir.display());
 
