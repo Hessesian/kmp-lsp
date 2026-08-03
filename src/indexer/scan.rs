@@ -539,15 +539,9 @@ fn build_workspace_result(
     all_results.append(&mut parsed_results);
 
     let stats = IndexStats {
-        files_discovered: discovered.total,
         cache_hits,
         files_parsed,
         symbols_extracted: all_results.iter().map(|f| f.data.symbols.len()).sum(),
-        packages_found: all_results
-            .iter()
-            .filter_map(|f| f.data.package.as_ref())
-            .count(),
-        errors: parse_errors,
     };
 
     log::info!(
@@ -680,27 +674,6 @@ impl Indexer {
         reporter: Arc<R>,
     ) {
         let max = resolve_max_files(MAX_FILES_UNLIMITED);
-        let (result, guard_opt) = Arc::clone(&self)
-            .index_workspace_impl(root, max, Arc::clone(&reporter))
-            .await;
-        if let Some(guard) = guard_opt {
-            if result.aborted {
-                Self::cancel_progress(&*reporter).await;
-            } else {
-                Arc::clone(&self)
-                    .finalize_workspace_scan(result, guard, Arc::clone(&reporter))
-                    .await;
-            }
-        }
-        Arc::clone(&self).run_pending_reindex(reporter).await;
-    }
-
-    pub(crate) async fn index_workspace<R: ProgressReporter + 'static>(
-        self: Arc<Self>,
-        root: &Path,
-        reporter: Arc<R>,
-    ) {
-        let max = resolve_max_files(DEFAULT_MAX_INDEX_FILES);
         let (result, guard_opt) = Arc::clone(&self)
             .index_workspace_impl(root, max, Arc::clone(&reporter))
             .await;

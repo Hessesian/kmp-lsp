@@ -1,12 +1,10 @@
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 
+use tokio::sync::mpsc;
 use tower_lsp::lsp_types::MessageType;
 use tower_lsp::Client;
 
-use crate::indexer::Indexer;
-
-use super::progress::LspProgressReporter;
+use crate::workspace::Event;
 
 /// Resolves the actual git directory from a workspace root.
 ///
@@ -81,9 +79,11 @@ fn read_git_commit(git_dir: &Path) -> Option<String> {
 }
 
 /// Spawns a background task that polls `.git/HEAD` every 2 seconds.
-/// When the resolved commit SHA changes (branch switch or new commit), clears
-/// the in-memory index and triggers a full workspace reindex.
-pub(super) fn spawn_git_head_watcher(root: PathBuf, indexer: Arc<Indexer>, client: Client) {
+/// When the resolved commit SHA changes (branch switch or new commit),
+/// triggers a full workspace reindex through the actor (`Event::Reindex`) —
+/// not a direct `Indexer` call, so the actor's Tier-1/materialization
+/// clearing and JAR re-crawl actually run instead of being silently skipped.
+pub(super) fn spawn_git_head_watcher(root: PathBuf, event_tx: mpsc::Sender<Event>, client: Client) {
     let Some(git_dir) = resolve_git_dir(&root) else {
         return;
     };
@@ -99,20 +99,19 @@ pub(super) fn spawn_git_head_watcher(root: PathBuf, indexer: Arc<Indexer>, clien
             }
             last_commit = current;
             log::info!("git HEAD changed — triggering workspace reindex");
+            if event_tx.send(Event::Reindex).await.is_err() {
+                // The actor's receiver is gone — it has exited, so no future
+                // send on this channel can ever succeed either. Stop polling
+                // instead of silently no-op'ing every 2s forever.
+                log::warn!("git watcher: workspace actor is gone, stopping HEAD polling");
+                return;
+            }
             client
                 .show_message(
                     MessageType::INFO,
                     "kmp-lsp: branch changed, reindexing workspace…",
                 )
                 .await;
-            let idx = Arc::clone(&indexer);
-            let root_clone = root.clone();
-            let client_clone = client.clone();
-            idx.reset_index_state();
-            tokio::spawn(async move {
-                idx.index_workspace(&root_clone, Arc::new(LspProgressReporter(client_clone)))
-                    .await;
-            });
         }
     });
 }

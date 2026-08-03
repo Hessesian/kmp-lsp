@@ -12,8 +12,6 @@ use tower_lsp::lsp_types::{TextDocumentContentChangeEvent, Url};
 use super::Config;
 
 /// All workspace-level mutations, serialised through [`Actor`].
-// Consumed by Wave 2 ws-backend / ws-cli / ws-main wiring.
-#[allow(dead_code)]
 pub(crate) enum Event {
     /// Configure the workspace and start an initial scan.
     ///
@@ -27,7 +25,10 @@ pub(crate) enum Event {
     /// Re-scan the current workspace from scratch.
     ///
     /// Equivalent to the `kmp-lsp/reindex` execute-command. Keeps the
-    /// long-lived `Indexer` so live-document state is preserved.
+    /// long-lived `Indexer` so live-document state is preserved. Also sent by
+    /// `kmp-lsp/clearCache` (on the current root) and the git-HEAD watcher
+    /// (branch switch) — all three need `handle_reindex`'s Tier-1 and
+    /// materialization clearing, not just a plain rescan.
     Reindex,
 
     /// Switch to a new workspace root and restart the scan.
@@ -35,6 +36,9 @@ pub(crate) enum Event {
     /// Source paths are re-resolved via `Config::resolve_sources` for
     /// the new root. Existing explicit `source_paths_raw` are discarded because
     /// they were relative to the old root.
+    // Constructed only by tests (`actor_tests.rs`) today; no production
+    // caller switches workspace roots via the actor yet.
+    #[allow(dead_code)]
     ChangeRoot { root: PathBuf },
 
     /// Store live document state and schedule indexing for a newly opened file.

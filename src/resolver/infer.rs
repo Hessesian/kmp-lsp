@@ -11,63 +11,6 @@ use super::infer_lines::{
     has_dot_after_first_call,
 };
 
-// ─── InferenceChain trait ─────────────────────────────────────────────────────
-
-/// Capability trait for type-inference queries over an indexed workspace.
-///
-/// Implemented by [`Indexer`] in production.  Mirrors the shape of
-/// [`ResolutionChain`](super::resolve::ResolutionChain) — all methods
-/// delegate to the free functions in this module so the trait is a zero-cost
-/// façade.
-///
-/// `#[allow(dead_code)]` is retained until this trait is wired through the
-/// resolution pipeline in a future pass (G4).
-// TODO(G4): wire trait bound through resolution pipeline to enable test stubs
-#[allow(dead_code)]
-pub(crate) trait InferenceChain {
-    fn infer_variable_type(&self, var_name: &str, uri: &Url) -> Option<String>;
-    fn infer_variable_type_raw(&self, var_name: &str, uri: &Url) -> Option<String>;
-    fn infer_field_type(&self, file_uri: &str, field_name: &str) -> Option<String>;
-    fn find_field_type_in_class(&self, class_name: &str, field_name: &str) -> Option<String>;
-    fn find_fun_return_type_by_name(&self, fn_name: &str) -> Option<String>;
-    fn find_method_return_type(
-        &self,
-        type_name: &str,
-        method_name: &str,
-        from_uri: Option<&Url>,
-    ) -> Option<String>;
-    fn infer_receiver_type(&self, kind: ReceiverKind<'_>, uri: &Url) -> Option<ReceiverType>;
-}
-
-impl InferenceChain for Indexer {
-    fn infer_variable_type(&self, var_name: &str, uri: &Url) -> Option<String> {
-        infer_variable_type(self, var_name, uri)
-    }
-    fn infer_variable_type_raw(&self, var_name: &str, uri: &Url) -> Option<String> {
-        infer_variable_type_raw(self, var_name, uri)
-    }
-    fn infer_field_type(&self, file_uri: &str, field_name: &str) -> Option<String> {
-        infer_field_type(self, file_uri, field_name)
-    }
-    fn find_field_type_in_class(&self, class_name: &str, field_name: &str) -> Option<String> {
-        find_field_type_in_class(self, class_name, field_name)
-    }
-    fn find_fun_return_type_by_name(&self, fn_name: &str) -> Option<String> {
-        find_fun_return_type_by_name(self, fn_name)
-    }
-    fn find_method_return_type(
-        &self,
-        type_name: &str,
-        method_name: &str,
-        from_uri: Option<&Url>,
-    ) -> Option<String> {
-        find_method_return_type(self, type_name, method_name, from_uri)
-    }
-    fn infer_receiver_type(&self, kind: ReceiverKind<'_>, uri: &Url) -> Option<ReceiverType> {
-        infer_receiver_type(self, kind, uri)
-    }
-}
-
 // ─── Type-string helpers ──────────────────────────────────────────────────────
 
 /// Strip generic parameters and nullability markers from a type string.

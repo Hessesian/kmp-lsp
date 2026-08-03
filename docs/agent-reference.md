@@ -202,22 +202,12 @@ All test dirs include `workspace.json` with `{"sourcePaths":[]}` to isolate from
 
 Follow the patterns from `~/Work/lsp_tasks/test-infrastructure-improvements.md`. Key rules:
 
-**Source sets** — never call `Indexer::new()` when a test needs `Library` vs `Main` vs `Test` distinctions. Use the `#[cfg(test)]` constructor:
-```rust
-let idx = Indexer::for_test_with_library("/sdk/");
-```
-
 **Completion assertions** — never use `.any()` alone. Always pair with an exclusion assertion:
 ```rust
 assert_labels_contain(&items, &["MyClass"]);
 assert_labels_exclude(&items, &["println", "listOf", "fun", "class"]);
 ```
 Use `assert_labels_exact` when the full result set is known.
-
-**Subtype assertions** — never use `assert_eq!(subs.len(), N)` alone. Assert which names are present:
-```rust
-assert_eq!(sorted_subtype_names(&idx, "Flyable"), vec!["Duck"]);
-```
 
 **Completion tests** — new tests should use the `CompletionTester` builder, which automatically runs each scenario with `snippets=true` and `snippets=false`.
 

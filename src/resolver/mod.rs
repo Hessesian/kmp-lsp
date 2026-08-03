@@ -25,7 +25,7 @@ pub(crate) use hierarchy::{walk_hierarchy, MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY
 pub(crate) use import_edit::{already_imported, import_insertion_line, make_import_edit};
 pub(crate) use infer::{
     infer_receiver_type, infer_receiver_type_at, infer_variable_type_from_cst,
-    infer_variable_type_raw, InferenceChain, ReceiverKind, ReceiverType,
+    infer_variable_type_raw, ReceiverKind, ReceiverType,
 };
 pub(crate) use infer_lines::extract_collection_element_type;
 pub(crate) use resolve::{

@@ -7,7 +7,7 @@ use tower_lsp::lsp_types::{SymbolKind, Url};
 
 use crate::indexer::doc::extract_doc_comment;
 use crate::indexer::Location;
-use crate::resolver::InferenceChain;
+use crate::resolver::infer::infer_variable_type;
 use crate::types::{CallerContext, FileData, SymbolEntry};
 use crate::LinesExt;
 
@@ -30,9 +30,6 @@ pub(crate) struct ResolvedSymbol {
     #[allow(dead_code)]
     pub raw_signature: String,
     pub signature: String,
-    /// Substitution map used to build `signature`; kept for test assertions.
-    #[allow(dead_code)]
-    pub subst: HashMap<String, String>,
     pub doc: String,
     /// True when the declaration carries an `@Deprecated` annotation
     /// (joined from `SymbolEntry::deprecated`). Rendered as a hover marker.
@@ -416,7 +413,6 @@ fn enrich_symbol<I: IndexRead>(
         kind: sym.kind,
         raw_signature,
         signature,
-        subst,
         doc,
         deprecated: sym.deprecated,
         container: sym.container.clone(),
@@ -730,7 +726,7 @@ impl IndexRead for super::Indexer {
     }
 
     fn infer_variable_type_for(&self, name: &str, uri: &Url) -> Option<String> {
-        self.infer_variable_type(name, uri)
+        infer_variable_type(self, name, uri)
     }
 
     fn ensure_indexed_on_demand(&self, uri: &str) {
