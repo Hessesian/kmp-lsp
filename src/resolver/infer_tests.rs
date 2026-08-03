@@ -622,6 +622,34 @@ fn catalog_method_return_type_folds_supertype_inheritance() {
     );
 }
 
+/// `find_method_return_type_via_supertypes` keys its workspace/JAR lookups by
+/// the bare symbol name, so a *qualified* `class_name` (e.g.
+/// `app.Derived`, as some callers pass) must still resolve -- the generics-
+/// and-package stripping has to take the last dotted segment, not just cut
+/// at `<`.
+#[test]
+fn catalog_method_return_type_folds_supertype_inheritance_for_qualified_class_name() {
+    use crate::indexer::Indexer;
+    use crate::resolver::Resolver;
+    use tower_lsp::lsp_types::Url;
+
+    let idx = Indexer::new();
+    let f = Url::parse("file:///app/Types.kt").unwrap();
+    idx.index_content(
+        &f,
+        "package app\nopen class Base { fun who(): Identity = TODO() }\nclass Derived : Base()\n",
+    );
+
+    assert_eq!(
+        idx.method_return_type("app.Derived", "who", None)
+            .map(|r| r.into_inner()),
+        Some("Identity".to_string()),
+        "a qualified class_name must still resolve via the supertype walk, \
+         not silently miss both the workspace and JAR lookups (which are \
+         keyed by bare name)"
+    );
+}
+
 /// Regression: `MutableSharedFlow.asSharedFlow()` (and `asStateFlow`, etc.)
 /// erased their generic argument in hover/inlay because the supertype walk
 /// only ever read *workspace*-indexed classes (`find_in_workspace_defs`).
