@@ -219,6 +219,23 @@ impl FileChangeHandler {
         }
         self.diagnostic_generation.remove(&key);
     }
+
+    /// Wait for `uri`'s currently pending debounced reindex task to finish.
+    ///
+    /// Test-only: production code never waits on this synchronously (the
+    /// debounce is fire-and-forget by design — that's the whole point of
+    /// debouncing). Awaiting the real `JoinHandle` here — rather than
+    /// sleeping for a guessed duration and hoping the 300ms debounce plus
+    /// semaphore-acquire plus `spawn_blocking(index_content)` finished in
+    /// time — is what makes a test using this deterministic instead of a
+    /// race against wall-clock time and machine load.
+    #[cfg(test)]
+    pub(crate) async fn wait_for_pending_reindex(&mut self, uri: &Url) {
+        let key = uri.to_string();
+        if let Some(handle) = self.pending_reindex.remove(&key) {
+            let _ = handle.await;
+        }
+    }
 }
 
 #[cfg(test)]
