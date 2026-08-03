@@ -1000,56 +1000,23 @@ pub(crate) fn find_method_return_type_via_supertypes(
     method_name: &str,
     from_uri: Option<&Url>,
 ) -> Option<String> {
-    // Strip generics AND any qualifying package prefix: both `find_in_workspace_defs`
-    // and `jar_definitions` are keyed by the bare symbol name, so a qualified
-    // `class_name` (e.g. `com.lib.MutableSharedFlow<Event>`) would otherwise
-    // silently miss both lookups below.
+    // Strip generics AND any qualifying package prefix: `lookup_definitions`
+    // is keyed by the bare symbol name, so a qualified `class_name` (e.g.
+    // `com.lib.MutableSharedFlow<Event>`) would otherwise silently miss it.
     let class_base = class_name.dotted_ident_prefix().last_segment().to_owned();
-    let class_base = class_base.as_str();
 
-    if let Some(found) = indexer.find_in_workspace_defs(class_base, |class_loc| {
-        find_method_return_type_via_class_hierarchy(
-            indexer,
-            class_base,
-            class_loc.uri.as_str(),
-            method_name,
-            from_uri,
-        )
-    }) {
-        return Some(found);
-    }
-
-    // JAR fallback: `find_in_workspace_defs` above only ever reads
-    // workspace-indexed classes, so a receiver whose class is itself
-    // library-only (e.g. `MutableSharedFlow`, a JAR interface extending the
-    // JAR-only `SharedFlow` that declares `asSharedFlow`) is never tried —
-    // the caller (`Resolver::method_return_type`) then falls back to a
-    // receiver-agnostic by-name lookup that returns the extension's literal,
-    // unsubstituted declaration text (`SharedFlow<T>` instead of
-    // `SharedFlow<Event>`), which is how `.asSharedFlow()` and similar
-    // extensions lost their generic argument in hover/inlay.
-    let mut cache_backed_only = 0usize;
-    crate::indexer::jar::ensure_jar_definitions_for(indexer, class_base, &mut cache_backed_only);
-    // Snapshot into an owned Vec and drop the DashMap `Ref` before the nested
-    // lookup below: `find_method_return_type_via_class_hierarchy` walks
-    // ancestors via `walk_hierarchy`, which promotes not-yet-materialized JARs
-    // for each ancestor/method name it touches — a promotion writes back into
-    // this same `jar_definitions` map. Holding this shard's read guard across
-    // that call risks a self-deadlock if the write lands in the same shard
-    // (mirrors the same discipline `find_in_workspace_defs` already applies
-    // to `definitions`).
-    let jar_locs: Vec<tower_lsp::lsp_types::Location> = indexer
-        .jar_definitions
-        .get(class_base)
-        .map(|locs| locs.clone())
-        .unwrap_or_default();
-    jar_locs
-        .iter()
+    // `lookup_definitions` merges workspace + JAR locations (promoting a
+    // not-yet-materialized JAR as needed) into an owned `Vec<Location>` --
+    // the walk below promotes further JARs per-ancestor, and an owned Vec
+    // (unlike a DashMap `Ref`) can't deadlock against that.
+    indexer
+        .lookup_definitions(&class_base)
+        .into_iter()
         .take(crate::indexer::MAX_BY_NAME_DEFS)
         .find_map(|loc| {
             find_method_return_type_via_class_hierarchy(
                 indexer,
-                class_base,
+                &class_base,
                 loc.uri.as_str(),
                 method_name,
                 from_uri,
