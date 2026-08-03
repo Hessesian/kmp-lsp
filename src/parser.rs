@@ -2345,8 +2345,15 @@ fn call_expr_direct_type(call: Node, bytes: &[u8]) -> Option<String> {
         }
     }
 
-    // Constructor call: callee starts uppercase
+    // Constructor call: callee starts uppercase. Keep explicit type
+    // arguments (`MutableSharedFlow<Unit>()`) -- without them, a generic
+    // extension called on the property later (`.asSharedFlow()`) has no
+    // concrete type to substitute into its return type and comes back with
+    // the declared type parameter still literal (`SharedFlow<T>`).
     if name.starts_with_uppercase() {
+        if let Some(args) = call.call_site_type_arg_strings(bytes) {
+            return Some(format!("{name}<{}>", args.join(", ")));
+        }
         return Some(name);
     }
     None

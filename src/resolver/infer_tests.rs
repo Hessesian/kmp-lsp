@@ -792,3 +792,41 @@ fn catalog_method_return_type_folds_multi_level_supertype_inheritance() {
          (Grandparent), not just on the direct supertype (Parent)"
     );
 }
+
+/// End-to-end regression for the `.asSharedFlow()` generic-erasure bug,
+/// reproduced with a purely workspace-declared analog (no JAR needed --
+/// `kotlinx.coroutines.flow.SharedFlow`/`MutableSharedFlow`/`asSharedFlow`
+/// have the exact same shape: a generic extension declared on a supertype of
+/// the receiver's declared type). Covers the full chain: `infer_var_from_rhs_data`
+/// falling back to the supertype walk (this module) AND substituting the
+/// receiver's own concrete type argument into the raw, as-declared return
+/// type (`crate::indexer::build_type_arg_subst`) -- both are required for
+/// `flow`'s hover-augmented type to come out as `SharedFlow<Unit>` instead of
+/// `SharedFlow<T>`.
+#[test]
+fn infer_variable_type_substitutes_supertype_extension_generic_arg() {
+    use crate::indexer::Indexer;
+    use tower_lsp::lsp_types::Url;
+
+    let idx = Indexer::new();
+    let f = Url::parse("file:///app/Flow.kt").unwrap();
+    idx.index_content(
+        &f,
+        "package app\n\
+         interface SharedFlow<T>\n\
+         interface MutableSharedFlow<T> : SharedFlow<T>\n\
+         fun <T> SharedFlow<T>.asSharedFlow(): SharedFlow<T> = TODO()\n\
+         class Repo {\n\
+         \x20   private val _flow = MutableSharedFlow<Unit>()\n\
+         \x20   val flow = _flow.asSharedFlow()\n\
+         }\n",
+    );
+
+    assert_eq!(
+        super::infer_variable_type_raw(&idx, "flow", &f),
+        Some("SharedFlow<Unit>".to_string()),
+        "the receiver's own concrete type argument (Unit) must be \
+         substituted into the extension's declared return type, not left as \
+         the literal type parameter (SharedFlow<T>)"
+    );
+}

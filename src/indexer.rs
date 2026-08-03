@@ -56,7 +56,7 @@ pub(crate) use self::infer::{
         resolve_call_signature, split_params_at_depth_zero, strip_trailing_call_args, CallSite,
         ResolutionScope, Signature,
     },
-    type_subst::find_last_dot_at_depth_zero,
+    type_subst::{build_type_arg_subst, find_last_dot_at_depth_zero},
 };
 pub(crate) use self::infer::{CstQuery, Resolution};
 
