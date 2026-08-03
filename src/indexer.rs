@@ -58,7 +58,7 @@ pub(crate) use self::infer::{
     },
     type_subst::find_last_dot_at_depth_zero,
 };
-pub(crate) use self::infer::{CstQuery, Resolution, ResolveIo};
+pub(crate) use self::infer::{CstQuery, Resolution};
 
 mod cache;
 pub(crate) use self::cache::workspace_cache_path;

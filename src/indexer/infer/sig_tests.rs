@@ -409,10 +409,7 @@ fn resolve_unqualified_bails_on_ubiquitous_name() {
     };
 
     assert!(
-        matches!(
-            resolve_call_signature(&call, &idx),
-            Resolution::Ambiguous(_)
-        ),
+        matches!(resolve_call_signature(&call, &idx), Resolution::Ambiguous),
         "a name with > MAX_BY_NAME_DEFS definitions must bail to Ambiguous, not scan them all"
     );
 }
@@ -514,7 +511,7 @@ fn resolve_qualified_jar_extension_overloads_with_source_member() {
 
     // Both 0-arg member + 1-arg extension → Ambiguous.
     match resolve_call_signature(&call, &idx) {
-        Resolution::Ambiguous(_) => {}
+        Resolution::Ambiguous => {}
         other => panic!("expected Ambiguous (0-arg member + 1-arg extension), got {other:?}"),
     }
 }
@@ -634,10 +631,7 @@ fn resolve_qualified_bails_on_ubiquitous_name_even_with_receiver_extension() {
     // doing so would ignore the 0-arg member that members-win-over-extensions
     // semantics would actually call.
     assert!(
-        matches!(
-            resolve_call_signature(&call, &idx),
-            Resolution::Ambiguous(_)
-        ),
+        matches!(resolve_call_signature(&call, &idx), Resolution::Ambiguous),
         "capped qualified path must bail entirely, not return Resolved from Phase 2 alone"
     );
 }

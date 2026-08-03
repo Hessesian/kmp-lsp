@@ -9,7 +9,7 @@
 
 use tree_sitter::Node;
 
-use crate::indexer::{CstQuery, Indexer, NodeExt, Resolution, ResolveIo};
+use crate::indexer::{CstQuery, Indexer, NodeExt, Resolution};
 use crate::queries::{
     KIND_BINDING_PATTERN_KIND, KIND_CALL_EXPR, KIND_CATCH_BLOCK, KIND_CLASS_DECL, KIND_CLASS_PARAM,
     KIND_COMPANION_OBJ, KIND_CONTROL_STRUCTURE_BODY, KIND_ENUM_ENTRY, KIND_FINALLY_BLOCK,
@@ -255,7 +255,7 @@ pub(crate) fn classify_symbol_at(
             // doesn't silently masquerade as a real receiver type (house
             // decoy: `untypeable_receiver_yields_no_receiver_type`).
             let receiver_type = navigation_receiver_node(nav).and_then(|receiver| {
-                match CstQuery::new(receiver, doc, indexer, uri, ResolveIo::IndexOnly).expr_type() {
+                match CstQuery::new(receiver, doc, indexer, uri).expr_type() {
                     Resolution::Resolved(t) if indexer.has_type_definition(t.as_type_str()) => {
                         Some(t.as_type_str().to_owned())
                     }
