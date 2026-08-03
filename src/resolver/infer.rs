@@ -10,6 +10,7 @@ use super::infer_lines::{
     extract_property_type_from_detail, extract_return_type_from_detail, find_rhs_str,
     has_dot_after_first_call,
 };
+use super::{walk_hierarchy, MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK};
 
 // ─── Type-string helpers ──────────────────────────────────────────────────────
 
@@ -1002,11 +1003,10 @@ pub(crate) fn find_method_return_type_via_supertypes(
     let class_base = class_name.split('<').next().unwrap_or(class_name);
 
     if let Some(found) = indexer.find_in_workspace_defs(class_base, |class_loc| {
-        let file_data = ensure_file_data(indexer, &class_loc.uri)?;
-        find_method_return_type_via_class_supers(
+        find_method_return_type_via_class_hierarchy(
             indexer,
-            &file_data,
             class_base,
+            class_loc.uri.as_str(),
             method_name,
             from_uri,
         )
@@ -1017,13 +1017,12 @@ pub(crate) fn find_method_return_type_via_supertypes(
     // JAR fallback: `find_in_workspace_defs` above only ever reads
     // workspace-indexed classes, so a receiver whose class is itself
     // library-only (e.g. `MutableSharedFlow`, a JAR interface extending the
-    // JAR-only `SharedFlow` that declares `asSharedFlow`) never gets its
-    // `supers` read at all — the walk silently no-ops. The caller
-    // (`Resolver::method_return_type`) then falls through further up the
-    // stack to a receiver-agnostic by-name lookup that returns the
-    // extension's literal, unsubstituted declaration text (`SharedFlow<T>`
-    // instead of `SharedFlow<Event>`), which is how `.asSharedFlow()` and
-    // similar extensions lost their generic argument in hover/inlay.
+    // JAR-only `SharedFlow` that declares `asSharedFlow`) is never tried —
+    // the caller (`Resolver::method_return_type`) then falls back to a
+    // receiver-agnostic by-name lookup that returns the extension's literal,
+    // unsubstituted declaration text (`SharedFlow<T>` instead of
+    // `SharedFlow<Event>`), which is how `.asSharedFlow()` and similar
+    // extensions lost their generic argument in hover/inlay.
     let mut cache_backed_only = 0usize;
     crate::indexer::jar::ensure_jar_definitions_for(indexer, class_base, &mut cache_backed_only);
     let jar_locs = indexer.jar_definitions.get(class_base)?;
@@ -1031,48 +1030,101 @@ pub(crate) fn find_method_return_type_via_supertypes(
         .iter()
         .take(crate::indexer::MAX_BY_NAME_DEFS)
         .find_map(|loc| {
-            let file_data = ensure_file_data(indexer, &loc.uri)?;
-            find_method_return_type_via_class_supers(
+            find_method_return_type_via_class_hierarchy(
                 indexer,
-                &file_data,
                 class_base,
+                loc.uri.as_str(),
                 method_name,
                 from_uri,
             )
         })
 }
 
-/// Shared by both the workspace and JAR arms of
-/// [`find_method_return_type_via_supertypes`]: given the `FileData` that
-/// declares `class_base`, find `method_name`'s return type on any of its
-/// direct supertypes (matched via `class_base`'s own line in `file_data.supers`).
-fn find_method_return_type_via_class_supers(
+/// Walk every ancestor of `class_base` (declared at `class_uri`) via
+/// [`walk_hierarchy`] — the same recursive, cycle-safe, JAR-promotion-aware
+/// traversal `resolve_from_class_hierarchy`/completion use elsewhere —
+/// looking for `method_name`. Unlike a hand-rolled single-level check, this
+/// finds a method declared two or more levels up (or on a JAR-only
+/// grandparent), not just the direct supertype.
+///
+/// The direct supertype's own generic type arguments (e.g.
+/// `class Derived : Base<Int>`) are substituted into a hit found there via
+/// `substitute_direct_supertype_args`; a hit on a deeper ancestor is
+/// returned as-is — multi-level generic substitution isn't attempted, the
+/// same scope the original single-level logic had.
+fn find_method_return_type_via_class_hierarchy(
     indexer: &Indexer,
-    file_data: &FileData,
     class_base: &str,
+    class_uri: &str,
     method_name: &str,
     from_uri: Option<&Url>,
 ) -> Option<String> {
-    let class_sym = file_data.symbols.iter().find(|s| s.name == class_base)?;
-    let class_line = class_sym.selection_start();
+    use crate::types::CallerContext;
 
-    for (line, super_name, type_args) in file_data.supers.iter() {
-        if *line != class_line {
-            continue;
-        }
-        let Some(raw) = find_method_return_type(indexer, super_name, method_name, from_uri) else {
-            continue;
-        };
-        if type_args.is_empty() {
-            return Some(raw);
-        }
-        let super_type_params = find_class_type_params(indexer, super_name);
-        if super_type_params.is_empty() {
-            return Some(raw);
-        }
-        return Some(apply_supertype_subst(&raw, &super_type_params, type_args));
+    let caller = CallerContext {
+        uri: from_uri.map(Url::as_str),
+        cursor_line: None,
+    };
+    let hits: Vec<(String, String)> = walk_hierarchy(
+        indexer,
+        class_base,
+        class_uri,
+        caller,
+        8,
+        MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK,
+        |idx, super_name, _super_uri, _caller| {
+            find_method_return_type(idx, super_name, method_name, from_uri)
+                .map(|raw| (super_name.to_owned(), raw))
+                .into_iter()
+                .collect()
+        },
+    );
+    let (super_name, raw) = hits.into_iter().next()?;
+    Some(substitute_direct_supertype_args(
+        indexer,
+        class_uri,
+        class_base,
+        &super_name,
+        &raw,
+    ))
+}
+
+/// If `super_name` is `class_base`'s *direct* supertype (declared with
+/// concrete type arguments, e.g. `class Derived : Base<Int>`), substitute
+/// those into `raw`; otherwise (deeper ancestor, or no type args) return
+/// `raw` unchanged.
+fn substitute_direct_supertype_args(
+    indexer: &Indexer,
+    class_uri: &str,
+    class_base: &str,
+    super_name: &str,
+    raw: &str,
+) -> String {
+    let Ok(uri) = Url::parse(class_uri) else {
+        return raw.to_owned();
+    };
+    let Some(file_data) = ensure_file_data(indexer, &uri) else {
+        return raw.to_owned();
+    };
+    let Some(class_sym) = file_data.symbols.iter().find(|s| s.name == class_base) else {
+        return raw.to_owned();
+    };
+    let class_line = class_sym.selection_start();
+    let Some((_, _, type_args)) = file_data
+        .supers
+        .iter()
+        .find(|(line, name, _)| *line == class_line && name == super_name)
+    else {
+        return raw.to_owned();
+    };
+    if type_args.is_empty() {
+        return raw.to_owned();
     }
-    None
+    let super_type_params = find_class_type_params(indexer, super_name);
+    if super_type_params.is_empty() {
+        return raw.to_owned();
+    }
+    apply_supertype_subst(raw, &super_type_params, type_args)
 }
 
 fn find_class_type_params(indexer: &Indexer, class_name: &str) -> Vec<String> {

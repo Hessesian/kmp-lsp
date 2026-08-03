@@ -676,6 +676,18 @@ fn catalog_method_return_type_folds_jar_supertype_inheritance() {
     let shared_flow_symbol = mk_class_symbol("SharedFlow", 0);
     let mutable_shared_flow_symbol = mk_class_symbol("MutableSharedFlow", 1);
 
+    // Both classes need a `jar_definitions` entry: `MutableSharedFlow` is the
+    // walk's starting point, and `SharedFlow` must be independently
+    // resolvable too -- `walk_hierarchy` resolves each ancestor by name via
+    // `resolve_symbol_no_rg` (see `supertype_targets` in hierarchy.rs) rather
+    // than reading `jar_files` directly.
+    idx.jar_definitions
+        .entry("SharedFlow".into())
+        .or_default()
+        .push(Location {
+            uri: jar_uri.clone(),
+            range: shared_flow_symbol.selection_range,
+        });
     idx.jar_definitions
         .entry("MutableSharedFlow".into())
         .or_default()
@@ -721,5 +733,34 @@ fn catalog_method_return_type_folds_jar_supertype_inheritance() {
          supertype to find an extension declared there, instead of silently \
          no-oping and letting the caller fall back to an unsubstituted, \
          receiver-agnostic by-name lookup"
+    );
+}
+
+/// The supertype walk now goes through [`walk_hierarchy`] (multi-level,
+/// cycle-safe) instead of only checking the *direct* supertype. This asserts
+/// the case the old single-level implementation could never reach: a method
+/// declared two levels up the chain.
+#[test]
+fn catalog_method_return_type_folds_multi_level_supertype_inheritance() {
+    use crate::indexer::Indexer;
+    use crate::resolver::Resolver;
+    use tower_lsp::lsp_types::Url;
+
+    let idx = Indexer::new();
+    let f = Url::parse("file:///app/Types.kt").unwrap();
+    idx.index_content(
+        &f,
+        "package app\n\
+         open class Grandparent { fun who(): Identity = TODO() }\n\
+         open class Parent : Grandparent()\n\
+         class Child : Parent()\n",
+    );
+
+    assert_eq!(
+        idx.method_return_type("Child", "who", None)
+            .map(|r| r.into_inner()),
+        Some("Identity".to_string()),
+        "method_return_type must find a method declared two levels up \
+         (Grandparent), not just on the direct supertype (Parent)"
     );
 }
