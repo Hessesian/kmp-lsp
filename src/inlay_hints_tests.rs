@@ -296,6 +296,51 @@ fun make() {
 }
 
 #[test]
+fn untyped_val_if_else_arithmetic_to_long_gets_hint() {
+    // Verbatim (minus identifier renaming) from a real project file
+    // (`FxMoneyVM.kt`), found via observational logging of `hint_property`'s
+    // now-removed STRING fallback against production code: CST previously
+    // returned `None` for the `if`/`else` because the `else` branch's
+    // `(timeoutSeconds * 1000).toLong()` was unresolvable (arithmetic +
+    // numeric-conversion-call gap, both now closed).
+    let src = r#"package test
+class Vm {
+    private var mMillisUntilFinished: Long = 0
+    private var timeoutSeconds: Int = 30
+    val millisInFuture = if (mMillisUntilFinished > 0) mMillisUntilFinished else (timeoutSeconds * 1000).toLong()
+}
+"#;
+    let hints = hints_for(src);
+    assert!(
+        hints
+            .iter()
+            .any(|h| matches!(&h.label, InlayHintLabel::String(s) if s == ": Long")),
+        "expected ': Long' hint for if/else-with-arithmetic property, got: {hints:?}",
+    );
+}
+
+#[test]
+fn untyped_val_bare_arithmetic_division_gets_hint() {
+    // Verbatim shape: `private const val TIMER_TICK_MILLIS = 1000 / 2` had NO
+    // inlay hint at all, live, in the real editor (neither CST nor the STRING
+    // fallback handled bare arithmetic) — now closed on the CST side directly.
+    let src = r#"package test
+class Vm {
+    companion object {
+        private const val TIMER_TICK_MILLIS = 1000 / 2
+    }
+}
+"#;
+    let hints = hints_for(src);
+    assert!(
+        hints
+            .iter()
+            .any(|h| matches!(&h.label, InlayHintLabel::String(s) if s == ": Int")),
+        "expected ': Int' hint for bare arithmetic division property, got: {hints:?}",
+    );
+}
+
+#[test]
 fn it_inside_nested_lambda_not_suspend() {
     // Regression: `it` inside `setState { it }` where `setState` has a
     // `suspend` function type parameter was incorrectly showing `: suspend`.

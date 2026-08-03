@@ -448,7 +448,12 @@ fn subst_type(ty: &str, subst: &std::collections::HashMap<String, String>) -> St
 /// legitimately STRING-primary). `infer_lambda_param_type_at` is itself
 /// documented CST-only (see `it_this.rs`'s `find_it_element_type` /
 /// `find_this_context` / `find_named_lambda_param_type`).
-fn cst_contextual_type(idx: &Indexer, name: &str, uri: &Url, position: Position) -> Option<ReceiverType> {
+fn cst_contextual_type(
+    idx: &Indexer,
+    name: &str,
+    uri: &Url,
+    position: Position,
+) -> Option<ReceiverType> {
     idx.infer_lambda_param_type_at(name, uri, position)
         .map(ReceiverType::from_raw)
 }
