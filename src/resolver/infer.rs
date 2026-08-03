@@ -1001,30 +1001,78 @@ pub(crate) fn find_method_return_type_via_supertypes(
 ) -> Option<String> {
     let class_base = class_name.split('<').next().unwrap_or(class_name);
 
-    indexer.find_in_workspace_defs(class_base, |class_loc| {
-        let file_data = indexer.files.get(class_loc.uri.as_str())?;
-        let class_sym = file_data.symbols.iter().find(|s| s.name == class_base)?;
-        let class_line = class_sym.selection_start();
+    if let Some(found) = indexer.find_in_workspace_defs(class_base, |class_loc| {
+        let file_data = ensure_file_data(indexer, &class_loc.uri)?;
+        find_method_return_type_via_class_supers(
+            indexer,
+            &file_data,
+            class_base,
+            method_name,
+            from_uri,
+        )
+    }) {
+        return Some(found);
+    }
 
-        for (line, super_name, type_args) in file_data.supers.iter() {
-            if *line != class_line {
-                continue;
-            }
-            let Some(raw) = find_method_return_type(indexer, super_name, method_name, from_uri)
-            else {
-                continue;
-            };
-            if type_args.is_empty() {
-                return Some(raw);
-            }
-            let super_type_params = find_class_type_params(indexer, super_name);
-            if super_type_params.is_empty() {
-                return Some(raw);
-            }
-            return Some(apply_supertype_subst(&raw, &super_type_params, type_args));
+    // JAR fallback: `find_in_workspace_defs` above only ever reads
+    // workspace-indexed classes, so a receiver whose class is itself
+    // library-only (e.g. `MutableSharedFlow`, a JAR interface extending the
+    // JAR-only `SharedFlow` that declares `asSharedFlow`) never gets its
+    // `supers` read at all — the walk silently no-ops. The caller
+    // (`Resolver::method_return_type`) then falls through further up the
+    // stack to a receiver-agnostic by-name lookup that returns the
+    // extension's literal, unsubstituted declaration text (`SharedFlow<T>`
+    // instead of `SharedFlow<Event>`), which is how `.asSharedFlow()` and
+    // similar extensions lost their generic argument in hover/inlay.
+    let mut cache_backed_only = 0usize;
+    crate::indexer::jar::ensure_jar_definitions_for(indexer, class_base, &mut cache_backed_only);
+    let jar_locs = indexer.jar_definitions.get(class_base)?;
+    jar_locs
+        .iter()
+        .take(crate::indexer::MAX_BY_NAME_DEFS)
+        .find_map(|loc| {
+            let file_data = ensure_file_data(indexer, &loc.uri)?;
+            find_method_return_type_via_class_supers(
+                indexer,
+                &file_data,
+                class_base,
+                method_name,
+                from_uri,
+            )
+        })
+}
+
+/// Shared by both the workspace and JAR arms of
+/// [`find_method_return_type_via_supertypes`]: given the `FileData` that
+/// declares `class_base`, find `method_name`'s return type on any of its
+/// direct supertypes (matched via `class_base`'s own line in `file_data.supers`).
+fn find_method_return_type_via_class_supers(
+    indexer: &Indexer,
+    file_data: &FileData,
+    class_base: &str,
+    method_name: &str,
+    from_uri: Option<&Url>,
+) -> Option<String> {
+    let class_sym = file_data.symbols.iter().find(|s| s.name == class_base)?;
+    let class_line = class_sym.selection_start();
+
+    for (line, super_name, type_args) in file_data.supers.iter() {
+        if *line != class_line {
+            continue;
         }
-        None
-    })
+        let Some(raw) = find_method_return_type(indexer, super_name, method_name, from_uri) else {
+            continue;
+        };
+        if type_args.is_empty() {
+            return Some(raw);
+        }
+        let super_type_params = find_class_type_params(indexer, super_name);
+        if super_type_params.is_empty() {
+            return Some(raw);
+        }
+        return Some(apply_supertype_subst(&raw, &super_type_params, type_args));
+    }
+    None
 }
 
 fn find_class_type_params(indexer: &Indexer, class_name: &str) -> Vec<String> {

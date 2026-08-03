@@ -621,3 +621,105 @@ fn catalog_method_return_type_folds_supertype_inheritance() {
         "method_return_type must fold supertype inheritance into one call"
     );
 }
+
+/// Regression: `MutableSharedFlow.asSharedFlow()` (and `asStateFlow`, etc.)
+/// erased their generic argument in hover/inlay because the supertype walk
+/// only ever read *workspace*-indexed classes (`find_in_workspace_defs`).
+/// `MutableSharedFlow` is JAR-only, and the extension `asSharedFlow` is
+/// declared on its JAR supertype `SharedFlow` — so the walk silently no-oped
+/// (never read `MutableSharedFlow`'s `supers`), and the caller fell through
+/// to a receiver-agnostic by-name lookup that returns the extension's
+/// literal, unsubstituted declaration text (`SharedFlow<T>`) instead of
+/// resolving through the class hierarchy to the extension declared on the
+/// JAR supertype.
+#[test]
+fn catalog_method_return_type_folds_jar_supertype_inheritance() {
+    use crate::indexer::Indexer;
+    use crate::resolver::Resolver;
+    use crate::types::{ExtensionEntry, FileData, SourceSet, SymbolEntry, Visibility};
+    use std::sync::Arc;
+    use tower_lsp::lsp_types::{Location, Position, Range, SymbolKind, Url};
+
+    let idx = Indexer::new();
+    let jar_uri = Url::parse("jar:file:///lib/fake-flow.jar!/Flow.class").unwrap();
+
+    let mk_range = |line: u32, len: u32| Range {
+        start: Position { line, character: 0 },
+        end: Position {
+            line,
+            character: len,
+        },
+    };
+    let mk_class_symbol = |name: &str, line: u32| SymbolEntry {
+        name: name.to_owned(),
+        kind: SymbolKind::INTERFACE,
+        visibility: Visibility::Public,
+        range: mk_range(line, name.len() as u32),
+        selection_range: mk_range(line, name.len() as u32),
+        detail: format!("interface {name}<T>"),
+        container: None,
+        params: String::new(),
+        param_counts: (0, 0),
+        cold: crate::types::pack_cold_fields(
+            vec!["T".to_owned()],
+            String::new(),
+            String::new(),
+            String::new(),
+        ),
+        trailing_lambda: false,
+        deprecated: false,
+    };
+
+    // `SharedFlow` (index 0) and `MutableSharedFlow` (index 1), where
+    // `MutableSharedFlow`'s only super is `SharedFlow` (JAR-derived `supers`
+    // never carry type args -- see `build_jar_file_data`).
+    let shared_flow_symbol = mk_class_symbol("SharedFlow", 0);
+    let mutable_shared_flow_symbol = mk_class_symbol("MutableSharedFlow", 1);
+
+    idx.jar_definitions
+        .entry("MutableSharedFlow".into())
+        .or_default()
+        .push(Location {
+            uri: jar_uri.clone(),
+            range: mutable_shared_flow_symbol.selection_range,
+        });
+    idx.jar_files.insert(
+        jar_uri.to_string(),
+        Arc::new(FileData {
+            symbols: vec![shared_flow_symbol, mutable_shared_flow_symbol],
+            supers: vec![(1, "SharedFlow".to_owned(), Vec::new())],
+            source_set: SourceSet::Library,
+            lines: Arc::new(vec![]),
+            ..Default::default()
+        }),
+    );
+
+    // `fun <T> SharedFlow<T>.asSharedFlow(): SharedFlow<T>` -- keyed by its
+    // declared receiver `SharedFlow`, not `MutableSharedFlow`.
+    idx.extension_by_receiver
+        .entry("SharedFlow".to_owned())
+        .or_default()
+        .push(ExtensionEntry {
+            file_uri: jar_uri.to_string(),
+            name: "asSharedFlow".to_owned(),
+            kind: SymbolKind::FUNCTION,
+            detail: "fun <T> SharedFlow<T>.asSharedFlow(): SharedFlow<T>".to_owned(),
+            visibility: Visibility::Public,
+            package: Some("kotlinx.coroutines.flow".to_owned()),
+            trailing_lambda: false,
+            deprecated: false,
+        });
+
+    let caller = Url::parse("file:///app/Repo.kt").unwrap();
+    idx.index_content(&caller, "package kotlinx.coroutines.flow\nclass Repo\n");
+
+    assert_eq!(
+        idx.method_return_type("MutableSharedFlow", "asSharedFlow", Some(&caller))
+            .map(|r| r.into_inner()),
+        Some("SharedFlow<T>".to_string()),
+        "method_return_type must walk a JAR-only receiver's JAR-only \
+         supertype to find an extension declared there, instead of silently \
+         no-oping and letting the caller fall back to an unsubstituted, \
+         receiver-agnostic by-name lookup"
+    );
+}
