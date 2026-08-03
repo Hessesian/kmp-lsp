@@ -65,7 +65,7 @@ async fn retype_cycle_indexer_state_supports_diagnostics() {
     handler
         .handle_file_changed(uri.clone(), change(with_call))
         .await;
-    tokio::time::sleep(tokio::time::Duration::from_millis(400)).await;
+    handler.wait_for_pending_reindex(&uri).await;
 
     // Indexer should have the file with `loadData` defined.
     assert!(
@@ -85,7 +85,7 @@ async fn retype_cycle_indexer_state_supports_diagnostics() {
     handler
         .handle_file_changed(uri.clone(), change(without_call))
         .await;
-    tokio::time::sleep(tokio::time::Duration::from_millis(400)).await;
+    handler.wait_for_pending_reindex(&uri).await;
 
     let diags2 = {
         let doc = parse_live(without_call, tree_sitter_kotlin::language()).unwrap();
@@ -100,7 +100,7 @@ async fn retype_cycle_indexer_state_supports_diagnostics() {
     handler
         .handle_file_changed(uri.clone(), change(with_call))
         .await;
-    tokio::time::sleep(tokio::time::Duration::from_millis(400)).await;
+    handler.wait_for_pending_reindex(&uri).await;
 
     // The indexer state must support diagnostics on the retyped content.
     let diags3 = {
