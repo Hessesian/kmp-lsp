@@ -965,13 +965,17 @@ pub(crate) fn extension_is_in_scope(
     entry_name: &str,
     caller_file_data: Option<&FileData>,
 ) -> bool {
-    let caller_package = caller_file_data.and_then(|fd| fd.package.as_ref());
     // Kotlin's default package (no `package` header) is a real package like
     // any other, so two default-package files are same-package to each
-    // other -- `None == None` here, not "unknown, assume no."
-    if entry_package.is_none() && caller_package.is_none() {
+    // other -- but only once the caller's `FileData` is actually known.
+    // `caller_file_data: None` means "unknown," not "confirmed no package";
+    // conflating the two (e.g. via `caller_file_data.and_then(|fd| fd.package)`,
+    // which is `None` in both cases) would treat an unloaded caller file as
+    // reachable by accident.
+    if entry_package.is_none() && caller_file_data.is_some_and(|fd| fd.package.is_none()) {
         return true;
     }
+    let caller_package = caller_file_data.and_then(|fd| fd.package.as_ref());
     if entry_package.is_some_and(|ext_pkg| caller_package == Some(ext_pkg)) {
         return true;
     }

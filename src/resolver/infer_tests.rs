@@ -745,14 +745,42 @@ fn find_fun_return_type_by_name_falls_back_to_first_match_when_nothing_reachable
 /// already been separately patched around once before, at a third call site
 /// (`nullable_call_diagnostics.rs`'s `extension_in_scope_here`), instead of
 /// being fixed here at the source.
+///
+/// Passes a real (known) `FileData` with `package: None` -- not a bare `None`
+/// `caller_file_data` -- since those mean different things: an unloaded/
+/// unknown caller file must NOT be treated as "confirmed default package"
+/// (a second review round caught the first version of this test conflating
+/// the two, which the fix itself had also conflated).
 #[test]
 fn extension_is_in_scope_treats_default_package_as_same_package() {
     use super::extension_is_in_scope;
+    use crate::types::FileData;
+
+    let caller_file_data = FileData {
+        package: None,
+        ..Default::default()
+    };
 
     assert!(
-        extension_is_in_scope(None, "helper", None),
+        extension_is_in_scope(None, "helper", Some(&caller_file_data)),
         "two default-package files (no `package` header on either side) must \
          be considered same-package, not unreachable"
+    );
+}
+
+/// The distinction the review round above caught: an *unknown* caller file
+/// (`caller_file_data: None`, e.g. not yet indexed) must NOT be treated the
+/// same as a *known* default-package caller -- unlike the previous test,
+/// this must stay `false`.
+#[test]
+fn extension_is_in_scope_does_not_treat_unknown_caller_as_default_package() {
+    use super::extension_is_in_scope;
+
+    assert!(
+        !extension_is_in_scope(None, "helper", None),
+        "an unloaded/unknown caller file must not be guessed as \"confirmed \
+         default package\" just because its package is also unrepresentable \
+         as `Some`"
     );
 }
 
