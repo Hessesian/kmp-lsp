@@ -85,6 +85,16 @@ pub(crate) enum ResolveIo {
     /// Strictly in-memory: no `fd`, no `rg`, no hierarchy. Tail fallback:
     /// unique global-defs match only (ambiguity-safe). (diagnostics keystroke path)
     IndexOnly,
+    /// Same IO profile as `NoRg`, but NO global-defs tail fallback at all --
+    /// only local/imports/same-package/star-imports/hierarchy count as a
+    /// match. For callers that already chain their own last-resort fallback
+    /// afterward (see `find_fun_return_type_reachable`): letting THIS step's
+    /// tail fire first pre-empted that fallback with a match that has no
+    /// more claim to correctness than an arbitrary same-named symbol
+    /// anywhere in the workspace (a real production bug: a bare-name tail
+    /// match here beat a differently-named function's own, more precise
+    /// resolution downstream — see the caller's doc comment).
+    ScopedOnly,
 }
 
 /// Resolve `name` as seen from `from_uri`, returning all known definition
@@ -324,9 +334,10 @@ fn resolve_chain(
 
     // Tail fallback — global definitions index (includes JAR symbols).
     //  - NoRg: first match.   - IndexOnly: unique match only (ambiguity-safe).
+    //  - ScopedOnly: no tail at all (empty) -- see the variant's doc comment.
     //  - Full: never reached (returns inside the rg branch above).
     match io {
-        ResolveIo::Full => vec![],
+        ResolveIo::Full | ResolveIo::ScopedOnly => vec![],
         ResolveIo::NoRg => indexer
             .lookup_definitions(name)
             .into_iter()
@@ -365,6 +376,17 @@ fn find_in_star_imports(indexer: &Indexer, name: &str, star_pkgs: &[String]) -> 
 /// processes on each request would block the LSP thread and spike CPU.
 pub(crate) fn resolve_symbol_no_rg(indexer: &Indexer, name: &str, from_uri: &Url) -> Vec<Location> {
     resolve_chain(indexer, name, from_uri, ResolveIo::NoRg, false)
+}
+
+/// Like [`resolve_symbol_no_rg`] but without its global-defs tail fallback --
+/// for callers that already chain their own last-resort fallback afterward
+/// (see [`ResolveIo::ScopedOnly`]).
+pub(crate) fn resolve_symbol_scoped_only(
+    indexer: &Indexer,
+    name: &str,
+    from_uri: &Url,
+) -> Vec<Location> {
+    resolve_chain(indexer, name, from_uri, ResolveIo::ScopedOnly, false)
 }
 
 /// Index-only type resolver for the diagnostics hot path.
@@ -678,8 +700,6 @@ fn resolve_extension_in_scope(
     };
     let caller_file_data = indexer.files.get(from_uri.as_str());
     let caller_file_data_ref: Option<&FileData> = caller_file_data.as_deref().map(|v| v.as_ref());
-    let caller_package: Option<&String> =
-        caller_file_data.as_ref().and_then(|fd| fd.package.as_ref());
     for entry in entries.iter() {
         if entry.name != name {
             continue;
@@ -687,7 +707,6 @@ fn resolve_extension_in_scope(
         let in_scope = crate::resolver::infer::extension_is_in_scope(
             entry.package.as_ref(),
             &entry.name,
-            caller_package,
             caller_file_data_ref,
         );
         if in_scope {

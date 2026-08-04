@@ -253,6 +253,94 @@ fun make() {
 }
 
 #[test]
+fn untyped_val_unindexed_di_factory_call_gets_hint() {
+    // `val repo = get<UserRepository>()` where `get` is a Koin-style DI factory
+    // that is NOT declared anywhere in this file/index (unpromoted JAR / external
+    // dependency in real usage). CST resolution alone (no STRING fallback) must
+    // still produce the hint via the `GENERIC_FACTORY_FNS` call-site type-arg
+    // recovery in `resolve_call_expr_type`.
+    let src = r#"package test
+class UserRepository
+fun make() {
+    val repo = get<UserRepository>()
+}
+"#;
+    let hints = hints_for(src);
+    assert!(
+        hints
+            .iter()
+            .any(|h| matches!(&h.label, InlayHintLabel::String(s) if s == ": UserRepository")),
+        "expected ': UserRepository' hint for unindexed DI factory call, got: {hints:?}",
+    );
+}
+
+#[test]
+fn untyped_val_unindexed_retrofit_style_create_gets_hint() {
+    // `val api = retrofit.create(DashboardApi::class.java)` where neither
+    // `retrofit`'s type nor `create` is indexed (external Retrofit dependency
+    // in real usage). CST resolution alone must still recover `DashboardApi`
+    // from the call's own class-literal argument.
+    let src = r#"package test
+class DashboardApi
+fun make() {
+    val api = retrofit.create(DashboardApi::class.java)
+}
+"#;
+    let hints = hints_for(src);
+    assert!(
+        hints
+            .iter()
+            .any(|h| matches!(&h.label, InlayHintLabel::String(s) if s == ": DashboardApi")),
+        "expected ': DashboardApi' hint for unindexed Retrofit-style create call, got: {hints:?}",
+    );
+}
+
+#[test]
+fn untyped_val_if_else_arithmetic_to_long_gets_hint() {
+    // Verbatim (minus identifier renaming) from a real project file
+    // (`FxMoneyVM.kt`), found via observational logging of `hint_property`'s
+    // now-removed STRING fallback against production code: CST previously
+    // returned `None` for the `if`/`else` because the `else` branch's
+    // `(timeoutSeconds * 1000).toLong()` was unresolvable (arithmetic +
+    // numeric-conversion-call gap, both now closed).
+    let src = r#"package test
+class Vm {
+    private var mMillisUntilFinished: Long = 0
+    private var timeoutSeconds: Int = 30
+    val millisInFuture = if (mMillisUntilFinished > 0) mMillisUntilFinished else (timeoutSeconds * 1000).toLong()
+}
+"#;
+    let hints = hints_for(src);
+    assert!(
+        hints
+            .iter()
+            .any(|h| matches!(&h.label, InlayHintLabel::String(s) if s == ": Long")),
+        "expected ': Long' hint for if/else-with-arithmetic property, got: {hints:?}",
+    );
+}
+
+#[test]
+fn untyped_val_bare_arithmetic_division_gets_hint() {
+    // Verbatim shape: `private const val TIMER_TICK_MILLIS = 1000 / 2` had NO
+    // inlay hint at all, live, in the real editor (neither CST nor the STRING
+    // fallback handled bare arithmetic) — now closed on the CST side directly.
+    let src = r#"package test
+class Vm {
+    companion object {
+        private const val TIMER_TICK_MILLIS = 1000 / 2
+    }
+}
+"#;
+    let hints = hints_for(src);
+    assert!(
+        hints
+            .iter()
+            .any(|h| matches!(&h.label, InlayHintLabel::String(s) if s == ": Int")),
+        "expected ': Int' hint for bare arithmetic division property, got: {hints:?}",
+    );
+}
+
+#[test]
 fn it_inside_nested_lambda_not_suspend() {
     // Regression: `it` inside `setState { it }` where `setState` has a
     // `suspend` function type parameter was incorrectly showing `: suspend`.

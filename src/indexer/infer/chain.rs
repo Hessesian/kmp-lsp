@@ -6,12 +6,15 @@ use crate::indexer::NodeExt;
 use crate::queries::{
     KIND_CALL_EXPR, KIND_CALL_SUFFIX, KIND_CLASS_DECL, KIND_LAMBDA_LIT, KIND_NAV_EXPR,
     KIND_NAV_SUFFIX, KIND_OBJECT_DECL, KIND_SIMPLE_IDENT, KIND_STATEMENTS, KIND_TYPE_IDENT,
+    KIND_VALUE_ARGS,
 };
 use crate::resolver::extract_collection_element_type;
 use crate::StrExt;
 
 use super::deps::InferDeps;
-use super::lambda::{LAMBDA_RESULT_FNS, SCOPE_FUNCTIONS};
+use super::lambda::{
+    GENERIC_FACTORY_FNS, LAMBDA_RESULT_FNS, NUMERIC_CONVERSION_FNS, SCOPE_FUNCTIONS,
+};
 use super::type_subst::{
     apply_simple_subst, build_fn_subst, build_type_arg_subst, capitalize_first_char,
     first_type_arg_raw, is_generic_param, split_top_level_commas, type_args_inner,
@@ -179,7 +182,7 @@ pub(super) fn forward_resolve_segments(
                             continue;
                         }
                     }
-                    if let Some(ret_ty) = deps.find_fun_return_type(name) {
+                    if let Some(ret_ty) = deps.find_fun_return_type(name, uri) {
                         let ret_base = ret_ty.strip_nullable().dotted_ident_prefix();
                         let ret_base = ret_base.trim_end_matches('.');
                         if !is_generic_param(ret_base) {
@@ -527,15 +530,92 @@ pub(super) fn resolve_call_expr_type(
                 deps.find_method_return_type_for_type(&effective_type, &fn_name, uri)
             {
                 let subst = build_type_arg_subst(deps, &effective_type, recv_ty);
-                return Some(crate::indexer::apply_type_subst(&ret_ty, &subst));
+                let substituted = crate::indexer::apply_type_subst(&ret_ty, &subst);
+                // Also substitute the CALLED FUNCTION's own generic type
+                // parameter(s) from an explicit call-site type argument --
+                // distinct from `subst` above, which only covers the
+                // receiver's own generic argument. Real example that erased
+                // this: `fun <R> Flow<*>.filterIsInstance(): Flow<R>` — `R`
+                // is the function's own type parameter, supplied only by the
+                // caller's explicit `<T>` (`filterIsInstance<Foo>()`), never
+                // derivable from the receiver (star-projected `Flow<*>`
+                // here, but this matters even for a concrete receiver: `R`
+                // and the receiver's own parameter are simply unrelated
+                // names). Mirrors the identical substitution the
+                // receiver-agnostic branch below already applies — this
+                // branch returned before ever reaching it.
+                if let Some(call_type_args) = node.call_site_type_arg_strings(bytes) {
+                    if let Some(callable_info) = deps.find_fun_callable_info(&fn_name, uri) {
+                        if !callable_info.type_params.is_empty() {
+                            let fn_subst =
+                                build_fn_subst(&callable_info.type_params, &call_type_args);
+                            return Some(apply_simple_subst(&substituted, &fn_subst));
+                        }
+                    }
+                }
+                return Some(substituted);
             }
         }
     }
-    // Prefer the import-aware lookup (binds to the actually-imported symbol);
-    // fall back to the looser global-name scan only when resolution finds nothing.
-    let mut result = deps
-        .find_fun_return_type_reachable(&fn_name, uri)
-        .or_else(|| deps.find_fun_return_type(&fn_name));
+    // Prefer the import-aware lookup (binds to the actually-imported symbol)
+    // over every heuristic below -- a real, indexed, reachable declaration
+    // must win even when its name coincides with a known pattern (e.g. a
+    // workspace's own `fun <T> create(): Wrapper<T>` must resolve to
+    // `Wrapper<T>`, not the DI-factory heuristic's bare `T`). Only the
+    // *ambiguous* global-name scan (`find_fun_return_type`, several lines
+    // down) is deferred past the heuristics — see the comments on each.
+    let mut result = deps.find_fun_return_type_reachable(&fn_name, uri);
+    // Numeric conversion: `x.toLong()`/`.toInt()`/etc. — the function name
+    // alone fixes the return type (see `NUMERIC_CONVERSION_FNS`'s doc
+    // comment) once the reachable lookup above has already failed. Gated on
+    // `callee.kind() == KIND_NAV_EXPR` (an actual `.` receiver in the
+    // source, even if its type didn't resolve): a genuinely receiver-less
+    // `toLong()` naming an unrelated top-level function must not be guessed
+    // as the stdlib intrinsic.
+    if result.is_none() && callee.kind() == KIND_NAV_EXPR {
+        if let Some((_, ret_ty)) = NUMERIC_CONVERSION_FNS
+            .iter()
+            .find(|(name, _)| *name == fn_name)
+        {
+            return Some((*ret_ty).to_owned());
+        }
+    }
+    // DI-factory: `get<Foo>()`/`inject<Foo>()`/etc. once the reachable
+    // lookup above has already failed — read the type argument straight off
+    // the call site instead of giving up. Gated on both a known
+    // factory-function name AND an explicit `<T>` at the call site, so it's
+    // a strong, self-verifying signal, not a guess.
+    if result.is_none() && GENERIC_FACTORY_FNS.contains(&fn_name.as_str()) {
+        if let Some(type_args) = node.call_site_type_arg_strings(bytes) {
+            if let [single] = type_args.as_slice() {
+                if single.starts_with_uppercase() {
+                    return Some(single.clone());
+                }
+            }
+        }
+    }
+    // Retrofit-style class-literal: `retrofit.create(Foo::class.java)` with
+    // neither the receiver's type nor `create` itself indexed. The argument
+    // itself names the answer — see `find_class_literal_arg_type`. Also
+    // gated on `GENERIC_FACTORY_FNS` (same known-factory-name list as above):
+    // without it, this would wrongly override a real, correctly-indexed,
+    // differently-named function that merely happens to take a
+    // class-literal argument for an unrelated reason (e.g. a
+    // logging/reflection helper).
+    if result.is_none() && GENERIC_FACTORY_FNS.contains(&fn_name.as_str()) {
+        if let Some(class_arg_ty) = find_class_literal_arg_type(node, bytes) {
+            return Some(class_arg_ty);
+        }
+    }
+    // Fall back to the looser, receiver-agnostic global-name scan only when
+    // NOTHING above found anything -- a same-named match here has no regard
+    // for import/package reachability (a real production bug had this scan
+    // bare-name-match an unrelated `create` on a completely different,
+    // unimported class -- a KSP `SymbolProcessorProvider.create():
+    // SymbolProcessor` -- before the heuristics above got a chance to run,
+    // when they were gated on `result.is_none()` *after* this scan instead
+    // of before it).
+    result = result.or_else(|| deps.find_fun_return_type(&fn_name, uri));
     // Apply call-site type argument substitution for generic functions.
     if let Some(call_type_args) = node.call_site_type_arg_strings(bytes) {
         if let Some(callable_info) = deps.find_fun_callable_info(&fn_name, uri) {
@@ -557,6 +637,44 @@ pub(super) fn resolve_call_expr_type(
         return Some(fn_name);
     }
     result
+}
+
+/// Find a `Foo::class` (optionally `.java`-suffixed, optionally
+/// package-qualified) argument inside a call's argument list and return
+/// `Foo`.
+///
+/// Deliberately TEXTUAL, not a CST walk of the argument's structure --
+/// mirroring `infer_lines::infer_from_rhs_assignment`'s "Pattern 3" exactly
+/// (same substring search), for a concrete reason: a bare `Foo::class`
+/// parses as a single `callable_reference(type_identifier)` node, but a
+/// qualified `com.example.Foo::class` does NOT -- tree-sitter-kotlin instead
+/// produces a nested `navigation_expression` chain (`com.example.Foo` as
+/// dotted navigation suffixes, with `::class` itself becoming just another
+/// suffix carrying the literal `class` keyword token, not a
+/// `callable_reference` at all). Chasing that shape recursively is much more
+/// fragile than reading the argument list's own text and applying the same
+/// substring search already proven correct on the STRING side.
+///
+/// Unconditional on the callee/receiver resolving to anything, since the
+/// pattern's whole point is recovering a type when the actual
+/// `create`/factory method is not indexed (e.g. an external Retrofit-style
+/// library). Returns the first class-literal argument found; callers only
+/// reach this after every signature-based resolution has failed.
+fn find_class_literal_arg_type(call: tree_sitter::Node<'_>, bytes: &[u8]) -> Option<String> {
+    let call_suffix = call.first_child_of_kind(KIND_CALL_SUFFIX)?;
+    let value_args = call_suffix.first_child_of_kind(KIND_VALUE_ARGS)?;
+    let args_text = value_args.utf8_text(bytes).ok()?;
+    let class_pos = args_text.find("::class")?;
+    let before_class = args_text[..class_pos].trim_end();
+    let leaf = before_class
+        .split(|c: char| !c.is_alphanumeric() && c != '_')
+        .next_back()
+        .unwrap_or("");
+    if leaf.starts_with_uppercase() {
+        Some(leaf.to_owned())
+    } else {
+        None
+    }
 }
 
 /// Locate the trailing `lambda_literal` of a call expression, handling the

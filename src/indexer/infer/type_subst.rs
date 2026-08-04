@@ -18,7 +18,7 @@ use super::sig::strip_trailing_call_args;
 ///
 /// Returns an empty map when the class params are unknown or the concrete type
 /// carries no type arguments.
-pub(super) fn build_type_arg_subst(
+pub(crate) fn build_type_arg_subst(
     deps: &impl InferDeps,
     class_name: &str,
     concrete_type: &str,

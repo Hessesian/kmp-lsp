@@ -1,6 +1,6 @@
-use tower_lsp::lsp_types::{Position, SymbolKind, Url};
+use tower_lsp::lsp_types::{Location, Position, SymbolKind, Url};
 
-use crate::indexer::Indexer;
+use crate::indexer::{Indexer, InferDeps};
 use crate::types::FileData;
 use crate::LinesExt;
 use crate::StrExt;
@@ -10,6 +10,7 @@ use super::infer_lines::{
     extract_property_type_from_detail, extract_return_type_from_detail, find_rhs_str,
     has_dot_after_first_call,
 };
+use super::{walk_hierarchy, MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK};
 
 // ─── Type-string helpers ──────────────────────────────────────────────────────
 
@@ -341,10 +342,19 @@ fn infer_var_from_rhs_data(
         return Some(type_name);
     }
     if let Some((recv, method)) = method_match {
-        if let Some(recv_type) =
-            infer_variable_type_core(indexer, &recv, uri, depth - 1, keep_generics)
+        // Resolve the receiver's RAW type (generics kept) regardless of this
+        // call's own `keep_generics`: a call-site type argument (e.g. the
+        // `Unit` in `MutableSharedFlow<Unit>`) has to survive through to the
+        // substitution step below, or a generic extension's return type
+        // comes back with its declared type parameter still literal (e.g.
+        // `SharedFlow<T>` instead of `SharedFlow<Unit>`) -- matches the raw
+        // (generics-preserving) contract `rhs_match`/`field_match` above
+        // already return regardless of `keep_generics` for this same reason.
+        if let Some(recv_type_raw) = infer_variable_type_core(indexer, &recv, uri, depth - 1, true)
         {
-            if let Some(ret) = find_method_return_type(indexer, &recv_type, &method, Some(uri)) {
+            if let Some(ret) =
+                resolve_method_return_type_substituted(indexer, &recv_type_raw, &method, uri)
+            {
                 return Some(ret);
             }
         }
@@ -365,6 +375,41 @@ fn infer_var_from_rhs_data(
         }
     }
     None
+}
+
+/// Resolve `method_name`'s return type on a receiver whose raw (generics-
+/// preserving) type is `recv_type_raw`, substituting the receiver's own
+/// concrete type argument(s) into the result.
+///
+/// The "own class, then supertypes" fallback is delegated to
+/// [`crate::indexer::InferDeps::find_method_return_type_for_type`] -- the
+/// exact composite the CST engine's `resolve_call_expr_type`
+/// (`indexer/infer/chain.rs`) reaches for the same receiver-method shape --
+/// rather than hand-chaining `find_method_return_type` and
+/// `find_method_return_type_via_supertypes` here too. Shared by both STRING
+/// call sites below (`infer_var_from_rhs_data`'s `method_match` branch and
+/// `infer_method_return_type`'s line-scan fallback) so a future change to
+/// that fallback policy can't silently diverge between the two STRING call
+/// sites, or between the STRING and CST engines -- which is exactly how the
+/// supertype-walk fallback itself went missing from this file before it was
+/// added back (see `find_method_return_type_via_supertypes`'s callers).
+fn resolve_method_return_type_substituted(
+    indexer: &Indexer,
+    recv_type_raw: &str,
+    method: &str,
+    uri: &Url,
+) -> Option<String> {
+    let recv_base = recv_type_raw
+        .dotted_ident_prefix()
+        .last_segment()
+        .to_owned();
+    let raw_ret = indexer.find_method_return_type_for_type(&recv_base, method, uri)?;
+    // Substitute the receiver's own concrete type argument(s) (e.g. `Unit` in
+    // `MutableSharedFlow<Unit>`) into the raw, as-declared return type --
+    // without this, a generic extension's return type keeps its literal type
+    // parameter name instead of the caller's concrete instantiation.
+    let subst = crate::indexer::build_type_arg_subst(indexer, &recv_base, recv_type_raw);
+    Some(crate::indexer::apply_type_subst(&raw_ret, &subst))
 }
 
 /// CST fallback for variable type inference: find `val <var_name> = <init>` in
@@ -659,12 +704,20 @@ fn infer_method_return_type(
                     continue;
                 }
 
-                // Recursively infer the receiver type (DashMap guards already dropped).
-                if let Some(receiver_type) = infer_variable_type_impl(indexer, receiver, uri, depth)
+                // Recursively infer the RAW receiver type (generics kept; DashMap
+                // guards already dropped) -- see `resolve_method_return_type_substituted`:
+                // without the raw form, a generic extension's return type (e.g.
+                // `asSharedFlow`'s `SharedFlow<T>`) would keep its literal type
+                // parameter instead of the receiver's own concrete argument.
+                if let Some(receiver_type_raw) =
+                    infer_variable_type_raw_impl(indexer, receiver, uri, depth)
                 {
-                    if let Some(ret) =
-                        find_method_return_type(indexer, &receiver_type, method, Some(uri))
-                    {
+                    if let Some(ret) = resolve_method_return_type_substituted(
+                        indexer,
+                        &receiver_type_raw,
+                        method,
+                        uri,
+                    ) {
                         return Some(ret);
                     }
                 }
@@ -688,7 +741,7 @@ fn infer_method_return_type(
     // global-name scan (which may grab a test-only same-named extension).
     for fn_name in &plain_fn_candidates {
         if let Some(ret) = find_fun_return_type_reachable(indexer, fn_name, uri)
-            .or_else(|| find_fun_return_type_by_name(indexer, fn_name))
+            .or_else(|| find_fun_return_type_by_name(indexer, fn_name, uri))
         {
             return Some(ret);
         }
@@ -697,33 +750,102 @@ fn infer_method_return_type(
     None
 }
 
-pub(crate) fn find_fun_return_type_by_name(indexer: &Indexer, fn_name: &str) -> Option<String> {
-    // Receiver-less by-name lookup: the helper scopes to workspace defs and caps the
-    // scan (a ubiquitous name like `create` has thousands of source-JAR defs, each a
-    // full symbol-list + signature line scan — previously a multi-second stall).
-    indexer.find_in_workspace_defs(fn_name, |loc| {
-        let file_data = indexer.files.get(loc.uri.as_str())?;
-        for symbol in &file_data.symbols {
-            if symbol.name != fn_name {
-                continue;
-            }
-            if !matches!(
-                symbol.kind,
-                SymbolKind::FUNCTION | SymbolKind::METHOD | SymbolKind::OPERATOR
-            ) {
-                continue;
-            }
-            if let Some(ret) = extract_return_type_from_detail(&symbol.detail) {
-                return Some(ret);
-            }
-            let start_line = symbol.selection_start() as usize;
-            let full_sig = file_data.lines.collect_signature(start_line);
-            if let Some(ret) = extract_return_type_from_detail(&full_sig) {
-                return Some(ret);
-            }
+/// Receiver-less by-name return-type lookup — the last-resort tail behind
+/// [`find_fun_return_type_reachable`] at every call site.
+///
+/// This is the "unscoped last-resort tail" flagged by the 2026-06-30
+/// CST-resolution-unification design doc's capability #1 (import/package/
+/// super-aware filter — see `docs/superpowers/specs/2026-06-30-cst-resolution-
+/// unification-design.md`, "Capability mapping"), which specified this filter
+/// as an invariant but never implemented it here. A production bug proved the
+/// gap is real: `retrofit.create(GoldConversionPublicApi::class.java)`
+/// bare-name-matched an unrelated `SymbolProcessorProvider.create():
+/// SymbolProcessor` (KSP, a different library entirely) purely because it
+/// came first in `definitions` iteration order.
+///
+/// Fix: when several same-named candidates exist, prefer one whose declaring
+/// file is actually reachable from `uri` (same package / explicit import /
+/// star import) over first-match-in-iteration-order. When NONE are reachable,
+/// this still falls back to the historical "take the first candidate with an
+/// extractable return type" — every call site already tries the properly
+/// scoped `find_fun_return_type_reachable` first, so by the time this runs,
+/// guessing from an unrelated in-workspace symbol is judged more useful than
+/// returning nothing (e.g. when the receiver's own type isn't indexed at all,
+/// as with an un-promoted library receiver).
+pub(crate) fn find_fun_return_type_by_name(
+    indexer: &Indexer,
+    fn_name: &str,
+    uri: &Url,
+) -> Option<String> {
+    // The helper scopes to workspace defs and caps the scan (a ubiquitous name
+    // like `create` has thousands of source-JAR defs, each a full symbol-list +
+    // signature line scan — previously a multi-second stall).
+    let candidates = indexer.workspace_def_candidates(fn_name);
+
+    let caller_file_data = indexer.files.get(uri.as_str()).map(|r| r.value().clone());
+    let caller_file_data_ref = caller_file_data.as_deref();
+
+    candidates
+        .iter()
+        .filter(|loc| {
+            candidate_declaration_is_reachable(indexer, loc, fn_name, caller_file_data_ref)
+        })
+        .find_map(|loc| return_type_of_named_fn_at(indexer, fn_name, loc))
+        .or_else(|| {
+            candidates
+                .iter()
+                .find_map(|loc| return_type_of_named_fn_at(indexer, fn_name, loc))
+        })
+}
+
+/// Whether `loc`'s declaring file is reachable from a caller with
+/// `caller_file_data`'s package/imports — same package, an explicit import, or
+/// a star import. Reuses [`extension_is_in_scope`]'s package/import check (its
+/// body is not actually extension-specific — see that function's doc comment
+/// for the individual rules).
+fn candidate_declaration_is_reachable(
+    indexer: &Indexer,
+    loc: &Location,
+    fn_name: &str,
+    caller_file_data: Option<&FileData>,
+) -> bool {
+    // Missing `FileData` means the candidate's real package is unknown (not
+    // "no package") -- don't guess reachability for it either way.
+    let Some(candidate_file_data) = indexer.files.get(loc.uri.as_str()) else {
+        return false;
+    };
+    extension_is_in_scope(
+        candidate_file_data.package.as_ref(),
+        fn_name,
+        caller_file_data,
+    )
+}
+
+/// Read `fn_name`'s return type off the function/method/operator symbol at
+/// `loc`, trying the (possibly truncated) `detail` string first, then a fresh
+/// signature line scan.
+fn return_type_of_named_fn_at(indexer: &Indexer, fn_name: &str, loc: &Location) -> Option<String> {
+    let file_data = indexer.files.get(loc.uri.as_str())?;
+    for symbol in &file_data.symbols {
+        if symbol.name != fn_name {
+            continue;
         }
-        None
-    })
+        if !matches!(
+            symbol.kind,
+            SymbolKind::FUNCTION | SymbolKind::METHOD | SymbolKind::OPERATOR
+        ) {
+            continue;
+        }
+        if let Some(ret) = extract_return_type_from_detail(&symbol.detail) {
+            return Some(ret);
+        }
+        let start_line = symbol.selection_start() as usize;
+        let full_sig = file_data.lines.collect_signature(start_line);
+        if let Some(ret) = extract_return_type_from_detail(&full_sig) {
+            return Some(ret);
+        }
+    }
+    None
 }
 
 /// Import-aware return-type lookup. Resolves `fn_name` via the no-rg resolver
@@ -736,18 +858,17 @@ pub(crate) fn find_fun_return_type_reachable(
     fn_name: &str,
     uri: &Url,
 ) -> Option<String> {
-    // Promotion MUST happen before `resolve_symbol_no_rg` at this call site —
-    // unlike `find_extension_fn_return_type_scoped` below, where the check
-    // guards a `jar_files` read that happens *after* it in the same function,
-    // here `locations` is produced BY `resolve_symbol_no_rg`, which calls
-    // into `resolve_chain` and reads `jar_definitions` directly in more than
-    // one place upstream (`resolve_via_imports`, and the `NoRg` fallback tail
-    // via `Indexer::lookup_definitions`). If promotion ran after this call
-    // (as it did before this fix), a Tier-1-only candidate would already
-    // have produced an empty `locations` Vec by the time materialization
-    // completed, so the `for loc in &locations` loop below would never see
-    // the freshly-materialized data on THIS call — only a later, separate
-    // call would benefit. Do not move this back below `resolve_symbol_no_rg`.
+    // Promotion MUST happen before `resolve_symbol_scoped_only` at this call
+    // site — unlike `find_extension_fn_return_type_scoped` below, where the
+    // check guards a `jar_files` read that happens *after* it in the same
+    // function, here `locations` is produced BY `resolve_symbol_scoped_only`,
+    // which reads `jar_definitions` directly via `resolve_via_imports`
+    // upstream. If promotion ran after this call (as it did before this
+    // fix), a Tier-1-only candidate would already have produced an empty
+    // `locations` Vec by the time materialization completed, so the
+    // `for loc in &locations` loop below would never see the
+    // freshly-materialized data on THIS call — only a later, separate call
+    // would benefit. Do not move this back below `resolve_symbol_scoped_only`.
     // ZERO sidecar-IPC budget: this runs on latency-critical inference paths
     // (inlay hints call it once per name in the visible range — unbudgeted
     // blocking IPC here was observed live as a 22s inlay compute that timed
@@ -757,7 +878,19 @@ pub(crate) fn find_fun_return_type_reachable(
     // hover/goto-def resolution).
     let mut cache_backed_only = 0usize;
     crate::indexer::jar::ensure_jar_definitions_for(indexer, fn_name, &mut cache_backed_only);
-    let locations = crate::resolver::resolve_symbol_no_rg(indexer, fn_name, uri);
+    // Scoped-only, not `resolve_symbol_no_rg`: this function's every caller
+    // already chains its own last-resort fallback (`find_fun_return_type`/
+    // `find_fun_return_type_by_name`, which -- unlike this scan -- prefers an
+    // import/package-reachable candidate over an arbitrary same-named one)
+    // afterward, so this step should only report a match that's genuinely
+    // reachable via local/import/package/hierarchy resolution, not
+    // `resolve_symbol_no_rg`'s own "first workspace/JAR match, any package"
+    // tail. Skipping that tail here matters: letting it fire pre-empted the
+    // caller's own, more-reachability-aware fallback with a match that had
+    // no more claim to correctness — a real production bug had it beat a
+    // completely unrelated, unimported library's same-named function ahead
+    // of the actually-intended resolution.
+    let locations = crate::resolver::resolve_symbol_scoped_only(indexer, fn_name, uri);
     let mut fallback: Option<String> = None;
     for loc in &locations {
         let Some(file_data) = indexer
@@ -841,9 +974,19 @@ pub(crate) fn find_method_return_type(
 pub(crate) fn extension_is_in_scope(
     entry_package: Option<&String>,
     entry_name: &str,
-    caller_package: Option<&String>,
     caller_file_data: Option<&FileData>,
 ) -> bool {
+    // Kotlin's default package (no `package` header) is a real package like
+    // any other, so two default-package files are same-package to each
+    // other -- but only once the caller's `FileData` is actually known.
+    // `caller_file_data: None` means "unknown," not "confirmed no package";
+    // conflating the two (e.g. via `caller_file_data.and_then(|fd| fd.package)`,
+    // which is `None` in both cases) would treat an unloaded caller file as
+    // reachable by accident.
+    if entry_package.is_none() && caller_file_data.is_some_and(|fd| fd.package.is_none()) {
+        return true;
+    }
+    let caller_package = caller_file_data.and_then(|fd| fd.package.as_ref());
     if entry_package.is_some_and(|ext_pkg| caller_package == Some(ext_pkg)) {
         return true;
     }
@@ -916,7 +1059,6 @@ fn find_extension_fn_return_type_scoped(
         crate::indexer::jar::extension_entries_for(indexer, receiver_base, &mut cache_backed_only)?;
     let caller_file_data = indexer.files.get(from_uri.as_str());
     let caller_file_data_ref: Option<&FileData> = caller_file_data.as_deref().map(|v| v.as_ref());
-    let caller_package = caller_file_data.as_ref().and_then(|fd| fd.package.as_ref());
     for entry in entries.iter() {
         if entry.name != method_name {
             continue;
@@ -924,12 +1066,7 @@ fn find_extension_fn_return_type_scoped(
         if !matches!(entry.kind, SymbolKind::FUNCTION) {
             continue;
         }
-        if !extension_is_in_scope(
-            entry.package.as_ref(),
-            &entry.name,
-            caller_package,
-            caller_file_data_ref,
-        ) {
+        if !extension_is_in_scope(entry.package.as_ref(), &entry.name, caller_file_data_ref) {
             continue;
         }
         // Try detail first; fall back to source lines when detail is truncated.
@@ -999,32 +1136,119 @@ pub(crate) fn find_method_return_type_via_supertypes(
     method_name: &str,
     from_uri: Option<&Url>,
 ) -> Option<String> {
-    let class_base = class_name.split('<').next().unwrap_or(class_name);
+    // Strip generics AND any qualifying package prefix: `lookup_definitions`
+    // is keyed by the bare symbol name, so a qualified `class_name` (e.g.
+    // `com.lib.MutableSharedFlow<Event>`) would otherwise silently miss it.
+    let class_base = class_name.dotted_ident_prefix().last_segment().to_owned();
 
-    indexer.find_in_workspace_defs(class_base, |class_loc| {
-        let file_data = indexer.files.get(class_loc.uri.as_str())?;
-        let class_sym = file_data.symbols.iter().find(|s| s.name == class_base)?;
-        let class_line = class_sym.selection_start();
+    // `lookup_definitions` merges workspace + JAR locations (promoting a
+    // not-yet-materialized JAR as needed) into an owned `Vec<Location>` --
+    // the walk below promotes further JARs per-ancestor, and an owned Vec
+    // (unlike a DashMap `Ref`) can't deadlock against that.
+    indexer
+        .lookup_definitions(&class_base)
+        .into_iter()
+        .take(crate::indexer::MAX_BY_NAME_DEFS)
+        .find_map(|loc| {
+            find_method_return_type_via_class_hierarchy(
+                indexer,
+                &class_base,
+                loc.uri.as_str(),
+                method_name,
+                from_uri,
+            )
+        })
+}
 
-        for (line, super_name, type_args) in file_data.supers.iter() {
-            if *line != class_line {
-                continue;
-            }
-            let Some(raw) = find_method_return_type(indexer, super_name, method_name, from_uri)
-            else {
-                continue;
-            };
-            if type_args.is_empty() {
-                return Some(raw);
-            }
-            let super_type_params = find_class_type_params(indexer, super_name);
-            if super_type_params.is_empty() {
-                return Some(raw);
-            }
-            return Some(apply_supertype_subst(&raw, &super_type_params, type_args));
-        }
-        None
-    })
+/// Walk every ancestor of `class_base` (declared at `class_uri`) via
+/// [`walk_hierarchy`] — the same recursive, cycle-safe, JAR-promotion-aware
+/// traversal `resolve_from_class_hierarchy`/completion use elsewhere —
+/// looking for `method_name`. Unlike a hand-rolled single-level check, this
+/// finds a method declared two or more levels up (or on a JAR-only
+/// grandparent), not just the direct supertype.
+///
+/// The direct supertype's own generic type arguments (e.g.
+/// `class Derived : Base<Int>`) are substituted into a hit found there via
+/// `substitute_direct_supertype_args`; a hit on a deeper ancestor is
+/// returned as-is — multi-level generic substitution isn't attempted, the
+/// same scope the original single-level logic had.
+fn find_method_return_type_via_class_hierarchy(
+    indexer: &Indexer,
+    class_base: &str,
+    class_uri: &str,
+    method_name: &str,
+    from_uri: Option<&Url>,
+) -> Option<String> {
+    use crate::types::CallerContext;
+
+    let caller = CallerContext {
+        uri: from_uri.map(Url::as_str),
+        cursor_line: None,
+    };
+    let hits: Vec<(String, String)> = walk_hierarchy(
+        indexer,
+        class_base,
+        class_uri,
+        caller,
+        8,
+        MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK,
+        |idx, super_name, _super_uri, _caller| {
+            find_method_return_type(idx, super_name, method_name, from_uri)
+                .map(|raw| (super_name.to_owned(), raw))
+                .into_iter()
+                .collect()
+        },
+    );
+    let (super_name, raw) = hits.into_iter().next()?;
+    Some(substitute_direct_supertype_args(
+        indexer,
+        class_uri,
+        class_base,
+        &super_name,
+        &raw,
+    ))
+}
+
+/// If `super_name` is `class_base`'s *direct* supertype (declared with
+/// concrete type arguments, e.g. `class Derived : Base<Int>`), substitute
+/// those into `raw`; otherwise (deeper ancestor, or no type args) return
+/// `raw` unchanged.
+fn substitute_direct_supertype_args(
+    indexer: &Indexer,
+    class_uri: &str,
+    class_base: &str,
+    super_name: &str,
+    raw: &str,
+) -> String {
+    let Ok(uri) = Url::parse(class_uri) else {
+        return raw.to_owned();
+    };
+    let Some(file_data) = ensure_file_data(indexer, &uri) else {
+        return raw.to_owned();
+    };
+    let Some(class_sym) = file_data.symbols.iter().find(|s| s.name == class_base) else {
+        return raw.to_owned();
+    };
+    let class_line = class_sym.selection_start();
+    let Some((_, _, type_args)) = file_data
+        .supers
+        .iter()
+        .find(|(line, name, _)| *line == class_line && name == super_name)
+    else {
+        return raw.to_owned();
+    };
+    if type_args.is_empty() {
+        return raw.to_owned();
+    }
+    // `super_name` can be a dotted qualified spelling (`class X : com.lib.Base()`
+    // -- see `supertype_targets` in hierarchy.rs), but `find_class_type_params`
+    // matches against `FileData.symbols`' bare `name` field, so a qualified
+    // spelling would silently miss and skip substitution entirely.
+    let super_type_params = find_class_type_params(indexer, super_name.last_segment());
+    if super_type_params.is_empty() {
+        return raw.to_owned();
+    }
+    apply_supertype_subst(raw, &super_type_params, type_args)
 }
 
 fn find_class_type_params(indexer: &Indexer, class_name: &str) -> Vec<String> {

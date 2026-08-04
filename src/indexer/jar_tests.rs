@@ -1622,106 +1622,128 @@ fn jar_top_level_plus_member_register_distinct_fqns() {
 /// later `index_jars` calls served from the in-memory memoization.
 #[test]
 fn index_jars_loads_disk_cache_at_most_once_per_indexer() {
-    let idx = crate::indexer::Indexer::new();
-    let mut sidecar: Option<crate::sidecar::SidecarHandle> = None;
-    // A nonexistent path is fine here: the assertion is about how many times
-    // the on-disk cache is *decoded*, not about what gets found in it.
-    let path = std::path::PathBuf::from("/nonexistent/memoization-fixture.jar");
+    // `index_jars` calls `load_jar_cache`, which reads `XDG_CACHE_HOME` --
+    // process-global state. Without `with_xdg_cache`'s isolation + shared
+    // lock, this test raced against every OTHER test that mutates
+    // `XDG_CACHE_HOME` (observed live: this test's on-disk cache reads/writes
+    // could land in a concurrently-running `with_xdg_cache`-wrapped test's
+    // temp directory, or vice versa, corrupting the module-global
+    // `CACHE_FILE_FINGERPRINTS` state either test relies on).
+    let tmp = tempfile::tempdir().expect("tempdir");
+    crate::indexer::test_helpers::with_xdg_cache(tmp.path(), || {
+        let idx = crate::indexer::Indexer::new();
+        let mut sidecar: Option<crate::sidecar::SidecarHandle> = None;
+        // A nonexistent path is fine here: the assertion is about how many times
+        // the on-disk cache is *decoded*, not about what gets found in it.
+        let path = std::path::PathBuf::from("/nonexistent/memoization-fixture.jar");
 
-    let calls_before = crate::indexer::jar_cache::LOAD_JAR_CACHE_CALLS.with(|c| c.get());
-    let _ = crate::indexer::jar::index_jars(&idx, std::slice::from_ref(&path), &mut sidecar);
-    let _ = crate::indexer::jar::index_jars(&idx, std::slice::from_ref(&path), &mut sidecar);
-    let _ = crate::indexer::jar::index_jars(&idx, std::slice::from_ref(&path), &mut sidecar);
-    let calls_after = crate::indexer::jar_cache::LOAD_JAR_CACHE_CALLS.with(|c| c.get());
+        let calls_before = crate::indexer::jar_cache::LOAD_JAR_CACHE_CALLS.with(|c| c.get());
+        let _ = crate::indexer::jar::index_jars(&idx, std::slice::from_ref(&path), &mut sidecar);
+        let _ = crate::indexer::jar::index_jars(&idx, std::slice::from_ref(&path), &mut sidecar);
+        let _ = crate::indexer::jar::index_jars(&idx, std::slice::from_ref(&path), &mut sidecar);
+        let calls_after = crate::indexer::jar_cache::LOAD_JAR_CACHE_CALLS.with(|c| c.get());
 
-    assert_eq!(
-        calls_after - calls_before,
-        1,
-        "the on-disk JAR symbol cache must be decoded at most once per \
-         Indexer, not once per index_jars call — three calls for the same \
-         Indexer must trigger exactly one `load_jar_cache` disk \
-         read/deserialize, with the rest served from the in-memory \
-         `jar_symbol_cache` memoization"
-    );
+        assert_eq!(
+            calls_after - calls_before,
+            1,
+            "the on-disk JAR symbol cache must be decoded at most once per \
+             Indexer, not once per index_jars call — three calls for the same \
+             Indexer must trigger exactly one `load_jar_cache` disk \
+             read/deserialize, with the rest served from the in-memory \
+             `jar_symbol_cache` memoization"
+        );
+    });
 }
 
 #[test]
 fn index_jars_no_longer_clears_existing_entries() {
-    let idx = crate::indexer::Indexer::new();
-    // Simulate one JAR already materialized by a prior on-demand call.
-    idx.jar_definitions.insert("PreExisting".to_owned(), vec![]);
-    let mut sidecar: Option<crate::sidecar::SidecarHandle> = None;
-    // NON-EMPTY path list naming a JAR that isn't cached and can't be
-    // resolved (no sidecar) — this is deliberate. `index_jars` returns
-    // early (`if paths.is_empty() { return 0; }`) before it ever reaches
-    // the clearing code, so a test calling it with `&[]` would pass
-    // against the OLD, unfixed `index_jars` (which cleared unconditionally
-    // right after that guard) just as much as the new additive one — it
-    // wouldn't actually exercise the behavior this test claims to check.
-    // A non-empty path forces execution past the guard and into the body
-    // where the four `.clear()` calls used to live.
-    let count = crate::indexer::jar::index_jars(
-        &idx,
-        &[std::path::PathBuf::from("/nonexistent/other.jar")],
-        &mut sidecar,
-    );
-    // No sidecar and no cache entry for this path: `index_jars` skips the
-    // batch-sidecar branch entirely (see src/indexer/jar.rs — the
-    // `if let Some(ref mut sidecar_guard) = sidecar` block is only entered
-    // when a sidecar is present) and `total` never gets incremented, so
-    // this call contributes 0 symbols.
-    assert_eq!(count, 0);
-    assert!(
-        idx.jar_definitions.contains_key("PreExisting"),
-        "index_jars must be additive — it must not clear entries for JARs \
-         not in its own `paths` argument"
-    );
+    // See `index_jars_loads_disk_cache_at_most_once_per_indexer`: `index_jars`
+    // touches the process-global `XDG_CACHE_HOME`-derived disk cache, so this
+    // must be isolated + serialized against other XDG-cache-mutating tests.
+    let tmp = tempfile::tempdir().expect("tempdir");
+    crate::indexer::test_helpers::with_xdg_cache(tmp.path(), || {
+        let idx = crate::indexer::Indexer::new();
+        // Simulate one JAR already materialized by a prior on-demand call.
+        idx.jar_definitions.insert("PreExisting".to_owned(), vec![]);
+        let mut sidecar: Option<crate::sidecar::SidecarHandle> = None;
+        // NON-EMPTY path list naming a JAR that isn't cached and can't be
+        // resolved (no sidecar) — this is deliberate. `index_jars` returns
+        // early (`if paths.is_empty() { return 0; }`) before it ever reaches
+        // the clearing code, so a test calling it with `&[]` would pass
+        // against the OLD, unfixed `index_jars` (which cleared unconditionally
+        // right after that guard) just as much as the new additive one — it
+        // wouldn't actually exercise the behavior this test claims to check.
+        // A non-empty path forces execution past the guard and into the body
+        // where the four `.clear()` calls used to live.
+        let count = crate::indexer::jar::index_jars(
+            &idx,
+            &[std::path::PathBuf::from("/nonexistent/other.jar")],
+            &mut sidecar,
+        );
+        // No sidecar and no cache entry for this path: `index_jars` skips the
+        // batch-sidecar branch entirely (see src/indexer/jar.rs — the
+        // `if let Some(ref mut sidecar_guard) = sidecar` block is only entered
+        // when a sidecar is present) and `total` never gets incremented, so
+        // this call contributes 0 symbols.
+        assert_eq!(count, 0);
+        assert!(
+            idx.jar_definitions.contains_key("PreExisting"),
+            "index_jars must be additive — it must not clear entries for JARs \
+             not in its own `paths` argument"
+        );
+    });
 }
 
 #[test]
 fn materialize_jar_on_demand_is_idempotent() {
-    let idx = crate::indexer::Indexer::new();
-    let jar_id = idx.jar_table.intern("/nonexistent/test-fixture.jar");
-    let mut sidecar: Option<crate::sidecar::SidecarHandle> = None;
-    // No sidecar and a nonexistent path: materialization fails cleanly.
-    let ok = crate::indexer::jar::materialize_jar_on_demand(&idx, jar_id, &mut sidecar);
-    assert!(
-        !ok,
-        "materializing a nonexistent jar with no sidecar must fail, not panic"
-    );
-    assert!(
-        idx.materialization_failed.contains(&jar_id),
-        "a failed attempt must be recorded so callers don't retry in a loop"
-    );
-    assert!(!idx.materialized.contains(&jar_id));
-    // A second call must not re-attempt (still failed, still no sidecar call).
-    //
-    // NOTE on test strength: this assertion (and the repeated one below) can't
-    // distinguish "short-circuited on `materialization_failed` before doing
-    // anything" from "naively called `index_jars` again and failed for the
-    // same external reason (no sidecar)" — both produce `false` here, since
-    // this fixture has no sidecar either way. A true short-circuit-vs-retry
-    // distinction would need an observable side effect that only a genuine
-    // retry triggers (e.g. a sidecar call-counter or a spy in place of
-    // `index_jars`), which is new mock infrastructure disproportionate to
-    // this fixture-free test style. The short-circuit ordering itself
-    // (`materialized` checked, then `materialization_failed`, then attempt)
-    // is verified directly by reading `materialize_jar_on_demand` in
-    // src/indexer/jar.rs — see PR review discussion. What repeated calls
-    // below DO verify: the failure state is stable and doesn't flap or panic
-    // under repeated querying, which is the externally-visible contract
-    // callers (Task 8's `ensure_jar_materialized`) depend on.
-    let ok_again = crate::indexer::jar::materialize_jar_on_demand(&idx, jar_id, &mut sidecar);
-    assert!(!ok_again);
-    for _ in 0..3 {
-        assert!(!crate::indexer::jar::materialize_jar_on_demand(
-            &idx,
-            jar_id,
-            &mut sidecar
-        ));
-        assert!(idx.materialization_failed.contains(&jar_id));
+    // `materialize_jar_on_demand` calls `index_jars` unconditionally (even on
+    // a nonexistent-path failure path) — see the two tests above for why this
+    // needs the same disk-cache isolation + serialization.
+    let tmp = tempfile::tempdir().expect("tempdir");
+    crate::indexer::test_helpers::with_xdg_cache(tmp.path(), || {
+        let idx = crate::indexer::Indexer::new();
+        let jar_id = idx.jar_table.intern("/nonexistent/test-fixture.jar");
+        let mut sidecar: Option<crate::sidecar::SidecarHandle> = None;
+        // No sidecar and a nonexistent path: materialization fails cleanly.
+        let ok = crate::indexer::jar::materialize_jar_on_demand(&idx, jar_id, &mut sidecar);
+        assert!(
+            !ok,
+            "materializing a nonexistent jar with no sidecar must fail, not panic"
+        );
+        assert!(
+            idx.materialization_failed.contains(&jar_id),
+            "a failed attempt must be recorded so callers don't retry in a loop"
+        );
         assert!(!idx.materialized.contains(&jar_id));
-    }
+        // A second call must not re-attempt (still failed, still no sidecar call).
+        //
+        // NOTE on test strength: this assertion (and the repeated one below) can't
+        // distinguish "short-circuited on `materialization_failed` before doing
+        // anything" from "naively called `index_jars` again and failed for the
+        // same external reason (no sidecar)" — both produce `false` here, since
+        // this fixture has no sidecar either way. A true short-circuit-vs-retry
+        // distinction would need an observable side effect that only a genuine
+        // retry triggers (e.g. a sidecar call-counter or a spy in place of
+        // `index_jars`), which is new mock infrastructure disproportionate to
+        // this fixture-free test style. The short-circuit ordering itself
+        // (`materialized` checked, then `materialization_failed`, then attempt)
+        // is verified directly by reading `materialize_jar_on_demand` in
+        // src/indexer/jar.rs — see PR review discussion. What repeated calls
+        // below DO verify: the failure state is stable and doesn't flap or panic
+        // under repeated querying, which is the externally-visible contract
+        // callers (Task 8's `ensure_jar_materialized`) depend on.
+        let ok_again = crate::indexer::jar::materialize_jar_on_demand(&idx, jar_id, &mut sidecar);
+        assert!(!ok_again);
+        for _ in 0..3 {
+            assert!(!crate::indexer::jar::materialize_jar_on_demand(
+                &idx,
+                jar_id,
+                &mut sidecar
+            ));
+            assert!(idx.materialization_failed.contains(&jar_id));
+            assert!(!idx.materialized.contains(&jar_id));
+        }
+    });
 }
 
 #[test]

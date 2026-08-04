@@ -23,7 +23,7 @@ use crate::queries::{
     KIND_COLON, KIND_EQ, KIND_FUN_BODY, KIND_FUN_DECL, KIND_FUN_VALUE_PARAMS, KIND_LAMBDA_LIT,
     KIND_LAMBDA_PARAMS, KIND_PROP_DECL, KIND_SIMPLE_IDENT, KIND_THIS_EXPR, KIND_VAR_DECL,
 };
-use crate::resolver::{infer_receiver_type, ReceiverKind};
+use crate::resolver::ReceiverType;
 use crate::StrExt;
 
 pub(crate) fn compute_inlay_hints(idx: &Arc<Indexer>, uri: &Url, range: Range) -> Vec<InlayHint> {
@@ -125,11 +125,7 @@ fn cst_hints(
             KIND_SIMPLE_IDENT if node.utf8_text(bytes) == Ok("it") => {
                 let pos = ts_pos_to_lsp(node.start_position(), &starts, bytes);
                 if in_range(pos.line, range) {
-                    let kind = ReceiverKind::Contextual {
-                        name: "it",
-                        position: pos,
-                    };
-                    if let Some(rt) = infer_receiver_type(idx, kind, uri) {
+                    if let Some(rt) = cst_contextual_type(idx, "it", uri, pos) {
                         let subst = subst_at(idx, uri, pos.line);
                         let ty = subst_type(&rt.raw, &subst);
                         hints.push(type_hint(
@@ -142,11 +138,7 @@ fn cst_hints(
             KIND_THIS_EXPR => {
                 let pos = ts_pos_to_lsp(node.start_position(), &starts, bytes);
                 if in_range(pos.line, range) {
-                    let kind = ReceiverKind::Contextual {
-                        name: "this",
-                        position: pos,
-                    };
-                    if let Some(rt) = infer_receiver_type(idx, kind, uri) {
+                    if let Some(rt) = cst_contextual_type(idx, "this", uri, pos) {
                         let subst = subst_at(idx, uri, pos.line);
                         let ty = subst_type(&rt.raw, &subst);
                         hints.push(type_hint(
@@ -244,14 +236,7 @@ fn hint_lambda(ctx: &HintCtx<'_>, node: &tree_sitter::Node<'_>, hints: &mut Vec<
                 continue;
             }
 
-            if let Some(rt) = infer_receiver_type(
-                idx,
-                ReceiverKind::Contextual {
-                    name,
-                    position: start_pos,
-                },
-                uri,
-            ) {
+            if let Some(rt) = cst_contextual_type(idx, name, uri, start_pos) {
                 let subst = subst_at(idx, uri, start_pos.line);
                 let ty = subst_type(&rt.raw, &subst);
                 hints.push(type_hint(end_pos, &ty));
@@ -331,26 +316,14 @@ fn hint_property(ctx: &HintCtx<'_>, node: &tree_sitter::Node<'_>, hints: &mut Ve
         return;
     }
 
-    // Derive the type name from the initializer expression.
+    // Derive the type name from the initializer expression. CST-only — see
+    // `GENERIC_FACTORY_FNS`/`find_class_literal_arg_type` in `chain.rs` for the
+    // DI-factory and Retrofit-style-argument coverage that used to require a
+    // fallback into the STRING (`resolver::infer`) engine.
     if let Some(ty) = infer_type_from_init(init, bytes, idx.as_ref(), uri) {
         let subst = subst_at(idx, uri, end_pos.line);
         let ty = subst_type(&ty, &subst);
         hints.push(type_hint(end_pos, &ty));
-        return;
-    }
-
-    // Fallback: text-based inference (handles `val x: Type` pattern aliases etc.)
-    if let Some(rt) = infer_receiver_type(idx, ReceiverKind::Variable(name), uri) {
-        let base: String = rt
-            .raw
-            .chars()
-            .take_while(|&c| c.is_alphanumeric() || c == '_' || c == '<' || c == '>')
-            .collect();
-        if !base.is_empty() {
-            let subst = subst_at(idx, uri, end_pos.line);
-            let ty = subst_type(&base, &subst);
-            hints.push(type_hint(end_pos, &ty));
-        }
     }
 }
 
@@ -462,6 +435,27 @@ fn subst_type(ty: &str, subst: &std::collections::HashMap<String, String>) -> St
         return ty.to_owned();
     }
     apply_type_subst(ty, subst)
+}
+
+/// CST-only contextual receiver-type resolution for `it`/`this`/named lambda
+/// params, local to inlay hints.
+///
+/// This exists instead of calling `resolver::infer_receiver_type` directly so
+/// that inlay hints never falls through to that function's STRING
+/// (`infer_variable_type_raw`) fallback for its `Contextual` kind — hover and
+/// completion still go through `infer_receiver_type` unchanged and keep that
+/// fallback (see `docs/architecture/parse-to-lsp-paths.md`: they are
+/// legitimately STRING-primary). `infer_lambda_param_type_at` is itself
+/// documented CST-only (see `it_this.rs`'s `find_it_element_type` /
+/// `find_this_context` / `find_named_lambda_param_type`).
+fn cst_contextual_type(
+    idx: &Indexer,
+    name: &str,
+    uri: &Url,
+    position: Position,
+) -> Option<ReceiverType> {
+    idx.infer_lambda_param_type_at(name, uri, position)
+        .map(ReceiverType::from_raw)
 }
 
 #[inline]

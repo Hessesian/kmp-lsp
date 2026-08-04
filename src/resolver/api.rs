@@ -182,7 +182,7 @@ impl Resolver for Indexer {
 
     fn function_return_type(&self, fn_name: &str, from_uri: &Url) -> Option<ReturnType> {
         find_fun_return_type_reachable(self, fn_name, from_uri)
-            .or_else(|| find_fun_return_type_by_name(self, fn_name))
+            .or_else(|| find_fun_return_type_by_name(self, fn_name, from_uri))
             .map(ReturnType)
     }
 

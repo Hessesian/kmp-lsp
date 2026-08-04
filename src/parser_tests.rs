@@ -1632,6 +1632,30 @@ fn rhs_types_constructor_call() {
 }
 
 #[test]
+fn rhs_types_constructor_call_preserves_generic_type_args() {
+    // `val _flow = MutableSharedFlow<Unit>()` -- the explicit type argument
+    // must survive into `rhs_types`, not just the bare class name. Without
+    // it, a later generic extension call (`.asSharedFlow()`) has no concrete
+    // type to substitute into its return type and comes back with the
+    // declared type parameter still literal (`SharedFlow<T>`).
+    let src = "val _flow = MutableSharedFlow<Unit>()";
+    let data = super::parse_kotlin(src);
+    let entry = data.rhs_types.iter().find(|(_, n, _)| n == "_flow");
+    assert!(entry.is_some(), "expected rhs_types entry for `_flow`");
+    assert_eq!(entry.unwrap().2, "MutableSharedFlow<Unit>");
+}
+
+#[test]
+fn rhs_types_constructor_call_preserves_multiple_generic_type_args() {
+    // `val map = HashMap<String, Int>()` -- multiple type arguments, comma-joined.
+    let src = "val map = HashMap<String, Int>()";
+    let data = super::parse_kotlin(src);
+    let entry = data.rhs_types.iter().find(|(_, n, _)| n == "map");
+    assert!(entry.is_some(), "expected rhs_types entry for `map`");
+    assert_eq!(entry.unwrap().2, "HashMap<String, Int>");
+}
+
+#[test]
 fn rhs_types_di_inject() {
     // `val repo: by inject<UserRepository>()` → type arg
     let src = "val repo = inject<UserRepository>()";

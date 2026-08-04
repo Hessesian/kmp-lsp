@@ -25,6 +25,40 @@ pub(crate) const SCOPE_FUNCTIONS: &[&str] =
 /// overload (e.g. the Kotlin compiler's `VariableStorage.remember`).
 pub(crate) const LAMBDA_RESULT_FNS: &[&str] = &["remember", "rememberSaveable"];
 
+/// DI-framework factory functions of the shape `inline fun <reified T> name(): T`
+/// (Koin's `get`/`inject`, AndroidX's `viewModel`/`activityViewModel`, Retrofit-style
+/// `create`). Callers reach for these specifically so the compiler can infer `T`
+/// from the call-site type argument — the exact information a caller like this
+/// one, that has no compiler, would otherwise need the function's *signature*
+/// indexed to recover. These functions live in DI/framework libraries that are
+/// frequently not indexed at all (unpromoted JAR, or simply absent from a
+/// project's own workspace), so name-based/return-type lookup
+/// (`find_fun_return_type_reachable`/`find_fun_return_type`) legitimately finds
+/// nothing. When that happens, `resolve_call_expr_type` falls back to reading
+/// the call's own `<T>` type argument directly — sound specifically because
+/// each of these functions' contract is "return exactly `T`", so no signature
+/// lookup is needed to know the result type once the call syntax matches.
+pub(crate) const GENERIC_FACTORY_FNS: &[&str] =
+    &["get", "inject", "viewModel", "activityViewModel", "create"];
+
+/// Kotlin's built-in numeric/`Char` conversion functions (`Number.toLong()`,
+/// `Char.toInt()`, …) paired with their fixed return type. These are stdlib
+/// intrinsics on every primitive numeric type (and `Char`/`String`), so the
+/// *name* alone determines the return type — no signature lookup is needed,
+/// which matters because the receiver is frequently a type this indexer has
+/// no declaration for at all (a `String`/`Int`/etc. literal or an unresolved
+/// expression), so member-based lookup (`find_method_return_type_for_type`)
+/// has nothing to find.
+pub(crate) const NUMERIC_CONVERSION_FNS: &[(&str, &str)] = &[
+    ("toByte", "Byte"),
+    ("toShort", "Short"),
+    ("toInt", "Int"),
+    ("toLong", "Long"),
+    ("toFloat", "Float"),
+    ("toDouble", "Double"),
+    ("toChar", "Char"),
+];
+
 /// Return the Nth (0-based) input type from a functional type expression.
 ///
 /// `lambda_type_nth_input("(String, Boolean) -> Unit", 0)` → `Some("String")`
