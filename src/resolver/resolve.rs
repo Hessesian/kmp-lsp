@@ -678,8 +678,6 @@ fn resolve_extension_in_scope(
     };
     let caller_file_data = indexer.files.get(from_uri.as_str());
     let caller_file_data_ref: Option<&FileData> = caller_file_data.as_deref().map(|v| v.as_ref());
-    let caller_package: Option<&String> =
-        caller_file_data.as_ref().and_then(|fd| fd.package.as_ref());
     for entry in entries.iter() {
         if entry.name != name {
             continue;
@@ -687,7 +685,6 @@ fn resolve_extension_in_scope(
         let in_scope = crate::resolver::infer::extension_is_in_scope(
             entry.package.as_ref(),
             &entry.name,
-            caller_package,
             caller_file_data_ref,
         );
         if in_scope {

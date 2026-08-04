@@ -736,6 +736,60 @@ fn find_fun_return_type_by_name_falls_back_to_first_match_when_nothing_reachable
     );
 }
 
+/// `extension_is_in_scope`'s same-package check only fired when BOTH sides
+/// carried a `Some` package -- so two files in Kotlin's default package (no
+/// `package` header) were never considered same-package to each other, even
+/// though `None == None` there means "both in the (same) default package,"
+/// not "unknown, assume different." Caught by review after this function was
+/// reused for `candidate_declaration_is_reachable`; a near-identical gap had
+/// already been separately patched around once before, at a third call site
+/// (`nullable_call_diagnostics.rs`'s `extension_in_scope_here`), instead of
+/// being fixed here at the source.
+#[test]
+fn extension_is_in_scope_treats_default_package_as_same_package() {
+    use super::extension_is_in_scope;
+
+    assert!(
+        extension_is_in_scope(None, "helper", None),
+        "two default-package files (no `package` header on either side) must \
+         be considered same-package, not unreachable"
+    );
+}
+
+/// End-to-end sibling of the `find_fun_return_type_by_name_prefers_*` tests
+/// above, but for the default-package case specifically: a caller with no
+/// `package` header must still prefer a same-(default-)package candidate
+/// over an unrelated, differently-packaged decoy.
+#[test]
+fn find_fun_return_type_by_name_prefers_default_package_candidate_over_first_match() {
+    use super::find_fun_return_type_by_name;
+    use crate::indexer::Indexer;
+    use tower_lsp::lsp_types::Url;
+
+    let idx = Indexer::new();
+
+    let decoy = Url::parse("file:///unrelated/Decoy.kt").unwrap();
+    idx.index_content(
+        &decoy,
+        "package unrelated\nfun helper(): DecoyResult = TODO()\n",
+    );
+
+    // No `package` header -- the default package.
+    let real = Url::parse("file:///app/Real.kt").unwrap();
+    idx.index_content(&real, "fun helper(): RealResult = TODO()\n");
+
+    // Also no `package` header -- same default package as `Real.kt`.
+    let caller = Url::parse("file:///app/Caller.kt").unwrap();
+    idx.index_content(&caller, "fun m() { val x = helper() }\n");
+
+    assert_eq!(
+        find_fun_return_type_by_name(&idx, "helper", &caller),
+        Some("RealResult".to_string()),
+        "the default-package `helper` must win over an unrelated same-named \
+         decoy from a different (real) package"
+    );
+}
+
 /// `Resolver::method_return_type` is the single composite for member resolution:
 /// own/extension methods *and* inherited (supertype) methods resolve through one
 /// call. This asserts the supertype arm — a method declared only on the base

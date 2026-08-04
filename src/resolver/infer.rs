@@ -783,19 +783,12 @@ pub(crate) fn find_fun_return_type_by_name(
     let candidates = indexer.workspace_def_candidates(fn_name);
 
     let caller_file_data = indexer.files.get(uri.as_str()).map(|r| r.value().clone());
-    let caller_package = caller_file_data.as_ref().and_then(|fd| fd.package.clone());
     let caller_file_data_ref = caller_file_data.as_deref();
 
     candidates
         .iter()
         .filter(|loc| {
-            candidate_declaration_is_reachable(
-                indexer,
-                loc,
-                fn_name,
-                caller_package.as_ref(),
-                caller_file_data_ref,
-            )
+            candidate_declaration_is_reachable(indexer, loc, fn_name, caller_file_data_ref)
         })
         .find_map(|loc| return_type_of_named_fn_at(indexer, fn_name, loc))
         .or_else(|| {
@@ -805,26 +798,25 @@ pub(crate) fn find_fun_return_type_by_name(
         })
 }
 
-/// Whether `loc`'s declaring file is reachable from a caller in `caller_package`
-/// with `caller_file_data`'s imports — same package, an explicit import, or a
-/// star import. Reuses [`extension_is_in_scope`]'s package/import check (its
+/// Whether `loc`'s declaring file is reachable from a caller with
+/// `caller_file_data`'s package/imports — same package, an explicit import, or
+/// a star import. Reuses [`extension_is_in_scope`]'s package/import check (its
 /// body is not actually extension-specific — see that function's doc comment
 /// for the individual rules).
 fn candidate_declaration_is_reachable(
     indexer: &Indexer,
     loc: &Location,
     fn_name: &str,
-    caller_package: Option<&String>,
     caller_file_data: Option<&FileData>,
 ) -> bool {
-    let candidate_package = indexer
-        .files
-        .get(loc.uri.as_str())
-        .and_then(|fd| fd.package.clone());
+    // Missing `FileData` means the candidate's real package is unknown (not
+    // "no package") -- don't guess reachability for it either way.
+    let Some(candidate_file_data) = indexer.files.get(loc.uri.as_str()) else {
+        return false;
+    };
     extension_is_in_scope(
-        candidate_package.as_ref(),
+        candidate_file_data.package.as_ref(),
         fn_name,
-        caller_package,
         caller_file_data,
     )
 }
@@ -971,9 +963,15 @@ pub(crate) fn find_method_return_type(
 pub(crate) fn extension_is_in_scope(
     entry_package: Option<&String>,
     entry_name: &str,
-    caller_package: Option<&String>,
     caller_file_data: Option<&FileData>,
 ) -> bool {
+    let caller_package = caller_file_data.and_then(|fd| fd.package.as_ref());
+    // Kotlin's default package (no `package` header) is a real package like
+    // any other, so two default-package files are same-package to each
+    // other -- `None == None` here, not "unknown, assume no."
+    if entry_package.is_none() && caller_package.is_none() {
+        return true;
+    }
     if entry_package.is_some_and(|ext_pkg| caller_package == Some(ext_pkg)) {
         return true;
     }
@@ -1046,7 +1044,6 @@ fn find_extension_fn_return_type_scoped(
         crate::indexer::jar::extension_entries_for(indexer, receiver_base, &mut cache_backed_only)?;
     let caller_file_data = indexer.files.get(from_uri.as_str());
     let caller_file_data_ref: Option<&FileData> = caller_file_data.as_deref().map(|v| v.as_ref());
-    let caller_package = caller_file_data.as_ref().and_then(|fd| fd.package.as_ref());
     for entry in entries.iter() {
         if entry.name != method_name {
             continue;
@@ -1054,12 +1051,7 @@ fn find_extension_fn_return_type_scoped(
         if !matches!(entry.kind, SymbolKind::FUNCTION) {
             continue;
         }
-        if !extension_is_in_scope(
-            entry.package.as_ref(),
-            &entry.name,
-            caller_package,
-            caller_file_data_ref,
-        ) {
+        if !extension_is_in_scope(entry.package.as_ref(), &entry.name, caller_file_data_ref) {
             continue;
         }
         // Try detail first; fall back to source lines when detail is truncated.
