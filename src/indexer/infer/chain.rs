@@ -182,7 +182,7 @@ pub(super) fn forward_resolve_segments(
                             continue;
                         }
                     }
-                    if let Some(ret_ty) = deps.find_fun_return_type(name) {
+                    if let Some(ret_ty) = deps.find_fun_return_type(name, uri) {
                         let ret_base = ret_ty.strip_nullable().dotted_ident_prefix();
                         let ret_base = ret_base.trim_end_matches('.');
                         if !is_generic_param(ret_base) {
@@ -586,7 +586,7 @@ pub(super) fn resolve_call_expr_type(
     // fall back to the looser global-name scan only when resolution finds nothing.
     let mut result = deps
         .find_fun_return_type_reachable(&fn_name, uri)
-        .or_else(|| deps.find_fun_return_type(&fn_name));
+        .or_else(|| deps.find_fun_return_type(&fn_name, uri));
     // Apply call-site type argument substitution for generic functions.
     if let Some(call_type_args) = node.call_site_type_arg_strings(bytes) {
         if let Some(callable_info) = deps.find_fun_callable_info(&fn_name, uri) {

@@ -1,4 +1,4 @@
-use tower_lsp::lsp_types::{Position, SymbolKind, Url};
+use tower_lsp::lsp_types::{Location, Position, SymbolKind, Url};
 
 use crate::indexer::{Indexer, InferDeps};
 use crate::types::FileData;
@@ -741,7 +741,7 @@ fn infer_method_return_type(
     // global-name scan (which may grab a test-only same-named extension).
     for fn_name in &plain_fn_candidates {
         if let Some(ret) = find_fun_return_type_reachable(indexer, fn_name, uri)
-            .or_else(|| find_fun_return_type_by_name(indexer, fn_name))
+            .or_else(|| find_fun_return_type_by_name(indexer, fn_name, uri))
         {
             return Some(ret);
         }
@@ -750,33 +750,110 @@ fn infer_method_return_type(
     None
 }
 
-pub(crate) fn find_fun_return_type_by_name(indexer: &Indexer, fn_name: &str) -> Option<String> {
-    // Receiver-less by-name lookup: the helper scopes to workspace defs and caps the
-    // scan (a ubiquitous name like `create` has thousands of source-JAR defs, each a
-    // full symbol-list + signature line scan — previously a multi-second stall).
-    indexer.find_in_workspace_defs(fn_name, |loc| {
-        let file_data = indexer.files.get(loc.uri.as_str())?;
-        for symbol in &file_data.symbols {
-            if symbol.name != fn_name {
-                continue;
-            }
-            if !matches!(
-                symbol.kind,
-                SymbolKind::FUNCTION | SymbolKind::METHOD | SymbolKind::OPERATOR
-            ) {
-                continue;
-            }
-            if let Some(ret) = extract_return_type_from_detail(&symbol.detail) {
-                return Some(ret);
-            }
-            let start_line = symbol.selection_start() as usize;
-            let full_sig = file_data.lines.collect_signature(start_line);
-            if let Some(ret) = extract_return_type_from_detail(&full_sig) {
-                return Some(ret);
-            }
+/// Receiver-less by-name return-type lookup — the last-resort tail behind
+/// [`find_fun_return_type_reachable`] at every call site.
+///
+/// This is the "unscoped last-resort tail" flagged by the 2026-06-30
+/// CST-resolution-unification design doc's capability #1 (import/package/
+/// super-aware filter — see `docs/superpowers/specs/2026-06-30-cst-resolution-
+/// unification-design.md`, "Capability mapping"), which specified this filter
+/// as an invariant but never implemented it here. A production bug proved the
+/// gap is real: `retrofit.create(GoldConversionPublicApi::class.java)`
+/// bare-name-matched an unrelated `SymbolProcessorProvider.create():
+/// SymbolProcessor` (KSP, a different library entirely) purely because it
+/// came first in `definitions` iteration order.
+///
+/// Fix: when several same-named candidates exist, prefer one whose declaring
+/// file is actually reachable from `uri` (same package / explicit import /
+/// star import) over first-match-in-iteration-order. When NONE are reachable,
+/// this still falls back to the historical "take the first candidate with an
+/// extractable return type" — every call site already tries the properly
+/// scoped `find_fun_return_type_reachable` first, so by the time this runs,
+/// guessing from an unrelated in-workspace symbol is judged more useful than
+/// returning nothing (e.g. when the receiver's own type isn't indexed at all,
+/// as with an un-promoted library receiver).
+pub(crate) fn find_fun_return_type_by_name(
+    indexer: &Indexer,
+    fn_name: &str,
+    uri: &Url,
+) -> Option<String> {
+    // The helper scopes to workspace defs and caps the scan (a ubiquitous name
+    // like `create` has thousands of source-JAR defs, each a full symbol-list +
+    // signature line scan — previously a multi-second stall).
+    let candidates = indexer.workspace_def_candidates(fn_name);
+
+    let caller_file_data = indexer.files.get(uri.as_str()).map(|r| r.value().clone());
+    let caller_package = caller_file_data.as_ref().and_then(|fd| fd.package.clone());
+    let caller_file_data_ref = caller_file_data.as_deref();
+
+    candidates
+        .iter()
+        .filter(|loc| {
+            candidate_declaration_is_reachable(
+                indexer,
+                loc,
+                fn_name,
+                caller_package.as_ref(),
+                caller_file_data_ref,
+            )
+        })
+        .find_map(|loc| return_type_of_named_fn_at(indexer, fn_name, loc))
+        .or_else(|| {
+            candidates
+                .iter()
+                .find_map(|loc| return_type_of_named_fn_at(indexer, fn_name, loc))
+        })
+}
+
+/// Whether `loc`'s declaring file is reachable from a caller in `caller_package`
+/// with `caller_file_data`'s imports — same package, an explicit import, or a
+/// star import. Reuses [`extension_is_in_scope`]'s package/import check (its
+/// body is not actually extension-specific — see that function's doc comment
+/// for the individual rules).
+fn candidate_declaration_is_reachable(
+    indexer: &Indexer,
+    loc: &Location,
+    fn_name: &str,
+    caller_package: Option<&String>,
+    caller_file_data: Option<&FileData>,
+) -> bool {
+    let candidate_package = indexer
+        .files
+        .get(loc.uri.as_str())
+        .and_then(|fd| fd.package.clone());
+    extension_is_in_scope(
+        candidate_package.as_ref(),
+        fn_name,
+        caller_package,
+        caller_file_data,
+    )
+}
+
+/// Read `fn_name`'s return type off the function/method/operator symbol at
+/// `loc`, trying the (possibly truncated) `detail` string first, then a fresh
+/// signature line scan.
+fn return_type_of_named_fn_at(indexer: &Indexer, fn_name: &str, loc: &Location) -> Option<String> {
+    let file_data = indexer.files.get(loc.uri.as_str())?;
+    for symbol in &file_data.symbols {
+        if symbol.name != fn_name {
+            continue;
         }
-        None
-    })
+        if !matches!(
+            symbol.kind,
+            SymbolKind::FUNCTION | SymbolKind::METHOD | SymbolKind::OPERATOR
+        ) {
+            continue;
+        }
+        if let Some(ret) = extract_return_type_from_detail(&symbol.detail) {
+            return Some(ret);
+        }
+        let start_line = symbol.selection_start() as usize;
+        let full_sig = file_data.lines.collect_signature(start_line);
+        if let Some(ret) = extract_return_type_from_detail(&full_sig) {
+            return Some(ret);
+        }
+    }
+    None
 }
 
 /// Import-aware return-type lookup. Resolves `fn_name` via the no-rg resolver

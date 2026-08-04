@@ -113,7 +113,7 @@ fn fun_return_type_lookup_for_call_receiver() {
         "package com.pkg\nfun productFlow(): Flow<Event> { TODO() }\n",
     );
 
-    let rt = find_fun_return_type_by_name(&idx, "productFlow");
+    let rt = find_fun_return_type_by_name(&idx, "productFlow", &host_uri);
     assert_eq!(
         rt.as_deref(),
         Some("Flow<Event>"),
@@ -143,7 +143,7 @@ fn call_receiver_callable_parameter() {
     // find_fun_return_type_by_name must NOT find "productFlow" (it's a param, not a def).
     use crate::resolver::infer::find_fun_return_type_by_name;
     assert!(
-        find_fun_return_type_by_name(&idx, "productFlow").is_none(),
+        find_fun_return_type_by_name(&idx, "productFlow", &host_uri).is_none(),
         "productFlow is a parameter, not a function definition"
     );
 

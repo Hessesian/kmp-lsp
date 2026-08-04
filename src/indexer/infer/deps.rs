@@ -72,8 +72,13 @@ pub(crate) trait InferDeps {
     /// receiver type.  Used for method-chain receivers like
     /// `getList().joinAll().firstOrNull { it }` where `receiver_var = "joinAll"`.
     ///
+    /// `uri` is the calling file — used only to *prefer* a same-named candidate
+    /// reachable from it (same package / import) when several exist; this is
+    /// still an unscoped-if-necessary last resort (falls back to any candidate),
+    /// not a properly-scoped lookup (see `find_fun_return_type_reachable`).
+    ///
     /// Returns `None` by default; overridden by `Indexer`.
-    fn find_fun_return_type(&self, _fn_name: &str) -> Option<String> {
+    fn find_fun_return_type(&self, _fn_name: &str, _uri: &Url) -> Option<String> {
         None
     }
 
@@ -357,7 +362,7 @@ impl InferDeps for TestDeps {
             .get(&(class_name.to_string(), field_name.to_string()))
             .cloned()
     }
-    fn find_fun_return_type(&self, fn_name: &str) -> Option<String> {
+    fn find_fun_return_type(&self, fn_name: &str, _uri: &Url) -> Option<String> {
         self.return_types.get(fn_name).cloned()
     }
     fn find_class_type_params(&self, class_name: &str) -> Vec<String> {

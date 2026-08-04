@@ -189,7 +189,7 @@ fn infer_navigation_expr_type(
         return deps
             .find_method_return_type_for_type(&receiver_type, &member, uri)
             .or_else(|| deps.find_fun_return_type_reachable(&member, uri))
-            .or_else(|| deps.find_fun_return_type(&member));
+            .or_else(|| deps.find_fun_return_type(&member, uri));
     }
 
     deps.find_field_type(&receiver_type, &member)

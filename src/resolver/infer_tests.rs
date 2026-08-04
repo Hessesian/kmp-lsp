@@ -623,6 +623,119 @@ fn catalog_function_return_type_falls_back_to_by_name() {
     );
 }
 
+/// Regression for the "unscoped last-resort tail" gap in
+/// `find_fun_return_type_by_name` itself (not the already-fixed Retrofit/
+/// class-literal shape in `chain.rs`): a *bare* function call with nothing at
+/// the call site to rescue it (no class-literal arg, no generic-factory name,
+/// no receiver at all) whose name collides with an unrelated, unimported
+/// symbol declared in a different package. Before the reachability
+/// preference, `find_in_workspace_defs`/`workspace_def_candidates` returned
+/// candidates in `definitions` insertion order and `find_fun_return_type_by_name`
+/// took the first one with an extractable return type — here that is the
+/// unrelated decoy (indexed first), not the reachable symbol, proving the
+/// collision is real at this layer, independent of any receiver/CST fallback.
+#[test]
+fn find_fun_return_type_by_name_prefers_reachable_candidate_over_first_match() {
+    use super::find_fun_return_type_by_name;
+    use crate::indexer::Indexer;
+    use tower_lsp::lsp_types::Url;
+
+    let idx = Indexer::new();
+
+    // Indexed FIRST (so it would win under plain first-match-in-iteration-order):
+    // an unrelated, unimported `helper()` in a different package.
+    let decoy = Url::parse("file:///unrelated/Decoy.kt").unwrap();
+    idx.index_content(
+        &decoy,
+        "package unrelated\nfun helper(): DecoyResult = TODO()\n",
+    );
+
+    // Indexed SECOND: the symbol actually reachable from the caller via
+    // explicit import.
+    let real = Url::parse("file:///lib/Real.kt").unwrap();
+    idx.index_content(&real, "package lib\nfun helper(): RealResult = TODO()\n");
+
+    let caller = Url::parse("file:///app/Caller.kt").unwrap();
+    idx.index_content(
+        &caller,
+        "package app\nimport lib.helper\nfun m() { val x = helper() }\n",
+    );
+
+    assert_eq!(
+        find_fun_return_type_by_name(&idx, "helper", &caller),
+        Some("RealResult".to_string()),
+        "the imported, reachable `helper` must win over an unrelated same-named \
+         decoy that merely happens to be indexed first"
+    );
+}
+
+/// Sibling case: same collision, but reachability comes from same-package
+/// membership rather than an explicit import.
+#[test]
+fn find_fun_return_type_by_name_prefers_same_package_candidate_over_first_match() {
+    use super::find_fun_return_type_by_name;
+    use crate::indexer::Indexer;
+    use tower_lsp::lsp_types::Url;
+
+    let idx = Indexer::new();
+
+    let decoy = Url::parse("file:///unrelated/Decoy.kt").unwrap();
+    idx.index_content(
+        &decoy,
+        "package unrelated\nfun helper(): DecoyResult = TODO()\n",
+    );
+
+    let real = Url::parse("file:///app/Real.kt").unwrap();
+    idx.index_content(&real, "package app\nfun helper(): RealResult = TODO()\n");
+
+    // Same package as `Real.kt`, no import needed.
+    let caller = Url::parse("file:///app/Caller.kt").unwrap();
+    idx.index_content(&caller, "package app\nfun m() { val x = helper() }\n");
+
+    assert_eq!(
+        find_fun_return_type_by_name(&idx, "helper", &caller),
+        Some("RealResult".to_string()),
+        "the same-package `helper` must win over an unrelated same-named decoy \
+         from a different package"
+    );
+}
+
+/// When NO candidate is reachable at all, the historical "grab the first with
+/// an extractable return type" behavior is preserved deliberately (see the
+/// doc comment on `find_fun_return_type_by_name`): this function only runs
+/// after `find_fun_return_type_reachable` already failed, so returning
+/// *something* is still judged more useful than nothing.
+#[test]
+fn find_fun_return_type_by_name_falls_back_to_first_match_when_nothing_reachable() {
+    use super::find_fun_return_type_by_name;
+    use crate::indexer::Indexer;
+    use tower_lsp::lsp_types::Url;
+
+    let idx = Indexer::new();
+
+    let first = Url::parse("file:///unrelated1/A.kt").unwrap();
+    idx.index_content(
+        &first,
+        "package unrelated1\nfun helper(): FirstResult = TODO()\n",
+    );
+    let second = Url::parse("file:///unrelated2/B.kt").unwrap();
+    idx.index_content(
+        &second,
+        "package unrelated2\nfun helper(): SecondResult = TODO()\n",
+    );
+
+    // Caller shares no package and imports neither candidate.
+    let caller = Url::parse("file:///app/Caller.kt").unwrap();
+    idx.index_content(&caller, "package app\nfun m() { val x = helper() }\n");
+
+    assert_eq!(
+        find_fun_return_type_by_name(&idx, "helper", &caller),
+        Some("FirstResult".to_string()),
+        "with no reachable candidate, the first indexed match is still returned \
+         (unchanged historical behavior — the fix is a *preference*, not a filter)"
+    );
+}
+
 /// `Resolver::method_return_type` is the single composite for member resolution:
 /// own/extension methods *and* inherited (supertype) methods resolve through one
 /// call. This asserts the supertype arm — a method declared only on the base

@@ -414,8 +414,8 @@ impl InferDeps for Indexer {
         }
         crate::resolver::infer::find_field_type_in_class(self, class_name, field_name)
     }
-    fn find_fun_return_type(&self, fn_name: &str) -> Option<String> {
-        crate::resolver::infer::find_fun_return_type_by_name(self, fn_name)
+    fn find_fun_return_type(&self, fn_name: &str, uri: &Url) -> Option<String> {
+        crate::resolver::infer::find_fun_return_type_by_name(self, fn_name, uri)
     }
 
     fn find_fun_return_type_reachable(&self, fn_name: &str, uri: &Url) -> Option<String> {
@@ -1014,11 +1014,23 @@ impl Indexer {
         name: &str,
         f: impl FnMut(&Location) -> Option<T>,
     ) -> Option<T> {
-        // Reconstitute each candidate `SymbolLoc` into a `Location` at this boundary,
-        // filtering out library files by their interned URI first.
-        let candidates: Vec<Location> = self
-            .definitions
-            .get(name)?
+        self.workspace_def_candidates(name).iter().find_map(f)
+    }
+
+    /// The candidate-location list underlying [`Self::find_in_workspace_defs`],
+    /// exposed directly for callers that need to inspect more than the first
+    /// match (e.g. preferring an import/package-reachable candidate over an
+    /// arbitrary same-named one — see `resolver::infer::find_fun_return_type_by_name`).
+    ///
+    /// Reconstitutes each candidate `SymbolLoc` into a `Location`, filtering out
+    /// library files by their interned URI first. Empty when `name` has no
+    /// workspace definitions at all (as opposed to `find_in_workspace_defs`,
+    /// which folds that into `None` via `f`).
+    pub(crate) fn workspace_def_candidates(&self, name: &str) -> Vec<Location> {
+        let Some(locations) = self.definitions.get(name) else {
+            return Vec::new();
+        };
+        locations
             .iter()
             .filter_map(|sym_loc| {
                 let url = self.file_table.url(sym_loc.file)?;
@@ -1031,8 +1043,7 @@ impl Indexer {
                 })
             })
             .take(MAX_BY_NAME_DEFS)
-            .collect();
-        candidates.iter().find_map(f)
+            .collect()
     }
 
     pub(crate) fn is_library_uri(&self, uri: &Url) -> bool {
