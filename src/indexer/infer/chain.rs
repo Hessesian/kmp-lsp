@@ -534,26 +534,35 @@ pub(super) fn resolve_call_expr_type(
             }
         }
     }
+    // Prefer the import-aware lookup (binds to the actually-imported symbol)
+    // over every heuristic below -- a real, indexed, reachable declaration
+    // must win even when its name coincides with a known pattern (e.g. a
+    // workspace's own `fun <T> create(): Wrapper<T>` must resolve to
+    // `Wrapper<T>`, not the DI-factory heuristic's bare `T`). Only the
+    // *ambiguous* global-name scan (`find_fun_return_type`, several lines
+    // down) is deferred past the heuristics — see the comments on each.
+    let mut result = deps.find_fun_return_type_reachable(&fn_name, uri);
     // Numeric conversion: `x.toLong()`/`.toInt()`/etc. — the function name
     // alone fixes the return type (see `NUMERIC_CONVERSION_FNS`'s doc
-    // comment), regardless of whether the receiver or the function itself is
-    // indexed anywhere. Checked BEFORE the receiver-agnostic bare-name scan
-    // below, not after: these are Kotlin stdlib intrinsics with one fixed
-    // meaning, so trusting the name outranks a same-named match found by
-    // pure text search.
-    if let Some((_, ret_ty)) = NUMERIC_CONVERSION_FNS
-        .iter()
-        .find(|(name, _)| *name == fn_name)
-    {
-        return Some((*ret_ty).to_owned());
+    // comment) once the reachable lookup above has already failed. Gated on
+    // `callee.kind() == KIND_NAV_EXPR` (an actual `.` receiver in the
+    // source, even if its type didn't resolve): a genuinely receiver-less
+    // `toLong()` naming an unrelated top-level function must not be guessed
+    // as the stdlib intrinsic.
+    if result.is_none() && callee.kind() == KIND_NAV_EXPR {
+        if let Some((_, ret_ty)) = NUMERIC_CONVERSION_FNS
+            .iter()
+            .find(|(name, _)| *name == fn_name)
+        {
+            return Some((*ret_ty).to_owned());
+        }
     }
-    // DI-factory: `get<Foo>()`/`inject<Foo>()`/etc. with no indexed signature
-    // (see `GENERIC_FACTORY_FNS`'s doc comment) — read the type argument
-    // straight off the call site instead of giving up. Also checked before
-    // the bare-name scan: gated on both a known factory-function name AND an
-    // explicit `<T>` at the call site, so it's a strong, self-verifying
-    // signal, not a guess.
-    if GENERIC_FACTORY_FNS.contains(&fn_name.as_str()) {
+    // DI-factory: `get<Foo>()`/`inject<Foo>()`/etc. once the reachable
+    // lookup above has already failed — read the type argument straight off
+    // the call site instead of giving up. Gated on both a known
+    // factory-function name AND an explicit `<T>` at the call site, so it's
+    // a strong, self-verifying signal, not a guess.
+    if result.is_none() && GENERIC_FACTORY_FNS.contains(&fn_name.as_str()) {
         if let Some(type_args) = node.call_site_type_arg_strings(bytes) {
             if let [single] = type_args.as_slice() {
                 if single.starts_with_uppercase() {
@@ -565,28 +574,25 @@ pub(super) fn resolve_call_expr_type(
     // Retrofit-style class-literal: `retrofit.create(Foo::class.java)` with
     // neither the receiver's type nor `create` itself indexed. The argument
     // itself names the answer — see `find_class_literal_arg_type`. Also
-    // gated on `GENERIC_FACTORY_FNS` (same known-factory-name list as above)
-    // and checked before the bare-name scan for the same reason: a real
-    // production bug had `retrofit.create(GoldConversionPublicApi::class.java)`
-    // bare-name-match an UNRELATED `create` on a completely different class
-    // (a KSP `SymbolProcessorProvider.create(): SymbolProcessor`) before this
-    // fallback ever got a chance to run, because it used to be gated on
-    // `result.is_none()` *after* that scan already produced a wrong `Some`.
-    // The factory-name gate (not just "any call with a class-literal arg")
-    // matters here specifically: without it, this would just as wrongly
-    // override a real, correctly-indexed, differently-named function that
-    // merely happens to take a class-literal argument for an unrelated
-    // reason (e.g. a logging/reflection helper).
-    if GENERIC_FACTORY_FNS.contains(&fn_name.as_str()) {
+    // gated on `GENERIC_FACTORY_FNS` (same known-factory-name list as above):
+    // without it, this would wrongly override a real, correctly-indexed,
+    // differently-named function that merely happens to take a
+    // class-literal argument for an unrelated reason (e.g. a
+    // logging/reflection helper).
+    if result.is_none() && GENERIC_FACTORY_FNS.contains(&fn_name.as_str()) {
         if let Some(class_arg_ty) = find_class_literal_arg_type(node, bytes) {
             return Some(class_arg_ty);
         }
     }
-    // Prefer the import-aware lookup (binds to the actually-imported symbol);
-    // fall back to the looser global-name scan only when resolution finds nothing.
-    let mut result = deps
-        .find_fun_return_type_reachable(&fn_name, uri)
-        .or_else(|| deps.find_fun_return_type(&fn_name, uri));
+    // Fall back to the looser, receiver-agnostic global-name scan only when
+    // NOTHING above found anything -- a same-named match here has no regard
+    // for import/package reachability (a real production bug had this scan
+    // bare-name-match an unrelated `create` on a completely different,
+    // unimported class -- a KSP `SymbolProcessorProvider.create():
+    // SymbolProcessor` -- before the heuristics above got a chance to run,
+    // when they were gated on `result.is_none()` *after* this scan instead
+    // of before it).
+    result = result.or_else(|| deps.find_fun_return_type(&fn_name, uri));
     // Apply call-site type argument substitution for generic functions.
     if let Some(call_type_args) = node.call_site_type_arg_strings(bytes) {
         if let Some(callable_info) = deps.find_fun_callable_info(&fn_name, uri) {

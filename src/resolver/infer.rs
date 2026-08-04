@@ -858,18 +858,17 @@ pub(crate) fn find_fun_return_type_reachable(
     fn_name: &str,
     uri: &Url,
 ) -> Option<String> {
-    // Promotion MUST happen before `resolve_symbol_no_rg` at this call site —
-    // unlike `find_extension_fn_return_type_scoped` below, where the check
-    // guards a `jar_files` read that happens *after* it in the same function,
-    // here `locations` is produced BY `resolve_symbol_no_rg`, which calls
-    // into `resolve_chain` and reads `jar_definitions` directly in more than
-    // one place upstream (`resolve_via_imports`, and the `NoRg` fallback tail
-    // via `Indexer::lookup_definitions`). If promotion ran after this call
-    // (as it did before this fix), a Tier-1-only candidate would already
-    // have produced an empty `locations` Vec by the time materialization
-    // completed, so the `for loc in &locations` loop below would never see
-    // the freshly-materialized data on THIS call — only a later, separate
-    // call would benefit. Do not move this back below `resolve_symbol_no_rg`.
+    // Promotion MUST happen before `resolve_symbol_scoped_only` at this call
+    // site — unlike `find_extension_fn_return_type_scoped` below, where the
+    // check guards a `jar_files` read that happens *after* it in the same
+    // function, here `locations` is produced BY `resolve_symbol_scoped_only`,
+    // which reads `jar_definitions` directly via `resolve_via_imports`
+    // upstream. If promotion ran after this call (as it did before this
+    // fix), a Tier-1-only candidate would already have produced an empty
+    // `locations` Vec by the time materialization completed, so the
+    // `for loc in &locations` loop below would never see the
+    // freshly-materialized data on THIS call — only a later, separate call
+    // would benefit. Do not move this back below `resolve_symbol_scoped_only`.
     // ZERO sidecar-IPC budget: this runs on latency-critical inference paths
     // (inlay hints call it once per name in the visible range — unbudgeted
     // blocking IPC here was observed live as a 22s inlay compute that timed
@@ -879,7 +878,19 @@ pub(crate) fn find_fun_return_type_reachable(
     // hover/goto-def resolution).
     let mut cache_backed_only = 0usize;
     crate::indexer::jar::ensure_jar_definitions_for(indexer, fn_name, &mut cache_backed_only);
-    let locations = crate::resolver::resolve_symbol_no_rg(indexer, fn_name, uri);
+    // Scoped-only, not `resolve_symbol_no_rg`: this function's every caller
+    // already chains its own last-resort fallback (`find_fun_return_type`/
+    // `find_fun_return_type_by_name`, which -- unlike this scan -- prefers an
+    // import/package-reachable candidate over an arbitrary same-named one)
+    // afterward, so this step should only report a match that's genuinely
+    // reachable via local/import/package/hierarchy resolution, not
+    // `resolve_symbol_no_rg`'s own "first workspace/JAR match, any package"
+    // tail. Skipping that tail here matters: letting it fire pre-empted the
+    // caller's own, more-reachability-aware fallback with a match that had
+    // no more claim to correctness — a real production bug had it beat a
+    // completely unrelated, unimported library's same-named function ahead
+    // of the actually-intended resolution.
+    let locations = crate::resolver::resolve_symbol_scoped_only(indexer, fn_name, uri);
     let mut fallback: Option<String> = None;
     for loc in &locations {
         let Some(file_data) = indexer

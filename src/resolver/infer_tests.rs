@@ -1183,13 +1183,27 @@ fn class_literal_arg_fallback_not_shadowed_by_unrelated_bare_name_match() {
     use tower_lsp::lsp_types::Url;
 
     let idx = Indexer::new();
-    let f = Url::parse("file:///app/Repo.kt").unwrap();
-    let src = "package app\n\
-         class Retrofit\n\
+
+    // The decoy MUST be in a genuinely unrelated, unimported package (as the
+    // real KSP collision was) -- a same-package decoy is legitimately
+    // reachable via same-package visibility and doesn't reproduce the bug
+    // (an earlier version of this test put the decoy in the caller's own
+    // package by accident, which `find_fun_return_type_reachable`'s
+    // same-package step correctly resolves to, and so stopped reproducing
+    // the collision after the reachable-lookup-first reordering fix).
+    let decoy = Url::parse("file:///ksp/Decoy.kt").unwrap();
+    idx.index_content(
+        &decoy,
+        "package ksp\n\
          class SymbolProcessor\n\
          class SymbolProcessorProvider {\n\
          \x20   fun create(): SymbolProcessor = TODO()\n\
-         }\n\
+         }\n",
+    );
+
+    let f = Url::parse("file:///app/Repo.kt").unwrap();
+    let src = "package app\n\
+         class Retrofit\n\
          class GoldConversionPublicApi\n\
          class Repo(retrofit: Retrofit) {\n\
          \x20   val textApi = retrofit.create(GoldConversionPublicApi::class.java)\n\
@@ -1201,7 +1215,8 @@ fn class_literal_arg_fallback_not_shadowed_by_unrelated_bare_name_match() {
         super::infer_variable_type_from_cst(&idx, "textApi", &f),
         Some("GoldConversionPublicApi".to_string()),
         "the class-literal argument names the answer unambiguously and must \
-         win over an unrelated same-named `create` found by bare-name scan"
+         win over an unrelated, unimported same-named `create` found by \
+         bare-name scan"
     );
 }
 
@@ -1235,5 +1250,100 @@ fn class_literal_arg_fallback_does_not_override_unrelated_indexed_function() {
         Some("LogHandle".to_string()),
         "logEvent isn't a known factory-function name, so its real indexed \
          return type must win over guessing from the class-literal argument"
+    );
+}
+
+/// Copilot review finding (round 5, on `chain.rs`'s reordered heuristics):
+/// a genuinely receiver-less call to a real, indexed, differently-named
+/// `toLong` must resolve to ITS declared return type, not the
+/// `NUMERIC_CONVERSION_FNS` heuristic's hardcoded `"Long"`. Kotlin's actual
+/// numeric-conversion `toLong()` is always a member call (`5.toLong()`); a
+/// bare `toLong(x)` naming an unrelated top-level function is legal Kotlin
+/// and must not be swallowed by the heuristic just because the name matches.
+#[test]
+fn numeric_conversion_heuristic_does_not_fire_on_receiver_less_call() {
+    use crate::indexer::Indexer;
+    use tower_lsp::lsp_types::Url;
+
+    let idx = Indexer::new();
+    let f = Url::parse("file:///app/Repo.kt").unwrap();
+    let src = "package app\n\
+         fun toLong(x: Int): String = TODO()\n\
+         class Repo {\n\
+         \x20   val result = toLong(5)\n\
+         }\n";
+    idx.index_content(&f, src);
+    idx.store_live_tree(&f, src);
+
+    assert_eq!(
+        super::infer_variable_type_from_cst(&idx, "result", &f),
+        Some("String".to_string()),
+        "a receiver-less toLong(x) naming a real, differently-typed function \
+         must resolve to its own declared return type, not be guessed as \
+         Long by the numeric-conversion heuristic"
+    );
+}
+
+/// Copilot review finding: the DI-factory `<T>` heuristic must not override a
+/// real, indexed, reachable `create`/`get`/etc. — this one also proves the
+/// real path is *better*, not just different: `find_fun_return_type_reachable`
+/// finds the true declared `Wrapper<T>` and the call-site substitution step
+/// (`build_fn_subst`/`apply_simple_subst`) resolves it to `Wrapper<Foo>`,
+/// which the heuristic (bare bare `Foo`, no knowledge of the `Wrapper<>`
+/// wrapping) could never have produced correctly.
+#[test]
+fn di_factory_heuristic_does_not_override_real_indexed_generic_function() {
+    use crate::indexer::Indexer;
+    use tower_lsp::lsp_types::Url;
+
+    let idx = Indexer::new();
+    let f = Url::parse("file:///app/Repo.kt").unwrap();
+    let src = "package app\n\
+         class Wrapper<T>\n\
+         class Foo\n\
+         fun <T> create(): Wrapper<T> = TODO()\n\
+         class Repo {\n\
+         \x20   val result = create<Foo>()\n\
+         }\n";
+    idx.index_content(&f, src);
+    idx.store_live_tree(&f, src);
+
+    assert_eq!(
+        super::infer_variable_type_from_cst(&idx, "result", &f),
+        Some("Wrapper<Foo>".to_string()),
+        "a real, indexed generic `create<T>(): Wrapper<T>` must resolve (and \
+         substitute) via the real declaration, not be guessed as the bare \
+         type argument by the DI-factory heuristic"
+    );
+}
+
+/// Copilot review finding: the Retrofit-style class-literal heuristic must
+/// not override a real, indexed, reachable `create` either — a bare
+/// (receiver-less) call to a real top-level `create` that happens to take a
+/// class-literal argument for an unrelated reason must resolve to its own
+/// declared return type.
+#[test]
+fn class_literal_heuristic_does_not_override_real_indexed_bare_function() {
+    use crate::indexer::Indexer;
+    use tower_lsp::lsp_types::Url;
+
+    let idx = Indexer::new();
+    let f = Url::parse("file:///app/Repo.kt").unwrap();
+    let src = "package app\n\
+         class RealResult\n\
+         class Foo\n\
+         fun create(cls: Class<*>): RealResult = TODO()\n\
+         class Repo {\n\
+         \x20   val result = create(Foo::class.java)\n\
+         }\n";
+    idx.index_content(&f, src);
+    idx.store_live_tree(&f, src);
+
+    assert_eq!(
+        super::infer_variable_type_from_cst(&idx, "result", &f),
+        Some("RealResult".to_string()),
+        "a real, indexed, reachable bare create(...) must resolve to its own \
+         declared return type, not be guessed from the class-literal \
+         argument"
     );
 }
