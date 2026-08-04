@@ -354,6 +354,15 @@ fn infer_arithmetic_expr_type<D: InferDeps>(
     let rhs_ty = infer_expr_type(rhs, bytes, deps, uri)?;
     let lhs_rank = numeric_rank(&lhs_ty)?;
     let rhs_rank = numeric_rank(&rhs_ty)?;
+    // Kotlin has no same-rank arithmetic overload for `Byte`/`Short`: unlike
+    // `Int`/`Long`/`Float`/`Double`, which each define e.g. `Int.plus(Int): Int`,
+    // `Byte`/`Short` only define `plus`/`minus`/etc. overloads that return `Int`
+    // (`Byte.plus(Byte): Int`, `Byte.plus(Short): Int`, …) — so when neither
+    // operand outranks `Byte`/`Short`, the result promotes to `Int` rather than
+    // staying at the narrower operand type.
+    if lhs_rank == 0 && rhs_rank == 0 {
+        return Some("Int".to_owned());
+    }
     Some(if lhs_rank >= rhs_rank { lhs_ty } else { rhs_ty })
 }
 

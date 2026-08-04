@@ -258,6 +258,36 @@ fn additive_mixed_int_double_promotes_to_double() {
 }
 
 #[test]
+fn additive_byte_operands_promote_to_int() {
+    // Kotlin has no `Byte.plus(Byte): Byte` overload -- only `Byte.plus(Byte): Int`
+    // (same for `Short`), unlike `Int`/`Long`/`Float`/`Double` which each have a
+    // same-type overload. Both operands ranking at `Byte`/`Short` must promote to
+    // `Int`, not stay at the narrower operand type.
+    let deps = TestDeps::new()
+        .with_var("file:///tmp/test.kt", "a", "Byte")
+        .with_var("file:///tmp/test.kt", "b", "Byte");
+    assert_eq!(infer_with_deps("a + b", &deps).as_deref(), Some("Int"));
+}
+
+#[test]
+fn additive_byte_and_short_operands_promote_to_int() {
+    let deps = TestDeps::new()
+        .with_var("file:///tmp/test.kt", "a", "Byte")
+        .with_var("file:///tmp/test.kt", "b", "Short");
+    assert_eq!(infer_with_deps("a + b", &deps).as_deref(), Some("Int"));
+}
+
+#[test]
+fn additive_byte_and_int_still_promotes_to_int() {
+    // Sanity check the existing "higher rank wins" path still holds once one
+    // operand already outranks Byte/Short.
+    let deps = TestDeps::new()
+        .with_var("file:///tmp/test.kt", "a", "Byte")
+        .with_var("file:///tmp/test.kt", "b", "Int");
+    assert_eq!(infer_with_deps("a + b", &deps).as_deref(), Some("Int"));
+}
+
+#[test]
 fn additive_string_concat_infers_string() {
     // `"Error: " + errorCode` — Kotlin's `String.plus(Any?): String`.
     assert_eq!(infer(r#""Error: " + 42"#), Some("String".into()));

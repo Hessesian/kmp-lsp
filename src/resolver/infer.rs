@@ -1156,7 +1156,11 @@ fn substitute_direct_supertype_args(
     if type_args.is_empty() {
         return raw.to_owned();
     }
-    let super_type_params = find_class_type_params(indexer, super_name);
+    // `super_name` can be a dotted qualified spelling (`class X : com.lib.Base()`
+    // -- see `supertype_targets` in hierarchy.rs), but `find_class_type_params`
+    // matches against `FileData.symbols`' bare `name` field, so a qualified
+    // spelling would silently miss and skip substitution entirely.
+    let super_type_params = find_class_type_params(indexer, super_name.last_segment());
     if super_type_params.is_empty() {
         return raw.to_owned();
     }

@@ -227,6 +227,34 @@ fn supertype_subst_whole_word_only() {
     );
 }
 
+/// `substitute_direct_supertype_args` looks up the direct supertype's own
+/// declared type params via `find_class_type_params`, which is keyed by the
+/// bare class name (`FileData.symbols`' `name` field). `super_name` (as
+/// stored in `FileData.supers`) can be a dotted qualified spelling (e.g.
+/// `class Derived : app.Base<Int>()`), so it must be stripped to its last
+/// segment before that lookup -- otherwise the lookup silently misses and
+/// substitution is skipped entirely, leaving the raw literal type parameter
+/// (`T`) instead of the concrete argument (`Int`).
+#[test]
+fn substitute_direct_supertype_args_handles_qualified_super_name() {
+    use crate::indexer::Indexer;
+    use tower_lsp::lsp_types::Url;
+
+    let idx = Indexer::new();
+    let f = Url::parse("file:///app/Types.kt").unwrap();
+    idx.index_content(
+        &f,
+        "package app\nopen class Base<T>\nclass Derived : app.Base<Int>()\n",
+    );
+
+    assert_eq!(
+        super::substitute_direct_supertype_args(&idx, f.as_str(), "Derived", "app.Base", "T"),
+        "Int",
+        "a qualified supertype spelling (app.Base) must still resolve Base's \
+         own type params for substitution"
+    );
+}
+
 #[test]
 fn property_type_extension_with_receiver() {
     assert_eq!(
