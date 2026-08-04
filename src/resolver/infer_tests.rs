@@ -968,3 +968,77 @@ fn string_and_cst_engines_agree_on_supertype_extension_generic_arg() {
          not just agree with each other on the wrong answer"
     );
 }
+
+/// Regression: `retrofit.create(GoldConversionPublicApi::class.java)` --
+/// `Retrofit`'s own `create` isn't indexed (not workspace/JAR-materialized in
+/// this test, same as a real un-promoted Retrofit JAR), so
+/// `resolve_call_expr_type` falls through to the receiver-agnostic bare-name
+/// scan (`find_fun_return_type_reachable`/`find_fun_return_type`), which is a
+/// pure name match with no regard for the receiver's actual type -- it
+/// happily matches a COMPLETELY UNRELATED `create` declared on some other
+/// class (here standing in for e.g. KSP's `SymbolProcessorProvider.create():
+/// SymbolProcessor`, a real collision found live in a production project).
+/// The `find_class_literal_arg_type` fallback that exists specifically to
+/// handle "receiver not indexed" Retrofit-style calls never gets a chance to
+/// run, because it's gated on `result.is_none()` and the bare-name scan
+/// already produced a (wrong) `Some`.
+#[test]
+fn class_literal_arg_fallback_not_shadowed_by_unrelated_bare_name_match() {
+    use crate::indexer::Indexer;
+    use tower_lsp::lsp_types::Url;
+
+    let idx = Indexer::new();
+    let f = Url::parse("file:///app/Repo.kt").unwrap();
+    let src = "package app\n\
+         class Retrofit\n\
+         class SymbolProcessor\n\
+         class SymbolProcessorProvider {\n\
+         \x20   fun create(): SymbolProcessor = TODO()\n\
+         }\n\
+         class GoldConversionPublicApi\n\
+         class Repo(retrofit: Retrofit) {\n\
+         \x20   val textApi = retrofit.create(GoldConversionPublicApi::class.java)\n\
+         }\n";
+    idx.index_content(&f, src);
+    idx.store_live_tree(&f, src);
+
+    assert_eq!(
+        super::infer_variable_type_from_cst(&idx, "textApi", &f),
+        Some("GoldConversionPublicApi".to_string()),
+        "the class-literal argument names the answer unambiguously and must \
+         win over an unrelated same-named `create` found by bare-name scan"
+    );
+}
+
+/// Sibling safety-net for the fix above: promoting the class-literal fallback
+/// ahead of the bare-name scan must NOT become its own false-positive source.
+/// `logEvent` isn't a `GENERIC_FACTORY_FNS` name, so a class-literal argument
+/// passed to it for an unrelated reason (logging/reflection, not a
+/// factory-returns-the-argument's-type pattern) must not hijack its real,
+/// correctly-indexed return type.
+#[test]
+fn class_literal_arg_fallback_does_not_override_unrelated_indexed_function() {
+    use crate::indexer::Indexer;
+    use tower_lsp::lsp_types::Url;
+
+    let idx = Indexer::new();
+    let f = Url::parse("file:///app/Repo.kt").unwrap();
+    let src = "package app\n\
+         class LogHandle\n\
+         class SomeClass\n\
+         class Logger {\n\
+         \x20   fun logEvent(cls: Class<*>): LogHandle = TODO()\n\
+         }\n\
+         class Repo(logger: Logger) {\n\
+         \x20   val handle = logger.logEvent(SomeClass::class.java)\n\
+         }\n";
+    idx.index_content(&f, src);
+    idx.store_live_tree(&f, src);
+
+    assert_eq!(
+        super::infer_variable_type_from_cst(&idx, "handle", &f),
+        Some("LogHandle".to_string()),
+        "logEvent isn't a known factory-function name, so its real indexed \
+         return type must win over guessing from the class-literal argument"
+    );
+}

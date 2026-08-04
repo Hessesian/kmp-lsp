@@ -400,7 +400,19 @@ fn retrofit_style_create_with_class_literal_arg_infers_type() {
 #[test]
 fn bare_class_literal_arg_without_java_suffix_infers_type() {
     // `::class` without a trailing `.java` — still a class-literal argument.
-    assert_eq!(infer("factory.build(Widget::class)"), Some("Widget".into()));
+    // Uses `create` (a `GENERIC_FACTORY_FNS` name), not an arbitrary function
+    // name: this fallback is deliberately gated to a curated list of known
+    // factory-pattern names (see that constant's doc comment) precisely
+    // because ungating it caused a real production bug -- a same-named,
+    // completely unrelated `build`/`create`/etc. elsewhere in the workspace
+    // could otherwise get bare-name-matched with higher priority, or (before
+    // the ordering fix) this fallback could itself override a real,
+    // correctly-indexed, differently-named function that merely happens to
+    // take a class-literal argument for an unrelated reason.
+    assert_eq!(
+        infer("factory.create(Widget::class)"),
+        Some("Widget".into())
+    );
 }
 
 #[test]
