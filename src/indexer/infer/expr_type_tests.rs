@@ -416,6 +416,18 @@ fn bare_class_literal_arg_without_java_suffix_infers_type() {
 }
 
 #[test]
+fn qualified_class_literal_arg_infers_leaf_type() {
+    // `com.example.Foo::class.java` -- the type_identifier's raw text
+    // carries the full dotted path; the leaf (last segment) is the actual
+    // class name, matching the STRING-side equivalent (`infer_lines`'s
+    // "Pattern 3", which also extracts the last segment).
+    assert_eq!(
+        infer("retrofit.create(com.example.DashboardApi::class.java)"),
+        Some("DashboardApi".into())
+    );
+}
+
+#[test]
 fn call_with_no_class_literal_arg_unaffected() {
     // Ordinary argument (not a class literal) — no bogus guess.
     assert_eq!(infer("retrofit.create(someService)"), None);

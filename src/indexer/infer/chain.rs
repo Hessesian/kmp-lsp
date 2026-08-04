@@ -4,9 +4,9 @@ use tower_lsp::lsp_types::Url;
 
 use crate::indexer::NodeExt;
 use crate::queries::{
-    KIND_CALLABLE_REF, KIND_CALL_EXPR, KIND_CALL_SUFFIX, KIND_CLASS_DECL, KIND_LAMBDA_LIT,
-    KIND_NAV_EXPR, KIND_NAV_SUFFIX, KIND_OBJECT_DECL, KIND_SIMPLE_IDENT, KIND_STATEMENTS,
-    KIND_TYPE_IDENT, KIND_VALUE_ARG, KIND_VALUE_ARGS,
+    KIND_CALL_EXPR, KIND_CALL_SUFFIX, KIND_CLASS_DECL, KIND_LAMBDA_LIT, KIND_NAV_EXPR,
+    KIND_NAV_SUFFIX, KIND_OBJECT_DECL, KIND_SIMPLE_IDENT, KIND_STATEMENTS, KIND_TYPE_IDENT,
+    KIND_VALUE_ARGS,
 };
 use crate::resolver::extract_collection_element_type;
 use crate::StrExt;
@@ -530,7 +530,30 @@ pub(super) fn resolve_call_expr_type(
                 deps.find_method_return_type_for_type(&effective_type, &fn_name, uri)
             {
                 let subst = build_type_arg_subst(deps, &effective_type, recv_ty);
-                return Some(crate::indexer::apply_type_subst(&ret_ty, &subst));
+                let substituted = crate::indexer::apply_type_subst(&ret_ty, &subst);
+                // Also substitute the CALLED FUNCTION's own generic type
+                // parameter(s) from an explicit call-site type argument --
+                // distinct from `subst` above, which only covers the
+                // receiver's own generic argument. Real example that erased
+                // this: `fun <R> Flow<*>.filterIsInstance(): Flow<R>` — `R`
+                // is the function's own type parameter, supplied only by the
+                // caller's explicit `<T>` (`filterIsInstance<Foo>()`), never
+                // derivable from the receiver (star-projected `Flow<*>`
+                // here, but this matters even for a concrete receiver: `R`
+                // and the receiver's own parameter are simply unrelated
+                // names). Mirrors the identical substitution the
+                // receiver-agnostic branch below already applies — this
+                // branch returned before ever reaching it.
+                if let Some(call_type_args) = node.call_site_type_arg_strings(bytes) {
+                    if let Some(callable_info) = deps.find_fun_callable_info(&fn_name, uri) {
+                        if !callable_info.type_params.is_empty() {
+                            let fn_subst =
+                                build_fn_subst(&callable_info.type_params, &call_type_args);
+                            return Some(apply_simple_subst(&substituted, &fn_subst));
+                        }
+                    }
+                }
+                return Some(substituted);
             }
         }
     }
@@ -616,42 +639,42 @@ pub(super) fn resolve_call_expr_type(
     result
 }
 
-/// Find a `Foo::class` (optionally `.java`-suffixed) argument inside a call's
-/// argument list and return `Foo`.
+/// Find a `Foo::class` (optionally `.java`-suffixed, optionally
+/// package-qualified) argument inside a call's argument list and return
+/// `Foo`.
 ///
-/// Purely syntactic, mirroring `infer_lines::infer_from_rhs_assignment`'s
-/// "Pattern 3": this is deliberately unconditional on the callee/receiver
-/// resolving to anything, since the pattern's whole point is recovering a type
-/// when the actual `create`/factory method is not indexed (e.g. an external
-/// Retrofit-style library). Returns the first class-literal argument found;
-/// callers only reach this after every signature-based resolution has failed.
+/// Deliberately TEXTUAL, not a CST walk of the argument's structure --
+/// mirroring `infer_lines::infer_from_rhs_assignment`'s "Pattern 3" exactly
+/// (same substring search), for a concrete reason: a bare `Foo::class`
+/// parses as a single `callable_reference(type_identifier)` node, but a
+/// qualified `com.example.Foo::class` does NOT -- tree-sitter-kotlin instead
+/// produces a nested `navigation_expression` chain (`com.example.Foo` as
+/// dotted navigation suffixes, with `::class` itself becoming just another
+/// suffix carrying the literal `class` keyword token, not a
+/// `callable_reference` at all). Chasing that shape recursively is much more
+/// fragile than reading the argument list's own text and applying the same
+/// substring search already proven correct on the STRING side.
+///
+/// Unconditional on the callee/receiver resolving to anything, since the
+/// pattern's whole point is recovering a type when the actual
+/// `create`/factory method is not indexed (e.g. an external Retrofit-style
+/// library). Returns the first class-literal argument found; callers only
+/// reach this after every signature-based resolution has failed.
 fn find_class_literal_arg_type(call: tree_sitter::Node<'_>, bytes: &[u8]) -> Option<String> {
     let call_suffix = call.first_child_of_kind(KIND_CALL_SUFFIX)?;
     let value_args = call_suffix.first_child_of_kind(KIND_VALUE_ARGS)?;
-    for arg in value_args.children_of_kind(KIND_VALUE_ARG) {
-        let mut cursor = arg.walk();
-        for expr in arg.children(&mut cursor) {
-            let callable_ref = if expr.kind() == KIND_CALLABLE_REF {
-                Some(expr)
-            } else if expr.kind() == KIND_NAV_EXPR {
-                // `Foo::class.java` parses as navigation_expression(callable_reference, .java)
-                expr.named_child(0)
-                    .filter(|c| c.kind() == KIND_CALLABLE_REF)
-            } else {
-                None
-            };
-            if let Some(callable_ref) = callable_ref {
-                if let Some(type_id) = callable_ref.first_child_of_kind(KIND_TYPE_IDENT) {
-                    if let Some(name) = type_id.utf8_text_owned(bytes) {
-                        if name.starts_with_uppercase() {
-                            return Some(name);
-                        }
-                    }
-                }
-            }
-        }
+    let args_text = value_args.utf8_text(bytes).ok()?;
+    let class_pos = args_text.find("::class")?;
+    let before_class = args_text[..class_pos].trim_end();
+    let leaf = before_class
+        .split(|c: char| !c.is_alphanumeric() && c != '_')
+        .next_back()
+        .unwrap_or("");
+    if leaf.starts_with_uppercase() {
+        Some(leaf.to_owned())
+    } else {
+        None
     }
-    None
 }
 
 /// Locate the trailing `lambda_literal` of a call expression, handling the

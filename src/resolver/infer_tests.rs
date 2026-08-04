@@ -1347,3 +1347,52 @@ fn class_literal_heuristic_does_not_override_real_indexed_bare_function() {
          argument"
     );
 }
+
+/// Real-world bug: `store.businessState.filterIsInstance<SnackBarState.Error>()`
+/// inferred as `Flow<R>` instead of `Flow<SnackBarState.Error>`.
+///
+/// `filterIsInstance` resolves via the RECEIVER-based branch of
+/// `resolve_call_expr_type` (an indexed extension on `Flow`), which only
+/// ever substitutes the RECEIVER's own generic argument
+/// (`build_type_arg_subst`) -- but `filterIsInstance`'s real signature is
+/// `fun <R> Flow<*>.filterIsInstance(): Flow<R>`: `R` is the CALLED
+/// FUNCTION's own type parameter, supplied only via the explicit `<T>` at
+/// the call site, never derived from the receiver (which is star-projected,
+/// `Flow<*>`). The call-site type-argument substitution
+/// (`call_site_type_arg_strings` + `find_fun_callable_info` +
+/// `build_fn_subst`) already existed for the *receiver-agnostic* branch
+/// further down this function, but the receiver-based branch returned
+/// early before ever reaching it.
+#[test]
+fn receiver_based_resolution_also_substitutes_call_site_type_argument() {
+    use crate::indexer::Indexer;
+    use tower_lsp::lsp_types::Url;
+
+    let idx = Indexer::new();
+    let f = Url::parse("file:///app/Repo.kt").unwrap();
+    let src = "package app\n\
+         interface Flow<T>\n\
+         open class SnackBarState {\n\
+         \x20   object Empty : SnackBarState()\n\
+         \x20   class Error : SnackBarState()\n\
+         }\n\
+         class Store<T>(initial: T) {\n\
+         \x20   val businessState: Flow<T> = TODO()\n\
+         }\n\
+         fun <R> Flow<*>.filterIsInstance(): Flow<R> = TODO()\n\
+         class Repo {\n\
+         \x20   private val store: Store<SnackBarState> = Store(SnackBarState.Empty)\n\
+         \x20   val result = store.businessState.filterIsInstance<SnackBarState.Error>()\n\
+         }\n";
+    idx.index_content(&f, src);
+    idx.store_live_tree(&f, src);
+
+    assert_eq!(
+        super::infer_variable_type_from_cst(&idx, "result", &f),
+        Some("Flow<SnackBarState.Error>".to_string()),
+        "filterIsInstance's own type parameter R must be substituted from \
+         the explicit call-site type argument, not left as the literal R \
+         (the receiver's own generic argument is irrelevant here -- the \
+         real receiver type is star-projected Flow<*>)"
+    );
+}
