@@ -189,7 +189,7 @@ pub(crate) fn infer_receiver_type_at(
                 // Only an object's own name is also a type; an enum entry or a
                 // constant matches by value and leaves the subject's type alone.
                 Some(SmartCast::ObjectEquality(label)) => {
-                    names_object_declaration(indexer, &label).then_some(label)
+                    names_object_declaration(indexer, &label, uri).then_some(label)
                 }
                 None => None,
             };
@@ -201,18 +201,21 @@ pub(crate) fn infer_receiver_type_at(
     infer_receiver_type(indexer, ReceiverKind::Variable(name), uri)
 }
 
-/// Whether `label` (possibly qualified, e.g. `Ui.Loading`) names an `object`
-/// declaration.
-fn names_object_declaration(indexer: &Indexer, label: &str) -> bool {
-    let simple_name = label.rsplit('.').next().unwrap_or(label);
-    indexer
-        .lookup_definitions(simple_name)
+/// Whether the qualified `label` (e.g. `Ui.Loading`) names an `object`
+/// declaration as seen from `from_uri`.
+///
+/// Resolved through `resolve_type_index_only`, which honours the file's own
+/// imports and package, rather than by scanning every definition sharing the
+/// simple name: an unrelated `object Idle` in another package would otherwise
+/// validate an enum entry named `Idle` and narrow the subject to a type it
+/// has nothing to do with.
+fn names_object_declaration(indexer: &Indexer, label: &str, from_uri: &Url) -> bool {
+    super::resolve::resolve_type_index_only(indexer, label, from_uri)
         .into_iter()
         .any(|location| {
-            crate::resolver::ensure_file_data(indexer, &location.uri).is_some_and(|file_data| {
+            ensure_file_data(indexer, &location.uri).is_some_and(|file_data| {
                 file_data.symbols.iter().any(|symbol| {
-                    symbol.selection_range == location.range
-                        && symbol.kind == tower_lsp::lsp_types::SymbolKind::OBJECT
+                    symbol.selection_range == location.range && symbol.kind == SymbolKind::OBJECT
                 })
             })
         })

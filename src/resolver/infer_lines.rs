@@ -773,27 +773,41 @@ fn if_is_smart_cast(lines: &[String], var_name: &str, line_idx: usize) -> Option
 
 /// Read what a `when` branch narrows its subject to.
 ///
-/// `is Foo ->` is a type test. A bare `Foo ->` / `Ui.Foo ->` is equality
-/// against a declaration — the idiomatic form for matching a `data object`,
-/// and the reason this exists — which narrows only when that declaration is
-/// an object, hence the separate variant for the caller to confirm.
+/// `is Foo ->` is a type test. `Ui.Foo ->` is equality against a declaration —
+/// the idiomatic form for matching a `data object`, and the reason this
+/// exists — which narrows only when that declaration is an object, hence the
+/// separate variant for the caller to confirm.
+///
+/// The equality form requires a QUALIFIED label (`Ui.Foo`, not a bare `Foo`).
+/// This scan reads one line at a time with no idea whether it sits in a `when`
+/// at all, and a lambda parameter is written the same way a branch label is:
+///
+/// ```text
+///     items.forEach {
+///         Element ->            // a parameter, not a branch
+/// ```
+///
+/// A lambda parameter is always a simple identifier, never dotted, so the dot
+/// tells the two apart structurally rather than by guessing at conventions.
+/// The cost is that a bare `Foo ->` branch (legal when `Foo` is imported)
+/// doesn't narrow; separating those needs the CST, not a smarter line scan.
 fn extract_when_branch_narrowing(trimmed: &str) -> Option<SmartCast> {
     if trimmed.starts_with("is ") {
         return extract_is_type_from_when_branch(trimmed).map(SmartCast::TypeTest);
     }
     let arrow = trimmed.find("->")?;
     let label = trimmed[..arrow].trim();
-    // A single dotted identifier only: `else`, a call, a range, a literal, or
-    // a comma-separated label list narrows nothing usable.
-    let is_dotted_identifier = !label.is_empty()
-        && label != "else"
-        && label.split('.').all(|segment| {
-            !segment.is_empty() && segment.chars().all(|c| c.is_alphanumeric() || c == '_')
-        });
-    if !is_dotted_identifier {
-        return None;
-    }
-    if !label.rsplit('.').next()?.chars().next()?.is_uppercase() {
+    // One qualified identifier only: `else`, a call, a range, a literal, or a
+    // comma-separated label list narrows nothing usable.
+    let (qualifier, name) = label.rsplit_once('.')?;
+    let is_qualified_identifier = !qualifier.is_empty()
+        && qualifier
+            .split('.')
+            .chain(std::iter::once(name))
+            .all(|segment| {
+                !segment.is_empty() && segment.chars().all(|c| c.is_alphanumeric() || c == '_')
+            });
+    if !is_qualified_identifier || !name.chars().next()?.is_uppercase() {
         return None;
     }
     Some(SmartCast::ObjectEquality(label.to_owned()))

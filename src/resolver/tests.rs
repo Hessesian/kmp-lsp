@@ -5894,3 +5894,75 @@ fn when_equality_branch_on_an_enum_entry_does_not_narrow() {
          has none) would blank the list: {labels:?}"
     );
 }
+
+/// Regression: the backward line scan has no idea whether it is inside a
+/// `when`, and a lambda parameter on its own line looks exactly like a branch
+/// label. Accepting a bare `Element ->` let an unrelated object's members be
+/// offered for a receiver the branch never narrowed — worse than not narrowing
+/// at all. Only a qualified label is accepted, since a lambda parameter is
+/// always a simple identifier.
+#[test]
+fn a_lambda_parameter_is_not_mistaken_for_a_when_branch_label() {
+    let idx = Indexer::new();
+    let file_uri = uri("/Scan.kt");
+    idx.index_content(
+        &file_uri,
+        "package app\n\
+         object Element { fun unrelatedMember() {} }\n\
+         sealed interface Ui\n\
+         object Busy : Ui { fun busyOnly() {} }\n\
+         fun render(state: Ui) {\n\
+         \x20 when (state) {\n\
+         \x20   is Busy -> {\n\
+         \x20     listOf(1).forEach {\n\
+         \x20       Element ->\n\
+         \x20       state.\n\
+         \x20     }\n\
+         \x20   }\n\
+         \x20 }\n\
+         }",
+    );
+    let items = complete_dot(&idx, "state", &file_uri, false, Some(9));
+    let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
+    assert!(
+        !labels.contains(&"unrelatedMember"),
+        "a lambda parameter must not narrow the subject to that name: {labels:?}"
+    );
+}
+
+/// Regression: confirming the branch label names an object must respect the
+/// file's own imports and package. Scanning every definition sharing the
+/// simple name let an unrelated `object Idle` in another package validate an
+/// enum entry named `Idle`, narrowing the subject to a type it has nothing to
+/// do with and blanking the completion list.
+#[test]
+fn an_unrelated_same_named_object_does_not_validate_an_enum_entry_branch() {
+    let idx = Indexer::new();
+    let other_uri = uri("/other/Idle.kt");
+    let app_uri = uri("/app/Conn.kt");
+    idx.index_content(
+        &other_uri,
+        "package other\nobject Idle { fun unrelatedMember() {} }\n",
+    );
+    idx.index_content(
+        &app_uri,
+        "package app\n\
+         enum class Conn {\n\
+         \x20 Idle,\n\
+         \x20 Active;\n\
+         \x20 fun describe(): String = name\n\
+         }\n\
+         fun show(conn: Conn) {\n\
+         \x20 when (conn) {\n\
+         \x20   Conn.Idle -> conn.\n\
+         \x20   else -> {}\n\
+         \x20 }\n\
+         }",
+    );
+    let items = complete_dot(&idx, "conn", &app_uri, false, Some(8));
+    let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
+    assert!(
+        labels.contains(&"describe"),
+        "an unrelated same-named object must not validate an enum entry: {labels:?}"
+    );
+}
