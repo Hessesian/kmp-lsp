@@ -2352,6 +2352,80 @@ fn cross_file_type_subst_multi_class_same_file() {
     );
 }
 
+/// Regression: `symbols_from_nested_type`'s "declared inside `type_name`'s range"
+/// membership check has no depth limit — a member declared inside a *nested*
+/// type's own body (e.g. `Success.userData`, several lines inside
+/// `MainActivityUiState`'s outer braces) still counts as textually "inside"
+/// `MainActivityUiState`'s range, so it leaked into the sealed interface's own
+/// member list. That, in turn, leaked into every OTHER sealed subtype's
+/// *inherited*-member completion via `walk_hierarchy` — so a `Loading`-typed
+/// (smart-cast-narrowed) receiver offered `Success`'s own `userData` and
+/// `extra()`, both of which are compile errors if selected.
+#[test]
+fn sealed_subtype_member_completion_does_not_leak_sibling_subtype_members() {
+    let idx = Indexer::new();
+    let file_uri = uri("/MainActivityUiState.kt");
+    idx.index_content(
+        &file_uri,
+        "package app\n\
+         sealed interface MainActivityUiState {\n\
+         \x20 data object Loading : MainActivityUiState\n\
+         \x20 data class Success(val userData: String) : MainActivityUiState {\n\
+         \x20   fun extra() = userData\n\
+         \x20 }\n\
+         \x20 val shared: Boolean get() = true\n\
+         }",
+    );
+    let items = complete_dot(&idx, "Loading", &file_uri, false, None);
+    let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
+    assert!(
+        !labels.contains(&"userData"),
+        "Loading must not inherit sibling subtype Success's own member: {labels:?}"
+    );
+    assert!(
+        !labels.contains(&"extra"),
+        "Loading must not inherit sibling subtype Success's own method: {labels:?}"
+    );
+    assert!(
+        !labels.contains(&"copy"),
+        "Loading must not inherit sibling subtype Success's synthesized copy(): {labels:?}"
+    );
+    assert!(
+        labels.contains(&"shared"),
+        "Loading must still inherit the sealed interface's own direct member: {labels:?}"
+    );
+}
+
+/// Companion regression to the one above: a nested type is a legitimate direct
+/// member of its enclosing type when the receiver IS the enclosing type's own
+/// name (`MainActivityUiState.Success` / `.Loading` are valid Kotlin — nested
+/// type references, not instance member access). The depth-restriction fix
+/// must not make a type exclude *itself* just because its own range trivially
+/// satisfies "is inside a nested type's range" against its own entry.
+#[test]
+fn nested_type_completion_still_lists_sibling_nested_types_by_enclosing_type_name() {
+    let idx = Indexer::new();
+    let file_uri = uri("/MainActivityUiState.kt");
+    idx.index_content(
+        &file_uri,
+        "package app\n\
+         sealed interface MainActivityUiState {\n\
+         \x20 data object Loading : MainActivityUiState\n\
+         \x20 data class Success(val userData: String) : MainActivityUiState\n\
+         }",
+    );
+    let items = complete_dot(&idx, "MainActivityUiState", &file_uri, false, None);
+    let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
+    assert!(
+        labels.contains(&"Loading"),
+        "MainActivityUiState.Loading is a valid nested-type reference: {labels:?}"
+    );
+    assert!(
+        labels.contains(&"Success"),
+        "MainActivityUiState.Success is a valid nested-type reference: {labels:?}"
+    );
+}
+
 #[test]
 fn is_screaming_snake_cases() {
     assert!(is_screaming_snake("MAX_SIZE"));
