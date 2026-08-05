@@ -8,7 +8,7 @@ use crate::indexer::Indexer;
 use crate::parser::parse_by_extension;
 use crate::stdlib::bare_completions;
 use crate::stdlib_tail::dot_completions_for_lang;
-use crate::types::{CallerContext, ImportEntry, SourceSet, Visibility};
+use crate::types::{CallerContext, ImportEntry, SourceSet, SymbolEntry, Visibility};
 use crate::LinesExt;
 use crate::StrExt;
 
@@ -1090,30 +1090,48 @@ fn symbols_from_nested_type(
     // symbol inside that range" is an approximation of "is this symbol's
     // immediate parent that type" — `container` answers the real question
     // directly, the same way the JAR branch above already does.
-    let mut container_names = vec![inner_name.to_owned()];
     // Kotlin resolves `Outer.member` through `Outer`'s own companion object
     // when `Outer` itself has no such member (implicit companion
     // forwarding) — so a companion's members belong in `Outer`'s own
-    // completion list too. Detected via `detail`, not `name`, since a named
-    // companion (`companion object Factory`) has a container-name lookup of
-    // its own but no distinguishing `SymbolKind`; `detail` is the raw
-    // declaration text for both the anonymous and named forms and always
-    // starts with the `companion object` keywords.
-    container_names.extend(
-        symbols
-            .iter()
-            .filter(|s| s.container.as_deref() == Some(inner_name))
-            .filter(|s| s.kind == SymbolKind::OBJECT && s.detail.starts_with("companion object"))
-            .map(|s| s.name.clone()),
-    );
+    // completion list too. Detected via `detail` CONTAINING (not just
+    // prefixed by) the `companion object` keywords, since a modifier or
+    // annotation can precede them (`private companion object`, `@JvmStatic`
+    // on its own line above) — `detail` is the raw declaration text for both
+    // the anonymous and named (`companion object Factory`) forms.
+    //
+    // A companion's members can't be folded in by container NAME alone:
+    // Kotlin gives every anonymous companion the same implicit name
+    // ("Companion"), so two unrelated classes in the same file each have a
+    // companion object also literally named "Companion" — their members
+    // share that same container string. Disambiguate by checking each
+    // candidate's range against THIS SPECIFIC companion symbol's own range —
+    // a class has at most one companion, so once the companion itself is
+    // identified (by container == inner_name, which IS unambiguous: it's the
+    // outer type we already resolved `type_symbol` to), this is unambiguous
+    // too.
+    let companions: Vec<&SymbolEntry> = symbols
+        .iter()
+        .filter(|s| s.container.as_deref() == Some(inner_name))
+        .filter(|s| s.kind == SymbolKind::OBJECT && s.detail.contains("companion object"))
+        .collect();
+    let within_companion_range = |pos: Position, companion: &SymbolEntry| -> bool {
+        let start = companion.range.start;
+        let end = companion.range.end;
+        let after_start =
+            pos.line > start.line || (pos.line == start.line && pos.character > start.character);
+        let before_end =
+            pos.line < end.line || (pos.line == end.line && pos.character < end.character);
+        after_start && before_end
+    };
 
     symbols
         .iter()
         .filter(|symbol| {
-            symbol
-                .container
-                .as_deref()
-                .is_some_and(|c| container_names.iter().any(|name| name == c))
+            symbol.container.as_deref() == Some(inner_name)
+                || companions.iter().any(|companion| {
+                    symbol.container.as_deref() == Some(companion.name.as_str())
+                        && within_companion_range(symbol.range.start, companion)
+                })
         })
         .filter(|symbol| symbol.visibility != Visibility::Private)
         .map(|symbol| completion_item_for_nested_symbol(indexer, symbol, file_uri, caller))

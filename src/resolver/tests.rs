@@ -2467,6 +2467,70 @@ fn companion_object_members_still_appear_on_enclosing_type_completion() {
     );
 }
 
+/// Regression (Copilot review on the fix above): companion detection used
+/// `detail.starts_with("companion object")`, which misses a modifier or
+/// annotation ahead of the keywords — a `private companion object` (or
+/// `@JvmStatic` on the line above) would not be recognized as a companion at
+/// all, silently dropping its members from the enclosing class's completion.
+#[test]
+fn companion_object_members_forward_despite_a_visibility_modifier() {
+    let idx = Indexer::new();
+    let file_uri = uri("/Widget.kt");
+    idx.index_content(
+        &file_uri,
+        "package app\n\
+         class Widget {\n\
+         \x20 private companion object {\n\
+         \x20   fun create(): Widget = Widget()\n\
+         \x20 }\n\
+         }",
+    );
+    let items = complete_dot(&idx, "Widget", &file_uri, false, None);
+    let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
+    assert!(
+        labels.contains(&"create"),
+        "a modifier ahead of 'companion object' must not hide companion forwarding: {labels:?}"
+    );
+}
+
+/// Regression (Copilot review on the fix above): Kotlin gives every anonymous
+/// `companion object { }` the same implicit name ("Companion"), so two
+/// unrelated classes in the same file each have a companion literally named
+/// "Companion" — their members share that same `container` string. Folding a
+/// companion's members in by container-NAME match alone (without also
+/// checking which specific companion instance a member's range belongs to)
+/// would leak one class's companion members into a completely different
+/// class's completion.
+#[test]
+fn companion_object_forwarding_does_not_leak_across_classes_sharing_the_implicit_name() {
+    let idx = Indexer::new();
+    let file_uri = uri("/Widgets.kt");
+    idx.index_content(
+        &file_uri,
+        "package app\n\
+         class Alpha {\n\
+         \x20 companion object {\n\
+         \x20   fun alphaOnly(): Alpha = Alpha()\n\
+         \x20 }\n\
+         }\n\
+         class Beta {\n\
+         \x20 companion object {\n\
+         \x20   fun betaOnly(): Beta = Beta()\n\
+         \x20 }\n\
+         }",
+    );
+    let items = complete_dot(&idx, "Alpha", &file_uri, false, None);
+    let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
+    assert!(
+        labels.contains(&"alphaOnly"),
+        "Alpha's own companion member must still forward: {labels:?}"
+    );
+    assert!(
+        !labels.contains(&"betaOnly"),
+        "Beta's companion (same implicit 'Companion' name) must not leak into Alpha's completion: {labels:?}"
+    );
+}
+
 #[test]
 fn is_screaming_snake_cases() {
     assert!(is_screaming_snake("MAX_SIZE"));
