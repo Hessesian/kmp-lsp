@@ -630,45 +630,52 @@ pub(crate) fn find_declaration_range_in_lines(lines: &[String], name: &str) -> O
 /// Maximum lines to scan backward for `when(subject)` or `if (x is T)`.
 const SMART_CAST_SCAN_LINES: usize = 30;
 
+/// What a branch narrows its subject to, and how much the caller must verify.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum SmartCast {
+    /// `is Foo ->` or `if (x is Foo)`. A type test, so `Foo` is a type by
+    /// construction and the narrowing needs no further checking.
+    TypeTest(String),
+    /// `Foo ->` / `Ui.Foo ->`: equality against a declaration. Kotlin narrows
+    /// here only when the label is an `object`, since matching one proves the
+    /// subject's type. An enum entry or `const val` names no type, so the
+    /// caller must confirm the label before using it.
+    ObjectEquality(String),
+}
+
 /// Detect smart cast narrowing at a given line position.
 ///
-/// Handles two patterns:
-/// 1. `when (var) { is Type -> ... }` — cursor inside the `is Type` branch
-/// 2. `if (var is Type)` / `else if (var is Type)` — cursor inside that block
-///
-/// Returns the narrowed type name (e.g. `"Event.OnSomethingClick"`) or `None`.
+/// Handles three patterns:
+/// 1. `when (var) { is Type -> … }` — cursor inside the `is Type` branch
+/// 2. `when (var) { Obj -> … }` — cursor inside an object-equality branch
+/// 3. `if (var is Type)` / `else if (var is Type)` — cursor inside that block
 pub(crate) fn smart_cast_type_at_line(
     lines: &[String],
     var_name: &str,
     line: u32,
-) -> Option<String> {
+) -> Option<SmartCast> {
     let line_idx = line as usize;
     if line_idx >= lines.len() {
         return None;
     }
 
-    // Strategy 1: `when (var)` block — find `is Type` on current or preceding branch line
-    if let Some(type_name) = when_branch_smart_cast(lines, var_name, line_idx) {
-        return Some(type_name);
-    }
-
-    // Strategy 2: `if (var is Type)` block
-    if_is_smart_cast(lines, var_name, line_idx)
+    when_branch_smart_cast(lines, var_name, line_idx)
+        .or_else(|| if_is_smart_cast(lines, var_name, line_idx).map(SmartCast::TypeTest))
 }
 
-/// Check if cursor is inside a `when (var_name)` block and extract the `is Type` from
-/// the enclosing branch.
+/// Check if cursor is inside a `when (var_name)` block and read the narrowing
+/// from the enclosing branch.
 ///
 /// Handles nested when: scans backward through multiple when levels, matching each
-/// `is X ->` branch to its nearest enclosing `when (subject)`.
-fn when_branch_smart_cast(lines: &[String], var_name: &str, line_idx: usize) -> Option<String> {
+/// branch to its nearest enclosing `when (subject)`.
+fn when_branch_smart_cast(lines: &[String], var_name: &str, line_idx: usize) -> Option<SmartCast> {
     let start = line_idx.saturating_sub(SMART_CAST_SCAN_LINES);
 
     // Track brace depth while scanning backward from cursor.
     // depth=0 at cursor. Opening `{` going backward means we exit a scope (depth-=1),
     // closing `}` means we enter a nested scope (depth+=1).
     let mut depth: i32 = 0;
-    let mut branch_type: Option<String> = None;
+    let mut branch: Option<SmartCast> = None;
 
     for i in (start..=line_idx).rev() {
         let trimmed = lines[i].trim();
@@ -686,14 +693,14 @@ fn when_branch_smart_cast(lines: &[String], var_name: &str, line_idx: usize) -> 
             break;
         }
 
-        // If we haven't found our branch yet, look for `is Type ->`
-        if branch_type.is_none() {
-            if let Some(type_name) = extract_is_type_from_when_branch(trimmed) {
-                branch_type = Some(type_name);
+        // If we haven't found our branch yet, look for one.
+        if branch.is_none() {
+            if let Some(narrowing) = extract_when_branch_narrowing(trimmed) {
+                branch = Some(narrowing);
                 continue;
             }
-            // Stop at `else ->` or other non-`is` branch boundaries.
-            if trimmed.contains(" ->") && !trimmed.starts_with("is ") {
+            // Stop at `else ->` or any other branch that narrows nothing.
+            if trimmed.contains(" ->") {
                 break;
             }
             // Stop if we hit a closing brace without finding a branch
@@ -708,17 +715,14 @@ fn when_branch_smart_cast(lines: &[String], var_name: &str, line_idx: usize) -> 
         // relative to where we found the branch, or the when is on a line that decreases
         // depth further).
         if is_when_subject(trimmed, var_name) {
-            return branch_type;
+            return branch;
         }
         // If we find a `when (something_else)` that doesn't match our var, this branch
         // belongs to that inner when — our var isn't narrowed by it. Reset and keep looking.
         if trimmed.contains("when") && trimmed.contains('(') {
-            branch_type = None;
             // This line may also be a branch for an outer when:
             // e.g. `is Banner -> when (inner) {`
-            if let Some(type_name) = extract_is_type_from_when_branch(trimmed) {
-                branch_type = Some(type_name);
-            }
+            branch = extract_when_branch_narrowing(trimmed);
         }
     }
     None
@@ -765,6 +769,34 @@ fn if_is_smart_cast(lines: &[String], var_name: &str, line_idx: usize) -> Option
         }
     }
     None
+}
+
+/// Read what a `when` branch narrows its subject to.
+///
+/// `is Foo ->` is a type test. A bare `Foo ->` / `Ui.Foo ->` is equality
+/// against a declaration — the idiomatic form for matching a `data object`,
+/// and the reason this exists — which narrows only when that declaration is
+/// an object, hence the separate variant for the caller to confirm.
+fn extract_when_branch_narrowing(trimmed: &str) -> Option<SmartCast> {
+    if trimmed.starts_with("is ") {
+        return extract_is_type_from_when_branch(trimmed).map(SmartCast::TypeTest);
+    }
+    let arrow = trimmed.find("->")?;
+    let label = trimmed[..arrow].trim();
+    // A single dotted identifier only: `else`, a call, a range, a literal, or
+    // a comma-separated label list narrows nothing usable.
+    let is_dotted_identifier = !label.is_empty()
+        && label != "else"
+        && label.split('.').all(|segment| {
+            !segment.is_empty() && segment.chars().all(|c| c.is_alphanumeric() || c == '_')
+        });
+    if !is_dotted_identifier {
+        return None;
+    }
+    if !label.rsplit('.').next()?.chars().next()?.is_uppercase() {
+        return None;
+    }
+    Some(SmartCast::ObjectEquality(label.to_owned()))
 }
 
 /// Extract `Type` from a when-branch line like `is Event.OnClick ->` or `is Event.OnClick ->`

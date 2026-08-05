@@ -2758,7 +2758,10 @@ fn smart_cast_when_branch() {
 
     // Line 3 is inside `is Event.OnClick` branch
     let result = infer_lines::smart_cast_type_at_line(&lines, "event", 3);
-    assert_eq!(result.as_deref(), Some("Event.OnClick"));
+    assert_eq!(
+        result,
+        Some(infer_lines::SmartCast::TypeTest("Event.OnClick".to_owned()))
+    );
 }
 
 #[test]
@@ -2776,7 +2779,10 @@ fn smart_cast_when_branch_same_line() {
 
     // Cursor on the branch line itself
     let result = infer_lines::smart_cast_type_at_line(&lines, "event", 2);
-    assert_eq!(result.as_deref(), Some("Event.OnClick"));
+    assert_eq!(
+        result,
+        Some(infer_lines::SmartCast::TypeTest("Event.OnClick".to_owned()))
+    );
 }
 
 #[test]
@@ -2793,7 +2799,10 @@ fn smart_cast_if_is() {
     .collect();
 
     let result = infer_lines::smart_cast_type_at_line(&lines, "event", 2);
-    assert_eq!(result.as_deref(), Some("Event.OnInput"));
+    assert_eq!(
+        result,
+        Some(infer_lines::SmartCast::TypeTest("Event.OnInput".to_owned()))
+    );
 }
 
 #[test]
@@ -2853,7 +2862,10 @@ fn smart_cast_if_does_not_leak_from_closed_nested_block() {
     .collect();
 
     let result = infer_lines::smart_cast_type_at_line(&lines, "event", 5);
-    assert_eq!(result.as_deref(), Some("Event.OnInput"));
+    assert_eq!(
+        result,
+        Some(infer_lines::SmartCast::TypeTest("Event.OnInput".to_owned()))
+    );
 }
 
 #[test]
@@ -2887,7 +2899,12 @@ fn smart_cast_if_preserves_generic_types_with_commas() {
     .collect();
 
     let result = infer_lines::smart_cast_type_at_line(&lines, "value", 2);
-    assert_eq!(result.as_deref(), Some("Map<String, List<Int>>"));
+    assert_eq!(
+        result,
+        Some(infer_lines::SmartCast::TypeTest(
+            "Map<String, List<Int>>".to_owned()
+        ))
+    );
 }
 #[test]
 fn smart_cast_nested_when_on_same_line() {
@@ -2908,11 +2925,19 @@ fn smart_cast_nested_when_on_same_line() {
 
     // event.events on line 4 should be narrowed to SalespointInputEvent.OnCloseClick
     let result = infer_lines::smart_cast_type_at_line(&lines, "event.events", 4);
-    assert_eq!(result.as_deref(), Some("SalespointInputEvent.OnCloseClick"),);
+    assert_eq!(
+        result,
+        Some(infer_lines::SmartCast::TypeTest(
+            "SalespointInputEvent.OnCloseClick".to_owned()
+        )),
+    );
 
     // event on line 4 should be narrowed to Banner (from outer when)
     let result2 = infer_lines::smart_cast_type_at_line(&lines, "event", 4);
-    assert_eq!(result2.as_deref(), Some("Banner"));
+    assert_eq!(
+        result2,
+        Some(infer_lines::SmartCast::TypeTest("Banner".to_owned()))
+    );
 }
 
 // ── Completion ordering ────────────────────────────────────────────────────
@@ -5804,5 +5829,68 @@ fn same_named_nested_types_in_different_classes_do_not_merge_members() {
     assert!(
         has_a != has_b,
         "expected exactly one of A.Config/B.Config's own members, not both (merged) or neither: {labels:?}"
+    );
+}
+
+/// Regression: matching a `data object` in a `when` is written as equality
+/// (`Loading ->`), not a type test (`is Loading ->`) — the idiomatic form,
+/// since an object has exactly one instance. Only `is` branches narrowed, so
+/// the subject kept its sealed-interface type and the object's own members
+/// were missing from completion.
+#[test]
+fn when_equality_branch_on_an_object_narrows_the_subject() {
+    let idx = Indexer::new();
+    let file_uri = uri("/Ui.kt");
+    idx.index_content(
+        &file_uri,
+        "package app\n\
+         sealed interface Ui {\n\
+         \x20 data object Loading : Ui {\n\
+         \x20   val progress = 0\n\
+         \x20 }\n\
+         \x20 data class Ready(val value: Int) : Ui\n\
+         }\n\
+         fun render(state: Ui) {\n\
+         \x20 when (state) {\n\
+         \x20   Ui.Loading -> state.\n\
+         \x20   else -> {}\n\
+         \x20 }\n\
+         }",
+    );
+    let items = complete_dot(&idx, "state", &file_uri, false, Some(9));
+    let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
+    assert!(
+        labels.contains(&"progress"),
+        "an object-equality branch must narrow to that object: {labels:?}"
+    );
+}
+
+/// An enum entry is a value, not a type, so `Color.RED ->` must NOT narrow —
+/// treating the label as a type would resolve to the entry (which has no
+/// members) and blank the completion list instead of offering the enum's own.
+#[test]
+fn when_equality_branch_on_an_enum_entry_does_not_narrow() {
+    let idx = Indexer::new();
+    let file_uri = uri("/Color.kt");
+    idx.index_content(
+        &file_uri,
+        "package app\n\
+         enum class Color {\n\
+         \x20 RED, GREEN;\n\
+         \x20 fun describe(): String = name\n\
+         }\n\
+         fun pick(color: Color) {\n\
+         \x20 when (color) {\n\
+         \x20   Color.RED -> color.\n\
+         \x20   else -> {}\n\
+         \x20 }\n\
+         }",
+    );
+    let items = complete_dot(&idx, "color", &file_uri, false, Some(7));
+    let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
+    assert!(
+        labels.contains(&"describe"),
+        "must still offer Color's own members; narrowing to the entry (which \
+         has none) would blank the list: {labels:?}"
     );
 }
