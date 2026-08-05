@@ -8,7 +8,7 @@ use crate::indexer::Indexer;
 use crate::parser::parse_by_extension;
 use crate::stdlib::bare_completions;
 use crate::stdlib_tail::dot_completions_for_lang;
-use crate::types::{CallerContext, ImportEntry, SourceSet, SymbolEntry, Visibility};
+use crate::types::{CallerContext, ImportEntry, SourceSet, Visibility};
 use crate::LinesExt;
 use crate::StrExt;
 
@@ -665,6 +665,149 @@ struct DotCompletionContext {
     file_uri: String,
 }
 
+// ─── resolve_dot_receiver_type: strategy list ────────────────────────────────
+//
+// This resolves "what type does this dot-completion receiver have" through a
+// fixed, ORDERED list of strategies (`strategies` below), each strictly more
+// authoritative than the ones after it — the same shape as
+// `indexer::infer::chain::resolve_call_expr_type`, for the same reason: the
+// order previously lived only in an implicit if/return chain, where an
+// earlier bug fix already had to special-case `is_call` (see
+// `call_receiver_return_type`) to keep it from falling through into the
+// non-call strategies below it. Every strategy here is EXCLUSIVE, not a
+// fallback filter: once one's precondition matches, its answer — `Some` or
+// `None` — is final.
+//   - `cst_resolved_type` wins first: it's the speculative-parse-time
+//     inference (smart-cast already applied), strictly more authoritative
+//     than re-deriving the same answer from scratch below.
+//   - `call_receiver_return_type` is exclusive on `is_call`: a call
+//     receiver's text is the CALLEE name, not a variable/type name, so it
+//     must never reach `variable_type`/`uppercase_type_name` below — a
+//     same-named local variable or class must not be consulted for `make().`.
+//   - `smart_cast_at_cursor` before `variable_type`: a narrowed smart-cast
+//     type must win over the variable's raw declared type.
+//   - `variable_type` before `uppercase_type_name`: an actual variable named
+//     with an uppercase first letter must still resolve as a variable, not
+//     be misread as a bare type-name receiver just because it starts
+//     uppercase.
+//   - `uppercase_type_name` before `bare_scope_function_return_type`: once
+//     nothing bound the name to a variable, an uppercase identifier is far
+//     more likely a type name (`String.format`) than a parenthesis-less
+//     scope-function reference.
+//   - `bare_scope_function_return_type` last: a pure last-resort guess for a
+//     receiver written as a bare function name without `()`.
+
+/// A `resolve_dot_receiver_type` strategy's verdict for one receiver.
+enum ReceiverTypeVerdict {
+    /// This strategy's precondition doesn't apply — try the next strategy.
+    NotApplicable,
+    /// This strategy's precondition matched; its answer — `Some` or `None`
+    /// — is FINAL. No later, less-authoritative strategy may run instead.
+    Terminal(Option<ReceiverType>),
+}
+
+/// Inputs every strategy reads, computed once.
+struct ReceiverTypeCtx<'a> {
+    indexer: &'a Indexer,
+    receiver: &'a str,
+    from_uri: &'a Url,
+    cursor_line: Option<u32>,
+    is_call: bool,
+    resolved: Option<&'a str>,
+}
+
+/// CST-resolved type from analysis time — authoritative when present.
+fn cst_resolved_type(ctx: &ReceiverTypeCtx<'_>) -> ReceiverTypeVerdict {
+    match ctx.resolved {
+        Some(resolved) => {
+            ReceiverTypeVerdict::Terminal(Some(ReceiverType::from_raw(resolved.to_owned())))
+        }
+        None => ReceiverTypeVerdict::NotApplicable,
+    }
+}
+
+/// A call receiver the CST engine couldn't type (`make().`): global fn
+/// return type, then callable-param inference (`val make: () -> Foo`).
+/// Exclusive on `is_call` — see the ordering note above.
+fn call_receiver_return_type(ctx: &ReceiverTypeCtx<'_>) -> ReceiverTypeVerdict {
+    if !ctx.is_call {
+        return ReceiverTypeVerdict::NotApplicable;
+    }
+    ReceiverTypeVerdict::Terminal(fn_or_callable_param_return_type(
+        ctx.indexer,
+        ctx.receiver,
+        ctx.from_uri,
+    ))
+}
+
+/// Smart-cast narrowing at the cursor position (`if (x is Foo) { x.<here> }`).
+/// NOT exclusive on `cursor_line` alone: a missing smart-cast for a real
+/// `cursor_line` still falls through to `variable_type` below, matching the
+/// pre-refactor behaviour of only ever RETURNING EARLY on a hit.
+fn smart_cast_at_cursor(ctx: &ReceiverTypeCtx<'_>) -> ReceiverTypeVerdict {
+    let Some(line) = ctx.cursor_line else {
+        return ReceiverTypeVerdict::NotApplicable;
+    };
+    let pos = Position::new(line, 0);
+    match infer_receiver_type_at(ctx.indexer, ctx.receiver, ctx.from_uri, pos) {
+        Some(rt) => ReceiverTypeVerdict::Terminal(Some(rt)),
+        None => ReceiverTypeVerdict::NotApplicable,
+    }
+}
+
+/// The receiver as a declared variable (field/param/local), with the
+/// function-type-return unwrap for a callable-typed variable used bare
+/// (`val make: () -> Foo` referenced as `make.` rather than `make().`).
+fn variable_type(ctx: &ReceiverTypeCtx<'_>) -> ReceiverTypeVerdict {
+    let Some(rt) = infer_receiver_type(
+        ctx.indexer,
+        ReceiverKind::Variable(ctx.receiver),
+        ctx.from_uri,
+    ) else {
+        return ReceiverTypeVerdict::NotApplicable;
+    };
+    match extract_fn_type_return(&rt.raw) {
+        Some(ret) => ReceiverTypeVerdict::Terminal(Some(ReceiverType::from_raw(ret))),
+        None => ReceiverTypeVerdict::Terminal(Some(rt)),
+    }
+}
+
+/// An uppercase bare identifier with no matching variable — treat it as a
+/// type name (`String.format(...)`, companion/static-style access).
+fn uppercase_type_name(ctx: &ReceiverTypeCtx<'_>) -> ReceiverTypeVerdict {
+    if ctx.receiver.starts_with_uppercase() {
+        ReceiverTypeVerdict::Terminal(Some(ReceiverType::from_raw(ctx.receiver.to_owned())))
+    } else {
+        ReceiverTypeVerdict::NotApplicable
+    }
+}
+
+/// Last resort: a function defined in scope written without `()`
+/// (e.g. bare `productFlow` used as `productFlow.collect { }`).
+fn bare_scope_function_return_type(ctx: &ReceiverTypeCtx<'_>) -> ReceiverTypeVerdict {
+    ReceiverTypeVerdict::Terminal(fn_or_callable_param_return_type(
+        ctx.indexer,
+        ctx.receiver,
+        ctx.from_uri,
+    ))
+}
+
+/// Shared by `call_receiver_return_type` and `bare_scope_function_return_type`
+/// — both resolve a bare name via the same two-step lookup (global function
+/// return type, then callable-param inference from the file's own lines).
+fn fn_or_callable_param_return_type(
+    indexer: &Indexer,
+    receiver: &str,
+    from_uri: &Url,
+) -> Option<ReceiverType> {
+    if let Some(ret) = indexer.function_return_type(receiver, from_uri) {
+        return Some(ReceiverType::from_raw(ret.into_inner()));
+    }
+    let file = ensure_file_data(indexer, from_uri)?;
+    let ret = infer_callable_param_return_type(&file.lines, receiver)?;
+    Some(ReceiverType::from_raw(ret))
+}
+
 fn resolve_dot_receiver_type(
     indexer: &Indexer,
     expr: &DotReceiver,
@@ -684,48 +827,29 @@ fn resolve_dot_receiver_type(
         DotReceiver::Super => return None,
     };
 
-    // CST-resolved type from analysis time is authoritative.
-    if let Some(resolved_type) = resolved {
-        return Some(ReceiverType::from_raw(resolved_type.to_owned()));
-    }
+    let ctx = ReceiverTypeCtx {
+        indexer,
+        receiver,
+        from_uri,
+        cursor_line,
+        is_call,
+        resolved,
+    };
 
-    if is_call {
-        // Call receiver the CST engine couldn't type: global fn return type,
-        // then callable-param inference (`val make: () -> Foo` + `make().`).
-        if let Some(ret) = indexer.function_return_type(receiver, from_uri) {
-            return Some(ReceiverType::from_raw(ret.into_inner()));
+    let strategies: [fn(&ReceiverTypeCtx<'_>) -> ReceiverTypeVerdict; 6] = [
+        cst_resolved_type,
+        call_receiver_return_type,
+        smart_cast_at_cursor,
+        variable_type,
+        uppercase_type_name,
+        bare_scope_function_return_type,
+    ];
+    for strategy in strategies {
+        if let ReceiverTypeVerdict::Terminal(outcome) = strategy(&ctx) {
+            return outcome;
         }
-        let file = ensure_file_data(indexer, from_uri)?;
-        let ret = infer_callable_param_return_type(&file.lines, receiver)?;
-        return Some(ReceiverType::from_raw(ret));
     }
-
-    // Non-call expression: smart-cast, variable, type name.
-    if let Some(line) = cursor_line {
-        let pos = Position::new(line, 0);
-        if let Some(rt) = infer_receiver_type_at(indexer, receiver, from_uri, pos) {
-            return Some(rt);
-        }
-    }
-
-    if let Some(rt) = infer_receiver_type(indexer, ReceiverKind::Variable(receiver), from_uri) {
-        if let Some(ret) = extract_fn_type_return(&rt.raw) {
-            return Some(ReceiverType::from_raw(ret));
-        }
-        return Some(rt);
-    }
-
-    if receiver.starts_with_uppercase() {
-        return Some(ReceiverType::from_raw(receiver.to_string()));
-    }
-
-    // Fallback: function defined in scope (e.g. bare `productFlow` written without `()`).
-    if let Some(ret) = indexer.function_return_type(receiver, from_uri) {
-        return Some(ReceiverType::from_raw(ret.into_inner()));
-    }
-    let file = ensure_file_data(indexer, from_uri)?;
-    let ret = infer_callable_param_return_type(&file.lines, receiver)?;
-    Some(ReceiverType::from_raw(ret))
+    None
 }
 
 /// Extract the return type from a Kotlin function-type string.
@@ -775,6 +899,7 @@ fn direct_dot_completion_items(
             uri: Some(from_uri.as_str()),
             cursor_line,
         },
+        MembershipContext::Direct,
     )
 }
 
@@ -798,8 +923,13 @@ fn collect_inherited_dot_completion_items(
         4,
         MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK,
         |index, class_name, class_uri, hierarchy_caller| {
-            let mut nested =
-                symbols_from_nested_type(index, class_uri, class_name, hierarchy_caller);
+            let mut nested = symbols_from_nested_type(
+                index,
+                class_uri,
+                class_name,
+                hierarchy_caller,
+                MembershipContext::Inherited,
+            );
             filter_inaccessible_completion_items(&mut nested);
             strip_completion_snippets(&mut nested, snippets);
             nested
@@ -926,14 +1056,118 @@ fn completion_item_for_nested_symbol(
     }
 }
 
+// ─── symbols_from_nested_type: canonical container/type taxonomy ────────────
+//
+// Three separate concerns used to be answered by hand-copied, independently
+// drifting `SymbolKind` predicates: which kinds nest other symbols
+// (`parser.rs`'s `is_container_kind`, driving `assign_containers`), which
+// symbol should represent `inner_name` when a type and a same-named function
+// both declare it (a local closure here), and which `OBJECT` is a companion
+// (a `detail`-prefix check here). The first two had already drifted —
+// `SymbolKind::MODULE` counted in one but not the other (harmless in
+// practice: nothing in this codebase ever assigns that `SymbolKind` to a
+// symbol — verified by grep — so folding it away below changes no reachable
+// behaviour), and the companion check's prefix match had a real gap (see
+// `is_companion_object_symbol`). `is_container_kind` (parser.rs) is now the
+// single canonical source for "does this kind nest other symbols"; the one
+// place a genuinely different classification is needed
+// (`is_preferred_type_symbol_kind`, below) is defined as an explicit DELTA on
+// top of it, not a parallel hand-copied list, so it cannot silently drift
+// again the way it just did.
+
+/// Prefer a type declaration (or enum case) over a same-named function when
+/// picking which symbol represents `inner_name`. Compose's `MaterialTheme`
+/// file declares both `fun MaterialTheme(...)` and `object MaterialTheme {
+/// ... }` — taking the first match would pick the function and return empty
+/// completions.
+///
+/// Built on the canonical `is_container_kind` (`parser.rs`, the same
+/// predicate `assign_containers` uses) plus one explicit, deliberate delta:
+/// `ENUM_MEMBER`, so an enum case's own declaration still outranks an
+/// identically-named function even though an enum case isn't itself a
+/// container.
+fn is_preferred_type_symbol_kind(kind: SymbolKind) -> bool {
+    crate::parser::is_container_kind(kind) || kind == SymbolKind::ENUM_MEMBER
+}
+
+/// Whether `symbol` is a `companion object` declaration (named or
+/// anonymous). Matched by TOKEN, not prefix: `detail` is the raw declaration
+/// text up to the body, so a modified companion (`private companion
+/// object`, an `@JvmStatic` annotation line folded onto the same detail
+/// text) still carries `"companion"` as a token even though the text doesn't
+/// START with the literal words `"companion object"`. The previous
+/// prefix-based check missed exactly this case — see
+/// `companion_object_forwarding_survives_a_private_companion`.
+///
+/// `resolve::resolve_companion_member` (`resolve.rs`) answers a related but
+/// distinct question — "find a companion member by qualified-name lookup",
+/// not "fold a companion's members into its outer type's own completion
+/// list" — via its own independent token-based check, for the identical
+/// reason. The two are not unified here: doing so would mean editing
+/// `resolve.rs`, outside this refactor's file scope.
+fn is_companion_object_symbol(symbol: &crate::types::SymbolEntry) -> bool {
+    symbol.kind == SymbolKind::OBJECT
+        && symbol
+            .detail
+            .split_whitespace()
+            .any(|token| token == "companion")
+}
+
+/// Which relationship the caller has to `inner_name`'s own declared members.
+///
+/// A symbol declared *inside* a type is a completion candidate in two
+/// structurally different situations that must not be conflated:
+///  - the receiver IS `inner_name` itself (`direct_dot_completion_items`) —
+///    every member declared inside it, INCLUDING nested type declarations,
+///    is offered (`Outer.Nested` is a real Kotlin expression, pinned by
+///    `nested_type_completion_still_lists_sibling_nested_types_by_enclosing_type_name`).
+///  - `inner_name` is an ANCESTOR being folded into a DESCENDANT instance's
+///    member list (`collect_inherited_dot_completion_items` /
+///    `collect_inherited_members`'s `walk_hierarchy` callbacks) — only
+///    `inner_name`'s actual INSTANCE members (functions, properties, enum
+///    cases) are inherited. A nested type declaration is never an instance
+///    member of a descendant. Not excluding it here is what let a sibling
+///    nested type — and, when the descendant is itself nested under the same
+///    ancestor, the descendant's own name — leak into every OTHER sibling's
+///    inherited completion via `walk_hierarchy` (`Mid : Top` offering
+///    `Top`'s other nested type `Leaf1`, and even `Mid` itself, as if they
+///    were instance members of a `Mid` receiver).
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum MembershipContext {
+    Direct,
+    Inherited,
+}
+
+/// Whether a symbol of `kind` may appear in `context`'s member list — see
+/// `MembershipContext`.
+fn member_kind_allowed(context: MembershipContext, kind: SymbolKind) -> bool {
+    context == MembershipContext::Direct || !crate::parser::is_container_kind(kind)
+}
+
 /// Return completions for symbols declared INSIDE `type_name` within the given file.
-/// Uses the symbol's range end (the closing `}` of the class body) to determine
-/// membership — no indentation heuristics needed.
+///
+/// Membership is by `container` (assigned per-symbol at parse time by
+/// `assign_containers`, `parser.rs` — the tightest *immediate* enclosing
+/// class/object/interface, not a range-arithmetic approximation of it): a
+/// member declared inside a nested type's own body has THAT nested type as
+/// its container, never the outer one, so it can never leak into the outer
+/// type's member list regardless of nesting depth. A prior range-containment
+/// version of this function needed several rounds of edge-case patching (a
+/// nested type's own members leaking into its enclosing type, then into
+/// every OTHER sibling type's *inherited* completion via `walk_hierarchy`)
+/// precisely because "is this symbol inside that range" is an approximation
+/// of "is this symbol's immediate parent that type" — `container` answers
+/// the real question directly.
+///
+/// `context` distinguishes "the receiver IS this type" from "this type is an
+/// ancestor being folded into a descendant's inherited members" — see
+/// `MembershipContext`.
 fn symbols_from_nested_type(
     indexer: &Indexer,
     file_uri: &str,
     inner_name: &str,
     caller: CallerContext<'_>,
+    context: MembershipContext,
 ) -> Vec<CompletionItem> {
     let Ok(uri) = Url::parse(file_uri) else {
         return vec![];
@@ -943,188 +1177,212 @@ fn symbols_from_nested_type(
     };
     let symbols = &file_data.symbols;
 
-    // Prefer a type declaration (class/object/interface/enum) over a function with the
-    // same name. Compose's MaterialTheme file declares both `fun MaterialTheme(...)` and
-    // `object MaterialTheme { ... }` — taking the first match would pick the function and
-    // return empty completions.
-    let is_type_kind = |k: SymbolKind| {
-        matches!(
-            k,
-            SymbolKind::CLASS
-                | SymbolKind::OBJECT
-                | SymbolKind::INTERFACE
-                | SymbolKind::ENUM
-                | SymbolKind::ENUM_MEMBER
-                | SymbolKind::MODULE
-                | SymbolKind::STRUCT
-        )
-    };
     let type_symbol = symbols
         .iter()
         .filter(|s| s.name == inner_name)
-        .max_by_key(|s| u8::from(is_type_kind(s.kind)));
+        .max_by_key(|s| u8::from(is_preferred_type_symbol_kind(s.kind)));
     let Some(type_symbol) = type_symbol else {
         return symbols
             .iter()
             .filter(|symbol| symbol.visibility != Visibility::Private)
+            .filter(|symbol| member_kind_allowed(context, symbol.kind))
             .map(|symbol| completion_item_for_nested_symbol(indexer, symbol, file_uri, caller))
             .collect();
     };
 
-    // Compiled-JAR synthetic `FileData` gives every symbol a one-line range
-    // (line = its index), so the range-nesting scan below finds nothing
-    // inside a class — its span has no interior. The sidecar instead records
-    // each member's declaring class in `container`; use that as the
-    // membership signal for jar-backed files. Without this, every member of
-    // a compiled-only library class (no sources JAR published) is invisible
-    // to member enumeration, while name-keyed lookups (hover) keep working.
-    //
-    // `container` holds the declaring class's SIMPLE name, and one synthetic
-    // FileData spans the whole JAR — so two top-level classes sharing a
-    // simple name in different packages of one JAR would have their members
-    // merged. Disambiguate with the per-symbol package side table
-    // (`jar_symbol_packages`, index-aligned with `symbols`): members must
-    // match the package of the `inner_name` class the caller means — the
-    // caller's explicit import when present, the declaring class symbol's
-    // own package otherwise. Also drop deprecated members: JAR symbols are
-    // always `Public`, so the shared visibility filter below never fires
-    // for them, and project policy hides deprecated library symbols from
-    // completion entirely (same as the direct jar-definitions paths).
+    // Two structurally different backing stores answer the same question
+    // below: a workspace file's real per-symbol `container`
+    // (`members_for_workspace_type`) vs. a JAR's synthetic one-line-per-symbol
+    // `FileData`, where `container` must additionally be disambiguated by
+    // package because one synthetic `FileData` spans an entire JAR
+    // (`members_for_jar_backed_type`). They are deliberately NOT merged into
+    // one implementation: the JAR path's `container` is a same-simple-name
+    // collision waiting to happen across an entire JAR and needs a second,
+    // JAR-only disambiguation axis (`jar_symbol_packages` + import-coverage)
+    // that a single file structurally cannot need. The workspace path still
+    // needs ITS OWN, narrower disambiguation, though — `container` is a bare
+    // name, not a unique identity, and a single file CAN have two different
+    // nested types sharing a simple name (`A.Config`/`B.Config` — Kotlin
+    // only forbids a collision among *top-level* declarations, not among
+    // unrelated types' own nested members) — see `members_for_workspace_type`.
     if indexer.jar_files.contains_key(file_uri) {
-        let member_indices: Vec<usize> = {
-            let symbol_packages = indexer.jar_symbol_packages.get(file_uri);
-            let package_at = |index: usize| -> Option<&str> {
-                symbol_packages
-                    .as_ref()
-                    .and_then(|packages| packages.value().get(index))
-                    .map(String::as_str)
-            };
-            // Candidate members: container match + the shared symbol filters.
-            let candidate_indices: Vec<usize> = symbols
-                .iter()
-                .enumerate()
-                .filter(|(_, symbol)| symbol.container.as_deref() == Some(inner_name))
-                .filter(|(_, symbol)| !symbol.deprecated)
-                .filter(|(_, symbol)| symbol.visibility != Visibility::Private)
-                .map(|(index, _)| index)
-                .collect();
+        return members_for_jar_backed_type(
+            indexer,
+            file_uri,
+            inner_name,
+            symbols,
+            type_symbol,
+            caller,
+            context,
+        );
+    }
+    members_for_workspace_type(
+        indexer,
+        file_uri,
+        inner_name,
+        symbols,
+        type_symbol,
+        caller,
+        context,
+    )
+}
 
-            // Package disambiguation via IMPORT-COVERAGE semantics
-            // (`ImportEntry::covers`), which — unlike a naive
-            // `full_path.strip_suffix(".Name")` — understands nested-class
-            // imports (`import com.example.Outer.Config` covers `Config`
-            // declared in package `com.example`). Members the caller's
-            // import covers win; when the import covers NONE of them (or no
-            // import names this class), fall back to the declaring class
-            // symbol's own package so the enumeration never goes empty just
-            // because the import points at a different library's same-named
-            // class.
-            let caller_imports: Vec<crate::types::ImportEntry> = caller
-                .uri
-                .and_then(|caller_uri| {
-                    indexer.files.get(caller_uri).map(|caller_file| {
-                        caller_file
-                            .imports
-                            .iter()
-                            .filter(|import| !import.is_star && import.local_name == inner_name)
-                            .cloned()
-                            .collect()
-                    })
-                })
-                .unwrap_or_default();
-            let import_covered: Vec<usize> = candidate_indices
-                .iter()
-                .copied()
-                .filter(|index| {
-                    package_at(*index).is_some_and(|member_package| {
-                        caller_imports
-                            .iter()
-                            .any(|import| import.covers(member_package, inner_name))
-                    })
-                })
-                .collect();
-            if !import_covered.is_empty() {
-                import_covered
-            } else {
-                let declaring_class_package = symbols
-                    .iter()
-                    .position(|symbol| std::ptr::eq(symbol, type_symbol))
-                    .and_then(package_at)
-                    .map(str::to_owned);
-                candidate_indices
-                    .into_iter()
-                    .filter(|index| {
-                        match (declaring_class_package.as_deref(), package_at(*index)) {
-                            (Some(class_package), Some(member_package)) => {
-                                class_package == member_package
-                            }
-                            // Older cache entries without per-symbol
-                            // packages: keep the container match rather
-                            // than dropping all.
-                            _ => true,
-                        }
-                    })
-                    .collect()
-            }
-            // `symbol_packages` dashmap guard drops here — before the item
-            // construction below touches the indexer again.
+/// JAR-backed member enumeration: compiled-JAR synthetic `FileData` gives
+/// every symbol a one-line range (line = its index), so there is no range
+/// interior to scan — the sidecar instead records each member's declaring
+/// class in `container`; that's the membership signal here. Without this,
+/// every member of a compiled-only library class (no sources JAR published)
+/// would be invisible to member enumeration, while name-keyed lookups
+/// (hover) keep working.
+///
+/// `container` holds the declaring class's SIMPLE name, and one synthetic
+/// `FileData` spans the whole JAR — so two top-level classes sharing a
+/// simple name in different packages of one JAR would have their members
+/// merged. Disambiguate with the per-symbol package side table
+/// (`jar_symbol_packages`, index-aligned with `symbols`): members must match
+/// the package of the `inner_name` class the caller means — the caller's
+/// explicit import when present, the declaring class symbol's own package
+/// otherwise. Also drop deprecated members: JAR symbols are always `Public`,
+/// so the shared visibility filter below never fires for them, and project
+/// policy hides deprecated library symbols from completion entirely (same as
+/// the direct jar-definitions paths).
+fn members_for_jar_backed_type(
+    indexer: &Indexer,
+    file_uri: &str,
+    inner_name: &str,
+    symbols: &[crate::types::SymbolEntry],
+    type_symbol: &crate::types::SymbolEntry,
+    caller: CallerContext<'_>,
+    context: MembershipContext,
+) -> Vec<CompletionItem> {
+    let member_indices: Vec<usize> = {
+        let symbol_packages = indexer.jar_symbol_packages.get(file_uri);
+        let package_at = |index: usize| -> Option<&str> {
+            symbol_packages
+                .as_ref()
+                .and_then(|packages| packages.value().get(index))
+                .map(String::as_str)
         };
-        return member_indices
-            .into_iter()
-            .map(|index| {
-                completion_item_for_nested_symbol(indexer, &symbols[index], file_uri, caller)
+        // Candidate members: container match + the shared symbol filters.
+        let candidate_indices: Vec<usize> = symbols
+            .iter()
+            .enumerate()
+            .filter(|(_, symbol)| symbol.container.as_deref() == Some(inner_name))
+            .filter(|(_, symbol)| !symbol.deprecated)
+            .filter(|(_, symbol)| symbol.visibility != Visibility::Private)
+            .filter(|(_, symbol)| member_kind_allowed(context, symbol.kind))
+            .map(|(index, _)| index)
+            .collect();
+
+        // Package disambiguation via IMPORT-COVERAGE semantics
+        // (`ImportEntry::covers`), which — unlike a naive
+        // `full_path.strip_suffix(".Name")` — understands nested-class
+        // imports (`import com.example.Outer.Config` covers `Config`
+        // declared in package `com.example`). Members the caller's
+        // import covers win; when the import covers NONE of them (or no
+        // import names this class), fall back to the declaring class
+        // symbol's own package so the enumeration never goes empty just
+        // because the import points at a different library's same-named
+        // class.
+        let caller_imports: Vec<crate::types::ImportEntry> = caller
+            .uri
+            .and_then(|caller_uri| {
+                indexer.files.get(caller_uri).map(|caller_file| {
+                    caller_file
+                        .imports
+                        .iter()
+                        .filter(|import| !import.is_star && import.local_name == inner_name)
+                        .cloned()
+                        .collect()
+                })
+            })
+            .unwrap_or_default();
+        let import_covered: Vec<usize> = candidate_indices
+            .iter()
+            .copied()
+            .filter(|index| {
+                package_at(*index).is_some_and(|member_package| {
+                    caller_imports
+                        .iter()
+                        .any(|import| import.covers(member_package, inner_name))
+                })
             })
             .collect();
-    }
+        if !import_covered.is_empty() {
+            import_covered
+        } else {
+            let declaring_class_package = symbols
+                .iter()
+                .position(|symbol| std::ptr::eq(symbol, type_symbol))
+                .and_then(package_at)
+                .map(str::to_owned);
+            candidate_indices
+                .into_iter()
+                .filter(|index| {
+                    match (declaring_class_package.as_deref(), package_at(*index)) {
+                        (Some(class_package), Some(member_package)) => {
+                            class_package == member_package
+                        }
+                        // Older cache entries without per-symbol
+                        // packages: keep the container match rather
+                        // than dropping all.
+                        _ => true,
+                    }
+                })
+                .collect()
+        }
+        // `symbol_packages` dashmap guard drops here — before the item
+        // construction below touches the indexer again.
+    };
+    member_indices
+        .into_iter()
+        .map(|index| completion_item_for_nested_symbol(indexer, &symbols[index], file_uri, caller))
+        .collect()
+}
 
-    // Membership by `container` (assigned per-symbol at parse time by
-    // `assign_containers`, `parser.rs` — the tightest *immediate* enclosing
-    // class/object/interface, not a range-arithmetic approximation of it) is
-    // precise by construction: a member declared inside a nested type's own
-    // body has THAT nested type as its container, never the outer one, so it
-    // can never leak into the outer type's member list regardless of nesting
-    // depth. A prior range-containment version of this function needed
-    // several rounds of edge-case patching (a nested type's own members
-    // leaking into its enclosing type, then into every OTHER sibling type's
-    // *inherited* completion via `walk_hierarchy`) precisely because "is this
-    // symbol inside that range" is an approximation of "is this symbol's
-    // immediate parent that type" — `container` answers the real question
-    // directly, the same way the JAR branch above already does.
-    //
-    // `container` is a bare name, though, not a unique identity — two
-    // DIFFERENT nested types sharing a simple name in this file (`A.Config`
-    // and `B.Config`) would have their members merged by a name-only check.
+/// Workspace-file member enumeration: `container` (assigned at parse time by
+/// `assign_containers`) already answers "declared inside `inner_name`"
+/// exactly, so no disambiguation axis is needed beyond it — unlike the JAR
+/// path, a single workspace file's own symbol table can never have two
+/// classes sharing a simple name.
+fn members_for_workspace_type(
+    indexer: &Indexer,
+    file_uri: &str,
+    inner_name: &str,
+    symbols: &[crate::types::SymbolEntry],
+    type_symbol: &crate::types::SymbolEntry,
+    caller: CallerContext<'_>,
+    context: MembershipContext,
+) -> Vec<CompletionItem> {
+    // `container` is a bare name, not a unique identity — two DIFFERENT
+    // nested types sharing a simple name in this file (`A.Config` and
+    // `B.Config`) would have their members merged by a name-only check.
     // `type_symbol` is already the one specific instance this lookup
-    // resolved to, so additionally requiring the candidate's range to fall
+    // resolved to, so additionally requiring a candidate's range to fall
     // inside `type_symbol`'s own range disambiguates without reintroducing
-    // the depth bug: a *nested* type's members have a different `container`
-    // entirely (their own nested type's name, not `inner_name`), so they
-    // never reach this check regardless of range.
+    // the depth bug this whole function replaced: a *nested* type's members
+    // have a different `container` entirely (their own nested type's name,
+    // not `inner_name`), so they never reach this check regardless of range.
     //
     // Kotlin resolves `Outer.member` through `Outer`'s own companion object
     // when `Outer` itself has no such member (implicit companion
     // forwarding) — so a companion's members belong in `Outer`'s own
-    // completion list too. Companion detection and range-disambiguation
-    // mirror `resolve_companion_member` (`resolver/resolve.rs`) exactly, the
-    // established pattern elsewhere in this codebase for the identical
-    // question: `detail` matched as a `"companion"` TOKEN, not a prefix or
-    // substring, since a modifier or an annotation on its own line can
-    // precede the keywords (`private companion object`, `@JvmStatic` above
-    // it) and a comment can even split the two words apart; and `container`
-    // alone can't identify a companion's members either, for the same
-    // same-name reason as above — Kotlin gives every anonymous companion the
+    // completion list too. A named companion (`companion object Factory`)
+    // has a container-name lookup of its own but no distinguishing
+    // `SymbolKind`, so it's found the same way `is_companion_object_symbol`
+    // finds the anonymous form. Companion members need the identical
+    // same-name disambiguation: Kotlin gives every anonymous companion the
     // literal name "Companion", so two unrelated classes' companions in one
-    // file share that container string.
-    let companions: Vec<&SymbolEntry> = symbols
+    // file share that container string too — resolved by checking each
+    // candidate against the SPECIFIC companion symbol's own range (a class
+    // has at most one companion, so once the companion itself is identified
+    // unambiguously — by container == inner_name AND range-enclosed by
+    // `type_symbol` — this is unambiguous too).
+    let companions: Vec<&crate::types::SymbolEntry> = symbols
         .iter()
         .filter(|s| s.container.as_deref() == Some(inner_name))
         .filter(|s| range_encloses(type_symbol.range, s.range))
-        .filter(|s| {
-            s.kind == SymbolKind::OBJECT
-                && s.detail
-                    .split_whitespace()
-                    .any(|token| token == "companion")
-        })
+        .filter(|s| is_companion_object_symbol(s))
         .collect();
 
     symbols
@@ -1138,6 +1396,7 @@ fn symbols_from_nested_type(
                 })
         })
         .filter(|symbol| symbol.visibility != Visibility::Private)
+        .filter(|symbol| member_kind_allowed(context, symbol.kind))
         .map(|symbol| completion_item_for_nested_symbol(indexer, symbol, file_uri, caller))
         .collect()
 }
@@ -1833,7 +2092,13 @@ impl<'a> BareCompletionWalk<'a> {
             4,
             MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK,
             |index, class_name, ancestor_uri, hierarchy_caller| {
-                symbols_from_nested_type(index, ancestor_uri, class_name, hierarchy_caller)
+                symbols_from_nested_type(
+                    index,
+                    ancestor_uri,
+                    class_name,
+                    hierarchy_caller,
+                    MembershipContext::Inherited,
+                )
             },
         );
         for item in inherited {
