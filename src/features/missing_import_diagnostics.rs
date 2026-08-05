@@ -368,7 +368,7 @@ pub(crate) fn missing_import_actions(
     diagnostics
         .iter()
         .filter(|diagnostic| {
-            diagnostic.code == Some(NumberOrString::String(MISSING_IMPORT_CODE.into()))
+            matches!(&diagnostic.code, Some(NumberOrString::String(code)) if code == MISSING_IMPORT_CODE)
         })
         .filter_map(|diagnostic| {
             let name = flagged_name_from_message(&diagnostic.message)?;
