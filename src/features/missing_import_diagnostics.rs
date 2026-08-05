@@ -24,12 +24,20 @@ use tree_sitter::Node;
 use crate::indexer::live_tree::LiveDoc;
 use crate::indexer::{all_lambda_receivers_at, Indexer};
 use crate::queries::{
-    KIND_CALL_EXPR, KIND_DOT, KIND_FUN_DECL, KIND_IMPORT_HEADER, KIND_PACKAGE_HEADER,
-    KIND_SIMPLE_IDENT, KIND_TYPE_IDENT, KIND_TYPE_PARAM, KIND_TYPE_PARAMS, KIND_USER_TYPE,
+    KIND_CALL_EXPR, KIND_DOT, KIND_FUN_DECL, KIND_IMPORT_HEADER, KIND_NAV_EXPR,
+    KIND_PACKAGE_HEADER, KIND_SIMPLE_IDENT, KIND_TYPE_IDENT, KIND_TYPE_PARAM, KIND_TYPE_PARAMS,
+    KIND_USER_TYPE,
 };
 use crate::resolver::{fqns_for_name, receiver_provides_member, resolve_in_scope_strict};
 use crate::types::CursorPos;
 use crate::LinesExt;
+use crate::StrExt;
+
+/// Diagnostic code identifying a diagnostic as this module's own. `source` alone
+/// (`"kmp-lsp"`) isn't enough to tell our diagnostics apart from every other
+/// feature's — `missing_import_actions` needs a precise, collision-proof match
+/// before it parses a diagnostic's message as a flagged name.
+const MISSING_IMPORT_CODE: &str = "missing-import";
 
 /// A flagged reference: the bare name and where it occurs.
 pub(crate) struct MissingImportFlag {
@@ -148,6 +156,33 @@ fn collect_candidates(
                         name: text.to_owned(),
                         line: callee.start_position().row as u32,
                         col: callee.start_position().column as u32,
+                        receivers: active_receivers.to_vec(),
+                    });
+                }
+            }
+        }
+    } else if kind == KIND_SIMPLE_IDENT {
+        // A capitalized identifier at the root of a navigation expression
+        // (`EnumType.CONSTANT`, `SomeObject.member`) — tree-sitter-kotlin only
+        // ever emits `type_identifier` in type-annotation positions, never in
+        // expression positions, so a bare object/enum-constant reference like
+        // this parses as `simple_identifier`, indistinguishable in kind from an
+        // ordinary lowercase receiver variable. Restricted to the navigation
+        // root (no preceding sibling — a `navigation_suffix` identifier, i.e.
+        // the member being accessed, is deliberately not a candidate here) and
+        // to Kotlin's type/object capitalization convention, so this doesn't
+        // fire on `someVar.member`.
+        let is_capitalized_nav_root = node.prev_sibling().is_none()
+            && node
+                .parent()
+                .is_some_and(|parent| parent.kind() == KIND_NAV_EXPR);
+        if is_capitalized_nav_root {
+            if let Ok(text) = node.utf8_text(src) {
+                if text.starts_with_uppercase() && !active.contains(text) {
+                    out.push(Candidate {
+                        name: text.to_owned(),
+                        line: node.start_position().row as u32,
+                        col: node.start_position().column as u32,
                         receivers: active_receivers.to_vec(),
                     });
                 }
@@ -299,6 +334,7 @@ pub(crate) fn missing_import_diagnostics(
             ),
             severity: Some(DiagnosticSeverity::WARNING),
             source: Some("kmp-lsp".into()),
+            code: Some(NumberOrString::String(MISSING_IMPORT_CODE.into())),
             message: format!("'{}' is not imported and not in scope", flag.name),
             ..Default::default()
         })
@@ -313,7 +349,12 @@ pub(crate) fn missing_import_diagnostics(
 /// than re-walking the CST: the client already told us which of our own
 /// diagnostics apply at this position via `CodeActionContext::diagnostics`,
 /// and the message format is ours to parse (`missing_import_diagnostics`,
-/// above, is the only producer).
+/// above, is the only producer for diagnostics carrying `MISSING_IMPORT_CODE`).
+/// Gated on that `code`, not just `source` — `source` is the shared
+/// `"kmp-lsp"` string every diagnostic in this LSP carries, so it can't tell
+/// this module's diagnostics apart from e.g. `fill_when`'s non-exhaustive-`when`
+/// diagnostic, whose message ("'when' is missing branches: …") also happens to
+/// start with a quoted word.
 pub(crate) fn missing_import_actions(
     indexer: &Indexer,
     uri: &Url,
@@ -326,7 +367,9 @@ pub(crate) fn missing_import_actions(
 
     diagnostics
         .iter()
-        .filter(|diagnostic| diagnostic.source.as_deref() == Some("kmp-lsp"))
+        .filter(|diagnostic| {
+            matches!(&diagnostic.code, Some(NumberOrString::String(code)) if code == MISSING_IMPORT_CODE)
+        })
         .filter_map(|diagnostic| {
             let name = flagged_name_from_message(&diagnostic.message)?;
             Some((diagnostic, name))

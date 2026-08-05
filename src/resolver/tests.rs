@@ -2352,6 +2352,223 @@ fn cross_file_type_subst_multi_class_same_file() {
     );
 }
 
+/// Regression: `symbols_from_nested_type`'s "declared inside `type_name`'s range"
+/// membership check has no depth limit — a member declared inside a *nested*
+/// type's own body (e.g. `Success.userData`, several lines inside
+/// `MainActivityUiState`'s outer braces) still counts as textually "inside"
+/// `MainActivityUiState`'s range, so it leaked into the sealed interface's own
+/// member list. That, in turn, leaked into every OTHER sealed subtype's
+/// *inherited*-member completion via `walk_hierarchy` — so a `Loading`-typed
+/// (smart-cast-narrowed) receiver offered `Success`'s own `userData` and
+/// `extra()`, both of which are compile errors if selected.
+#[test]
+fn sealed_subtype_member_completion_does_not_leak_sibling_subtype_members() {
+    let idx = Indexer::new();
+    let file_uri = uri("/MainActivityUiState.kt");
+    idx.index_content(
+        &file_uri,
+        "package app\n\
+         sealed interface MainActivityUiState {\n\
+         \x20 data object Loading : MainActivityUiState\n\
+         \x20 data class Success(val userData: String) : MainActivityUiState {\n\
+         \x20   fun extra() = userData\n\
+         \x20 }\n\
+         \x20 val shared: Boolean get() = true\n\
+         }",
+    );
+    let items = complete_dot(&idx, "Loading", &file_uri, false, None);
+    let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
+    assert!(
+        !labels.contains(&"userData"),
+        "Loading must not inherit sibling subtype Success's own member: {labels:?}"
+    );
+    assert!(
+        !labels.contains(&"extra"),
+        "Loading must not inherit sibling subtype Success's own method: {labels:?}"
+    );
+    assert!(
+        !labels.contains(&"copy"),
+        "Loading must not inherit sibling subtype Success's synthesized copy(): {labels:?}"
+    );
+    assert!(
+        labels.contains(&"shared"),
+        "Loading must still inherit the sealed interface's own direct member: {labels:?}"
+    );
+}
+
+/// Companion regression to the one above: a nested type is a legitimate direct
+/// member of its enclosing type when the receiver IS the enclosing type's own
+/// name (`MainActivityUiState.Success` / `.Loading` are valid Kotlin — nested
+/// type references, not instance member access). The depth-restriction fix
+/// must not make a type exclude *itself* just because its own range trivially
+/// satisfies "is inside a nested type's range" against its own entry.
+#[test]
+fn nested_type_completion_still_lists_sibling_nested_types_by_enclosing_type_name() {
+    let idx = Indexer::new();
+    let file_uri = uri("/MainActivityUiState.kt");
+    idx.index_content(
+        &file_uri,
+        "package app\n\
+         sealed interface MainActivityUiState {\n\
+         \x20 data object Loading : MainActivityUiState\n\
+         \x20 data class Success(val userData: String) : MainActivityUiState\n\
+         }",
+    );
+    let items = complete_dot(&idx, "MainActivityUiState", &file_uri, false, None);
+    let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
+    assert!(
+        labels.contains(&"Loading"),
+        "MainActivityUiState.Loading is a valid nested-type reference: {labels:?}"
+    );
+    assert!(
+        labels.contains(&"Success"),
+        "MainActivityUiState.Success is a valid nested-type reference: {labels:?}"
+    );
+}
+
+/// Regression: Kotlin resolves `Outer.member` through `Outer`'s own companion
+/// object when `Outer` has no such member itself (implicit companion
+/// forwarding) — a very common idiom, doubly so paired with sealed
+/// hierarchies (factory functions / constants on the companion). An earlier,
+/// range-containment-based version of the sibling-subtype-leak fix above
+/// treated a companion object as just another nested container type and
+/// blanket-excluded its members from the enclosing class's own completion,
+/// breaking this. The `container`-based implementation must special-case
+/// companion forwarding explicitly, since `copy.container` is the companion's
+/// own name ("Companion"/a named companion), not the enclosing class's.
+#[test]
+fn companion_object_members_still_appear_on_enclosing_type_completion() {
+    let idx = Indexer::new();
+    let file_uri = uri("/Widget.kt");
+    idx.index_content(
+        &file_uri,
+        "package app\n\
+         class Widget {\n\
+         \x20 companion object {\n\
+         \x20   fun create(): Widget = Widget()\n\
+         \x20   val DEFAULT_ID: Int = 0\n\
+         \x20 }\n\
+         \x20 fun instanceMethod() {}\n\
+         }",
+    );
+    let items = complete_dot(&idx, "Widget", &file_uri, false, None);
+    let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
+    assert!(
+        labels.contains(&"create"),
+        "Widget.create() forwards through the companion object: {labels:?}"
+    );
+    assert!(
+        labels.contains(&"DEFAULT_ID"),
+        "Widget.DEFAULT_ID forwards through the companion object: {labels:?}"
+    );
+    assert!(
+        labels.contains(&"instanceMethod"),
+        "Widget's own direct member must still appear: {labels:?}"
+    );
+}
+
+/// Regression (Copilot review on the fix above): companion detection used
+/// `detail.starts_with("companion object")`, which misses a modifier or
+/// annotation ahead of the keywords — a `private companion object` (or
+/// `@JvmStatic` on the line above) would not be recognized as a companion at
+/// all, silently dropping its members from the enclosing class's completion.
+#[test]
+fn companion_object_members_forward_despite_a_visibility_modifier() {
+    let idx = Indexer::new();
+    let file_uri = uri("/Widget.kt");
+    idx.index_content(
+        &file_uri,
+        "package app\n\
+         class Widget {\n\
+         \x20 private companion object {\n\
+         \x20   fun create(): Widget = Widget()\n\
+         \x20 }\n\
+         }",
+    );
+    let items = complete_dot(&idx, "Widget", &file_uri, false, None);
+    let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
+    assert!(
+        labels.contains(&"create"),
+        "a modifier ahead of 'companion object' must not hide companion forwarding: {labels:?}"
+    );
+}
+
+/// Regression (Copilot review on the fix above): Kotlin gives every anonymous
+/// `companion object { }` the same implicit name ("Companion"), so two
+/// unrelated classes in the same file each have a companion literally named
+/// "Companion" — their members share that same `container` string. Folding a
+/// companion's members in by container-NAME match alone (without also
+/// checking which specific companion instance a member's range belongs to)
+/// would leak one class's companion members into a completely different
+/// class's completion.
+#[test]
+fn companion_object_forwarding_does_not_leak_across_classes_sharing_the_implicit_name() {
+    let idx = Indexer::new();
+    let file_uri = uri("/Widgets.kt");
+    idx.index_content(
+        &file_uri,
+        "package app\n\
+         class Alpha {\n\
+         \x20 companion object {\n\
+         \x20   fun alphaOnly(): Alpha = Alpha()\n\
+         \x20 }\n\
+         }\n\
+         class Beta {\n\
+         \x20 companion object {\n\
+         \x20   fun betaOnly(): Beta = Beta()\n\
+         \x20 }\n\
+         }",
+    );
+    let items = complete_dot(&idx, "Alpha", &file_uri, false, None);
+    let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
+    assert!(
+        labels.contains(&"alphaOnly"),
+        "Alpha's own companion member must still forward: {labels:?}"
+    );
+    assert!(
+        !labels.contains(&"betaOnly"),
+        "Beta's companion (same implicit 'Companion' name) must not leak into Alpha's completion: {labels:?}"
+    );
+}
+
+/// Regression (Copilot review): `container` stores only the immediate
+/// parent's simple NAME, not a unique identity — two different nested types
+/// sharing a simple name in one file (`A.Config` and `B.Config`) would have
+/// their members merged by a container-name-only check. `type_symbol` is
+/// already the one specific instance the outer lookup resolved to, so the
+/// membership check must also confirm a candidate's range falls inside that
+/// SPECIFIC instance's own range, not just any same-named one.
+#[test]
+fn same_named_nested_types_in_different_classes_do_not_merge_members() {
+    let idx = Indexer::new();
+    let file_uri = uri("/Configs.kt");
+    idx.index_content(
+        &file_uri,
+        "package app\n\
+         class A {\n\
+         \x20 class Config {\n\
+         \x20   val fromA = 1\n\
+         \x20 }\n\
+         }\n\
+         class B {\n\
+         \x20 class Config {\n\
+         \x20   val fromB = 2\n\
+         \x20 }\n\
+         }",
+    );
+    let items = complete_dot(&idx, "Config", &file_uri, false, None);
+    let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
+    // Whichever `Config` instance the bare-name lookup resolves to, it must
+    // offer that instance's own member and never the OTHER one's — merging
+    // them would suggest a member that doesn't exist on the resolved type.
+    let has_a = labels.contains(&"fromA");
+    let has_b = labels.contains(&"fromB");
+    assert!(
+        has_a != has_b,
+        "expected exactly one of A.Config/B.Config's own members, not both (merged) or neither: {labels:?}"
+    );
+}
+
 #[test]
 fn is_screaming_snake_cases() {
     assert!(is_screaming_snake("MAX_SIZE"));
