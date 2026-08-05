@@ -14,7 +14,7 @@ use crate::StrExt;
 
 use super::infer::{infer_receiver_type, infer_receiver_type_at, ReceiverKind, ReceiverType};
 use super::infer_lines::infer_callable_param_return_type;
-use super::resolve::jar_symbol_package;
+use super::resolve::{jar_symbol_package, range_encloses};
 use super::{
     already_imported, ensure_file_data, fqns_for_name, resolve_symbol_no_rg, walk_hierarchy,
     Resolver, MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK,
@@ -1090,47 +1090,51 @@ fn symbols_from_nested_type(
     // symbol inside that range" is an approximation of "is this symbol's
     // immediate parent that type" — `container` answers the real question
     // directly, the same way the JAR branch above already does.
+    //
+    // `container` is a bare name, though, not a unique identity — two
+    // DIFFERENT nested types sharing a simple name in this file (`A.Config`
+    // and `B.Config`) would have their members merged by a name-only check.
+    // `type_symbol` is already the one specific instance this lookup
+    // resolved to, so additionally requiring the candidate's range to fall
+    // inside `type_symbol`'s own range disambiguates without reintroducing
+    // the depth bug: a *nested* type's members have a different `container`
+    // entirely (their own nested type's name, not `inner_name`), so they
+    // never reach this check regardless of range.
+    //
     // Kotlin resolves `Outer.member` through `Outer`'s own companion object
     // when `Outer` itself has no such member (implicit companion
     // forwarding) — so a companion's members belong in `Outer`'s own
-    // completion list too. Detected via `detail` CONTAINING (not just
-    // prefixed by) the `companion object` keywords, since a modifier or
-    // annotation can precede them (`private companion object`, `@JvmStatic`
-    // on its own line above) — `detail` is the raw declaration text for both
-    // the anonymous and named (`companion object Factory`) forms.
-    //
-    // A companion's members can't be folded in by container NAME alone:
-    // Kotlin gives every anonymous companion the same implicit name
-    // ("Companion"), so two unrelated classes in the same file each have a
-    // companion object also literally named "Companion" — their members
-    // share that same container string. Disambiguate by checking each
-    // candidate's range against THIS SPECIFIC companion symbol's own range —
-    // a class has at most one companion, so once the companion itself is
-    // identified (by container == inner_name, which IS unambiguous: it's the
-    // outer type we already resolved `type_symbol` to), this is unambiguous
-    // too.
+    // completion list too. Companion detection and range-disambiguation
+    // mirror `resolve_companion_member` (`resolver/resolve.rs`) exactly, the
+    // established pattern elsewhere in this codebase for the identical
+    // question: `detail` matched as a `"companion"` TOKEN, not a prefix or
+    // substring, since a modifier or an annotation on its own line can
+    // precede the keywords (`private companion object`, `@JvmStatic` above
+    // it) and a comment can even split the two words apart; and `container`
+    // alone can't identify a companion's members either, for the same
+    // same-name reason as above — Kotlin gives every anonymous companion the
+    // literal name "Companion", so two unrelated classes' companions in one
+    // file share that container string.
     let companions: Vec<&SymbolEntry> = symbols
         .iter()
         .filter(|s| s.container.as_deref() == Some(inner_name))
-        .filter(|s| s.kind == SymbolKind::OBJECT && s.detail.contains("companion object"))
+        .filter(|s| range_encloses(type_symbol.range, s.range))
+        .filter(|s| {
+            s.kind == SymbolKind::OBJECT
+                && s.detail
+                    .split_whitespace()
+                    .any(|token| token == "companion")
+        })
         .collect();
-    let within_companion_range = |pos: Position, companion: &SymbolEntry| -> bool {
-        let start = companion.range.start;
-        let end = companion.range.end;
-        let after_start =
-            pos.line > start.line || (pos.line == start.line && pos.character > start.character);
-        let before_end =
-            pos.line < end.line || (pos.line == end.line && pos.character < end.character);
-        after_start && before_end
-    };
 
     symbols
         .iter()
         .filter(|symbol| {
-            symbol.container.as_deref() == Some(inner_name)
+            (symbol.container.as_deref() == Some(inner_name)
+                && range_encloses(type_symbol.range, symbol.range))
                 || companions.iter().any(|companion| {
                     symbol.container.as_deref() == Some(companion.name.as_str())
-                        && within_companion_range(symbol.range.start, companion)
+                        && range_encloses(companion.range, symbol.range)
                 })
         })
         .filter(|symbol| symbol.visibility != Visibility::Private)

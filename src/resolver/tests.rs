@@ -2531,6 +2531,44 @@ fn companion_object_forwarding_does_not_leak_across_classes_sharing_the_implicit
     );
 }
 
+/// Regression (Copilot review): `container` stores only the immediate
+/// parent's simple NAME, not a unique identity — two different nested types
+/// sharing a simple name in one file (`A.Config` and `B.Config`) would have
+/// their members merged by a container-name-only check. `type_symbol` is
+/// already the one specific instance the outer lookup resolved to, so the
+/// membership check must also confirm a candidate's range falls inside that
+/// SPECIFIC instance's own range, not just any same-named one.
+#[test]
+fn same_named_nested_types_in_different_classes_do_not_merge_members() {
+    let idx = Indexer::new();
+    let file_uri = uri("/Configs.kt");
+    idx.index_content(
+        &file_uri,
+        "package app\n\
+         class A {\n\
+         \x20 class Config {\n\
+         \x20   val fromA = 1\n\
+         \x20 }\n\
+         }\n\
+         class B {\n\
+         \x20 class Config {\n\
+         \x20   val fromB = 2\n\
+         \x20 }\n\
+         }",
+    );
+    let items = complete_dot(&idx, "Config", &file_uri, false, None);
+    let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
+    // Whichever `Config` instance the bare-name lookup resolves to, it must
+    // offer that instance's own member and never the OTHER one's — merging
+    // them would suggest a member that doesn't exist on the resolved type.
+    let has_a = labels.contains(&"fromA");
+    let has_b = labels.contains(&"fromB");
+    assert!(
+        has_a != has_b,
+        "expected exactly one of A.Config/B.Config's own members, not both (merged) or neither: {labels:?}"
+    );
+}
+
 #[test]
 fn is_screaming_snake_cases() {
     assert!(is_screaming_snake("MAX_SIZE"));
