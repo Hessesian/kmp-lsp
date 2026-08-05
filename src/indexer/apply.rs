@@ -1183,16 +1183,10 @@ impl Indexer {
         self.parse_count.fetch_add(1, Ordering::Relaxed);
         // Invalidate cached completion items — the file is changing.
         self.completion_cache.remove(&uri_str);
-        // `invalidate_completion_cache` also bumps `completion_epoch` — required
-        // here, not just a `last_completion = None` clear: `store_in_cache`
-        // (features/completion.rs) only refuses to persist a completion result
-        // computed under a stale epoch, and epoch used to be bumped only by
-        // JAR-population paths. A completion request racing a concurrent
-        // (non-JAR) reindex — computed against the pre-edit symbol table, but
-        // not yet stored when this reindex clears the cache — would otherwise
-        // pass the epoch check unchanged and re-populate the just-cleared
-        // cache with its stale result. See
-        // `store_in_cache_rejects_stale_write_racing_a_concurrent_reindex`.
+        // Bumps `completion_epoch`, not merely clearing the cache: a request
+        // that began before this reindex is still computing against the old
+        // symbol table, and `store_in_cache` uses the epoch to reject its
+        // result rather than let it repopulate what was just cleared.
         self.invalidate_completion_cache();
         // Invalidate entire signature cache — a changed file may affect lookups from any caller.
         self.sig_cache.clear();
