@@ -8,7 +8,7 @@ use crate::indexer::Indexer;
 use crate::parser::parse_by_extension;
 use crate::stdlib::bare_completions;
 use crate::stdlib_tail::dot_completions_for_lang;
-use crate::types::{CallerContext, ImportEntry, SourceSet, SymbolEntry, Visibility};
+use crate::types::{CallerContext, ImportEntry, SourceSet, Visibility};
 use crate::LinesExt;
 use crate::StrExt;
 
@@ -1077,79 +1077,43 @@ fn symbols_from_nested_type(
             .collect();
     }
 
-    let position_within = |pos: Position, start: Position, end: Position| -> bool {
-        let after_start =
-            pos.line > start.line || (pos.line == start.line && pos.character > start.character);
-        let before_end =
-            pos.line < end.line || (pos.line == end.line && pos.character < end.character);
-        after_start && before_end
-    };
-    // Like `position_within`, but the start bound is inclusive — needed for the
-    // nested-type-exclusion check below, since a `data class`'s synthesized
-    // `copy()` symbol is deliberately given the SAME range as the class itself
-    // (`synthesize_data_class_copy`, `parser.rs`), so its start never satisfies
-    // "strictly after" its own class's start.
-    let position_within_or_at_start = |pos: Position, start: Position, end: Position| -> bool {
-        let at_or_after_start =
-            pos.line > start.line || (pos.line == start.line && pos.character >= start.character);
-        let before_end =
-            pos.line < end.line || (pos.line == end.line && pos.character < end.character);
-        at_or_after_start && before_end
-    };
-
-    let type_start = type_symbol.range.start;
-    let type_end = type_symbol.range.end;
-
-    // A member declared inside one of `type_name`'s OWN nested types (e.g.
-    // `Success.userData`, itself several lines inside `MainActivityUiState`'s
-    // outer braces) still satisfies "textually inside `type_name`'s range" —
-    // without excluding it, every nested class/object/interface's members leak
-    // into their enclosing type's own member list, one level too shallow. This
-    // matters beyond cosmetics: `collect_inherited_dot_completion_items` walks
-    // a receiver's *supertype* through this same function, so a sibling sealed
-    // subtype's members (`Success.userData`) leaked into every OTHER subtype's
-    // (`Loading`'s) inherited-member completion — offering a member that would
-    // be a compile error if selected.
-    // Narrower than `is_type_kind` above: that closure also matches
-    // `ENUM_MEMBER` (needed for its own "prefer type over function" purpose),
-    // but an enum case has no body of its own for other symbols to nest
-    // inside — including it here caused sibling enum cases whose ranges
-    // happen to overlap to wrongly exclude each other.
-    let is_nesting_container_kind = |k: SymbolKind| {
-        matches!(
-            k,
-            SymbolKind::CLASS
-                | SymbolKind::OBJECT
-                | SymbolKind::INTERFACE
-                | SymbolKind::ENUM
-                | SymbolKind::MODULE
-                | SymbolKind::STRUCT
-        )
-    };
-    let nested_types: Vec<&SymbolEntry> = symbols
-        .iter()
-        .filter(|s| is_nesting_container_kind(s.kind))
-        .filter(|s| !std::ptr::eq(*s, type_symbol))
-        .filter(|s| position_within(s.range.start, type_start, type_end))
-        .collect();
+    // Membership by `container` (assigned per-symbol at parse time by
+    // `assign_containers`, `parser.rs` — the tightest *immediate* enclosing
+    // class/object/interface, not a range-arithmetic approximation of it) is
+    // precise by construction: a member declared inside a nested type's own
+    // body has THAT nested type as its container, never the outer one, so it
+    // can never leak into the outer type's member list regardless of nesting
+    // depth. A prior range-containment version of this function needed
+    // several rounds of edge-case patching (a nested type's own members
+    // leaking into its enclosing type, then into every OTHER sibling type's
+    // *inherited* completion via `walk_hierarchy`) precisely because "is this
+    // symbol inside that range" is an approximation of "is this symbol's
+    // immediate parent that type" — `container` answers the real question
+    // directly, the same way the JAR branch above already does.
+    let mut container_names = vec![inner_name.to_owned()];
+    // Kotlin resolves `Outer.member` through `Outer`'s own companion object
+    // when `Outer` itself has no such member (implicit companion
+    // forwarding) — so a companion's members belong in `Outer`'s own
+    // completion list too. Detected via `detail`, not `name`, since a named
+    // companion (`companion object Factory`) has a container-name lookup of
+    // its own but no distinguishing `SymbolKind`; `detail` is the raw
+    // declaration text for both the anonymous and named forms and always
+    // starts with the `companion object` keywords.
+    container_names.extend(
+        symbols
+            .iter()
+            .filter(|s| s.container.as_deref() == Some(inner_name))
+            .filter(|s| s.kind == SymbolKind::OBJECT && s.detail.starts_with("companion object"))
+            .map(|s| s.name.clone()),
+    );
 
     symbols
         .iter()
-        .filter(|symbol| position_within(symbol.range.start, type_start, type_end))
         .filter(|symbol| {
-            // A nested type itself (`Success`) is a direct member of `type_name`
-            // (`MainActivityUiState.Success` is valid Kotlin) — it must not
-            // exclude itself just because its own range trivially "contains" its
-            // own start. Only exclude a symbol that's inside a *different*
-            // nested type's range (e.g. `Success.userData`).
-            !nested_types.iter().any(|nested| {
-                !std::ptr::eq(*nested, *symbol)
-                    && position_within_or_at_start(
-                        symbol.range.start,
-                        nested.range.start,
-                        nested.range.end,
-                    )
-            })
+            symbol
+                .container
+                .as_deref()
+                .is_some_and(|c| container_names.iter().any(|name| name == c))
         })
         .filter(|symbol| symbol.visibility != Visibility::Private)
         .map(|symbol| completion_item_for_nested_symbol(indexer, symbol, file_uri, caller))

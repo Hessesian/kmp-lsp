@@ -2426,6 +2426,47 @@ fn nested_type_completion_still_lists_sibling_nested_types_by_enclosing_type_nam
     );
 }
 
+/// Regression: Kotlin resolves `Outer.member` through `Outer`'s own companion
+/// object when `Outer` has no such member itself (implicit companion
+/// forwarding) — a very common idiom, doubly so paired with sealed
+/// hierarchies (factory functions / constants on the companion). An earlier,
+/// range-containment-based version of the sibling-subtype-leak fix above
+/// treated a companion object as just another nested container type and
+/// blanket-excluded its members from the enclosing class's own completion,
+/// breaking this. The `container`-based implementation must special-case
+/// companion forwarding explicitly, since `copy.container` is the companion's
+/// own name ("Companion"/a named companion), not the enclosing class's.
+#[test]
+fn companion_object_members_still_appear_on_enclosing_type_completion() {
+    let idx = Indexer::new();
+    let file_uri = uri("/Widget.kt");
+    idx.index_content(
+        &file_uri,
+        "package app\n\
+         class Widget {\n\
+         \x20 companion object {\n\
+         \x20   fun create(): Widget = Widget()\n\
+         \x20   val DEFAULT_ID: Int = 0\n\
+         \x20 }\n\
+         \x20 fun instanceMethod() {}\n\
+         }",
+    );
+    let items = complete_dot(&idx, "Widget", &file_uri, false, None);
+    let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
+    assert!(
+        labels.contains(&"create"),
+        "Widget.create() forwards through the companion object: {labels:?}"
+    );
+    assert!(
+        labels.contains(&"DEFAULT_ID"),
+        "Widget.DEFAULT_ID forwards through the companion object: {labels:?}"
+    );
+    assert!(
+        labels.contains(&"instanceMethod"),
+        "Widget's own direct member must still appear: {labels:?}"
+    );
+}
+
 #[test]
 fn is_screaming_snake_cases() {
     assert!(is_screaming_snake("MAX_SIZE"));
