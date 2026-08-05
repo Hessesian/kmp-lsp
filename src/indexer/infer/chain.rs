@@ -486,7 +486,7 @@ pub(super) fn resolve_root_node_type(
 // ─── resolve_call_expr_type: strategy list ───────────────────────────────────
 //
 // This resolves "what does calling `fn_name(...)` produce" through a fixed,
-// ORDERED list of strategies (`STRATEGIES` below), each strictly more
+// ORDERED list of strategies (`strategies` below), each strictly more
 // authoritative than the ones after it. That order is the whole contract —
 // every entry exists because a production bug proved it must run exactly
 // where it sits, not earlier and not later:
@@ -503,7 +503,7 @@ pub(super) fn resolve_root_node_type(
 // `class_literal_*_does_not_override_*`, `class_literal_arg_fallback_not_shadowed_by_*`,
 // `numeric_conversion_heuristic_does_not_fire_on_receiver_less_call`).
 //
-// Adding a new strategy means picking its slot in `STRATEGIES` deliberately
+// Adding a new strategy means picking its slot in `strategies` deliberately
 // — that placement IS the review question, not an incidental `if` position.
 
 /// Inputs every strategy reads, computed once so no strategy re-derives
@@ -600,8 +600,8 @@ fn scope_function_identity<D: InferDeps>(ctx: &CallCtx<'_, D>) -> StrategyVerdic
     if !SCOPE_FUNCTIONS.contains(&ctx.fn_name) {
         return StrategyVerdict::NotApplicable;
     }
-    let ty = resolve_root_node_type(ctx.callee, ctx.bytes, ctx.deps, ctx.uri);
-    StrategyVerdict::Terminal(ty.map(StrategyOutcome::Final))
+    let resolved_type = resolve_root_node_type(ctx.callee, ctx.bytes, ctx.deps, ctx.uri);
+    StrategyVerdict::Terminal(resolved_type.map(StrategyOutcome::Final))
 }
 
 /// Lambda-result functions (e.g. Compose `remember { Foo() }`) return their
@@ -613,8 +613,8 @@ fn lambda_result<D: InferDeps>(ctx: &CallCtx<'_, D>) -> StrategyVerdict {
     if !LAMBDA_RESULT_FNS.contains(&ctx.fn_name) {
         return StrategyVerdict::NotApplicable;
     }
-    let ty = infer_lambda_result_type(ctx.node, ctx.bytes, ctx.deps, ctx.uri);
-    StrategyVerdict::Terminal(ty.map(StrategyOutcome::Final))
+    let resolved_type = infer_lambda_result_type(ctx.node, ctx.bytes, ctx.deps, ctx.uri);
+    StrategyVerdict::Terminal(resolved_type.map(StrategyOutcome::Final))
 }
 
 /// The receiver's own (indexed) type has a matching method — the most
@@ -691,8 +691,8 @@ fn numeric_conversion<D: InferDeps>(ctx: &CallCtx<'_, D>) -> StrategyVerdict {
         .iter()
         .find(|(name, _)| *name == ctx.fn_name)
     {
-        Some((_, ret_ty)) => {
-            StrategyVerdict::Terminal(Some(StrategyOutcome::Final((*ret_ty).to_owned())))
+        Some((_, return_type)) => {
+            StrategyVerdict::Terminal(Some(StrategyOutcome::Final((*return_type).to_owned())))
         }
         None => StrategyVerdict::NotApplicable,
     }
@@ -730,7 +730,9 @@ fn retrofit_class_literal<D: InferDeps>(ctx: &CallCtx<'_, D>) -> StrategyVerdict
         return StrategyVerdict::NotApplicable;
     }
     match find_class_literal_arg_type(ctx.node, ctx.bytes) {
-        Some(ty) => StrategyVerdict::Terminal(Some(StrategyOutcome::Final(ty))),
+        Some(class_literal_type) => {
+            StrategyVerdict::Terminal(Some(StrategyOutcome::Final(class_literal_type)))
+        }
         None => StrategyVerdict::NotApplicable,
     }
 }
