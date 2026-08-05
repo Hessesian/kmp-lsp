@@ -994,7 +994,10 @@ fn pos_tuple(p: tower_lsp::lsp_types::Position) -> (u32, u32) {
 }
 
 /// Whether `outer` fully contains `inner` (start ≤ start and end ≥ end).
-fn range_encloses(outer: tower_lsp::lsp_types::Range, inner: tower_lsp::lsp_types::Range) -> bool {
+pub(crate) fn range_encloses(
+    outer: tower_lsp::lsp_types::Range,
+    inner: tower_lsp::lsp_types::Range,
+) -> bool {
     pos_tuple(outer.start) <= pos_tuple(inner.start) && pos_tuple(inner.end) <= pos_tuple(outer.end)
 }
 

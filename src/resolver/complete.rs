@@ -8,13 +8,13 @@ use crate::indexer::Indexer;
 use crate::parser::parse_by_extension;
 use crate::stdlib::bare_completions;
 use crate::stdlib_tail::dot_completions_for_lang;
-use crate::types::{CallerContext, ImportEntry, SourceSet, Visibility};
+use crate::types::{CallerContext, ImportEntry, SourceSet, SymbolEntry, Visibility};
 use crate::LinesExt;
 use crate::StrExt;
 
 use super::infer::{infer_receiver_type, infer_receiver_type_at, ReceiverKind, ReceiverType};
 use super::infer_lines::infer_callable_param_return_type;
-use super::resolve::jar_symbol_package;
+use super::resolve::{jar_symbol_package, range_encloses};
 use super::{
     already_imported, ensure_file_data, fqns_for_name, resolve_symbol_no_rg, walk_hierarchy,
     Resolver, MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK,
@@ -1077,17 +1077,65 @@ fn symbols_from_nested_type(
             .collect();
     }
 
-    let type_start = type_symbol.range.start;
-    let type_end = type_symbol.range.end;
+    // Membership by `container` (assigned per-symbol at parse time by
+    // `assign_containers`, `parser.rs` — the tightest *immediate* enclosing
+    // class/object/interface, not a range-arithmetic approximation of it) is
+    // precise by construction: a member declared inside a nested type's own
+    // body has THAT nested type as its container, never the outer one, so it
+    // can never leak into the outer type's member list regardless of nesting
+    // depth. A prior range-containment version of this function needed
+    // several rounds of edge-case patching (a nested type's own members
+    // leaking into its enclosing type, then into every OTHER sibling type's
+    // *inherited* completion via `walk_hierarchy`) precisely because "is this
+    // symbol inside that range" is an approximation of "is this symbol's
+    // immediate parent that type" — `container` answers the real question
+    // directly, the same way the JAR branch above already does.
+    //
+    // `container` is a bare name, though, not a unique identity — two
+    // DIFFERENT nested types sharing a simple name in this file (`A.Config`
+    // and `B.Config`) would have their members merged by a name-only check.
+    // `type_symbol` is already the one specific instance this lookup
+    // resolved to, so additionally requiring the candidate's range to fall
+    // inside `type_symbol`'s own range disambiguates without reintroducing
+    // the depth bug: a *nested* type's members have a different `container`
+    // entirely (their own nested type's name, not `inner_name`), so they
+    // never reach this check regardless of range.
+    //
+    // Kotlin resolves `Outer.member` through `Outer`'s own companion object
+    // when `Outer` itself has no such member (implicit companion
+    // forwarding) — so a companion's members belong in `Outer`'s own
+    // completion list too. Companion detection and range-disambiguation
+    // mirror `resolve_companion_member` (`resolver/resolve.rs`) exactly, the
+    // established pattern elsewhere in this codebase for the identical
+    // question: `detail` matched as a `"companion"` TOKEN, not a prefix or
+    // substring, since a modifier or an annotation on its own line can
+    // precede the keywords (`private companion object`, `@JvmStatic` above
+    // it) and a comment can even split the two words apart; and `container`
+    // alone can't identify a companion's members either, for the same
+    // same-name reason as above — Kotlin gives every anonymous companion the
+    // literal name "Companion", so two unrelated classes' companions in one
+    // file share that container string.
+    let companions: Vec<&SymbolEntry> = symbols
+        .iter()
+        .filter(|s| s.container.as_deref() == Some(inner_name))
+        .filter(|s| range_encloses(type_symbol.range, s.range))
+        .filter(|s| {
+            s.kind == SymbolKind::OBJECT
+                && s.detail
+                    .split_whitespace()
+                    .any(|token| token == "companion")
+        })
+        .collect();
+
     symbols
         .iter()
         .filter(|symbol| {
-            let start = symbol.range.start;
-            let starts_after = start.line > type_start.line
-                || (start.line == type_start.line && start.character > type_start.character);
-            let starts_before = start.line < type_end.line
-                || (start.line == type_end.line && start.character < type_end.character);
-            starts_after && starts_before
+            (symbol.container.as_deref() == Some(inner_name)
+                && range_encloses(type_symbol.range, symbol.range))
+                || companions.iter().any(|companion| {
+                    symbol.container.as_deref() == Some(companion.name.as_str())
+                        && range_encloses(companion.range, symbol.range)
+                })
         })
         .filter(|symbol| symbol.visibility != Visibility::Private)
         .map(|symbol| completion_item_for_nested_symbol(indexer, symbol, file_uri, caller))
