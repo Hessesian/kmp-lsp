@@ -483,160 +483,324 @@ pub(super) fn resolve_root_node_type(
     }
 }
 
-pub(super) fn resolve_call_expr_type(
-    node: tree_sitter::Node<'_>,
-    bytes: &[u8],
-    deps: &impl InferDeps,
-    uri: &Url,
-) -> Option<String> {
-    let fn_name = node.call_fn_name(bytes)?;
-    if SCOPE_FUNCTIONS.contains(&fn_name.as_str()) {
-        let callee = node.child(0)?;
-        return resolve_root_node_type(callee, bytes, deps, uri);
+// ─── resolve_call_expr_type: strategy list ───────────────────────────────────
+//
+// This resolves "what does calling `fn_name(...)` produce" through a fixed,
+// ORDERED list of strategies (`strategies` below), each strictly more
+// authoritative than the ones after it. That order is the whole contract —
+// every entry exists because a production bug proved it must run exactly
+// where it sits, not earlier and not later:
+//   - authoritative-before-heuristic: a real, indexed declaration
+//     (`receiver_based_method`/`reachable_return_type`) must win even when
+//     its name coincides with a curated heuristic pattern.
+//   - heuristic-before-broad-scan: the curated heuristics
+//     (`numeric_conversion`/`di_factory_type_argument`/`retrofit_class_literal`)
+//     must run before `global_name_scan`, whose bare-name match has no
+//     regard for import reachability and can hit a same-named, unrelated
+//     symbol anywhere in the workspace.
+// Regression tests pinning each ordering live in
+// `src/resolver/infer_tests.rs` (`di_factory_heuristic_does_not_override_*`,
+// `class_literal_*_does_not_override_*`, `class_literal_arg_fallback_not_shadowed_by_*`,
+// `numeric_conversion_heuristic_does_not_fire_on_receiver_less_call`).
+//
+// Adding a new strategy means picking its slot in `strategies` deliberately
+// — that placement IS the review question, not an incidental `if` position.
+
+/// Inputs every strategy reads, computed once so no strategy re-derives
+/// `fn_name`/`callee` (and risks a subtly different re-derivation).
+struct CallCtx<'a, D: InferDeps> {
+    node: tree_sitter::Node<'a>,
+    bytes: &'a [u8],
+    deps: &'a D,
+    uri: &'a Url,
+    fn_name: &'a str,
+    callee: tree_sitter::Node<'a>,
+}
+
+/// What a strategy found, and what post-processing it still needs before
+/// becoming the final answer. Keeping this as data (rather than each
+/// strategy applying its own substitution inline) is what makes call-site
+/// type-argument substitution apply uniformly to every strategy that needs
+/// it: no strategy can be added ahead of an existing one and forget it — the
+/// bug fixed by `receiver_based_resolution_also_substitutes_call_site_type_argument`.
+enum StrategyOutcome {
+    /// A signature's raw return type resolved against a concrete receiver —
+    /// needs receiver-generic substitution, then call-site substitution.
+    ReceiverDerived {
+        raw_return: String,
+        effective_type: String,
+        receiver_type: String,
+    },
+    /// A signature's raw return type resolved with no receiver in play —
+    /// needs call-site substitution only.
+    SignatureDerived(String),
+    /// Already the final, concrete answer (fixed stdlib type, a call-site
+    /// type argument read directly, a class-literal argument, the bare
+    /// constructor name, or a scope-function's passthrough) — no
+    /// substitution applies.
+    Final(String),
+}
+
+impl StrategyOutcome {
+    fn finalize<D: InferDeps>(self, ctx: &CallCtx<'_, D>) -> String {
+        match self {
+            StrategyOutcome::Final(s) => s,
+            StrategyOutcome::SignatureDerived(raw) => apply_call_site_type_args(raw, ctx),
+            StrategyOutcome::ReceiverDerived {
+                raw_return,
+                effective_type,
+                receiver_type,
+            } => {
+                let subst = build_type_arg_subst(ctx.deps, &effective_type, &receiver_type);
+                let substituted = crate::indexer::apply_type_subst(&raw_return, &subst);
+                apply_call_site_type_args(substituted, ctx)
+            }
+        }
     }
-    // Lambda-result functions (e.g. Compose `remember { Foo() }`) return their
-    // trailing lambda's value. Infer that directly and never fall through to the
-    // global same-name lookup, which would otherwise pick an unrelated overload
-    // (the Kotlin compiler ships an internal `remember` returning `RealVariable`).
-    if LAMBDA_RESULT_FNS.contains(&fn_name.as_str()) {
-        return infer_lambda_result_type(node, bytes, deps, uri);
+}
+
+/// A strategy's verdict for `ctx.fn_name(...)`.
+enum StrategyVerdict {
+    /// This strategy's precondition doesn't match — try the next strategy.
+    NotApplicable,
+    /// This strategy's precondition matched; its answer — `Some` or `None`
+    /// — is FINAL. No later, less-authoritative strategy may run instead
+    /// (e.g. a scope-function name whose receiver type didn't resolve must
+    /// not fall through and match some unrelated same-named function).
+    Terminal(Option<StrategyOutcome>),
+}
+
+/// Substitute the CALLED FUNCTION's own generic type parameter(s) from an
+/// explicit call-site type argument (`filterIsInstance<Foo>()`'s own `<T>`)
+/// — distinct from receiver-type substitution, which only covers the
+/// receiver's own generic argument. Real example: `fun <R> Flow<*>.filterIsInstance(): Flow<R>`
+/// — `R` is the function's own type parameter, supplied only by the
+/// caller's explicit `<T>`, never derivable from the (possibly
+/// star-projected) receiver. The one place this runs, so every strategy
+/// that goes through `StrategyOutcome::finalize` gets it for free.
+fn apply_call_site_type_args<D: InferDeps>(ret: String, ctx: &CallCtx<'_, D>) -> String {
+    let Some(call_type_args) = ctx.node.call_site_type_arg_strings(ctx.bytes) else {
+        return ret;
+    };
+    let Some(callable_info) = ctx.deps.find_fun_callable_info(ctx.fn_name, ctx.uri) else {
+        return ret;
+    };
+    if callable_info.type_params.is_empty() {
+        return ret;
     }
-    let callee = node.child(0)?;
-    let receiver_type = if callee.kind() == KIND_NAV_EXPR {
-        let segments = collect_nav_segments(callee, bytes);
+    let fn_subst = build_fn_subst(&callable_info.type_params, &call_type_args);
+    apply_simple_subst(&ret, &fn_subst)
+}
+
+/// Scope functions (`let`/`also`/`run`/`apply`/`takeIf`/`takeUnless`): the
+/// call's type isn't a return-type lookup at all — it's the receiver's own
+/// type flowing through unchanged. Exclusive: a workspace's own unrelated
+/// `let`/`also` must never override stdlib scope-function semantics.
+fn scope_function_identity<D: InferDeps>(ctx: &CallCtx<'_, D>) -> StrategyVerdict {
+    if !SCOPE_FUNCTIONS.contains(&ctx.fn_name) {
+        return StrategyVerdict::NotApplicable;
+    }
+    let resolved_type = resolve_root_node_type(ctx.callee, ctx.bytes, ctx.deps, ctx.uri);
+    StrategyVerdict::Terminal(resolved_type.map(StrategyOutcome::Final))
+}
+
+/// Lambda-result functions (e.g. Compose `remember { Foo() }`) return their
+/// trailing lambda's value. Exclusive, for the same reason as scope
+/// functions: falling through would let the global same-name lookup pick an
+/// unrelated overload (the Kotlin compiler ships an internal `remember`
+/// returning `RealVariable`).
+fn lambda_result<D: InferDeps>(ctx: &CallCtx<'_, D>) -> StrategyVerdict {
+    if !LAMBDA_RESULT_FNS.contains(&ctx.fn_name) {
+        return StrategyVerdict::NotApplicable;
+    }
+    let resolved_type = infer_lambda_result_type(ctx.node, ctx.bytes, ctx.deps, ctx.uri);
+    StrategyVerdict::Terminal(resolved_type.map(StrategyOutcome::Final))
+}
+
+/// The receiver's own (indexed) type has a matching method — the most
+/// authoritative signature-based strategy.
+fn receiver_based_method<D: InferDeps>(ctx: &CallCtx<'_, D>) -> StrategyVerdict {
+    let receiver_type = if ctx.callee.kind() == KIND_NAV_EXPR {
+        let segments = collect_nav_segments(ctx.callee, ctx.bytes);
         if segments.len() >= 2 {
             resolve_segments_type(
                 &segments[..segments.len() - 1],
-                bytes,
-                deps,
-                uri,
+                ctx.bytes,
+                ctx.deps,
+                ctx.uri,
                 SuffixStrictness::LeakReceiver,
             )
         } else {
             None
         }
     } else {
-        resolve_root_node_type(callee, bytes, deps, uri)
+        resolve_root_node_type(ctx.callee, ctx.bytes, ctx.deps, ctx.uri)
     };
-    if let Some(ref recv_ty) = receiver_type {
-        let type_base = recv_ty.dotted_ident_prefix().last_segment().to_owned();
-        let effective_type = if type_base.starts_with_uppercase() {
-            type_base
-        } else {
-            capitalize_first_char(&type_base)
-        };
-        if !effective_type.is_empty() {
-            if let Some(ret_ty) =
-                deps.find_method_return_type_for_type(&effective_type, &fn_name, uri)
-            {
-                let subst = build_type_arg_subst(deps, &effective_type, recv_ty);
-                let substituted = crate::indexer::apply_type_subst(&ret_ty, &subst);
-                // Also substitute the CALLED FUNCTION's own generic type
-                // parameter(s) from an explicit call-site type argument --
-                // distinct from `subst` above, which only covers the
-                // receiver's own generic argument. Real example that erased
-                // this: `fun <R> Flow<*>.filterIsInstance(): Flow<R>` — `R`
-                // is the function's own type parameter, supplied only by the
-                // caller's explicit `<T>` (`filterIsInstance<Foo>()`), never
-                // derivable from the receiver (star-projected `Flow<*>`
-                // here, but this matters even for a concrete receiver: `R`
-                // and the receiver's own parameter are simply unrelated
-                // names). Mirrors the identical substitution the
-                // receiver-agnostic branch below already applies — this
-                // branch returned before ever reaching it.
-                if let Some(call_type_args) = node.call_site_type_arg_strings(bytes) {
-                    if let Some(callable_info) = deps.find_fun_callable_info(&fn_name, uri) {
-                        if !callable_info.type_params.is_empty() {
-                            let fn_subst =
-                                build_fn_subst(&callable_info.type_params, &call_type_args);
-                            return Some(apply_simple_subst(&substituted, &fn_subst));
-                        }
-                    }
-                }
-                return Some(substituted);
-            }
-        }
+    let Some(receiver_type) = receiver_type else {
+        return StrategyVerdict::NotApplicable;
+    };
+    let type_base = receiver_type
+        .dotted_ident_prefix()
+        .last_segment()
+        .to_owned();
+    let effective_type = if type_base.starts_with_uppercase() {
+        type_base
+    } else {
+        capitalize_first_char(&type_base)
+    };
+    if effective_type.is_empty() {
+        return StrategyVerdict::NotApplicable;
     }
-    // Prefer the import-aware lookup (binds to the actually-imported symbol)
-    // over every heuristic below -- a real, indexed, reachable declaration
-    // must win even when its name coincides with a known pattern (e.g. a
-    // workspace's own `fun <T> create(): Wrapper<T>` must resolve to
-    // `Wrapper<T>`, not the DI-factory heuristic's bare `T`). Only the
-    // *ambiguous* global-name scan (`find_fun_return_type`, several lines
-    // down) is deferred past the heuristics — see the comments on each.
-    let mut result = deps.find_fun_return_type_reachable(&fn_name, uri);
-    // Numeric conversion: `x.toLong()`/`.toInt()`/etc. — the function name
-    // alone fixes the return type (see `NUMERIC_CONVERSION_FNS`'s doc
-    // comment) once the reachable lookup above has already failed. Gated on
-    // `callee.kind() == KIND_NAV_EXPR` (an actual `.` receiver in the
-    // source, even if its type didn't resolve): a genuinely receiver-less
-    // `toLong()` naming an unrelated top-level function must not be guessed
-    // as the stdlib intrinsic.
-    if result.is_none() && callee.kind() == KIND_NAV_EXPR {
-        if let Some((_, ret_ty)) = NUMERIC_CONVERSION_FNS
-            .iter()
-            .find(|(name, _)| *name == fn_name)
-        {
-            return Some((*ret_ty).to_owned());
-        }
-    }
-    // DI-factory: `get<Foo>()`/`inject<Foo>()`/etc. once the reachable
-    // lookup above has already failed — read the type argument straight off
-    // the call site instead of giving up. Gated on both a known
-    // factory-function name AND an explicit `<T>` at the call site, so it's
-    // a strong, self-verifying signal, not a guess.
-    if result.is_none() && GENERIC_FACTORY_FNS.contains(&fn_name.as_str()) {
-        if let Some(type_args) = node.call_site_type_arg_strings(bytes) {
-            if let [single] = type_args.as_slice() {
-                if single.starts_with_uppercase() {
-                    return Some(single.clone());
-                }
-            }
-        }
-    }
-    // Retrofit-style class-literal: `retrofit.create(Foo::class.java)` with
-    // neither the receiver's type nor `create` itself indexed. The argument
-    // itself names the answer — see `find_class_literal_arg_type`. Also
-    // gated on `GENERIC_FACTORY_FNS` (same known-factory-name list as above):
-    // without it, this would wrongly override a real, correctly-indexed,
-    // differently-named function that merely happens to take a
-    // class-literal argument for an unrelated reason (e.g. a
-    // logging/reflection helper).
-    if result.is_none() && GENERIC_FACTORY_FNS.contains(&fn_name.as_str()) {
-        if let Some(class_arg_ty) = find_class_literal_arg_type(node, bytes) {
-            return Some(class_arg_ty);
-        }
-    }
-    // Fall back to the looser, receiver-agnostic global-name scan only when
-    // NOTHING above found anything -- a same-named match here has no regard
-    // for import/package reachability (a real production bug had this scan
-    // bare-name-match an unrelated `create` on a completely different,
-    // unimported class -- a KSP `SymbolProcessorProvider.create():
-    // SymbolProcessor` -- before the heuristics above got a chance to run,
-    // when they were gated on `result.is_none()` *after* this scan instead
-    // of before it).
-    result = result.or_else(|| deps.find_fun_return_type(&fn_name, uri));
-    // Apply call-site type argument substitution for generic functions.
-    if let Some(call_type_args) = node.call_site_type_arg_strings(bytes) {
-        if let Some(callable_info) = deps.find_fun_callable_info(&fn_name, uri) {
-            if !callable_info.type_params.is_empty() {
-                let subst = build_fn_subst(&callable_info.type_params, &call_type_args);
-                if let Some(ret) = result {
-                    result = Some(apply_simple_subst(&ret, &subst));
-                }
-            }
-        }
-    }
-    // Constructor fallback: `Foo(...)` with no resolvable function return type is
-    // a constructor call whose type is `Foo`. Only when the callee is a bare
-    // (unqualified or dotted) identifier whose leaf starts uppercase.
-    if result.is_none()
-        && fn_name.starts_with_uppercase()
-        && matches!(callee.kind(), k if k == KIND_SIMPLE_IDENT || k == KIND_NAV_EXPR || k == KIND_TYPE_IDENT)
+    let Some(raw_return) =
+        ctx.deps
+            .find_method_return_type_for_type(&effective_type, ctx.fn_name, ctx.uri)
+    else {
+        return StrategyVerdict::NotApplicable;
+    };
+    StrategyVerdict::Terminal(Some(StrategyOutcome::ReceiverDerived {
+        raw_return,
+        effective_type,
+        receiver_type,
+    }))
+}
+
+/// The import-aware lookup: binds to the symbol actually reachable from this
+/// file (same-package / imported), so a real declaration wins even when its
+/// name coincides with a curated heuristic name below.
+fn reachable_return_type<D: InferDeps>(ctx: &CallCtx<'_, D>) -> StrategyVerdict {
+    match ctx
+        .deps
+        .find_fun_return_type_reachable(ctx.fn_name, ctx.uri)
     {
-        return Some(fn_name);
+        Some(raw) => StrategyVerdict::Terminal(Some(StrategyOutcome::SignatureDerived(raw))),
+        None => StrategyVerdict::NotApplicable,
     }
-    result
+}
+
+/// `x.toLong()`/`.toInt()`/etc. — the function name alone fixes the return
+/// type (see `NUMERIC_CONVERSION_FNS`'s doc comment) once the reachable
+/// lookup above has already failed. Gated on `callee.kind() == KIND_NAV_EXPR`
+/// (an actual `.` receiver in the source, even if its type didn't resolve):
+/// a genuinely receiver-less `toLong()` naming an unrelated top-level
+/// function must not be guessed as the stdlib intrinsic.
+fn numeric_conversion<D: InferDeps>(ctx: &CallCtx<'_, D>) -> StrategyVerdict {
+    if ctx.callee.kind() != KIND_NAV_EXPR {
+        return StrategyVerdict::NotApplicable;
+    }
+    match NUMERIC_CONVERSION_FNS
+        .iter()
+        .find(|(name, _)| *name == ctx.fn_name)
+    {
+        Some((_, return_type)) => {
+            StrategyVerdict::Terminal(Some(StrategyOutcome::Final((*return_type).to_owned())))
+        }
+        None => StrategyVerdict::NotApplicable,
+    }
+}
+
+/// `get<Foo>()`/`inject<Foo>()`/etc. — read the type argument straight off
+/// the call site once the reachable lookup above has already failed. Gated
+/// on both a known factory-function name AND an explicit `<T>` at the call
+/// site, so it's a strong, self-verifying signal, not a guess.
+fn di_factory_type_argument<D: InferDeps>(ctx: &CallCtx<'_, D>) -> StrategyVerdict {
+    if !GENERIC_FACTORY_FNS.contains(&ctx.fn_name) {
+        return StrategyVerdict::NotApplicable;
+    }
+    let Some(type_args) = ctx.node.call_site_type_arg_strings(ctx.bytes) else {
+        return StrategyVerdict::NotApplicable;
+    };
+    let [single] = type_args.as_slice() else {
+        return StrategyVerdict::NotApplicable;
+    };
+    if !single.starts_with_uppercase() {
+        return StrategyVerdict::NotApplicable;
+    }
+    StrategyVerdict::Terminal(Some(StrategyOutcome::Final(single.clone())))
+}
+
+/// Retrofit-style class-literal: `retrofit.create(Foo::class.java)` with
+/// neither the receiver's type nor `create` itself indexed. The argument
+/// itself names the answer — see `find_class_literal_arg_type`. Also gated
+/// on `GENERIC_FACTORY_FNS` (same known-factory-name list as above): without
+/// it, this would wrongly override a real, correctly-indexed,
+/// differently-named function that merely happens to take a class-literal
+/// argument for an unrelated reason (e.g. a logging/reflection helper).
+fn retrofit_class_literal<D: InferDeps>(ctx: &CallCtx<'_, D>) -> StrategyVerdict {
+    if !GENERIC_FACTORY_FNS.contains(&ctx.fn_name) {
+        return StrategyVerdict::NotApplicable;
+    }
+    match find_class_literal_arg_type(ctx.node, ctx.bytes) {
+        Some(class_literal_type) => {
+            StrategyVerdict::Terminal(Some(StrategyOutcome::Final(class_literal_type)))
+        }
+        None => StrategyVerdict::NotApplicable,
+    }
+}
+
+/// The receiver-agnostic global-name scan — tried only when NOTHING above
+/// found anything. A same-named match here has no regard for import/package
+/// reachability (a real production bug had this scan bare-name-match an
+/// unrelated `create` on a completely different, unimported class — a KSP
+/// `SymbolProcessorProvider.create(): SymbolProcessor` — before the
+/// heuristics above got a chance to run, back when they were ordered after
+/// this scan instead of before it).
+fn global_name_scan<D: InferDeps>(ctx: &CallCtx<'_, D>) -> StrategyVerdict {
+    match ctx.deps.find_fun_return_type(ctx.fn_name, ctx.uri) {
+        Some(raw) => StrategyVerdict::Terminal(Some(StrategyOutcome::SignatureDerived(raw))),
+        None => StrategyVerdict::NotApplicable,
+    }
+}
+
+/// Constructor fallback: `Foo(...)` with no resolvable function return type
+/// is a constructor call whose type is `Foo`. Only when the callee is a bare
+/// (unqualified or dotted) identifier whose leaf starts uppercase.
+fn constructor_fallback<D: InferDeps>(ctx: &CallCtx<'_, D>) -> StrategyVerdict {
+    let is_bare_or_dotted_ident = matches!(
+        ctx.callee.kind(),
+        k if k == KIND_SIMPLE_IDENT || k == KIND_NAV_EXPR || k == KIND_TYPE_IDENT
+    );
+    if !ctx.fn_name.starts_with_uppercase() || !is_bare_or_dotted_ident {
+        return StrategyVerdict::NotApplicable;
+    }
+    StrategyVerdict::Terminal(Some(StrategyOutcome::Final(ctx.fn_name.to_owned())))
+}
+
+pub(super) fn resolve_call_expr_type<D: InferDeps>(
+    node: tree_sitter::Node<'_>,
+    bytes: &[u8],
+    deps: &D,
+    uri: &Url,
+) -> Option<String> {
+    let fn_name = node.call_fn_name(bytes)?;
+    // Guaranteed `Some`: `call_fn_name` itself reads `node.child(0)` to
+    // produce a name, so a resolved `fn_name` implies a callee exists.
+    let callee = node.child(0)?;
+    let ctx = CallCtx {
+        node,
+        bytes,
+        deps,
+        uri,
+        fn_name: fn_name.as_str(),
+        callee,
+    };
+
+    let strategies: [fn(&CallCtx<'_, D>) -> StrategyVerdict; 9] = [
+        scope_function_identity,
+        lambda_result,
+        receiver_based_method,
+        reachable_return_type,
+        numeric_conversion,
+        di_factory_type_argument,
+        retrofit_class_literal,
+        global_name_scan,
+        constructor_fallback,
+    ];
+    for strategy in strategies {
+        if let StrategyVerdict::Terminal(outcome) = strategy(&ctx) {
+            return outcome.map(|o| o.finalize(&ctx));
+        }
+    }
+    None
 }
 
 /// Find a `Foo::class` (optionally `.java`-suffixed, optionally
