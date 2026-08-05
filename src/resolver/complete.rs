@@ -923,41 +923,41 @@ fn append_dot_tail_completions(
 /// consistently with the rest of the completion results.
 fn completion_item_for_nested_symbol(
     indexer: &Indexer,
-    s: &SymbolEntry,
+    symbol: &SymbolEntry,
     uri_str: &str,
     caller: CallerContext<'_>,
 ) -> CompletionItem {
-    let kind = symbol_kind_to_completion(s.kind);
+    let kind = symbol_kind_to_completion(symbol.kind);
     let is_fn = matches!(
         kind,
         CompletionItemKind::FUNCTION | CompletionItemKind::METHOD
     );
     // Apply generic type param substitution when the symbol is from a different file.
-    let detail_raw = if s.detail.is_empty() {
+    let detail_raw = if symbol.detail.is_empty() {
         None
     } else {
-        Some(s.detail.clone())
+        Some(symbol.detail.clone())
     };
     let detail = detail_raw.map(|signature| match caller.uri {
         Some(calling_uri) => crate::indexer::resolution::cross_file_type_subst(
             indexer,
             uri_str,
-            s.selection_start(),
+            symbol.selection_start(),
             calling_uri,
             caller.cursor_line,
             &signature,
         ),
         None => signature,
     });
-    let mut data = serde_json::json!({DATA_URI: uri_str, DATA_LINE: s.selection_start(), DATA_COL: s.selection_range.start.character});
+    let mut data = serde_json::json!({DATA_URI: uri_str, DATA_LINE: symbol.selection_start(), DATA_COL: symbol.selection_range.start.character});
     if let Some(calling_uri) = caller.uri {
         data[DATA_CALLING_URI] = serde_json::Value::String(calling_uri.to_owned());
     }
     CompletionItem {
-        label: s.name.clone(),
+        label: symbol.name.clone(),
         kind: Some(kind),
         insert_text: if is_fn {
-            Some(format!("{}($1)", s.name))
+            Some(format!("{}($1)", symbol.name))
         } else {
             None
         },
@@ -966,7 +966,7 @@ fn completion_item_for_nested_symbol(
         } else {
             None
         },
-        sort_text: Some(format!("{:02}:{}", kind_sort_rank(Some(kind)), s.name)),
+        sort_text: Some(format!("{:02}:{}", kind_sort_rank(Some(kind)), symbol.name)),
         detail,
         command: if is_fn {
             Some(trigger_parameter_hints())

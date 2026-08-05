@@ -2548,6 +2548,32 @@ fn companion_object_forwarding_survives_a_private_companion() {
     );
 }
 
+/// Regression: `detail` is raw declaration text, so a comment sitting between
+/// the modifiers and the keywords lands in it. Testing for a lone `companion`
+/// token therefore classified `private /* companion */ object Registry` as a
+/// companion, forwarding an ordinary nested object's members onto the
+/// enclosing type. The two keywords must be adjacent.
+#[test]
+fn a_comment_mentioning_companion_does_not_make_an_object_a_companion() {
+    let idx = Indexer::new();
+    let file_uri = uri("/Registry.kt");
+    idx.index_content(
+        &file_uri,
+        "package app\n\
+         class Host {\n\
+         \x20 private /* companion */ object Registry {\n\
+         \x20   fun registryOnly(): Int = 1\n\
+         \x20 }\n\
+         }",
+    );
+    let items = complete_dot(&idx, "Host", &file_uri, false, None);
+    let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
+    assert!(
+        !labels.contains(&"registryOnly"),
+        "a plain nested object's members must not forward onto the enclosing type: {labels:?}"
+    );
+}
+
 /// Regression: Kotlin gives every anonymous `companion object { }` the same
 /// implicit name ("Companion"), so two unrelated classes in the same file
 /// each have a companion literally named "Companion" — their members share

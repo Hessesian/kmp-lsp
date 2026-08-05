@@ -278,14 +278,19 @@ impl SymbolEntry {
     ///
     /// `kind` alone can't tell one apart from a plain `object`; the
     /// `companion` soft-keyword survives only in `detail`, the raw
-    /// declaration text. Matched as a whitespace-delimited token, since
-    /// modifiers and annotations may precede it (`private companion object`).
+    /// declaration text — which may carry modifiers, annotations, and
+    /// comments alongside the keywords. Matching the two keywords as
+    /// *adjacent* tokens accepts every real form (`private companion
+    /// object`, `companion object Factory`) while rejecting a comment that
+    /// merely mentions the word (`private /* companion */ object Registry`).
     pub(crate) fn is_companion_object(&self) -> bool {
-        self.kind == SymbolKind::OBJECT
-            && self
-                .detail
-                .split_whitespace()
-                .any(|token| token == "companion")
+        if self.kind != SymbolKind::OBJECT {
+            return false;
+        }
+        let tokens: Vec<&str> = self.detail.split_whitespace().collect();
+        tokens
+            .windows(2)
+            .any(|pair| pair[0] == "companion" && pair[1] == "object")
     }
 
     /// Generic type parameter names extracted from the CST at parse time.
