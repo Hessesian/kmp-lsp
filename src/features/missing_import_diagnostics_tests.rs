@@ -149,6 +149,85 @@ fn offers_an_import_quickfix_for_a_flagged_diagnostic() {
     );
 }
 
+/// Regression: `EnumType.CONSTANT` (or any `Type.member` navigation root) parses
+/// as a bare `simple_identifier`, not `type_identifier` — tree-sitter-kotlin only
+/// emits `type_identifier` in type-annotation positions, never expression
+/// positions. `collect_candidates` only ever looked at `type_identifier` nodes for
+/// bare-class detection, so a capitalized navigation root like this was never even
+/// considered as a candidate — an unimported `DarkThemeConfig` referenced only as
+/// `DarkThemeConfig.LIGHT` inside a `when` branch produced zero diagnostics.
+#[test]
+fn flags_an_unimported_enum_constant_used_as_navigation_root() {
+    let (uri, idx, src) = setup(&[
+        (
+            "/lib/DarkThemeConfig.kt",
+            "package com.example.lib\nenum class DarkThemeConfig { LIGHT, DARK }\n",
+        ),
+        (
+            "/app/Caller.kt",
+            "package app\nfun use(x: Int): Boolean = when (x) {\n    1 -> DarkThemeConfig.LIGHT == DarkThemeConfig.LIGHT\n    else -> false\n}\n",
+        ),
+    ]);
+    let diags = run_diagnostics(&idx, &uri, &src);
+    assert_eq!(
+        diags.len(),
+        1,
+        "expected one diagnostic for the unimported DarkThemeConfig navigation root: {diags:?}"
+    );
+    assert!(diags[0].message.contains("DarkThemeConfig"));
+}
+
+/// Regression: a capitalized navigation root that's already resolvable (imported,
+/// same-package, a local declaration, etc.) must still be exempted — this proves
+/// the fix only widens *candidate collection*, not the existing reachability logic.
+#[test]
+fn no_diagnostic_for_an_imported_enum_constant_used_as_navigation_root() {
+    let (uri, idx, src) = setup(&[
+        (
+            "/lib/DarkThemeConfig.kt",
+            "package com.example.lib\nenum class DarkThemeConfig { LIGHT, DARK }\n",
+        ),
+        (
+            "/app/Caller.kt",
+            "package app\nimport com.example.lib.DarkThemeConfig\nfun use(x: Int): Boolean = when (x) {\n    1 -> DarkThemeConfig.LIGHT == DarkThemeConfig.LIGHT\n    else -> false\n}\n",
+        ),
+    ]);
+    let diags = run_diagnostics(&idx, &uri, &src);
+    assert!(
+        diags.is_empty(),
+        "explicit import should suppress the navigation-root candidate too: {diags:?}"
+    );
+}
+
+/// Regression: `missing_import_actions` identified "one of ours" purely by
+/// `diagnostic.source == "kmp-lsp"`, a string shared by every diagnostic producer
+/// in the LSP, then blindly parsed the message as `'Name' is ...`. `fill_when`'s
+/// non-exhaustive-`when` diagnostic ("'when' is missing branches: ...") also
+/// starts with a quoted word, so it parses as a flagged name "when" — and in a
+/// real project, JAR symbols coincidentally named `when` (e.g. Kotlin compiler
+/// internals) give `fqns_for_name` real FQNs to offer, producing a nonsensical
+/// "Import 'when'" quick-fix attached to the when-exhaustiveness diagnostic. This
+/// test reproduces the same collision shape (a foreign, quote-prefixed message
+/// whose leading word happens to name a real importable symbol) without depending
+/// on tree-sitter's handling of the literal keyword `when`.
+#[test]
+fn no_import_action_for_a_foreign_diagnostic_that_starts_with_a_quoted_importable_name() {
+    let (uri, idx, _src) = setup(&[
+        ("/lib/Foo.kt", "package com.example.lib\nclass Foo\n"),
+        ("/app/Caller.kt", "package app\nfun use() {}\n"),
+    ]);
+    let foreign = vec![Diagnostic {
+        message: "'Foo' is missing branches: A, B".to_owned(),
+        source: Some("kmp-lsp".to_owned()),
+        ..Default::default()
+    }];
+    let actions = missing_import_actions(&idx, &uri, &foreign);
+    assert!(
+        actions.is_empty(),
+        "must not offer an import fix for a foreign diagnostic that merely starts with a quoted word: {actions:?}"
+    );
+}
+
 #[test]
 fn no_import_action_for_an_unrelated_diagnostic() {
     let (uri, idx, _src) = setup(&[("/app/Caller.kt", "package app\nfun use() {}\n")]);
