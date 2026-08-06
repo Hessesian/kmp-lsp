@@ -988,3 +988,30 @@ fun test(): String = when (pick()) {
         "a call subject must not be guessed at: {diags:?}"
     );
 }
+
+/// Regression: `collect_navigation_segments` only descends through
+/// navigation-expression node kinds, so it bails immediately on anything
+/// else — but a long, entirely ordinary field-access chain (`a.b.c.d…`)
+/// never leaves those kinds, so its recursion depth is unbounded in the
+/// length of the chain. Before `MAX_CST_DESCENT_DEPTH` was added, a subject
+/// chain of tens of thousands of segments overflowed an 8 MiB stack
+/// (matching Linux's real main-thread default) — no malformed/ERROR-recovery
+/// input needed, just an ordinary (if absurd) `when (a.b.c…)`.  This runs
+/// `when_diagnostics` — the production entry point — end to end on a chain
+/// several times past the old crash threshold; without the guard this
+/// aborts the whole test process rather than failing an assertion.
+#[test]
+fn diagnostics_survives_a_pathologically_deep_when_subject_chain() {
+    let n = 5_000; // several times MAX_CST_DESCENT_DEPTH (512)
+    let mut chain = String::from("a");
+    for i in 0..n {
+        chain.push_str(&format!(".b{i}"));
+    }
+    let src = format!(
+        "fun test(a: Any) {{\n    when ({chain}) {{\n        Color.RED -> \"red\"\n    }}\n}}\n"
+    );
+    let idx = setup(&[("/Color.kt", ENUM_SRC), ("/main.kt", &src)]);
+    // Must return (not overflow the stack) — the specific result doesn't
+    // matter since the subject type can never resolve.
+    let _ = when_diagnostics(&idx, &uri("/main.kt"));
+}

@@ -242,3 +242,24 @@ fn no_import_action_for_an_unrelated_diagnostic() {
         "must not fire for diagnostics that aren't ours: {actions:?}"
     );
 }
+
+/// Regression: `collect_candidates` recurses over every CST node
+/// unconditionally, with no depth guard. A long chain of `+` — perfectly
+/// valid Kotlin, no malformed/ERROR-recovery input needed — parses as a
+/// deeply left-nested `binary_expression` tree, and before
+/// `MAX_CST_DESCENT_DEPTH` was added this overflowed an 8 MiB stack
+/// (Linux's real main-thread default). This drives
+/// `missing_import_diagnostics` — the production entry point — several
+/// times past the old crash threshold; without the guard this aborts the
+/// whole test process rather than failing an assertion.
+#[test]
+fn missing_import_diagnostics_survives_a_pathologically_deep_expression() {
+    let n = 5_000; // several times MAX_CST_DESCENT_DEPTH (512)
+    let mut src = String::from("package app\nfun f() {\n    val x = 1");
+    for _ in 0..n {
+        src.push_str("+1");
+    }
+    src.push_str("\n}\n");
+    let (uri, idx, src) = setup(&[("/a.kt", &src)]);
+    let _ = run_diagnostics(&idx, &uri, &src);
+}

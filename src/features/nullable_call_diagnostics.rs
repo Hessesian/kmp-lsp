@@ -51,7 +51,14 @@ pub(crate) fn nullable_dot_call_diagnostics(
     //     them — `s.let { }` on a nullable `s` is never flagged.
     let bytes = &doc.bytes;
     let mut diagnostics = Vec::new();
-    collect_nav_nodes(doc.tree.root_node(), bytes, indexer, uri, &mut diagnostics);
+    collect_nav_nodes(
+        doc.tree.root_node(),
+        bytes,
+        indexer,
+        uri,
+        &mut diagnostics,
+        0,
+    );
     diagnostics
 }
 
@@ -61,7 +68,15 @@ fn collect_nav_nodes(
     indexer: &Indexer,
     uri: &Url,
     diagnostics: &mut Vec<Diagnostic>,
+    depth: usize,
 ) {
+    // See `crate::util::MAX_CST_DESCENT_DEPTH`: bail rather than overflow the
+    // stack on a pathologically deep tree (huge chained expression, or
+    // ERROR-recovery on a huge malformed file).
+    if depth >= crate::util::MAX_CST_DESCENT_DEPTH {
+        return;
+    }
+
     if node.kind() == KIND_NAV_EXPR {
         if let Some(diag) = check_nullable_dot_call(&node, bytes, indexer, uri) {
             diagnostics.push(diag);
@@ -71,7 +86,7 @@ fn collect_nav_nodes(
     let mut cursor = node.walk();
     if cursor.goto_first_child() {
         loop {
-            collect_nav_nodes(cursor.node(), bytes, indexer, uri, diagnostics);
+            collect_nav_nodes(cursor.node(), bytes, indexer, uri, diagnostics, depth + 1);
             if !cursor.goto_next_sibling() {
                 break;
             }
@@ -206,6 +221,20 @@ fn resolve_receiver(
 ///
 /// `holder.repo` → `["holder", "repo"]`; `getFoo().bar` → `None`.
 fn pure_field_chain(node: &tree_sitter::Node, bytes: &[u8]) -> Option<Vec<String>> {
+    pure_field_chain_at(node, bytes, 0)
+}
+
+fn pure_field_chain_at(
+    node: &tree_sitter::Node,
+    bytes: &[u8],
+    depth: usize,
+) -> Option<Vec<String>> {
+    // Kind-bounded (only descends through KIND_NAV_EXPR), but an arbitrarily
+    // long `a.b.c.d…` field-access chain is still an arbitrarily deep
+    // recursion — cap it. See `crate::util::MAX_CST_DESCENT_DEPTH`.
+    if depth >= crate::util::MAX_CST_DESCENT_DEPTH {
+        return None;
+    }
     match node.kind() {
         KIND_SIMPLE_IDENT => Some(vec![node.utf8_text_owned(bytes)?]),
         KIND_NAV_EXPR => {
@@ -221,7 +250,7 @@ fn pure_field_chain(node: &tree_sitter::Node, bytes: &[u8]) -> Option<Vec<String
                 return None;
             }
             let field = suffix.first_child_of_kind(KIND_SIMPLE_IDENT)?;
-            let mut chain = pure_field_chain(&receiver, bytes)?;
+            let mut chain = pure_field_chain_at(&receiver, bytes, depth + 1)?;
             chain.push(field.utf8_text_owned(bytes)?);
             Some(chain)
         }
