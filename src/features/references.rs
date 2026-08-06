@@ -422,6 +422,13 @@ fn reference_matches_parent_class(
 
 // ─── rg search ────────────────────────────────────────────────────────────────
 
+/// Throttle counter for the join-panic warning below — see
+/// [`crate::util::throttled_warn`]. A panic here means "find references"
+/// silently returns an empty list, indistinguishable from a genuine
+/// zero-references result.
+static RG_LOCATIONS_JOIN_FAILURES: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
+
 async fn rg_locations(
     search: &ReferenceSearch,
     index: &(impl SymbolIndex + ScopeQuery + SearchAccess + Send + Sync),
@@ -475,7 +482,7 @@ async fn rg_locations(
         (vec![], vec![])
     };
     let request = search.clone();
-    tokio::task::spawn_blocking(move || {
+    let join_result = tokio::task::spawn_blocking(move || {
         let rg_req = RgSearchRequest::new(
             &request.name,
             request.parent_class.as_deref(),
@@ -504,8 +511,24 @@ async fn rg_locations(
         };
         crate::rg::rg_find_references(&rg_req, matcher.as_deref())
     })
-    .await
-    .unwrap_or_default()
+    .await;
+    let join_result = match join_result {
+        Ok(locs) => Ok(locs),
+        Err(e) => {
+            crate::util::throttled_warn(&RG_LOCATIONS_JOIN_FAILURES, 5, || {
+                crate::util::join_failure_message(
+                    &format!(
+                        "running the rg find-references fallback for `{}` from {}",
+                        search.name,
+                        search.uri.path()
+                    ),
+                    &e,
+                )
+            });
+            Err(e)
+        }
+    };
+    join_result.unwrap_or_default()
 }
 
 // ─── In-memory current-file injection ─────────────────────────────────────────

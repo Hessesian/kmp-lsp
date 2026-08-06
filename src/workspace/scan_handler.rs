@@ -372,6 +372,10 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
         // Transition to InProgress before spawning.
         if let Ok(mut phase) = self.indexer.jar_phase.lock() {
             *phase = JarPhase::InProgress;
+        } else {
+            crate::indexer::jar_phase::report_jar_phase_lock_poisoned(
+                "ScanHandler::spawn_jar_indexing (-> InProgress)",
+            );
         }
 
         let indexer = Arc::clone(&self.indexer);
@@ -531,6 +535,10 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
             if paths.is_empty() && sources_total == 0 {
                 if let Ok(mut phase) = indexer.jar_phase.lock() {
                     *phase = JarPhase::Ready { count: 0 };
+                } else {
+                    crate::indexer::jar_phase::report_jar_phase_lock_poisoned(
+                        "ScanHandler::spawn_jar_indexing (-> Ready{0}, no jars found)",
+                    );
                 }
                 in_progress.store(false, Ordering::Release);
                 let _ = jar_done_tx.send(());
@@ -565,6 +573,10 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
             };
             if let Ok(mut phase) = indexer.jar_phase.lock() {
                 *phase = final_phase;
+            } else {
+                crate::indexer::jar_phase::report_jar_phase_lock_poisoned(
+                    "ScanHandler::spawn_jar_indexing (-> Ready/Failed, terminal)",
+                );
             }
             // Invalidate the completion cache so the next request returns JAR
             // symbols (launch, collect, etc.) without requiring a retype.
@@ -594,6 +606,14 @@ fn abandon_stale_jar_scan(
                 count: indexer.jar_definitions.len(),
             };
         }
+    } else {
+        // Worse here than at the other transition sites: this function's own
+        // doc comment says leaving `jar_phase` stuck in Pending/InProgress
+        // "would keep `call_arg_diagnostics` suppressed indefinitely" — a
+        // poisoned lock produces exactly that stuck state, silently.
+        crate::indexer::jar_phase::report_jar_phase_lock_poisoned(
+            "ScanHandler::abandon_stale_jar_scan",
+        );
     }
     let _ = jar_done_tx.send(());
 }

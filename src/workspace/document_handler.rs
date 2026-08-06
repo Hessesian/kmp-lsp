@@ -28,6 +28,27 @@ const STRONG_BUILD_MARKERS: [&str; 6] = [
 ];
 const WEAK_BUILD_MARKERS: [&str; 1] = ["Package.swift"];
 
+/// Throttle counters for the `spawn_blocking`/`tokio::spawn` join-panic
+/// warnings below — see [`crate::util::throttled_warn`]. Each names a
+/// distinct background task, so a panic in one doesn't spend the budget of
+/// an unrelated one.
+static FILE_SAVED_REINDEX_JOIN_FAILURES: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
+static STORE_LIVE_TREE_JOIN_FAILURES: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
+static OPEN_DOC_INDEX_JOIN_FAILURES: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
+static OPEN_DOC_SEMANTIC_DIAGS_JOIN_FAILURES: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
+static REPUBLISH_PROMOTION_JOIN_FAILURES: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
+static REPUBLISH_SEMANTIC_DIAGS_JOIN_FAILURES: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
+static OUTSIDE_ROOT_INDEX_JOIN_FAILURES: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
+static LIVE_TREES_URI_PARSE_FAILURES: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
+
 pub(crate) struct DocumentHandler {
     indexer: Arc<Indexer>,
     client: Option<Client>,
@@ -95,12 +116,20 @@ impl DocumentHandler {
             let Ok(permit) = semaphore.acquire_owned().await else {
                 return;
             };
-            tokio::task::spawn_blocking(move || {
+            let display_path = path.display().to_string();
+            let join_result = tokio::task::spawn_blocking(move || {
                 let _permit = permit;
                 indexer.index_content(&uri, &content);
             })
-            .await
-            .ok();
+            .await;
+            if let Err(ref e) = join_result {
+                crate::util::throttled_warn(&FILE_SAVED_REINDEX_JOIN_FAILURES, 5, || {
+                    crate::util::join_failure_message(
+                        &format!("re-indexing {display_path} after didSave"),
+                        e,
+                    )
+                });
+            }
         });
     }
 
@@ -130,9 +159,19 @@ impl DocumentHandler {
         self.indexer.set_live_lines(uri, content);
 
         let indexer = Arc::clone(&self.indexer);
+        let uri_for_log = uri.clone();
         let uri = uri.clone();
         let content = content.to_owned();
-        let _ = tokio::task::spawn_blocking(move || indexer.store_live_tree(&uri, &content)).await;
+        let join_result =
+            tokio::task::spawn_blocking(move || indexer.store_live_tree(&uri, &content)).await;
+        if let Err(ref e) = join_result {
+            crate::util::throttled_warn(&STORE_LIVE_TREE_JOIN_FAILURES, 5, || {
+                crate::util::join_failure_message(
+                    &format!("parsing the live tree for {}", uri_for_log.path()),
+                    e,
+                )
+            });
+        }
     }
 
     fn spawn_open_document_indexing(&self, uri: Url, content: String) {
@@ -179,6 +218,17 @@ impl DocumentHandler {
                 }
                 Err(join_error) => Err(join_error),
             };
+            if let Err(ref e) = result {
+                crate::util::throttled_warn(&OPEN_DOC_INDEX_JOIN_FAILURES, 5, || {
+                    crate::util::join_failure_message(
+                        &format!(
+                            "indexing freshly-opened document {}",
+                            diagnostics_uri.path()
+                        ),
+                        e,
+                    )
+                });
+            }
 
             let (index_result, diagnostics_text) = match result {
                 Ok((data, text)) => (Ok(data), text),
@@ -231,9 +281,19 @@ impl DocumentHandler {
                     d
                 }
             })
-            .await
-            .unwrap_or_default();
-            diagnostics.extend(semantic_diags);
+            .await;
+            if let Err(ref e) = semantic_diags {
+                crate::util::throttled_warn(&OPEN_DOC_SEMANTIC_DIAGS_JOIN_FAILURES, 5, || {
+                    crate::util::join_failure_message(
+                        &format!(
+                            "computing semantic diagnostics for freshly-opened {}",
+                            diagnostics_uri.path()
+                        ),
+                        e,
+                    )
+                });
+            }
+            diagnostics.extend(semantic_diags.unwrap_or_default());
 
             if let Some(client) = client {
                 client
@@ -253,7 +313,25 @@ impl DocumentHandler {
             .indexer
             .live_trees
             .iter()
-            .filter_map(|entry| Url::parse(entry.key()).ok())
+            .filter_map(|entry| match Url::parse(entry.key()) {
+                Ok(uri) => Some(uri),
+                Err(e) => {
+                    // `live_trees` keys are always `Url::to_string()` of a URI this
+                    // process itself inserted (see `live_tree_impl.rs`) — this should
+                    // never fail to round-trip. A hit here means the key was
+                    // corrupted, and that open file silently drops out of this
+                    // republish pass (its diagnostics stay stale/suppressed).
+                    crate::util::throttled_warn(&LIVE_TREES_URI_PARSE_FAILURES, 5, || {
+                        format!(
+                            "republish_open_file_diagnostics: live_trees key {:?} failed to \
+                             parse as a URI ({e}) — skipping; this file's diagnostics will not \
+                             be republished",
+                            entry.key()
+                        )
+                    });
+                    None
+                }
+            })
             .collect();
 
         // Re-attempt import promotion for EVERY open file, SEQUENTIALLY in
@@ -273,12 +351,24 @@ impl DocumentHandler {
         tokio::task::spawn(async move {
             let promotion_indexer = Arc::clone(&handler_indexer);
             let promotion_uris = open_uris.clone();
-            let _ = tokio::task::spawn_blocking(move || {
+            let promotion_uri_count = promotion_uris.len();
+            let join_result = tokio::task::spawn_blocking(move || {
                 for uri in &promotion_uris {
                     promote_file_imports(&promotion_indexer, uri);
                 }
             })
             .await;
+            if let Err(ref e) = join_result {
+                crate::util::throttled_warn(&REPUBLISH_PROMOTION_JOIN_FAILURES, 5, || {
+                    crate::util::join_failure_message(
+                        &format!(
+                            "re-promoting imports for {promotion_uri_count} open file(s) after \
+                             the JAR scan completed"
+                        ),
+                        e,
+                    )
+                });
+            }
 
             for uri in open_uris {
                 let indexer = Arc::clone(&handler_indexer);
@@ -312,10 +402,24 @@ impl DocumentHandler {
                             d
                         }
                     })
-                    .await
-                    .unwrap_or_default();
+                    .await;
+                    if let Err(ref e) = semantic_diags {
+                        crate::util::throttled_warn(
+                            &REPUBLISH_SEMANTIC_DIAGS_JOIN_FAILURES,
+                            5,
+                            || {
+                                crate::util::join_failure_message(
+                                    &format!(
+                                        "computing republished semantic diagnostics for {}",
+                                        uri.path()
+                                    ),
+                                    e,
+                                )
+                            },
+                        );
+                    }
                     let mut diagnostics = syntax_diags;
-                    diagnostics.extend(semantic_diags);
+                    diagnostics.extend(semantic_diags.unwrap_or_default());
                     if let Some(client) = client {
                         client.publish_diagnostics(uri, diagnostics, None).await;
                     }
@@ -329,11 +433,20 @@ impl DocumentHandler {
         let semaphore = indexer.parse_sem();
         tokio::task::spawn(async move {
             if let Ok(permit) = semaphore.acquire_owned().await {
-                let _ = tokio::task::spawn_blocking(move || {
+                let display_path = uri.path().to_owned();
+                let join_result = tokio::task::spawn_blocking(move || {
                     let _permit = permit;
                     indexer.index_content(&uri, &content);
                 })
                 .await;
+                if let Err(ref e) = join_result {
+                    crate::util::throttled_warn(&OUTSIDE_ROOT_INDEX_JOIN_FAILURES, 5, || {
+                        crate::util::join_failure_message(
+                            &format!("indexing outside-root document {display_path}"),
+                            e,
+                        )
+                    });
+                }
             }
         });
     }

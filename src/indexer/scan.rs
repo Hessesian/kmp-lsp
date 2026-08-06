@@ -17,6 +17,11 @@ use tower_lsp::lsp_types::*;
 /// Maximum number of file-read failures to log before suppressing further warnings.
 const MAX_READ_FAILURES_LOGGED: usize = 5;
 
+/// Throttle counter for the priority-indexing join-panic warning below —
+/// see [`crate::util::throttled_warn`].
+static PRIORITY_INDEX_JOIN_FAILURES: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
+
 use crate::indexer::{
     cache::{cache_entry_to_file_result, save_cache, try_load_cache, write_status_file},
     discover::{find_source_files, warm_discover_files},
@@ -746,14 +751,25 @@ impl Indexer {
                 let idx_c = Arc::clone(&self);
                 let uri_c = uri.clone();
                 let cont_c = content.clone();
-                let supers: Vec<String> = tokio::task::spawn_blocking(move || {
+                let join_result = tokio::task::spawn_blocking(move || {
                     idx_c
                         .index_content(&uri_c, &cont_c)
                         .map(|d| d.supers.iter().map(|(_, n, _)| n.clone()).collect())
                         .unwrap_or_default()
                 })
-                .await
-                .unwrap_or_default();
+                .await;
+                if let Err(ref e) = join_result {
+                    crate::util::throttled_warn(&PRIORITY_INDEX_JOIN_FAILURES, 5, || {
+                        crate::util::join_failure_message(
+                            &format!(
+                                "priority-indexing {} to seed its supertypes",
+                                path.display()
+                            ),
+                            e,
+                        )
+                    });
+                }
+                let supers: Vec<String> = join_result.unwrap_or_default();
                 // Expand priority set to include supertypes so cross-class navigation
                 // (super, override resolution) works before the full scan completes.
                 if !supers.is_empty() {
@@ -778,10 +794,22 @@ impl Indexer {
                     if path.exists() {
                         if let Ok(content) = tokio::fs::read_to_string(&path).await {
                             if let Ok(uri) = Url::from_file_path(&path) {
-                                let _ = tokio::task::spawn_blocking(move || {
+                                let join_result = tokio::task::spawn_blocking(move || {
                                     idx.index_content(&uri, &content)
                                 })
                                 .await;
+                                if let Err(ref e) = join_result {
+                                    crate::util::throttled_warn(
+                                        &PRIORITY_INDEX_JOIN_FAILURES,
+                                        5,
+                                        || {
+                                            crate::util::join_failure_message(
+                                                &format!("priority-indexing {}", path.display()),
+                                                e,
+                                            )
+                                        },
+                                    );
+                                }
                             }
                         }
                     }
