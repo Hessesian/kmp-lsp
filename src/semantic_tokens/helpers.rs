@@ -232,11 +232,21 @@ pub(super) fn push_token(
 }
 
 pub(super) fn visit_tree(node: Node<'_>, f: &mut impl FnMut(Node<'_>)) {
+    visit_tree_at(node, f, 0);
+}
+
+fn visit_tree_at(node: Node<'_>, f: &mut impl FnMut(Node<'_>), depth: usize) {
+    // See `crate::util::MAX_CST_DESCENT_DEPTH`: bail rather than overflow the
+    // stack on a pathologically deep tree (huge chained expression, or
+    // ERROR-recovery on a huge malformed file).
+    if depth >= crate::util::MAX_CST_DESCENT_DEPTH {
+        return;
+    }
     f(node);
     let mut cursor = node.walk();
     if cursor.goto_first_child() {
         loop {
-            visit_tree(cursor.node(), f);
+            visit_tree_at(cursor.node(), f, depth + 1);
             if !cursor.goto_next_sibling() {
                 break;
             }

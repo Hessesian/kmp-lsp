@@ -54,6 +54,7 @@ pub(crate) fn call_arg_diagnostics(indexer: &Indexer, uri: &Url, doc: &LiveDoc) 
         &mut diagnostics,
         &mut stats,
         &mut sig_cache,
+        0,
     );
     log::debug!(
         "call_arg_diagnostics: {} call_expr nodes, {} skipped(lambda), {} skipped(scope), {} resolved ({} cache hits), {}ms",
@@ -73,6 +74,7 @@ struct DiagStats {
     resolve_ms: u128,
 }
 
+#[allow(clippy::too_many_arguments)]
 fn collect_call_nodes(
     node: tree_sitter::Node,
     bytes: &[u8],
@@ -81,7 +83,15 @@ fn collect_call_nodes(
     diagnostics: &mut Vec<Diagnostic>,
     stats: &mut DiagStats,
     sig_cache: &mut std::collections::HashMap<(String, Option<String>), Resolution<Signature>>,
+    depth: usize,
 ) {
+    // See `crate::util::MAX_CST_DESCENT_DEPTH`: bail rather than overflow the
+    // stack on a pathologically deep tree (huge chained expression, or
+    // ERROR-recovery on a huge malformed file).
+    if depth >= crate::util::MAX_CST_DESCENT_DEPTH {
+        return;
+    }
+
     if node.kind() == KIND_CALL_EXPR {
         if let Some(diag) = check_call_args(&node, bytes, indexer, uri, stats, sig_cache) {
             diagnostics.push(diag);
@@ -99,6 +109,7 @@ fn collect_call_nodes(
                 diagnostics,
                 stats,
                 sig_cache,
+                depth + 1,
             );
             if !cursor.goto_next_sibling() {
                 break;

@@ -544,3 +544,24 @@ fn direct_nested_field_chain_member_resolves_despite_same_named_decoy() {
     );
     assert!(diagnostics[0].message.contains("tabCzech"));
 }
+
+/// Regression: `collect_nav_nodes` recurses over every CST node
+/// unconditionally, and `pure_field_chain` recurses through an arbitrarily
+/// long field-access chain — neither had a depth guard. Before
+/// `MAX_CST_DESCENT_DEPTH` was added, a long `a.b.c.d…` chain (ordinary
+/// Kotlin, no malformed input needed) overflowed an 8 MiB stack (Linux's
+/// real main-thread default). This drives `nullable_dot_call_diagnostics`
+/// — the production entry point — several times past the old crash
+/// threshold; without the guard this aborts the whole test process rather
+/// than failing an assertion.
+#[test]
+fn nullable_diagnostics_survives_a_pathologically_deep_field_chain() {
+    let n = 5_000; // several times MAX_CST_DESCENT_DEPTH (512)
+    let mut chain = String::from("a");
+    for i in 0..n {
+        chain.push_str(&format!(".b{i}"));
+    }
+    let src = format!("fun f(a: Any) {{\n    {chain}\n}}\n");
+    let (uri, idx, src) = setup(&[("/a.kt", &src)]);
+    let _ = run_diagnostics(&idx, &uri, &src);
+}

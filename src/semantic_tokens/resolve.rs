@@ -39,7 +39,7 @@ pub(super) fn walk_references(
     }
     // Tier 1: direct index lookups (type refs, top-level calls, annotations)
     let mut resolved = Vec::new();
-    walk_kotlin_references(doc.tree.root_node(), src, indexer, uri, &mut resolved);
+    walk_kotlin_references(doc.tree.root_node(), src, indexer, uri, &mut resolved, 0);
     raw.extend(resolved);
 
     // Tier 2: receiver-inferred member coloring
@@ -55,7 +55,14 @@ fn walk_kotlin_references(
     indexer: &Indexer,
     uri: &Url,
     out: &mut Vec<RawToken>,
+    depth: usize,
 ) {
+    // See `crate::util::MAX_CST_DESCENT_DEPTH`: bail rather than overflow the
+    // stack on a pathologically deep tree (huge chained expression, or
+    // ERROR-recovery on a huge malformed file).
+    if depth >= crate::util::MAX_CST_DESCENT_DEPTH {
+        return;
+    }
     if is_kotlin_keyword_node(node) {
         push_token(node, type_index(&SemanticTokenType::KEYWORD), 0, src, out);
     } else if let Some(token_type) = classify_kotlin_reference(node, src.bytes, indexer, uri) {
@@ -64,7 +71,7 @@ fn walk_kotlin_references(
     let mut cursor = node.walk();
     if cursor.goto_first_child() {
         loop {
-            walk_kotlin_references(cursor.node(), src, indexer, uri, out);
+            walk_kotlin_references(cursor.node(), src, indexer, uri, out, depth + 1);
             if !cursor.goto_next_sibling() {
                 break;
             }

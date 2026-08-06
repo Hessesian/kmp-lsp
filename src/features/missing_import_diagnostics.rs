@@ -108,7 +108,16 @@ fn collect_candidates(
     type_params: &HashSet<String>,
     receivers: &[String],
     out: &mut Vec<Candidate>,
+    depth: usize,
 ) {
+    // A pathological input (a single expression with tens of thousands of
+    // chained tokens, or ERROR-recovery on a huge malformed file) can nest
+    // far deeper than any real Kotlin syntax — bail rather than overflow the
+    // stack. See `crate::util::MAX_CST_DESCENT_DEPTH`.
+    if depth >= crate::util::MAX_CST_DESCENT_DEPTH {
+        return;
+    }
+
     let kind = node.kind();
 
     // Don't descend into import/package declarations — their identifiers aren't uses.
@@ -212,7 +221,7 @@ fn collect_candidates(
 
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
-        collect_candidates(child, src, active, active_receivers, out);
+        collect_candidates(child, src, active, active_receivers, out, depth + 1);
     }
 }
 
@@ -237,6 +246,7 @@ pub(crate) fn collect_missing_import_flags(
         &HashSet::new(),
         &[],
         &mut candidates,
+        0,
     );
 
     // `importable` / `in-scope` are per-name; only the receiver check is per-occurrence,

@@ -39,7 +39,7 @@ pub(super) fn collect_nav_segments<'a>(
     bytes: &[u8],
 ) -> Vec<NavSegment<'a>> {
     let mut segments = Vec::new();
-    collect_nav_segments_recursive(node, bytes, &mut segments);
+    collect_nav_segments_recursive(node, bytes, &mut segments, 0);
     segments
 }
 
@@ -47,9 +47,20 @@ fn collect_nav_segments_recursive<'a>(
     node: tree_sitter::Node<'a>,
     bytes: &[u8],
     segments: &mut Vec<NavSegment<'a>>,
+    depth: usize,
 ) {
     if node.kind() != KIND_NAV_EXPR {
         // Base case: not a navigation expression
+        segments.push(NavSegment::Root(node));
+        return;
+    }
+
+    // Kind-bounded (only ever descends through KIND_NAV_EXPR/KIND_CALL_EXPR),
+    // but an arbitrarily long `a.b.c.d…` / `a.let{}.let{}…` chain is still an
+    // arbitrarily deep recursion — cap it rather than overflow the stack.
+    // See `crate::util::MAX_CST_DESCENT_DEPTH`. Treat the cut point as an
+    // opaque root, same as the ordinary non-nav-expression base case above.
+    if depth >= crate::util::MAX_CST_DESCENT_DEPTH {
         segments.push(NavSegment::Root(node));
         return;
     }
@@ -58,13 +69,13 @@ fn collect_nav_segments_recursive<'a>(
     if let Some(left) = node.named_child(0) {
         match left.kind() {
             k if k == KIND_NAV_EXPR => {
-                collect_nav_segments_recursive(left, bytes, segments);
+                collect_nav_segments_recursive(left, bytes, segments, depth + 1);
             }
             k if k == KIND_CALL_EXPR => {
                 // Intermediate call expression (e.g. `a.let { }.let { }`)
                 // Recurse into its callee to get the chain up to that point
                 if let Some(inner_callee) = left.child(0) {
-                    collect_nav_segments_recursive(inner_callee, bytes, segments);
+                    collect_nav_segments_recursive(inner_callee, bytes, segments, depth + 1);
                 }
                 segments.push(NavSegment::CallExpr(left));
             }
