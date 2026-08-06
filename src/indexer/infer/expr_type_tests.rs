@@ -511,3 +511,49 @@ fn unknown_identifier_returns_none() {
         None
     );
 }
+
+// ─── recursion-depth guard ──────────────────────────────────────────────────
+
+/// Regression: `infer_expr_type` (via `infer_parenthesized_expr_type`,
+/// `infer_navigation_expr_type`, `infer_arithmetic_expr_type`, …) recurses
+/// over the expression tree with no depth guard. A pathologically deep,
+/// perfectly valid parenthesization (`((((…42…))))`) — no malformed/
+/// ERROR-recovery input needed — parses as a deeply nested
+/// `parenthesized_expression` tree and, before `MAX_CST_DESCENT_DEPTH` was
+/// threaded through this module, stack-overflowed a few thousand levels in
+/// (the same vulnerability class already fixed for
+/// `indexer::infer::chain::collect_nav_segments`, `indexer::cst_folding`,
+/// and the `features::*_diagnostics` walkers — this call graph was missed
+/// by that sweep). This drives `infer_expr_type` — reachable from
+/// `inlay_hints` and `InferDeps::find_var_type`'s CST fallback — several
+/// times past `MAX_CST_DESCENT_DEPTH` (512); without the guard this aborts
+/// the whole test process rather than failing an assertion.
+#[test]
+fn infer_expr_type_survives_a_pathologically_deep_parenthesization() {
+    let n = 5_000; // several times MAX_CST_DESCENT_DEPTH (512)
+    let mut src = String::new();
+    for _ in 0..n {
+        src.push('(');
+    }
+    src.push_str("42");
+    for _ in 0..n {
+        src.push(')');
+    }
+    // Past the cap the walk simply bails (returns `None`) — same trade-off
+    // every other capped walker makes — so no specific value is asserted,
+    // only that inference runs to completion without crashing.
+    let _ = infer(&src);
+}
+
+/// Same regression, via a deeply nested navigation chain (`a.b.c.d…`)
+/// instead of parenthesization — exercises `infer_navigation_expr_type`'s
+/// receiver recursion specifically.
+#[test]
+fn infer_expr_type_survives_a_pathologically_deep_navigation_chain() {
+    let n = 5_000; // several times MAX_CST_DESCENT_DEPTH (512)
+    let mut src = String::from("a");
+    for _ in 0..n {
+        src.push_str(".b");
+    }
+    let _ = infer(&src);
+}
