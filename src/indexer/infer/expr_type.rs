@@ -57,6 +57,34 @@ pub(crate) fn infer_expr_type(
     deps: &impl InferDeps,
     uri: &Url,
 ) -> Option<String> {
+    infer_expr_type_at_depth(node, bytes, deps, uri, 0)
+}
+
+/// Depth-guarded implementation of [`infer_expr_type`].
+///
+/// `infer_expr_type` and its helpers (`infer_navigation_expr_type`,
+/// `infer_if_expr_type`, `infer_range_expr_type`, `infer_arithmetic_expr_type`,
+/// `infer_parenthesized_expr_type`) form a hand-rolled recursive descent over
+/// the expression tree — the same pattern `MAX_CST_DESCENT_DEPTH` was
+/// introduced for elsewhere (`indexer::infer::chain::collect_nav_segments`,
+/// `indexer::cst_folding`, the `features::*_diagnostics` walkers). This one
+/// was missed by that sweep: a pathologically long `a.b.c.d…` navigation
+/// chain, `((((…))))` parenthesization, or `1+1+1+…` arithmetic chain — all
+/// syntactically valid, no malformed input required — recurses one frame per
+/// segment with no cap, reachable from `inlay_hints` and
+/// `infer_variable_type_from_cst` (the CST fallback `InferDeps::find_var_type`
+/// uses). Bail out (not error) past the cap, same trade-off every other
+/// capped walker makes.
+fn infer_expr_type_at_depth(
+    node: Node<'_>,
+    bytes: &[u8],
+    deps: &impl InferDeps,
+    uri: &Url,
+    depth: usize,
+) -> Option<String> {
+    if depth >= crate::util::MAX_CST_DESCENT_DEPTH {
+        return None;
+    }
     match node.kind() {
         KIND_INTEGER_LITERAL => Some("Int".to_owned()),
         KIND_LONG_LITERAL => Some("Long".to_owned()),
@@ -69,7 +97,7 @@ pub(crate) fn infer_expr_type(
             infer_ident_type(node, bytes, deps, uri)
         }
         k if k == KIND_THIS_EXPR => infer_this_expr_type(node, bytes, deps, uri),
-        k if k == KIND_NAV_EXPR => infer_navigation_expr_type(node, bytes, deps, uri),
+        k if k == KIND_NAV_EXPR => infer_navigation_expr_type(node, bytes, deps, uri, depth),
         k if k == KIND_CALL_EXPR => infer_call_expr_type(node, bytes, deps, uri),
         k if k == KIND_CHECK_EXPR
             || k == KIND_COMPARISON_EXPR
@@ -79,12 +107,14 @@ pub(crate) fn infer_expr_type(
             Some("Boolean".to_owned())
         }
         k if k == KIND_PREFIX_EXPR => infer_prefix_expr_type(node, bytes),
-        k if k == KIND_IF_EXPR => infer_if_expr_type(node, bytes, deps, uri),
-        k if k == KIND_RANGE_EXPR => infer_range_expr_type(node, bytes, deps, uri),
+        k if k == KIND_IF_EXPR => infer_if_expr_type(node, bytes, deps, uri, depth),
+        k if k == KIND_RANGE_EXPR => infer_range_expr_type(node, bytes, deps, uri, depth),
         k if k == KIND_ADDITIVE_EXPR || k == KIND_MULTIPLICATIVE_EXPR => {
-            infer_arithmetic_expr_type(node, bytes, deps, uri)
+            infer_arithmetic_expr_type(node, bytes, deps, uri, depth)
         }
-        k if k == KIND_PARENTHESIZED_EXPR => infer_parenthesized_expr_type(node, bytes, deps, uri),
+        k if k == KIND_PARENTHESIZED_EXPR => {
+            infer_parenthesized_expr_type(node, bytes, deps, uri, depth)
+        }
         _ => None,
     }
 }
@@ -175,10 +205,11 @@ fn infer_navigation_expr_type(
     bytes: &[u8],
     deps: &impl InferDeps,
     uri: &Url,
+    depth: usize,
 ) -> Option<String> {
     let receiver = nav_receiver_node(node)?;
     let member = nav_member_ident(node)?.utf8_text_owned(bytes)?;
-    let receiver_type = infer_expr_type(receiver, bytes, deps, uri)?;
+    let receiver_type = infer_expr_type_at_depth(receiver, bytes, deps, uri, depth + 1)?;
 
     if nav_is_call_callee(node) {
         // The two-step `find_fun_return_type_reachable` → `find_fun_return_type` replicates
@@ -264,6 +295,7 @@ fn infer_if_expr_type<D: InferDeps>(
     bytes: &[u8],
     deps: &D,
     uri: &Url,
+    depth: usize,
 ) -> Option<String> {
     node.first_child_of_kind(KIND_ELSE)?;
 
@@ -272,8 +304,8 @@ fn infer_if_expr_type<D: InferDeps>(
         .into_iter();
     let then_expr = bodies.next()?.child(0)?;
     let else_expr = bodies.next()?.child(0)?;
-    let then_type = infer_expr_type(then_expr, bytes, deps, uri)?;
-    let else_type = infer_expr_type(else_expr, bytes, deps, uri)?;
+    let then_type = infer_expr_type_at_depth(then_expr, bytes, deps, uri, depth + 1)?;
+    let else_type = infer_expr_type_at_depth(else_expr, bytes, deps, uri, depth + 1)?;
     (then_type == else_type).then_some(then_type)
 }
 
@@ -284,12 +316,13 @@ fn infer_range_expr_type<D: InferDeps>(
     bytes: &[u8],
     deps: &D,
     uri: &Url,
+    depth: usize,
 ) -> Option<String> {
     let lhs = node.child(0)?;
     let rhs_idx = node.child_count().checked_sub(1)?;
     let rhs = node.child(rhs_idx)?;
-    let lhs_ty = infer_expr_type(lhs, bytes, deps, uri)?;
-    let rhs_ty = infer_expr_type(rhs, bytes, deps, uri)?;
+    let lhs_ty = infer_expr_type_at_depth(lhs, bytes, deps, uri, depth + 1)?;
+    let rhs_ty = infer_expr_type_at_depth(rhs, bytes, deps, uri, depth + 1)?;
     match (lhs_ty.as_str(), rhs_ty.as_str()) {
         ("Int", "Int") => Some("IntRange".to_owned()),
         ("Long", "Long") | ("Int", "Long") | ("Long", "Int") => Some("LongRange".to_owned()),
@@ -306,9 +339,10 @@ fn infer_parenthesized_expr_type<D: InferDeps>(
     bytes: &[u8],
     deps: &D,
     uri: &Url,
+    depth: usize,
 ) -> Option<String> {
     let inner = node.named_child(0)?;
-    infer_expr_type(inner, bytes, deps, uri)
+    infer_expr_type_at_depth(inner, bytes, deps, uri, depth + 1)
 }
 
 /// Numeric rank for Kotlin's arithmetic operand-promotion, highest wins
@@ -343,15 +377,16 @@ fn infer_arithmetic_expr_type<D: InferDeps>(
     bytes: &[u8],
     deps: &D,
     uri: &Url,
+    depth: usize,
 ) -> Option<String> {
     let lhs = node.child(0)?;
     let op = node.child(1)?.utf8_text(bytes).ok()?;
     let rhs = node.child(2)?;
-    let lhs_ty = infer_expr_type(lhs, bytes, deps, uri)?;
+    let lhs_ty = infer_expr_type_at_depth(lhs, bytes, deps, uri, depth + 1)?;
     if op == "+" && lhs_ty == "String" {
         return Some("String".to_owned());
     }
-    let rhs_ty = infer_expr_type(rhs, bytes, deps, uri)?;
+    let rhs_ty = infer_expr_type_at_depth(rhs, bytes, deps, uri, depth + 1)?;
     let lhs_rank = numeric_rank(&lhs_ty)?;
     let rhs_rank = numeric_rank(&rhs_ty)?;
     // Kotlin has no same-rank arithmetic overload for `Byte`/`Short`: unlike
