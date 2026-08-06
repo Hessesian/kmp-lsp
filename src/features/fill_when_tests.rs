@@ -923,3 +923,68 @@ fun handle(effect: DashboardInvestedContract.Effect): String =
         "expected diagnostic for missing Failure branch"
     );
 }
+
+/// Regression: the subject was only recognised as a bare identifier, so a
+/// field access — `when (userData.themeBrand)`, the shape this diagnostic
+/// most often meets in real code — resolved to no type and silently reported
+/// nothing, however many branches were missing.
+#[test]
+fn diagnostics_reports_missing_branches_for_a_field_access_subject() {
+    let src = "\
+data class UserData(val brand: Color)
+class Holder(val userData: UserData) {
+    val theme: String = when (userData.brand) {
+        Color.RED -> \"red\"
+    }
+}
+";
+    let idx = setup(&[("/Color.kt", ENUM_SRC), ("/main.kt", src)]);
+    let diags = when_diagnostics(&idx, &uri("/main.kt"));
+    assert_eq!(diags.len(), 1, "expected one diagnostic: {diags:?}");
+    assert!(
+        diags[0].message.contains("GREEN") && diags[0].message.contains("BLUE"),
+        "message: {}",
+        diags[0].message
+    );
+}
+
+/// Regression: enum entries were matched by requiring a strictly greater
+/// start LINE than the enum's, so a single-line `enum class C { A, B }`
+/// yielded no entries and disabled the diagnostic entirely.
+#[test]
+fn diagnostics_reports_missing_branches_for_a_single_line_enum() {
+    let src = "\
+fun test(c: Compact): String = when (c) {
+    Compact.ON -> \"on\"
+}
+";
+    let idx = setup(&[
+        ("/Compact.kt", "enum class Compact { ON, OFF }\n"),
+        ("/main.kt", src),
+    ]);
+    let diags = when_diagnostics(&idx, &uri("/main.kt"));
+    assert_eq!(diags.len(), 1, "expected one diagnostic: {diags:?}");
+    assert!(
+        diags[0].message.contains("OFF"),
+        "message: {}",
+        diags[0].message
+    );
+}
+
+/// A subject the name chain cannot describe (a call) must resolve nothing
+/// rather than mistaking an identifier inside it for the subject.
+#[test]
+fn diagnostics_ignores_a_call_expression_subject() {
+    let src = "\
+fun pick(): Color = Color.RED
+fun test(): String = when (pick()) {
+    Color.RED -> \"red\"
+}
+";
+    let idx = setup(&[("/Color.kt", ENUM_SRC), ("/main.kt", src)]);
+    let diags = when_diagnostics(&idx, &uri("/main.kt"));
+    assert!(
+        diags.is_empty(),
+        "a call subject must not be guessed at: {diags:?}"
+    );
+}
