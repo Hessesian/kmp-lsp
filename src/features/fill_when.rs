@@ -207,6 +207,7 @@ fn collect_when_nodes(
     // stack on a pathologically deep tree (huge chained expression, or
     // ERROR-recovery on a huge malformed file).
     if depth >= crate::util::MAX_CST_DESCENT_DEPTH {
+        crate::util::report_cst_depth_exceeded("collect_when_nodes", node);
         return;
     }
 
@@ -522,6 +523,7 @@ fn collect_navigation_segments(
     depth: usize,
 ) -> Option<()> {
     if depth >= crate::util::MAX_CST_DESCENT_DEPTH {
+        crate::util::report_cst_depth_exceeded("collect_navigation_segments", *node);
         return None;
     }
     match node.kind() {

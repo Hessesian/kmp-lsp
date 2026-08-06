@@ -28,6 +28,7 @@ fn walk_kotlin_at(node: Node<'_>, src: &Source<'_>, out: &mut Vec<RawToken>, dep
     // stack on a pathologically deep tree (huge chained expression, or
     // ERROR-recovery on a huge malformed file).
     if depth >= crate::util::MAX_CST_DESCENT_DEPTH {
+        crate::util::report_cst_depth_exceeded("walk_kotlin_at", node);
         return;
     }
     classify_kotlin(node, src, out);
