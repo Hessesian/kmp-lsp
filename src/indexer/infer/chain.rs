@@ -61,6 +61,7 @@ fn collect_nav_segments_recursive<'a>(
     // See `crate::util::MAX_CST_DESCENT_DEPTH`. Treat the cut point as an
     // opaque root, same as the ordinary non-nav-expression base case above.
     if depth >= crate::util::MAX_CST_DESCENT_DEPTH {
+        crate::util::report_cst_depth_exceeded("collect_nav_segments_recursive", node);
         segments.push(NavSegment::Root(node));
         return;
     }

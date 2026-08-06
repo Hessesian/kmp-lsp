@@ -83,6 +83,7 @@ fn infer_expr_type_at_depth(
     depth: usize,
 ) -> Option<String> {
     if depth >= crate::util::MAX_CST_DESCENT_DEPTH {
+        crate::util::report_cst_depth_exceeded("infer_expr_type_at_depth", node);
         return None;
     }
     match node.kind() {

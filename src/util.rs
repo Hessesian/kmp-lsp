@@ -29,7 +29,44 @@ pub(crate) fn home_dir() -> Option<PathBuf> {
 /// introduced.
 ///
 /// Not a correctness bound in the usual sense: once hit, callers simply
-/// stop descending into that subtree (silently under-reporting deeper
-/// diagnostics) rather than erroring — the same trade-off `resolve_chain`'s
-/// hierarchy walk already makes with its own `max_depth` parameter.
+/// stop descending into that subtree (under-reporting deeper diagnostics)
+/// rather than erroring — the same trade-off `resolve_chain`'s hierarchy
+/// walk already makes with its own `max_depth` parameter. Report every hit
+/// through [`report_cst_depth_exceeded`] so that trade-off stays visible.
 pub(crate) const MAX_CST_DESCENT_DEPTH: usize = 512;
+
+/// How many depth-cap hits to log before going quiet. One pathological tree
+/// trips the cap once per node past the limit, so an unthrottled log would
+/// bury everything else; the first few carry all the diagnostic value.
+const MAX_DEPTH_REPORTS: usize = 5;
+
+static DEPTH_REPORTS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+/// Record that a recursive CST descent stopped at [`MAX_CST_DESCENT_DEPTH`].
+///
+/// The cap exists to convert a stack overflow into degraded output, but a
+/// silent bail leaves nothing to explain *why* results went missing — and a
+/// hit on ordinary-looking source is itself the signal that something is
+/// wrong (a cycle, or a walker reaching far deeper than real syntax should).
+/// `site` names the walker; the node's position points at the input.
+pub(crate) fn report_cst_depth_exceeded(site: &str, node: tree_sitter::Node<'_>) {
+    let seen = DEPTH_REPORTS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    if seen >= MAX_DEPTH_REPORTS {
+        return;
+    }
+    let position = node.start_position();
+    log::warn!(
+        "CST descent hit the depth cap ({MAX_CST_DESCENT_DEPTH}) in {site} at \
+         {}:{} (node kind `{}`) — deeper nodes were skipped. Real Kotlin/Java \
+         nests a few dozen levels, so this points at either a pathologically \
+         large expression or a resolution loop.{}",
+        position.row + 1,
+        position.column + 1,
+        node.kind(),
+        if seen + 1 == MAX_DEPTH_REPORTS {
+            " Further reports suppressed."
+        } else {
+            ""
+        },
+    );
+}
