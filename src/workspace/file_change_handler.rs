@@ -15,6 +15,14 @@ use crate::features::unused_import_diagnostics::unused_import_diagnostics;
 use crate::indexer::live_tree::{lang_for_path, parse_live};
 use crate::indexer::Indexer;
 
+/// Throttle counters for the `spawn_blocking` join-panic warnings below — see
+/// [`crate::util::throttled_warn`]. Each names a distinct task; a panic in
+/// one is unrelated to a panic in the other, so they're capped separately.
+static INDEX_CONTENT_JOIN_FAILURES: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
+static SEMANTIC_DIAGS_JOIN_FAILURES: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
+
 pub(crate) struct FileChangeHandler {
     indexer: Arc<Indexer>,
     client: Option<Client>,
@@ -142,6 +150,17 @@ impl FileChangeHandler {
                 return;
             }
 
+            if let Err(ref e) = result {
+                crate::util::throttled_warn(&INDEX_CONTENT_JOIN_FAILURES, 5, || {
+                    crate::util::join_failure_message(
+                        &format!(
+                            "re-indexing {} on the debounced didChange path",
+                            diagnostics_uri.path()
+                        ),
+                        e,
+                    )
+                });
+            }
             let (index_result, diagnostics_text) = result.unwrap_or_else(|_| (None, String::new()));
             let index_hit_cache = index_result.is_none();
             log::debug!(
@@ -193,8 +212,19 @@ impl FileChangeHandler {
                     diagnostics
                 }
             })
-            .await
-            .unwrap_or_default();
+            .await;
+            if let Err(ref e) = semantic_diags {
+                crate::util::throttled_warn(&SEMANTIC_DIAGS_JOIN_FAILURES, 5, || {
+                    crate::util::join_failure_message(
+                        &format!(
+                            "computing semantic diagnostics for {} on the debounced didChange path",
+                            diagnostics_uri.path()
+                        ),
+                        e,
+                    )
+                });
+            }
+            let semantic_diags = semantic_diags.unwrap_or_default();
 
             let mut diagnostics = syntax_diags;
             diagnostics.extend(semantic_diags);

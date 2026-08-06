@@ -20,6 +20,11 @@ use super::{
     Resolver, MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK,
 };
 
+/// Throttle counter for [`members_for_jar_backed_type`]'s `jar_symbol_packages`
+/// side-table misalignment warning — see [`crate::util::throttled_warn`].
+static JAR_SYMBOL_PACKAGES_MISALIGNED: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
+
 // ─── CompletionItem.data JSON keys ───────────────────────────────────────────
 
 /// Symbol definition URI.
@@ -1081,10 +1086,30 @@ fn members_for_jar_backed_type(
     let member_indices: Vec<usize> = {
         let symbol_packages = indexer.jar_symbol_packages.get(file_uri);
         let package_at = |index: usize| -> Option<&str> {
-            symbol_packages
-                .as_ref()
-                .and_then(|packages| packages.value().get(index))
-                .map(String::as_str)
+            let packages = symbol_packages.as_ref()?;
+            let values = packages.value();
+            let result = values.get(index).map(String::as_str);
+            // `jar_symbol_packages` is populated index-aligned with `symbols`
+            // (see the population-site comment in `jar.rs`). The map entry
+            // for this `file_uri` existing but being too short for `index`
+            // means the two collections drifted apart — the same class of
+            // bug that already made an explicitly-imported `padding` vanish
+            // from chained-call completion once. A missing map entry
+            // entirely is the legitimate pre-v8-sidecar case and isn't
+            // logged.
+            if result.is_none() && index >= values.len() {
+                crate::util::throttled_warn(&JAR_SYMBOL_PACKAGES_MISALIGNED, 5, || {
+                    format!(
+                        "jar_symbol_packages misaligned for {file_uri}: symbol index {index} out \
+                         of bounds (side table has {} entries) — member package disambiguation \
+                         for `{inner_name}` completion falls back to the declaring class's own \
+                         package, which can pick the wrong same-named class in a multi-package \
+                         jar",
+                        values.len(),
+                    )
+                });
+            }
+            result
         };
         // Candidate members: container match + the shared symbol filters.
         let candidate_indices: Vec<usize> = symbols
