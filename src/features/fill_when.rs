@@ -48,7 +48,7 @@ fn analyze_when<'a>(
         .children(&mut when_node.walk())
         .find(|c| c.kind() == KIND_WHEN_SUBJECT)?;
 
-    let subject_var = extract_subject_identifier(&subject_node, source_bytes)?;
+    let subject_segments = extract_subject_segments(&subject_node, source_bytes)?;
 
     let existing = collect_existing_branches(&when_node, source_bytes);
 
@@ -56,8 +56,14 @@ fn analyze_when<'a>(
         return None;
     }
 
-    let subject_type = resolve_subject_type_from_cst(&when_node, &subject_var, source_bytes)
-        .or_else(|| crate::resolver::infer::infer_variable_type(indexer, &subject_var, uri))?;
+    let subject_type = match subject_segments.as_slice() {
+        // A local or parameter: prefer the declaration the CST can see over a
+        // whole-file name scan.
+        [subject_var] => resolve_subject_type_from_cst(&when_node, subject_var, source_bytes)
+            .or_else(|| crate::resolver::infer::infer_variable_type(indexer, subject_var, uri))?,
+        // `userData.themeBrand` — walk the field chain to its leaf type.
+        chain => crate::resolver::infer::infer_field_chain_type(indexer, chain, uri)?.qualified,
+    };
     let subject_type = subject_type.strip_nullable().to_string();
 
     let (type_kind, members) = resolve_type_members(
@@ -465,14 +471,53 @@ fn extract_full_type_name(user_type: &tree_sitter::Node, source: &[u8]) -> Optio
     }
 }
 
-fn extract_subject_identifier(subject_node: &tree_sitter::Node, source: &[u8]) -> Option<String> {
-    // when_subject → "(" simple_identifier ")"
+/// The subject expression's identifier chain: `state` → `["state"]`,
+/// `userData.themeBrand` → `["userData", "themeBrand"]`.
+///
+/// `None` for any subject that isn't a plain identifier or field access — a
+/// call, an index, a literal — since those need real expression inference
+/// rather than a name chain.
+fn extract_subject_segments(
+    subject_node: &tree_sitter::Node,
+    source: &[u8],
+) -> Option<Vec<String>> {
+    // when_subject → "(" <expression> ")"
     for child in subject_node.children(&mut subject_node.walk()) {
-        if child.kind() == KIND_SIMPLE_IDENT {
-            return child.utf8_text(source).ok().map(|s| s.to_string());
+        match child.kind() {
+            KIND_SIMPLE_IDENT => {
+                return Some(vec![child.utf8_text(source).ok()?.to_owned()]);
+            }
+            KIND_NAV_EXPR => {
+                let mut segments = Vec::new();
+                collect_navigation_segments(&child, source, &mut segments)?;
+                return Some(segments);
+            }
+            _ => {}
         }
     }
     None
+}
+
+/// Flatten a `navigation_expression` into its identifier segments, failing on
+/// anything that isn't a plain field access (a call in the chain, say).
+fn collect_navigation_segments(
+    node: &tree_sitter::Node,
+    source: &[u8],
+    out: &mut Vec<String>,
+) -> Option<()> {
+    match node.kind() {
+        KIND_SIMPLE_IDENT => out.push(node.utf8_text(source).ok()?.to_owned()),
+        KIND_NAV_EXPR | KIND_NAV_SUFFIX => {
+            for child in node.children(&mut node.walk()) {
+                // The `.` separator carries no segment of its own.
+                if child.kind() != "." {
+                    collect_navigation_segments(&child, source, out)?;
+                }
+            }
+        }
+        _ => return None,
+    }
+    Some(())
 }
 
 /// Resolve whether the type is an enum, sealed class, or Boolean, and return its members.
@@ -610,14 +655,16 @@ fn collect_enum_members(
     file_data: &crate::types::FileData,
     enum_symbol: &crate::types::SymbolEntry,
 ) -> Vec<WhenMember> {
-    let enum_range = &enum_symbol.range;
     file_data
         .symbols
         .iter()
         .filter(|s| {
+            // Column-aware containment, not a line comparison: a one-line
+            // `enum class Brand { DEFAULT, ANDROID }` declares its entries on
+            // the enum's own start line, so requiring a strictly greater line
+            // found no entries at all and silently disabled the diagnostic.
             s.kind == SymbolKind::ENUM_MEMBER
-                && s.range.start.line > enum_range.start.line
-                && s.range.end.line <= enum_range.end.line
+                && crate::resolver::resolve::range_encloses(enum_symbol.range, s.range)
         })
         .map(|s| WhenMember {
             name: s.name.clone(),
