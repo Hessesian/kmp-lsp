@@ -475,14 +475,13 @@ thread_local! {
 /// `infer_expr_type` → `infer_ident_type` → `infer_variable_type_from_cst` →
 /// `infer_expr_type`, and `infer_expr_type` is a public entry point that
 /// restarts its depth counter at zero on every lap, so the counter never
-/// climbs. This was not theoretical: it aborted the server in normal editing
-/// with a 65,127-frame stack overflow, and the resulting core dump shows that
-/// exact four-frame cycle repeating to exhaustion.
+/// climbs. Only remembering what is already in flight terminates it.
 ///
-/// Keyed on `(uri, var_name)` — the full identity of the query. Re-entering
-/// the *same* variable in the *same* file cannot produce an answer the outer
-/// call is not already computing, so returning `None` loses nothing; a
-/// different variable or file is unaffected and resolves normally.
+/// Keyed on `(uri, var_name)` because that is what the resolution itself keys
+/// on — [`find_prop_initializer`] searches a file by name — so re-entering the
+/// same key cannot produce an answer the outer call is not already computing,
+/// and returning `None` loses nothing. A resolution that became scope-aware
+/// would need a correspondingly finer key here.
 struct ResolutionInFlight {
     key: (String, String),
 }
