@@ -45,6 +45,18 @@ pub(crate) fn cst_folding_ranges(indexer: &Indexer, uri: &Url) -> Option<Vec<Fol
 }
 
 fn collect_folds(node: tree_sitter::Node, out: &mut Vec<FoldingRange>) {
+    collect_folds_at(node, out, 0);
+}
+
+fn collect_folds_at(node: tree_sitter::Node, out: &mut Vec<FoldingRange>, depth: usize) {
+    // See `crate::util::MAX_CST_DESCENT_DEPTH`: bail rather than overflow the
+    // stack on a pathologically deep tree (huge chained expression, or
+    // ERROR-recovery on a huge malformed file).
+    if depth >= crate::util::MAX_CST_DESCENT_DEPTH {
+        crate::util::report_cst_depth_exceeded!("collect_folds_at", node);
+        return;
+    }
+
     let kind = node.kind();
 
     if REGION_KINDS.contains(&kind) {
@@ -114,8 +126,50 @@ fn collect_folds(node: tree_sitter::Node, out: &mut Vec<FoldingRange>) {
             }
             i = j;
         } else {
-            collect_folds(child, out);
+            collect_folds_at(child, out, depth + 1);
             i += 1;
         }
+    }
+}
+
+#[cfg(test)]
+mod depth_guard_tests {
+    //! Regression coverage for the `MAX_CST_DESCENT_DEPTH` guard added to
+    //! `collect_folds`. Before the guard, a long chain of `+` (perfectly
+    //! valid Kotlin — no malformed/ERROR-recovery input needed) parses as a
+    //! deeply left-nested `binary_expression` tree, and `collect_folds`'s
+    //! unconditional full-tree recursion overflowed an 8 MiB stack (matching
+    //! Linux's real main-thread default) at ~10-20k chained terms in a debug
+    //! build. This test proves the guard actually stops the descent — run on
+    //! a thread with that same 8 MiB stack, well past the old crash
+    //! threshold, and it must both survive and terminate promptly.
+    use tree_sitter::Parser;
+
+    #[test]
+    fn collect_folds_does_not_overflow_on_a_pathologically_deep_chain() {
+        let n = 200_000; // ~3x the old debug-build crash threshold
+        let mut src = String::with_capacity(n * 2 + 32);
+        src.push_str("fun f() { val x = 1");
+        for _ in 0..n {
+            src.push_str("+1");
+        }
+        src.push_str("\n}\n");
+
+        let handle = std::thread::Builder::new()
+            .stack_size(8 * 1024 * 1024) // match Linux's default main-thread stack
+            .spawn(move || {
+                let mut parser = Parser::new();
+                parser
+                    .set_language(&tree_sitter_kotlin::language())
+                    .unwrap();
+                let tree = parser.parse(&src, None).unwrap();
+                let mut out = Vec::new();
+                super::collect_folds(tree.root_node(), &mut out);
+                out.len()
+            })
+            .unwrap();
+        // If this doesn't overflow, `join` returns normally (a stack overflow
+        // aborts the whole process rather than failing this join).
+        handle.join().expect("must not overflow the stack");
     }
 }

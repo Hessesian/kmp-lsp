@@ -36,3 +36,29 @@ impl JarPhase {
         matches!(self, JarPhase::Pending | JarPhase::InProgress)
     }
 }
+
+/// Whether `Indexer::jar_phase`'s poisoning has already been reported this
+/// process. `std::sync::Mutex` poisons on any panic while the lock is held,
+/// and every `if let Ok(mut phase) = jar_phase.lock()` transition site in
+/// `indexer.rs`/`scan_handler.rs` currently has no `else` — once poisoned,
+/// each becomes a permanent silent no-op, and the JAR-indexing state machine
+/// (Pending → InProgress → Ready/Failed) freezes wherever it was, with hover
+/// and completion never learning why JAR symbols stopped updating. Gated to
+/// fire once (not per call site, not per throttle count) since every hit
+/// after the first describes the exact same poisoning.
+static JAR_PHASE_POISON_REPORTED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+/// Report that `jar_phase.lock()` returned `Err` (poisoned) at `site`. See
+/// [`JAR_PHASE_POISON_REPORTED`] for why this only ever logs once.
+pub(crate) fn report_jar_phase_lock_poisoned(site: &str) {
+    if JAR_PHASE_POISON_REPORTED.swap(true, std::sync::atomic::Ordering::Relaxed) {
+        return;
+    }
+    log::warn!(
+        "jar_phase mutex is poisoned (first observed in {site}) — a prior JAR-phase update \
+         panicked while holding the lock. Every future phase transition will silently no-op \
+         from here on, freezing JAR-derived hover/completion at whatever phase they were in \
+         when this fired."
+    );
+}

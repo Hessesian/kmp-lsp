@@ -451,10 +451,59 @@ pub(crate) fn infer_variable_type_from_cst(
     var_name: &str,
     uri: &Url,
 ) -> Option<String> {
+    // Cycle guard — see `ResolutionInFlight`. Inferring a variable's type
+    // infers its initializer, which resolves the identifiers inside it, which
+    // infers *their* variables. A self- or mutually-referential initializer
+    // closes that into a loop with no natural end.
+    let _guard = ResolutionInFlight::enter(uri, var_name)?;
     let doc = indexer.live_doc_or_parse(uri)?;
     let bytes = doc.bytes.as_slice();
-    let init = find_prop_initializer(doc.tree.root_node(), bytes, var_name)?;
+    let init = find_prop_initializer(doc.tree.root_node(), bytes, var_name, 0)?;
     crate::indexer::infer_expr_type(init, bytes, indexer, uri)
+}
+
+thread_local! {
+    /// Variables whose type inference is currently on the stack, per thread.
+    static RESOLVING_VARIABLES: std::cell::RefCell<std::collections::HashSet<(String, String)>> =
+        std::cell::RefCell::new(std::collections::HashSet::new());
+}
+
+/// Breaks reference cycles in variable-type inference by refusing to re-enter
+/// a resolution that is already in flight.
+///
+/// A depth cap cannot solve this. The loop runs
+/// `infer_expr_type` → `infer_ident_type` → `infer_variable_type_from_cst` →
+/// `infer_expr_type`, and `infer_expr_type` is a public entry point that
+/// restarts its depth counter at zero on every lap, so the counter never
+/// climbs. Only remembering what is already in flight terminates it.
+///
+/// Keyed on `(uri, var_name)` because that is what the resolution itself keys
+/// on — [`find_prop_initializer`] searches a file by name — so re-entering the
+/// same key cannot produce an answer the outer call is not already computing,
+/// and returning `None` loses nothing. A resolution that became scope-aware
+/// would need a correspondingly finer key here.
+struct ResolutionInFlight {
+    key: (String, String),
+}
+
+impl ResolutionInFlight {
+    /// Claims `(uri, var_name)`, or returns `None` if it is already being
+    /// resolved further up the stack — the cycle case.
+    fn enter(uri: &Url, var_name: &str) -> Option<Self> {
+        let key = (uri.as_str().to_owned(), var_name.to_owned());
+        let claimed = RESOLVING_VARIABLES.with(|set| set.borrow_mut().insert(key.clone()));
+        if !claimed {
+            crate::util::report_resolution_cycle("infer_variable_type_from_cst", var_name, uri);
+            return None;
+        }
+        Some(ResolutionInFlight { key })
+    }
+}
+
+impl Drop for ResolutionInFlight {
+    fn drop(&mut self) {
+        RESOLVING_VARIABLES.with(|set| set.borrow_mut().remove(&self.key));
+    }
 }
 
 /// Depth-first search for the initializer expression of `val/var <var_name> = …`.
@@ -462,8 +511,17 @@ fn find_prop_initializer<'a>(
     node: tree_sitter::Node<'a>,
     bytes: &[u8],
     var_name: &str,
+    depth: usize,
 ) -> Option<tree_sitter::Node<'a>> {
     use crate::queries::{KIND_EQ, KIND_PROP_DECL};
+    // A name that is never declared makes this search the whole file, so a
+    // pathological input reaches its full depth here rather than returning
+    // early — bail rather than overflow the stack. See
+    // `crate::util::MAX_CST_DESCENT_DEPTH`.
+    if depth >= crate::util::MAX_CST_DESCENT_DEPTH {
+        crate::util::report_cst_depth_exceeded!("find_prop_initializer", node);
+        return None;
+    }
     if node.kind() == KIND_PROP_DECL && prop_decl_name(node, bytes).as_deref() == Some(var_name) {
         let mut cursor = node.walk();
         let mut past_eq = false;
@@ -480,7 +538,7 @@ fn find_prop_initializer<'a>(
     }
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
-        if let Some(found) = find_prop_initializer(child, bytes, var_name) {
+        if let Some(found) = find_prop_initializer(child, bytes, var_name, depth + 1) {
             return Some(found);
         }
     }

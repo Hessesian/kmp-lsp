@@ -14,6 +14,11 @@ use super::traits::{SearchAccess, SymbolIndex};
 /// Maximum results returned from the index scan.
 const WORKSPACE_SYMBOL_CAP: usize = 512;
 
+/// Throttle counter for [`collect_index_symbols`]'s URI-parse warning — see
+/// [`crate::util::throttled_warn`].
+static INDEXED_FILE_URI_PARSE_FAILURES: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
+
 /// Timeout for the rg cold-start fallback.
 ///
 /// Note: this bounds how long `compute_workspace_symbols` *awaits* the
@@ -58,6 +63,19 @@ fn collect_index_symbols(
     let mut f = |uri_str: &str, data: &Arc<FileData>| {
         index_populated = true;
         let Some(uri) = parse_uri(uri_str) else {
+            // `uri_str` is a key of `Indexer::files`/`jar_files`, always
+            // inserted as `Url::to_string()` of a URI this process produced
+            // (or a `Url::from_file_path` round-trip for the same). Neither
+            // parse should ever fail here — a hit means the key is
+            // corrupted, and every symbol in this file silently drops out
+            // of workspace-symbol search.
+            crate::util::throttled_warn(&INDEXED_FILE_URI_PARSE_FAILURES, 5, || {
+                format!(
+                    "workspace_symbols: indexed file key {uri_str:?} is not a valid URI or file \
+                     path — its {} symbol(s) are excluded from every workspace-symbol search",
+                    data.symbols.len(),
+                )
+            });
             return true;
         };
         for symbol in &data.symbols {

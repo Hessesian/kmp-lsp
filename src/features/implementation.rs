@@ -19,6 +19,15 @@ use crate::indexer::{classify_cursor, Indexer, SymbolRole};
 use crate::rg;
 use crate::types::FileData;
 
+/// Throttle counters for the join-panic warnings below — see
+/// [`crate::util::throttled_warn`]. A panic here means goto-implementation
+/// silently returns "no implementations", indistinguishable from a genuine
+/// zero-implementors result.
+static RG_FIND_IMPLEMENTORS_JOIN_FAILURES: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
+static RG_FIND_METHOD_OVERRIDES_JOIN_FAILURES: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
+
 /// Find implementations for the symbol at `position` — CST-resolved first
 /// (works from a CALL SITE via the receiver's type, not just the declaration
 /// line), falling back to the existing name+line path.
@@ -82,7 +91,7 @@ async fn find_type_implementations(
         let file_path = uri.to_file_path().ok();
         let (root_opt, source_roots, matcher) = index.rg_scope_for_path(file_path.as_deref());
         let word_clone = type_name.to_string();
-        let rg_impls = tokio::task::spawn_blocking(move || {
+        let join_result = tokio::task::spawn_blocking(move || {
             rg::rg_find_implementors(
                 &word_clone,
                 root_opt.as_deref(),
@@ -90,8 +99,19 @@ async fn find_type_implementations(
                 matcher.as_deref(),
             )
         })
-        .await
-        .unwrap_or_default();
+        .await;
+        if let Err(ref e) = join_result {
+            crate::util::throttled_warn(&RG_FIND_IMPLEMENTORS_JOIN_FAILURES, 5, || {
+                crate::util::join_failure_message(
+                    &format!(
+                        "running the rg goto-implementation fallback for `{type_name}` from {}",
+                        uri.path()
+                    ),
+                    e,
+                )
+            });
+        }
+        let rg_impls = join_result.unwrap_or_default();
         if !rg_impls.is_empty() {
             return locs_to_opt_response(rg_impls);
         }
@@ -228,7 +248,7 @@ async fn find_method_implementations(
         let (root_opt, source_roots, matcher) = index.rg_scope_for_path(file_path.as_deref());
         let method = method_name.to_string();
         let class = declaring_class.to_string();
-        let rg_locs = tokio::task::spawn_blocking(move || {
+        let join_result = tokio::task::spawn_blocking(move || {
             rg::rg_find_method_overrides(
                 &method,
                 &class,
@@ -237,8 +257,20 @@ async fn find_method_implementations(
                 matcher.as_deref(),
             )
         })
-        .await
-        .unwrap_or_default();
+        .await;
+        if let Err(ref e) = join_result {
+            crate::util::throttled_warn(&RG_FIND_METHOD_OVERRIDES_JOIN_FAILURES, 5, || {
+                crate::util::join_failure_message(
+                    &format!(
+                        "running the rg override-search fallback for `{method_name}` in \
+                         `{declaring_class}` from {}",
+                        uri.path()
+                    ),
+                    e,
+                )
+            });
+        }
+        let rg_locs = join_result.unwrap_or_default();
         return locs_to_opt_response(rg_locs);
     }
 

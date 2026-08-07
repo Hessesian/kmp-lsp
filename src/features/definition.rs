@@ -33,11 +33,19 @@ pub(crate) fn locs_to_opt_response(locs: Vec<Location>) -> Option<GotoDefinition
 
 // ─── rg fallback ─────────────────────────────────────────────────────────────
 
+/// Throttle counter for the join-panic warning below — see
+/// [`crate::util::throttled_warn`]. This is the last-resort fallback on the
+/// goto-definition path: a panic here silently degrades "no definition
+/// found" from an rg miss to an unwound task, which looks identical to the
+/// caller.
+static RG_RESOLVE_JOIN_FAILURES: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
+
 async fn rg_resolve(index: &impl SearchAccess, uri: &Url, name: &str) -> Vec<Location> {
     let name_clone = name.to_string();
     let file_path = uri.to_file_path().ok();
     let (root_opt, source_roots, matcher) = index.rg_scope_for_path(file_path.as_deref());
-    tokio::task::spawn_blocking(move || {
+    let join_result = tokio::task::spawn_blocking(move || {
         rg::rg_find_definition(
             &name_clone,
             root_opt.as_deref(),
@@ -45,8 +53,19 @@ async fn rg_resolve(index: &impl SearchAccess, uri: &Url, name: &str) -> Vec<Loc
             matcher.as_deref(),
         )
     })
-    .await
-    .unwrap_or_default()
+    .await;
+    if let Err(ref e) = join_result {
+        crate::util::throttled_warn(&RG_RESOLVE_JOIN_FAILURES, 5, || {
+            crate::util::join_failure_message(
+                &format!(
+                    "running the rg goto-definition fallback for `{name}` from {}",
+                    uri.path()
+                ),
+                e,
+            )
+        });
+    }
+    join_result.unwrap_or_default()
 }
 
 // ─── Super helpers ────────────────────────────────────────────────────────────

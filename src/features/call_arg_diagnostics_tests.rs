@@ -1647,3 +1647,24 @@ fn swift_overloaded_explicit_init_suppresses_diagnostic() {
         "ambiguous between two init arities — must suppress: {diags:?}"
     );
 }
+
+/// Regression: `collect_call_nodes` recurses over every CST node
+/// unconditionally, with no depth guard. A long chain of `+` — perfectly
+/// valid Kotlin, no malformed/ERROR-recovery input needed — parses as a
+/// deeply left-nested `binary_expression` tree, and before
+/// `MAX_CST_DESCENT_DEPTH` was added this overflowed an 8 MiB stack
+/// (Linux's real main-thread default). This drives `call_arg_diagnostics`
+/// — the production entry point — several times past the old crash
+/// threshold; without the guard this aborts the whole test process rather
+/// than failing an assertion.
+#[test]
+fn call_arg_diagnostics_survives_a_pathologically_deep_expression() {
+    let n = 5_000; // several times MAX_CST_DESCENT_DEPTH (512)
+    let mut src = String::from("fun f() {\n    val x = 1");
+    for _ in 0..n {
+        src.push_str("+1");
+    }
+    src.push_str("\n}\n");
+    let (uri, idx, src) = setup(&[("/a.kt", &src)]);
+    let _ = run_diagnostics(&idx, &uri, &src);
+}

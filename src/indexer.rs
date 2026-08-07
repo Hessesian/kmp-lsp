@@ -954,6 +954,8 @@ impl Indexer {
             } else {
                 JarPhase::Unavailable
             };
+        } else {
+            crate::indexer::jar_phase::report_jar_phase_lock_poisoned("Indexer::clear_jar_index");
         }
     }
 

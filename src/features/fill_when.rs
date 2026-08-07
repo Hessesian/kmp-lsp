@@ -177,6 +177,7 @@ pub(crate) fn when_diagnostics(indexer: &Indexer, uri: &Url) -> Vec<Diagnostic> 
         &mut diagnostics,
         &mut sealed_cache,
         &mut type_members_cache,
+        0,
     );
     let elapsed = diag_start.elapsed();
     if elapsed.as_millis() > 50 {
@@ -191,6 +192,7 @@ pub(crate) fn when_diagnostics(indexer: &Indexer, uri: &Url) -> Vec<Diagnostic> 
     diagnostics
 }
 
+#[allow(clippy::too_many_arguments)]
 fn collect_when_nodes(
     node: tree_sitter::Node,
     source: &[u8],
@@ -199,7 +201,16 @@ fn collect_when_nodes(
     diagnostics: &mut Vec<Diagnostic>,
     sealed_cache: &mut SealedMembersCache,
     type_members_cache: &mut TypeMembersCache,
+    depth: usize,
 ) {
+    // See `crate::util::MAX_CST_DESCENT_DEPTH`: bail rather than overflow the
+    // stack on a pathologically deep tree (huge chained expression, or
+    // ERROR-recovery on a huge malformed file).
+    if depth >= crate::util::MAX_CST_DESCENT_DEPTH {
+        crate::util::report_cst_depth_exceeded!("collect_when_nodes", node);
+        return;
+    }
+
     if node.kind() == KIND_WHEN_EXPR {
         // Emit a warning whenever a `when` over a sealed class or enum is missing
         // branches and has no `else`.  This applies to both expression-form and
@@ -239,6 +250,7 @@ fn collect_when_nodes(
                 diagnostics,
                 sealed_cache,
                 type_members_cache,
+                depth + 1,
             );
             if !cursor.goto_next_sibling() {
                 break;
@@ -489,7 +501,7 @@ fn extract_subject_segments(
             }
             KIND_NAV_EXPR => {
                 let mut segments = Vec::new();
-                collect_navigation_segments(&child, source, &mut segments)?;
+                collect_navigation_segments(&child, source, &mut segments, 0)?;
                 return Some(segments);
             }
             _ => {}
@@ -500,18 +512,27 @@ fn extract_subject_segments(
 
 /// Flatten a `navigation_expression` into its identifier segments, failing on
 /// anything that isn't a plain field access (a call in the chain, say).
+///
+/// Kind-bounded (only descends through `KIND_NAV_EXPR`/`KIND_NAV_SUFFIX`), but
+/// an arbitrarily long `a.b.c.d…` chain is still an arbitrarily deep
+/// recursion — `depth` caps it. See `crate::util::MAX_CST_DESCENT_DEPTH`.
 fn collect_navigation_segments(
     node: &tree_sitter::Node,
     source: &[u8],
     out: &mut Vec<String>,
+    depth: usize,
 ) -> Option<()> {
+    if depth >= crate::util::MAX_CST_DESCENT_DEPTH {
+        crate::util::report_cst_depth_exceeded!("collect_navigation_segments", *node);
+        return None;
+    }
     match node.kind() {
         KIND_SIMPLE_IDENT => out.push(node.utf8_text(source).ok()?.to_owned()),
         KIND_NAV_EXPR | KIND_NAV_SUFFIX => {
             for child in node.children(&mut node.walk()) {
                 // The `.` separator carries no segment of its own.
                 if child.kind() != "." {
-                    collect_navigation_segments(&child, source, out)?;
+                    collect_navigation_segments(&child, source, out, depth + 1)?;
                 }
             }
         }

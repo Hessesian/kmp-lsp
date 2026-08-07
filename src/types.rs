@@ -578,6 +578,11 @@ pub(crate) struct FileTable {
     by_uri: dashmap::DashMap<String, FileId>,
 }
 
+/// Throttle counter for [`FileTable::url`]'s invariant-violation warning —
+/// see [`crate::util::throttled_warn`].
+static FILE_ID_LOOKUP_MISSES: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
+
 impl Default for FileTable {
     fn default() -> Self {
         Self::new()
@@ -618,12 +623,30 @@ impl FileTable {
     }
 
     /// The interned `Url` for `id`, or `None` if `id` is not from this table.
+    ///
+    /// `id` normally comes from a [`SymbolLoc`] this same table produced via
+    /// [`Self::intern`], and the table is append-only (see the struct doc) —
+    /// so a miss here isn't a legitimate "not found," it means a `SymbolLoc`
+    /// outlived or crossed into a different `FileTable` than the one that
+    /// interned it. Every caller (`location`, and the many direct `url()`
+    /// call sites across resolution) treats a miss as "drop this entry from
+    /// the result," which looks identical to an ordinary absence — this is
+    /// the one place that can tell the two apart.
     pub(crate) fn url(&self, id: FileId) -> Option<Arc<tower_lsp::lsp_types::Url>> {
-        self.by_id
-            .read()
-            .unwrap_or_else(|e| e.into_inner())
-            .get(id.0 as usize)
-            .cloned()
+        let table = self.by_id.read().unwrap_or_else(|e| e.into_inner());
+        let found = table.get(id.0 as usize).cloned();
+        if found.is_none() {
+            crate::util::throttled_warn(&FILE_ID_LOOKUP_MISSES, 5, || {
+                format!(
+                    "FileTable::url: FileId({}) has no entry (table holds {} interned files) — \
+                     a SymbolLoc referencing it predates or crosses into a different FileTable; \
+                     the caller silently drops whatever result depended on it",
+                    id.0,
+                    table.len(),
+                )
+            });
+        }
+        found
     }
 
     /// Build a `tower_lsp::Location` from a [`SymbolLoc`]. This is the ONLY place

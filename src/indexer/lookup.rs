@@ -17,6 +17,11 @@ use super::Indexer;
 use crate::types::SymbolEntry;
 use crate::StrExt;
 
+/// Throttle counter for [`Indexer::jar_declaration_scope`]'s side-table
+/// misalignment warning — see [`crate::util::throttled_warn`].
+static JAR_SYMBOL_PACKAGES_MISALIGNED: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
+
 impl Indexer {
     /// Returns true if `name` has at least one definition location inside `uri`.
     pub(crate) fn is_declared_in(&self, uri: &Url, name: &str) -> bool {
@@ -76,10 +81,31 @@ impl Indexer {
                 .jar_symbol_packages
                 .get(uri_str)
                 .and_then(|packages| {
-                    packages
+                    let entry = packages
                         .get(symbol_index)
                         .filter(|p| !p.is_empty())
-                        .cloned()
+                        .cloned();
+                    // `jar_symbol_packages` is populated index-aligned with the jar's
+                    // `FileData.symbols` (synthetic line number == symbol index) —
+                    // see `jar.rs`'s population comment. A missing map entry for
+                    // `uri_str` is a legitimate fallback (pre-v8 sidecars never
+                    // recorded per-symbol packages at all), but an in-bounds map
+                    // whose vector is too short for `symbol_index` means the two
+                    // "index-aligned" collections drifted apart — the same class of
+                    // bug already caused `padding` to vanish from chained-call
+                    // completion once (see the population-site comment).
+                    if entry.is_none() && symbol_index >= packages.len() {
+                        crate::util::throttled_warn(&JAR_SYMBOL_PACKAGES_MISALIGNED, 5, || {
+                            format!(
+                                "jar_symbol_packages misaligned for {uri_str}: symbol index \
+                                 {symbol_index} out of bounds (side table has {} entries) — \
+                                 falling back to the per-jar inferred package, which can be \
+                                 wrong for a multi-package jar",
+                                packages.len(),
+                            )
+                        });
+                    }
+                    entry
                 })
                 .or_else(|| {
                     self.jar_files

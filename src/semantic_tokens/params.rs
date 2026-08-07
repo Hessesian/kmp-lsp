@@ -55,7 +55,7 @@ fn emit_param_uses_for_function(fn_node: Node<'_>, src: &Source<'_>, out: &mut V
     let Some(body) = first_child_of_kind(fn_node, KIND_FUN_BODY) else {
         return;
     };
-    emit_param_refs_in_scope(body, &params, &[], src, out);
+    emit_param_refs_in_scope(body, &params, &[], src, out, 0);
 }
 
 fn emit_param_refs_in_scope(
@@ -64,7 +64,15 @@ fn emit_param_refs_in_scope(
     shadowed: &[String],
     src: &Source<'_>,
     out: &mut Vec<RawToken>,
+    depth: usize,
 ) {
+    // See `crate::util::MAX_CST_DESCENT_DEPTH`: bail rather than overflow the
+    // stack on a pathologically deep tree (huge chained expression, or
+    // ERROR-recovery on a huge malformed file).
+    if depth >= crate::util::MAX_CST_DESCENT_DEPTH {
+        crate::util::report_cst_depth_exceeded!("emit_param_refs_in_scope", node);
+        return;
+    }
     if node.kind() == KIND_FOR_STMT {
         let body = first_child_of_kind(node, KIND_CONTROL_STRUCTURE_BODY);
         let shadow_names = local_binding_names(node, params, src.bytes);
@@ -84,7 +92,7 @@ fn emit_param_refs_in_scope(
                 } else {
                     shadowed
                 };
-                emit_param_refs_in_scope(child, params, child_shadowed, src, out);
+                emit_param_refs_in_scope(child, params, child_shadowed, src, out, depth + 1);
                 if !cursor.goto_next_sibling() {
                     break;
                 }
@@ -108,7 +116,7 @@ fn emit_param_refs_in_scope(
             loop {
                 let child = cursor.node();
                 let new_shadows = local_binding_names(child, params, src.bytes);
-                emit_param_refs_in_scope(child, params, &local_shadowed, src, out);
+                emit_param_refs_in_scope(child, params, &local_shadowed, src, out, depth + 1);
                 for name in new_shadows {
                     if !local_shadowed.iter().any(|shadow| shadow == &name) {
                         local_shadowed.push(name);
@@ -135,7 +143,7 @@ fn emit_param_refs_in_scope(
     let mut cursor = node.walk();
     if cursor.goto_first_child() {
         loop {
-            emit_param_refs_in_scope(cursor.node(), params, shadowed, src, out);
+            emit_param_refs_in_scope(cursor.node(), params, shadowed, src, out, depth + 1);
             if !cursor.goto_next_sibling() {
                 break;
             }

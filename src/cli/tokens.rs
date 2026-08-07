@@ -268,6 +268,17 @@ pub(crate) fn dump_tree(file: &Path) -> Result<(), String> {
 }
 
 fn print_node(node: tree_sitter::Node<'_>, source: &[u8], depth: usize) {
+    // See `crate::util::MAX_CST_DESCENT_DEPTH`: bail rather than overflow the
+    // stack on a pathologically deep tree (huge chained expression, or
+    // ERROR-recovery on a huge malformed file).
+    if depth >= crate::util::MAX_CST_DESCENT_DEPTH {
+        println!(
+            "{}… (truncated: depth limit {} reached)",
+            "  ".repeat(depth),
+            crate::util::MAX_CST_DESCENT_DEPTH
+        );
+        return;
+    }
     let indent = "  ".repeat(depth);
     let start = node.start_position();
     let end = node.end_position();
