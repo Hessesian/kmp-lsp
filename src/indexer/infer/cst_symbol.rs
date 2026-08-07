@@ -27,9 +27,18 @@ use super::deps::InferDeps as _;
 use super::speculative::ResolutionDoc;
 
 pub(crate) fn is_declaration_site(node: Node<'_>) -> bool {
-    let Some(parent) = node.parent() else {
-        return false;
-    };
+    node.parent()
+        .is_some_and(|parent| is_declaration_site_of(node, parent))
+}
+
+/// Like [`is_declaration_site`], but for callers that already hold the parent.
+///
+/// tree-sitter's `Node::parent()` is not a stored pointer — it re-finds the
+/// node by descending from the root, so it costs O(depth) per call. A walk
+/// that pushes children from a node it already has therefore knows the parent
+/// for free, and asking tree-sitter for it again once per node is what turns
+/// such a walk quadratic in nesting depth.
+pub(crate) fn is_declaration_site_of(node: Node<'_>, parent: Node<'_>) -> bool {
     let parent_kind = parent.kind();
     if parent_kind == KIND_CLASS_DECL
         || parent_kind == KIND_OBJECT_DECL
@@ -525,9 +534,14 @@ fn is_functions_own_name(parent: Node<'_>, child: Node<'_>) -> bool {
 /// treated as opaque and not searched into. Also the shadow-check primitive:
 /// a nested scope "shadows" `name` exactly when it directly declares it.
 fn declares_name_directly<'a>(scope: Node<'a>, name: &str, bytes: &[u8]) -> Option<Node<'a>> {
-    let mut stack = vec![scope];
-    while let Some(node) = stack.pop() {
-        if is_declaration_site(node) && node.utf8_text_owned(bytes).as_deref() == Some(name) {
+    // Carry each node's parent alongside it: the walk already knows it, and
+    // re-deriving it per node via `Node::parent()` costs O(depth) each time —
+    // see [`is_declaration_site_of`].
+    let mut stack = vec![(scope, scope.parent())];
+    while let Some((node, parent)) = stack.pop() {
+        if parent.is_some_and(|parent| is_declaration_site_of(node, parent))
+            && node.utf8_text_owned(bytes).as_deref() == Some(name)
+        {
             return Some(node);
         }
         if node.id() != scope.id() && scope_boundary_at(node).is_some() {
@@ -535,7 +549,7 @@ fn declares_name_directly<'a>(scope: Node<'a>, name: &str, bytes: &[u8]) -> Opti
         }
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
-            stack.push(child);
+            stack.push((child, Some(node)));
         }
     }
     None
