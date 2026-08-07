@@ -166,14 +166,16 @@ pub(crate) fn infer_field_chain_type(
 }
 
 /// Like [`infer_receiver_type`] but checks smart-cast narrowing at the given
-/// position first.  If the variable is inside a `when (var) { is Type -> }`
-/// branch or an `if (var is Type)` block, returns the narrowed type.
+/// position first.  If the variable is inside a `when (var)` branch or an
+/// `if (var is Type)` block, returns the narrowed type.
 pub(crate) fn infer_receiver_type_at(
     indexer: &Indexer,
     name: &str,
     uri: &Url,
     position: Position,
 ) -> Option<ReceiverType> {
+    use super::infer_lines::SmartCast;
+
     // Try smart cast narrowing first when lines are available.
     let lines = indexer
         .live_lines
@@ -181,14 +183,42 @@ pub(crate) fn infer_receiver_type_at(
         .map(|ll| (*ll).clone())
         .or_else(|| indexer.files.get(uri.as_str()).map(|d| d.lines.clone()));
     if let Some(lines) = lines {
-        if let Some(narrowed) =
-            super::infer_lines::smart_cast_type_at_line(&lines, name, position.line)
-        {
+        let narrowed =
+            match super::infer_lines::smart_cast_type_at_line(&lines, name, position.line) {
+                Some(SmartCast::TypeTest(type_name)) => Some(type_name),
+                // Only an object's own name is also a type; an enum entry or a
+                // constant matches by value and leaves the subject's type alone.
+                Some(SmartCast::ObjectEquality(label)) => {
+                    names_object_declaration(indexer, &label, uri).then_some(label)
+                }
+                None => None,
+            };
+        if let Some(narrowed) = narrowed {
             return Some(ReceiverType::from_raw(narrowed));
         }
     }
     // Fallback to normal inference
     infer_receiver_type(indexer, ReceiverKind::Variable(name), uri)
+}
+
+/// Whether the qualified `label` (e.g. `Ui.Loading`) names an `object`
+/// declaration as seen from `from_uri`.
+///
+/// Resolved through `resolve_type_index_only`, which honours the file's own
+/// imports and package, rather than by scanning every definition sharing the
+/// simple name: an unrelated `object Idle` in another package would otherwise
+/// validate an enum entry named `Idle` and narrow the subject to a type it
+/// has nothing to do with.
+fn names_object_declaration(indexer: &Indexer, label: &str, from_uri: &Url) -> bool {
+    super::resolve::resolve_type_index_only(indexer, label, from_uri)
+        .into_iter()
+        .any(|location| {
+            ensure_file_data(indexer, &location.uri).is_some_and(|file_data| {
+                file_data.symbols.iter().any(|symbol| {
+                    symbol.selection_range == location.range && symbol.kind == SymbolKind::OBJECT
+                })
+            })
+        })
 }
 
 /// Scan the current file's lines for a type annotation on `var_name` and return

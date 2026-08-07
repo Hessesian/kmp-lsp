@@ -1183,9 +1183,11 @@ impl Indexer {
         self.parse_count.fetch_add(1, Ordering::Relaxed);
         // Invalidate cached completion items — the file is changing.
         self.completion_cache.remove(&uri_str);
-        if let Ok(mut last) = self.last_completion.lock() {
-            *last = None;
-        }
+        // Bumps `completion_epoch`, not merely clearing the cache: a request
+        // that began before this reindex is still computing against the old
+        // symbol table, and `store_in_cache` uses the epoch to reject its
+        // result rather than let it repopulate what was just cleared.
+        self.invalidate_completion_cache();
         // Invalidate entire signature cache — a changed file may affect lookups from any caller.
         self.sig_cache.clear();
         self.sig_fast_cache.clear();

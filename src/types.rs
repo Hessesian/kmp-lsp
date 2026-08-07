@@ -272,6 +272,27 @@ impl SymbolEntry {
         self.selection_range.start.line
     }
 
+    /// Whether this is a `companion object` declaration, named
+    /// (`companion object Factory`) or anonymous (synthesized under the
+    /// implicit name `Companion` — see `parser::extract_anonymous_companion_objects`).
+    ///
+    /// `kind` alone can't tell one apart from a plain `object`; the
+    /// `companion` soft-keyword survives only in `detail`, the raw
+    /// declaration text — which may carry modifiers, annotations, and
+    /// comments alongside the keywords. Matching the two keywords as
+    /// *adjacent* tokens accepts every real form (`private companion
+    /// object`, `companion object Factory`) while rejecting a comment that
+    /// merely mentions the word (`private /* companion */ object Registry`).
+    pub(crate) fn is_companion_object(&self) -> bool {
+        if self.kind != SymbolKind::OBJECT {
+            return false;
+        }
+        let tokens: Vec<&str> = self.detail.split_whitespace().collect();
+        tokens
+            .windows(2)
+            .any(|pair| pair[0] == "companion" && pair[1] == "object")
+    }
+
     /// Generic type parameter names extracted from the CST at parse time.
     /// e.g. `class Foo<T, U>` → `["T", "U"]`. Empty slice for non-generic symbols.
     pub(crate) fn type_params(&self) -> &[String] {

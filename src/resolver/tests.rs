@@ -2426,6 +2426,56 @@ fn nested_type_completion_still_lists_sibling_nested_types_by_enclosing_type_nam
     );
 }
 
+/// Pre-existing bug in the same problem family as the two regressions above,
+/// found (not yet fixed) during the review that led to the container-based
+/// rewrite, and fixed here as a natural consequence of the
+/// `MembershipContext` split: `symbols_from_nested_type` used to answer
+/// "what does `inner_name` declare" identically whether the caller meant
+/// "the receiver IS `inner_name`" or "`inner_name` is an ancestor being
+/// folded into a DESCENDANT's inherited members" (`collect_inherited_dot_completion_items`'s
+/// `walk_hierarchy` callback). A nested type declaration IS a legitimate
+/// direct member of its own enclosing type (`Top.Leaf1` — see the test
+/// above) but is NEVER an inherited instance member of a descendant
+/// (`mid.Leaf1` isn't valid Kotlin) — so when `Mid` (itself nested inside
+/// `Top`, a common sealed-hierarchy shape) inherits `Top`'s members via
+/// `walk_hierarchy`, `Top`'s own nested-type declarations — its sibling
+/// `Leaf1`, and even `Mid` itself — leaked into `Mid`'s own inherited
+/// completion list as if they were instance members.
+#[test]
+fn sibling_nested_type_does_not_leak_into_inherited_completion() {
+    let idx = Indexer::new();
+    let file_uri = uri("/Top.kt");
+    idx.index_content(
+        &file_uri,
+        "package app\n\
+         sealed class Top {\n\
+         \x20 class Mid : Top() {\n\
+         \x20   fun midMethod() {}\n\
+         \x20 }\n\
+         \x20 class Leaf1 : Top()\n\
+         \x20 fun topMethod() {}\n\
+         }",
+    );
+    let items = complete_dot(&idx, "Mid", &file_uri, false, None);
+    let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
+    assert!(
+        labels.contains(&"midMethod"),
+        "Mid's own direct member must still appear: {labels:?}"
+    );
+    assert!(
+        labels.contains(&"topMethod"),
+        "Mid must still inherit Top's own instance member: {labels:?}"
+    );
+    assert!(
+        !labels.contains(&"Leaf1"),
+        "a sibling nested type must not leak into Mid's inherited completion: {labels:?}"
+    );
+    assert!(
+        !labels.contains(&"Mid"),
+        "Mid must not leak into its own inherited completion via its enclosing type: {labels:?}"
+    );
+}
+
 /// Regression: Kotlin resolves `Outer.member` through `Outer`'s own companion
 /// object when `Outer` has no such member itself (implicit companion
 /// forwarding) — a very common idiom, doubly so paired with sealed
@@ -2467,40 +2517,70 @@ fn companion_object_members_still_appear_on_enclosing_type_completion() {
     );
 }
 
-/// Regression (Copilot review on the fix above): companion detection used
-/// `detail.starts_with("companion object")`, which misses a modifier or
-/// annotation ahead of the keywords — a `private companion object` (or
-/// `@JvmStatic` on the line above) would not be recognized as a companion at
-/// all, silently dropping its members from the enclosing class's completion.
+/// Regression found by the container-based rewrite's own review: the
+/// companion-object detection in `symbols_from_nested_type` matched by
+/// PREFIX (`detail.starts_with("companion object")`), so a modified
+/// companion — `private companion object`, or any other leading modifier —
+/// never matched, and its members silently stopped forwarding to the
+/// enclosing type's own completion. `resolve::resolve_companion_member`
+/// (`resolve.rs`) had already fixed the identical gap for its own,
+/// independent companion lookup via a token-based match (see
+/// `resolve_qualified_class_name_prefers_private_companion_member`);
+/// `is_companion_object_symbol` applies the same fix here.
 #[test]
-fn companion_object_members_forward_despite_a_visibility_modifier() {
+fn companion_object_forwarding_survives_a_private_companion() {
     let idx = Indexer::new();
-    let file_uri = uri("/Widget.kt");
+    let file_uri = uri("/Widget2.kt");
     idx.index_content(
         &file_uri,
         "package app\n\
-         class Widget {\n\
+         class Widget2 {\n\
          \x20 private companion object {\n\
-         \x20   fun create(): Widget = Widget()\n\
+         \x20   fun create(): Widget2 = Widget2()\n\
          \x20 }\n\
          }",
     );
-    let items = complete_dot(&idx, "Widget", &file_uri, false, None);
+    let items = complete_dot(&idx, "Widget2", &file_uri, false, None);
     let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
     assert!(
         labels.contains(&"create"),
-        "a modifier ahead of 'companion object' must not hide companion forwarding: {labels:?}"
+        "a private companion's create() must still forward: {labels:?}"
     );
 }
 
-/// Regression (Copilot review on the fix above): Kotlin gives every anonymous
-/// `companion object { }` the same implicit name ("Companion"), so two
-/// unrelated classes in the same file each have a companion literally named
-/// "Companion" — their members share that same `container` string. Folding a
-/// companion's members in by container-NAME match alone (without also
-/// checking which specific companion instance a member's range belongs to)
-/// would leak one class's companion members into a completely different
-/// class's completion.
+/// Regression: `detail` is raw declaration text, so a comment sitting between
+/// the modifiers and the keywords lands in it. Testing for a lone `companion`
+/// token therefore classified `private /* companion */ object Registry` as a
+/// companion, forwarding an ordinary nested object's members onto the
+/// enclosing type. The two keywords must be adjacent.
+#[test]
+fn a_comment_mentioning_companion_does_not_make_an_object_a_companion() {
+    let idx = Indexer::new();
+    let file_uri = uri("/Registry.kt");
+    idx.index_content(
+        &file_uri,
+        "package app\n\
+         class Host {\n\
+         \x20 private /* companion */ object Registry {\n\
+         \x20   fun registryOnly(): Int = 1\n\
+         \x20 }\n\
+         }",
+    );
+    let items = complete_dot(&idx, "Host", &file_uri, false, None);
+    let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
+    assert!(
+        !labels.contains(&"registryOnly"),
+        "a plain nested object's members must not forward onto the enclosing type: {labels:?}"
+    );
+}
+
+/// Regression: Kotlin gives every anonymous `companion object { }` the same
+/// implicit name ("Companion"), so two unrelated classes in the same file
+/// each have a companion literally named "Companion" — their members share
+/// that same `container` string. Folding a companion's members in by
+/// container-NAME match alone (without also checking which specific
+/// companion instance a member's range belongs to) would leak one class's
+/// companion members into a completely different class's completion.
 #[test]
 fn companion_object_forwarding_does_not_leak_across_classes_sharing_the_implicit_name() {
     let idx = Indexer::new();
@@ -2528,44 +2608,6 @@ fn companion_object_forwarding_does_not_leak_across_classes_sharing_the_implicit
     assert!(
         !labels.contains(&"betaOnly"),
         "Beta's companion (same implicit 'Companion' name) must not leak into Alpha's completion: {labels:?}"
-    );
-}
-
-/// Regression (Copilot review): `container` stores only the immediate
-/// parent's simple NAME, not a unique identity — two different nested types
-/// sharing a simple name in one file (`A.Config` and `B.Config`) would have
-/// their members merged by a container-name-only check. `type_symbol` is
-/// already the one specific instance the outer lookup resolved to, so the
-/// membership check must also confirm a candidate's range falls inside that
-/// SPECIFIC instance's own range, not just any same-named one.
-#[test]
-fn same_named_nested_types_in_different_classes_do_not_merge_members() {
-    let idx = Indexer::new();
-    let file_uri = uri("/Configs.kt");
-    idx.index_content(
-        &file_uri,
-        "package app\n\
-         class A {\n\
-         \x20 class Config {\n\
-         \x20   val fromA = 1\n\
-         \x20 }\n\
-         }\n\
-         class B {\n\
-         \x20 class Config {\n\
-         \x20   val fromB = 2\n\
-         \x20 }\n\
-         }",
-    );
-    let items = complete_dot(&idx, "Config", &file_uri, false, None);
-    let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
-    // Whichever `Config` instance the bare-name lookup resolves to, it must
-    // offer that instance's own member and never the OTHER one's — merging
-    // them would suggest a member that doesn't exist on the resolved type.
-    let has_a = labels.contains(&"fromA");
-    let has_b = labels.contains(&"fromB");
-    assert!(
-        has_a != has_b,
-        "expected exactly one of A.Config/B.Config's own members, not both (merged) or neither: {labels:?}"
     );
 }
 
@@ -2716,7 +2758,10 @@ fn smart_cast_when_branch() {
 
     // Line 3 is inside `is Event.OnClick` branch
     let result = infer_lines::smart_cast_type_at_line(&lines, "event", 3);
-    assert_eq!(result.as_deref(), Some("Event.OnClick"));
+    assert_eq!(
+        result,
+        Some(infer_lines::SmartCast::TypeTest("Event.OnClick".to_owned()))
+    );
 }
 
 #[test]
@@ -2734,7 +2779,10 @@ fn smart_cast_when_branch_same_line() {
 
     // Cursor on the branch line itself
     let result = infer_lines::smart_cast_type_at_line(&lines, "event", 2);
-    assert_eq!(result.as_deref(), Some("Event.OnClick"));
+    assert_eq!(
+        result,
+        Some(infer_lines::SmartCast::TypeTest("Event.OnClick".to_owned()))
+    );
 }
 
 #[test]
@@ -2751,7 +2799,10 @@ fn smart_cast_if_is() {
     .collect();
 
     let result = infer_lines::smart_cast_type_at_line(&lines, "event", 2);
-    assert_eq!(result.as_deref(), Some("Event.OnInput"));
+    assert_eq!(
+        result,
+        Some(infer_lines::SmartCast::TypeTest("Event.OnInput".to_owned()))
+    );
 }
 
 #[test]
@@ -2811,7 +2862,10 @@ fn smart_cast_if_does_not_leak_from_closed_nested_block() {
     .collect();
 
     let result = infer_lines::smart_cast_type_at_line(&lines, "event", 5);
-    assert_eq!(result.as_deref(), Some("Event.OnInput"));
+    assert_eq!(
+        result,
+        Some(infer_lines::SmartCast::TypeTest("Event.OnInput".to_owned()))
+    );
 }
 
 #[test]
@@ -2845,7 +2899,12 @@ fn smart_cast_if_preserves_generic_types_with_commas() {
     .collect();
 
     let result = infer_lines::smart_cast_type_at_line(&lines, "value", 2);
-    assert_eq!(result.as_deref(), Some("Map<String, List<Int>>"));
+    assert_eq!(
+        result,
+        Some(infer_lines::SmartCast::TypeTest(
+            "Map<String, List<Int>>".to_owned()
+        ))
+    );
 }
 #[test]
 fn smart_cast_nested_when_on_same_line() {
@@ -2866,11 +2925,19 @@ fn smart_cast_nested_when_on_same_line() {
 
     // event.events on line 4 should be narrowed to SalespointInputEvent.OnCloseClick
     let result = infer_lines::smart_cast_type_at_line(&lines, "event.events", 4);
-    assert_eq!(result.as_deref(), Some("SalespointInputEvent.OnCloseClick"),);
+    assert_eq!(
+        result,
+        Some(infer_lines::SmartCast::TypeTest(
+            "SalespointInputEvent.OnCloseClick".to_owned()
+        )),
+    );
 
     // event on line 4 should be narrowed to Banner (from outer when)
     let result2 = infer_lines::smart_cast_type_at_line(&lines, "event", 4);
-    assert_eq!(result2.as_deref(), Some("Banner"));
+    assert_eq!(
+        result2,
+        Some(infer_lines::SmartCast::TypeTest("Banner".to_owned()))
+    );
 }
 
 // ── Completion ordering ────────────────────────────────────────────────────
@@ -5726,4 +5793,176 @@ fn receiver_provides_member_false_for_unrelated_name() {
         "package androidx.compose.ui\nobject Modifier",
     );
     assert!(!receiver_provides_member(&idx, "Modifier", "notAMember"));
+}
+
+/// Regression: `container` stores only the immediate parent's simple NAME,
+/// not a unique identity — two different nested types sharing a simple name
+/// in one file (`A.Config`/`B.Config`) are valid Kotlin (Kotlin only forbids
+/// a name collision among *top-level* declarations in one file, not among
+/// unrelated types' own nested members) and would have their members merged
+/// by a container-name-only check. `type_symbol` is already the one specific
+/// instance the outer lookup resolved to, so `members_for_workspace_type`
+/// must also confirm a candidate's range falls inside that SPECIFIC
+/// instance's own range, not just any same-named one.
+#[test]
+fn same_named_nested_types_in_different_classes_do_not_merge_members() {
+    let idx = Indexer::new();
+    let file_uri = uri("/Configs.kt");
+    idx.index_content(
+        &file_uri,
+        "package app\n\
+         class A {\n\
+         \x20 class Config {\n\
+         \x20   val fromA = 1\n\
+         \x20 }\n\
+         }\n\
+         class B {\n\
+         \x20 class Config {\n\
+         \x20   val fromB = 2\n\
+         \x20 }\n\
+         }",
+    );
+    let items = complete_dot(&idx, "Config", &file_uri, false, None);
+    let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
+    let has_a = labels.contains(&"fromA");
+    let has_b = labels.contains(&"fromB");
+    assert!(
+        has_a != has_b,
+        "expected exactly one of A.Config/B.Config's own members, not both (merged) or neither: {labels:?}"
+    );
+}
+
+/// Regression: matching a `data object` in a `when` is written as equality
+/// (`Loading ->`), not a type test (`is Loading ->`) — the idiomatic form,
+/// since an object has exactly one instance. Only `is` branches narrowed, so
+/// the subject kept its sealed-interface type and the object's own members
+/// were missing from completion.
+#[test]
+fn when_equality_branch_on_an_object_narrows_the_subject() {
+    let idx = Indexer::new();
+    let file_uri = uri("/Ui.kt");
+    idx.index_content(
+        &file_uri,
+        "package app\n\
+         sealed interface Ui {\n\
+         \x20 data object Loading : Ui {\n\
+         \x20   val progress = 0\n\
+         \x20 }\n\
+         \x20 data class Ready(val value: Int) : Ui\n\
+         }\n\
+         fun render(state: Ui) {\n\
+         \x20 when (state) {\n\
+         \x20   Ui.Loading -> state.\n\
+         \x20   else -> {}\n\
+         \x20 }\n\
+         }",
+    );
+    let items = complete_dot(&idx, "state", &file_uri, false, Some(9));
+    let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
+    assert!(
+        labels.contains(&"progress"),
+        "an object-equality branch must narrow to that object: {labels:?}"
+    );
+}
+
+/// An enum entry is a value, not a type, so `Color.RED ->` must NOT narrow —
+/// treating the label as a type would resolve to the entry (which has no
+/// members) and blank the completion list instead of offering the enum's own.
+#[test]
+fn when_equality_branch_on_an_enum_entry_does_not_narrow() {
+    let idx = Indexer::new();
+    let file_uri = uri("/Color.kt");
+    idx.index_content(
+        &file_uri,
+        "package app\n\
+         enum class Color {\n\
+         \x20 RED, GREEN;\n\
+         \x20 fun describe(): String = name\n\
+         }\n\
+         fun pick(color: Color) {\n\
+         \x20 when (color) {\n\
+         \x20   Color.RED -> color.\n\
+         \x20   else -> {}\n\
+         \x20 }\n\
+         }",
+    );
+    let items = complete_dot(&idx, "color", &file_uri, false, Some(7));
+    let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
+    assert!(
+        labels.contains(&"describe"),
+        "must still offer Color's own members; narrowing to the entry (which \
+         has none) would blank the list: {labels:?}"
+    );
+}
+
+/// Regression: the backward line scan has no idea whether it is inside a
+/// `when`, and a lambda parameter on its own line looks exactly like a branch
+/// label. Accepting a bare `Element ->` let an unrelated object's members be
+/// offered for a receiver the branch never narrowed — worse than not narrowing
+/// at all. Only a qualified label is accepted, since a lambda parameter is
+/// always a simple identifier.
+#[test]
+fn a_lambda_parameter_is_not_mistaken_for_a_when_branch_label() {
+    let idx = Indexer::new();
+    let file_uri = uri("/Scan.kt");
+    idx.index_content(
+        &file_uri,
+        "package app\n\
+         object Element { fun unrelatedMember() {} }\n\
+         sealed interface Ui\n\
+         object Busy : Ui { fun busyOnly() {} }\n\
+         fun render(state: Ui) {\n\
+         \x20 when (state) {\n\
+         \x20   is Busy -> {\n\
+         \x20     listOf(1).forEach {\n\
+         \x20       Element ->\n\
+         \x20       state.\n\
+         \x20     }\n\
+         \x20   }\n\
+         \x20 }\n\
+         }",
+    );
+    let items = complete_dot(&idx, "state", &file_uri, false, Some(9));
+    let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
+    assert!(
+        !labels.contains(&"unrelatedMember"),
+        "a lambda parameter must not narrow the subject to that name: {labels:?}"
+    );
+}
+
+/// Regression: confirming the branch label names an object must respect the
+/// file's own imports and package. Scanning every definition sharing the
+/// simple name let an unrelated `object Idle` in another package validate an
+/// enum entry named `Idle`, narrowing the subject to a type it has nothing to
+/// do with and blanking the completion list.
+#[test]
+fn an_unrelated_same_named_object_does_not_validate_an_enum_entry_branch() {
+    let idx = Indexer::new();
+    let other_uri = uri("/other/Idle.kt");
+    let app_uri = uri("/app/Conn.kt");
+    idx.index_content(
+        &other_uri,
+        "package other\nobject Idle { fun unrelatedMember() {} }\n",
+    );
+    idx.index_content(
+        &app_uri,
+        "package app\n\
+         enum class Conn {\n\
+         \x20 Idle,\n\
+         \x20 Active;\n\
+         \x20 fun describe(): String = name\n\
+         }\n\
+         fun show(conn: Conn) {\n\
+         \x20 when (conn) {\n\
+         \x20   Conn.Idle -> conn.\n\
+         \x20   else -> {}\n\
+         \x20 }\n\
+         }",
+    );
+    let items = complete_dot(&idx, "conn", &app_uri, false, Some(8));
+    let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
+    assert!(
+        labels.contains(&"describe"),
+        "an unrelated same-named object must not validate an enum entry: {labels:?}"
+    );
 }

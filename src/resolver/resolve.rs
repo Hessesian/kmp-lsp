@@ -23,7 +23,7 @@ use std::path::Path;
 use std::process::Command;
 use std::sync::Arc;
 
-use tower_lsp::lsp_types::{Location, SymbolKind, Url};
+use tower_lsp::lsp_types::{Location, Url};
 
 use crate::indexer::Indexer;
 use crate::parser::parse_by_extension;
@@ -1005,10 +1005,7 @@ pub(crate) fn range_encloses(
 ///
 /// `Foo.member` with `Foo` a class name (not a variable) can only ever reach a
 /// companion-object member in Kotlin — never an instance member of `Foo`, even
-/// when one happens to share the name. The companion is identified by its
-/// `detail`, which always starts with the literal `"companion object"` keywords
-/// (set by [`crate::parser::extract_detail`] for both the named and the
-/// synthesized-anonymous form — see [`crate::parser::extract_anonymous_companion_objects`]).
+/// when one happens to share the name.
 fn resolve_companion_member(
     indexer: &Indexer,
     name: &str,
@@ -1032,19 +1029,11 @@ fn resolve_companion_member(
     else {
         return vec![];
     };
-    let Some(companion) = file_data.symbols.iter().find(|symbol| {
-        // `kind == OBJECT` already restricts this to object declarations; among
-        // those, the companion is the one carrying the `companion` soft-keyword.
-        // Match it as a token rather than a prefix so leading modifiers or an
-        // annotation line (`private companion object`, `@JvmStatic\ncompanion
-        // object`) don't hide it.
-        symbol.kind == SymbolKind::OBJECT
-            && symbol
-                .detail
-                .split_whitespace()
-                .any(|token| token == "companion")
-            && range_encloses(class_range, symbol.range)
-    }) else {
+    let Some(companion) = file_data
+        .symbols
+        .iter()
+        .find(|symbol| symbol.is_companion_object() && range_encloses(class_range, symbol.range))
+    else {
         return vec![];
     };
     file_data
