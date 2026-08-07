@@ -381,7 +381,7 @@ pub(crate) fn local_scope_occurrences(
         .find(|scope| declares_name_directly(*scope, &name, &doc.bytes).is_some())?;
 
     let mut occurrences: Vec<Occurrence> = Vec::new();
-    visit_unshadowed_name_matches(
+    let complete = visit_unshadowed_name_matches(
         body,
         &name,
         0,
@@ -389,7 +389,13 @@ pub(crate) fn local_scope_occurrences(
         None,
         &doc.bytes,
         &mut |node, generation| occurrences.push(Occurrence { node, generation }),
+        0,
     );
+    if !complete {
+        // Some occurrences were never seen; renaming the rest would corrupt
+        // the file. Fall through to the cross-file path instead.
+        return None;
+    }
 
     let cursor_generation = occurrences
         .iter()
@@ -541,6 +547,10 @@ fn declares_name_directly<'a>(scope: Node<'a>, name: &str, bytes: &[u8]) -> Opti
 /// one — `val x: Any = "hello"; val x = x as String`'s own initializer
 /// reference must see the FIRST `x`, since the second doesn't exist yet
 /// while its own initializer runs.
+///
+/// Returns `false` if the walk stopped at [`crate::util::MAX_CST_DESCENT_DEPTH`],
+/// leaving `visit` incomplete — see [`visit_unshadowed_name_matches`].
+#[must_use]
 fn visit_statements_with_generations<'a>(
     statements: Node<'a>,
     name: &str,
@@ -548,12 +558,13 @@ fn visit_statements_with_generations<'a>(
     already_shadowed: bool,
     bytes: &[u8],
     visit: &mut impl FnMut(Node<'a>, usize),
-) {
+    depth: usize,
+) -> bool {
     let mut cursor = statements.walk();
     for statement in statements.children(&mut cursor) {
-        match declares_name_directly(statement, name, bytes) {
+        let complete = match declares_name_directly(statement, name, bytes) {
             Some(declaration_node) => {
-                visit_unshadowed_name_matches(
+                let complete = visit_unshadowed_name_matches(
                     statement,
                     name,
                     generation,
@@ -561,11 +572,13 @@ fn visit_statements_with_generations<'a>(
                     Some(declaration_node),
                     bytes,
                     visit,
+                    depth + 1,
                 );
                 generation += 1;
                 if !already_shadowed {
                     visit(declaration_node, generation);
                 }
+                complete
             }
             None => visit_unshadowed_name_matches(
                 statement,
@@ -575,9 +588,14 @@ fn visit_statements_with_generations<'a>(
                 None,
                 bytes,
                 visit,
+                depth + 1,
             ),
+        };
+        if !complete {
+            return false;
         }
     }
+    true
 }
 
 /// Walk `node`'s subtree, calling `visit` on every `simple_identifier`
@@ -585,6 +603,14 @@ fn visit_statements_with_generations<'a>(
 /// nested scope boundary that itself redeclares `name` (shadowing).
 /// `exclude` suppresses one node — a declaration re-emitted separately by
 /// [`visit_statements_with_generations`] at its own new generation.
+///
+/// Returns `false` if it stopped at [`crate::util::MAX_CST_DESCENT_DEPTH`]
+/// instead of finishing. Callers must not use a partial result: a rename that
+/// applies to some occurrences of a name and not others is worse than one that
+/// declines, so [`local_scope_occurrences`] gives up its fast path on `false`
+/// rather than returning the occurrences it did find.
+#[must_use]
+#[allow(clippy::too_many_arguments)]
 fn visit_unshadowed_name_matches<'a>(
     node: Node<'a>,
     name: &str,
@@ -593,7 +619,12 @@ fn visit_unshadowed_name_matches<'a>(
     exclude: Option<Node<'a>>,
     bytes: &[u8],
     visit: &mut impl FnMut(Node<'a>, usize),
-) {
+    depth: usize,
+) -> bool {
+    if depth >= crate::util::MAX_CST_DESCENT_DEPTH {
+        crate::util::report_cst_depth_exceeded!("visit_unshadowed_name_matches", node);
+        return false;
+    }
     let is_excluded = exclude.is_some_and(|excluded| excluded.id() == node.id());
     if !already_shadowed
         && !is_excluded
@@ -604,15 +635,22 @@ fn visit_unshadowed_name_matches<'a>(
         visit(node, generation);
     }
     if node.kind() == KIND_STATEMENTS {
-        visit_statements_with_generations(node, name, generation, already_shadowed, bytes, visit);
-        return;
+        return visit_statements_with_generations(
+            node,
+            name,
+            generation,
+            already_shadowed,
+            bytes,
+            visit,
+            depth + 1,
+        );
     }
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         let child_shadowed = already_shadowed
             || (scope_boundary_at(child).is_some()
                 && declares_name_directly(child, name, bytes).is_some());
-        visit_unshadowed_name_matches(
+        if !visit_unshadowed_name_matches(
             child,
             name,
             generation,
@@ -620,8 +658,12 @@ fn visit_unshadowed_name_matches<'a>(
             exclude,
             bytes,
             visit,
-        );
+            depth + 1,
+        ) {
+            return false;
+        }
     }
+    true
 }
 
 /// Convert a tree-sitter node's byte-based position into an LSP `Location`
