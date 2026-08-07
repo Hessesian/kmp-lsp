@@ -458,7 +458,7 @@ pub(crate) fn infer_variable_type_from_cst(
     let _guard = ResolutionInFlight::enter(uri, var_name)?;
     let doc = indexer.live_doc_or_parse(uri)?;
     let bytes = doc.bytes.as_slice();
-    let init = find_prop_initializer(doc.tree.root_node(), bytes, var_name)?;
+    let init = find_prop_initializer(doc.tree.root_node(), bytes, var_name, 0)?;
     crate::indexer::infer_expr_type(init, bytes, indexer, uri)
 }
 
@@ -512,8 +512,17 @@ fn find_prop_initializer<'a>(
     node: tree_sitter::Node<'a>,
     bytes: &[u8],
     var_name: &str,
+    depth: usize,
 ) -> Option<tree_sitter::Node<'a>> {
     use crate::queries::{KIND_EQ, KIND_PROP_DECL};
+    // A name that is never declared makes this search the whole file, so a
+    // pathological input reaches its full depth here rather than returning
+    // early — bail rather than overflow the stack. See
+    // `crate::util::MAX_CST_DESCENT_DEPTH`.
+    if depth >= crate::util::MAX_CST_DESCENT_DEPTH {
+        crate::util::report_cst_depth_exceeded!("find_prop_initializer", node);
+        return None;
+    }
     if node.kind() == KIND_PROP_DECL && prop_decl_name(node, bytes).as_deref() == Some(var_name) {
         let mut cursor = node.walk();
         let mut past_eq = false;
@@ -530,7 +539,7 @@ fn find_prop_initializer<'a>(
     }
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
-        if let Some(found) = find_prop_initializer(child, bytes, var_name) {
+        if let Some(found) = find_prop_initializer(child, bytes, var_name, depth + 1) {
             return Some(found);
         }
     }

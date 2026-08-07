@@ -5998,3 +5998,30 @@ fn mutually_referential_initializers_do_not_recurse_forever() {
     idx.store_live_tree(&file_uri, src);
     let _ = crate::resolver::infer::infer_variable_type_from_cst(&idx, "a", &file_uri);
 }
+
+/// A name that is never declared makes `find_prop_initializer` search the
+/// whole file rather than returning early, so its recursion reaches the
+/// tree's full depth.
+#[test]
+fn the_initializer_search_survives_a_pathologically_deep_file() {
+    let n = 60_000; // ~100x MAX_CST_DESCENT_DEPTH (512)
+    let mut src = String::from("package app\nfun f() {\n    val x = 1");
+    for _ in 0..n {
+        src.push_str("+1");
+    }
+    src.push_str("\n}\n");
+
+    let handle = std::thread::Builder::new()
+        .stack_size(8 * 1024 * 1024) // match Linux's default main-thread stack
+        .spawn(move || {
+            let idx = Indexer::new();
+            let file_uri = uri("/Deep.kt");
+            idx.index_content(&file_uri, &src);
+            idx.store_live_tree(&file_uri, &src);
+            crate::resolver::infer::infer_variable_type_from_cst(&idx, "never_declared", &file_uri)
+        })
+        .unwrap();
+    // A stack overflow aborts the process rather than failing this join.
+    let found = handle.join().expect("must not overflow the stack");
+    assert_eq!(found, None, "the name is not declared anywhere in the file");
+}

@@ -61,7 +61,7 @@ fn collect_nav_segments_recursive<'a>(
     // See `crate::util::MAX_CST_DESCENT_DEPTH`. Treat the cut point as an
     // opaque root, same as the ordinary non-nav-expression base case above.
     if depth >= crate::util::MAX_CST_DESCENT_DEPTH {
-        crate::util::report_cst_depth_exceeded("collect_nav_segments_recursive", node);
+        crate::util::report_cst_depth_exceeded!("collect_nav_segments_recursive", node);
         segments.push(NavSegment::Root(node));
         return;
     }
@@ -335,7 +335,7 @@ fn resolve_callee_chain_at_depth(
     depth: usize,
 ) -> Option<(String, String)> {
     if depth >= crate::util::MAX_CST_DESCENT_DEPTH {
-        crate::util::report_cst_depth_exceeded("resolve_callee_chain_at_depth", callee);
+        crate::util::report_cst_depth_exceeded!("resolve_callee_chain_at_depth", callee);
         return None;
     }
     match callee.kind() {

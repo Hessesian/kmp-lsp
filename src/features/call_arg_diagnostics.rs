@@ -89,7 +89,7 @@ fn collect_call_nodes(
     // stack on a pathologically deep tree (huge chained expression, or
     // ERROR-recovery on a huge malformed file).
     if depth >= crate::util::MAX_CST_DESCENT_DEPTH {
-        crate::util::report_cst_depth_exceeded("collect_call_nodes", node);
+        crate::util::report_cst_depth_exceeded!("collect_call_nodes", node);
         return;
     }
 

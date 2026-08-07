@@ -70,7 +70,7 @@ fn emit_param_refs_in_scope(
     // stack on a pathologically deep tree (huge chained expression, or
     // ERROR-recovery on a huge malformed file).
     if depth >= crate::util::MAX_CST_DESCENT_DEPTH {
-        crate::util::report_cst_depth_exceeded("emit_param_refs_in_scope", node);
+        crate::util::report_cst_depth_exceeded!("emit_param_refs_in_scope", node);
         return;
     }
     if node.kind() == KIND_FOR_STMT {

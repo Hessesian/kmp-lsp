@@ -240,7 +240,7 @@ fn visit_tree_at(node: Node<'_>, f: &mut impl FnMut(Node<'_>), depth: usize) {
     // stack on a pathologically deep tree (huge chained expression, or
     // ERROR-recovery on a huge malformed file).
     if depth >= crate::util::MAX_CST_DESCENT_DEPTH {
-        crate::util::report_cst_depth_exceeded("visit_tree_at", node);
+        crate::util::report_cst_depth_exceeded!("visit_tree_at", node);
         return;
     }
     f(node);

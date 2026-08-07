@@ -270,3 +270,21 @@ fn offers_a_remove_import_quickfix_for_a_flagged_diagnostic() {
         "must delete the whole line including its newline"
     );
 }
+
+#[test]
+fn unused_import_diagnostics_survives_a_pathologically_deep_expression() {
+    let n = 60_000; // ~100x MAX_CST_DESCENT_DEPTH (512)
+    let mut source =
+        String::from("package app\n\nimport com.example.lib.Unused\n\nfun f() {\n    val x = 1");
+    for _ in 0..n {
+        source.push_str("+1");
+    }
+    source.push_str("\n}\n");
+
+    let handle = std::thread::Builder::new()
+        .stack_size(8 * 1024 * 1024) // match Linux's default main-thread stack
+        .spawn(move || run_diagnostics(&source).len())
+        .unwrap();
+    // A stack overflow aborts the process rather than failing this join.
+    handle.join().expect("must not overflow the stack");
+}

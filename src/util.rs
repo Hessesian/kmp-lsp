@@ -13,45 +13,98 @@ pub(crate) fn home_dir() -> Option<PathBuf> {
 /// (`node.children()` walked via plain Rust recursion rather than an
 /// iterative `TreeCursor` loop).
 ///
-/// Real Kotlin/Java syntax — even unusually deeply nested Compose UI —
-/// bottoms out at a few dozen levels; measured against the actual
-/// `nowinandroid` sample, a realistic file (including a malformed,
-/// mid-edit buffer) never exceeds ~20. This cap is generous relative to
-/// that (over an order of magnitude of headroom) while still sitting far
-/// below the few-thousand-frame threshold that overflows an 8 MiB stack —
-/// see the recursive descents in `features::call_arg_diagnostics`,
-/// `features::fill_when`, `features::missing_import_diagnostics`,
-/// `features::nullable_call_diagnostics`, and `indexer::cst_folding`,
-/// each of which independently stack-overflows on a pathological input
-/// (e.g. a single expression with tens of thousands of chained
-/// operators/segments, or an unclosed-brace file with tens of thousands of
-/// trailing lines) with no guard at all before this constant was
-/// introduced.
+/// Real Kotlin/Java syntax bottoms out at a few dozen levels of nesting,
+/// so this sits well above anything a human writes while staying far below
+/// the few-thousand frames that overflow an 8 MiB stack. Without a cap,
+/// tree depth translates directly into stack frames and a pathological
+/// input (one expression with tens of thousands of chained operators, or
+/// an unclosed brace followed by tens of thousands of lines) aborts the
+/// whole process.
 ///
-/// Not a correctness bound in the usual sense: once hit, callers simply
-/// stop descending into that subtree (under-reporting deeper diagnostics)
-/// rather than erroring — the same trade-off `resolve_chain`'s hierarchy
-/// walk already makes with its own `max_depth` parameter. Report every hit
-/// through [`report_cst_depth_exceeded`] so that trade-off stays visible.
+/// Not a correctness bound in the usual sense: once hit, callers stop
+/// descending into that subtree — under-reporting deeper results rather
+/// than erroring — the same trade-off `walk_hierarchy` already makes with
+/// its own `max_depth`. Report every hit through
+/// [`report_cst_depth_exceeded!`] so the trade-off stays visible.
 pub(crate) const MAX_CST_DESCENT_DEPTH: usize = 512;
 
-/// How many depth-cap hits to log before going quiet. One pathological tree
-/// trips the cap once per node past the limit, so an unthrottled log would
+/// How many hits one [`WarnThrottle`] logs per window. A single pathological
+/// tree trips a cap once per node past the limit, so an unthrottled log would
 /// bury everything else; the first few carry all the diagnostic value.
-const MAX_DEPTH_REPORTS: usize = 5;
+pub(crate) const MAX_DEPTH_REPORTS: usize = 5;
 
-static DEPTH_REPORTS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+/// How long a [`WarnThrottle`] stays quiet before its budget refills.
+const WARN_WINDOW: std::time::Duration = std::time::Duration::from_secs(300);
+
+static PROCESS_START: std::sync::LazyLock<std::time::Instant> =
+    std::sync::LazyLock::new(std::time::Instant::now);
+
+/// A warn budget that refills every [`WARN_WINDOW`], for sites that can fire
+/// repeatedly over a long-running server's lifetime.
+///
+/// [`throttled_warn`]'s plain lifetime budget is right for a site that reports
+/// a one-off bug — a task that panicked once is a bug you fix, not one you
+/// need re-reported hourly. A depth cap or a broken cycle is different: it
+/// tracks whatever file the user has open, so a lifetime budget spent during
+/// startup indexing would leave the server permanently silent about every
+/// later occurrence.
+pub(crate) struct WarnThrottle {
+    limit: usize,
+    reports: std::sync::atomic::AtomicUsize,
+    window_started_secs: std::sync::atomic::AtomicU64,
+}
+
+impl WarnThrottle {
+    pub(crate) const fn new(limit: usize) -> Self {
+        Self {
+            limit,
+            reports: std::sync::atomic::AtomicUsize::new(0),
+            window_started_secs: std::sync::atomic::AtomicU64::new(0),
+        }
+    }
+
+    /// Log `message()` unless this window's budget is already spent.
+    ///
+    /// Two threads racing the window reset can cost or grant one extra line;
+    /// that is well within what a diagnostic log tolerates, and is worth not
+    /// taking a lock on a path that fires during a stack-depth emergency.
+    pub(crate) fn warn(&self, message: impl FnOnce() -> String) {
+        use std::sync::atomic::Ordering::Relaxed;
+        let now = PROCESS_START.elapsed().as_secs();
+        if now.saturating_sub(self.window_started_secs.load(Relaxed)) >= WARN_WINDOW.as_secs() {
+            self.window_started_secs.store(now, Relaxed);
+            self.reports.store(0, Relaxed);
+        }
+        let seen = self.reports.fetch_add(1, Relaxed);
+        if seen >= self.limit {
+            return;
+        }
+        let suffix = if seen + 1 == self.limit {
+            " Further reports from here suppressed until the next window."
+        } else {
+            ""
+        };
+        log::warn!("{}{suffix}", message());
+    }
+}
 
 /// Record that a recursive CST descent stopped at [`MAX_CST_DESCENT_DEPTH`].
 ///
-/// The cap exists to convert a stack overflow into degraded output, but a
-/// silent bail leaves nothing to explain *why* results went missing — and a
-/// hit on ordinary-looking source is itself the signal that something is
-/// wrong (a cycle, or a walker reaching far deeper than real syntax should).
-/// `site` names the walker; the node's position points at the input.
-pub(crate) fn report_cst_depth_exceeded(site: &str, node: tree_sitter::Node<'_>) {
+/// The cap converts a stack overflow into degraded output, but a silent bail
+/// leaves nothing to explain *why* results went missing — and a hit on
+/// ordinary-looking source is itself the signal that something is wrong (a
+/// cycle, or a walker reaching far deeper than real syntax should).
+///
+/// Call through the [`report_cst_depth_exceeded!`] macro rather than
+/// directly: it gives each walker its own budget, so the one walker caught in
+/// a loop cannot crowd the other fifteen out of the log.
+pub(crate) fn log_cst_depth_exceeded(
+    throttle: &WarnThrottle,
+    site: &str,
+    node: tree_sitter::Node<'_>,
+) {
     let position = node.start_position();
-    throttled_warn(&DEPTH_REPORTS, MAX_DEPTH_REPORTS, || {
+    throttle.warn(|| {
         format!(
             "CST descent hit the depth cap ({MAX_CST_DESCENT_DEPTH}) in {site} at \
              {}:{} (node kind `{}`) — deeper nodes were skipped. Real Kotlin/Java \
@@ -64,8 +117,19 @@ pub(crate) fn report_cst_depth_exceeded(site: &str, node: tree_sitter::Node<'_>)
     });
 }
 
-static RESOLUTION_CYCLE_REPORTS: std::sync::atomic::AtomicUsize =
-    std::sync::atomic::AtomicUsize::new(0);
+/// Report a [`MAX_CST_DESCENT_DEPTH`] bail, with a warn budget private to the
+/// call site. Each expansion declares its own `static`, which is the whole
+/// point — see [`report_cst_depth_exceeded`].
+macro_rules! report_cst_depth_exceeded {
+    ($site:expr, $node:expr) => {{
+        static THROTTLE: $crate::util::WarnThrottle =
+            $crate::util::WarnThrottle::new($crate::util::MAX_DEPTH_REPORTS);
+        $crate::util::log_cst_depth_exceeded(&THROTTLE, $site, $node);
+    }};
+}
+pub(crate) use report_cst_depth_exceeded;
+
+static RESOLUTION_CYCLE_REPORTS: WarnThrottle = WarnThrottle::new(MAX_DEPTH_REPORTS);
 
 /// Record that a resolution refused to re-enter itself, breaking a cycle.
 ///
@@ -75,7 +139,7 @@ static RESOLUTION_CYCLE_REPORTS: std::sync::atomic::AtomicUsize =
 /// always worth a line in the log: silently returning `None` here is what
 /// makes a missing type look like an ordinary unresolvable one.
 pub(crate) fn report_resolution_cycle(site: &str, name: &str, uri: &tower_lsp::lsp_types::Url) {
-    throttled_warn(&RESOLUTION_CYCLE_REPORTS, MAX_DEPTH_REPORTS, || {
+    RESOLUTION_CYCLE_REPORTS.warn(|| {
         format!(
             "resolution cycle broken in {site}: `{name}` in {} is already being resolved further \
              up the stack, so its type is reported as unknown. This means a self- or \

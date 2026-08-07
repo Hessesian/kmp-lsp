@@ -194,7 +194,7 @@ pub(crate) fn collect_unused_import_flags(doc: &LiveDoc) -> Vec<UnusedImportFlag
 /// reference token found inside comment-leaf text, skipping the import/package
 /// headers themselves. Deliberately unstructured — see the module doc for why.
 fn collect_used_identifier_texts<'a>(node: Node<'a>, bytes: &'a [u8], out: &mut HashSet<&'a str>) {
-    collect_used_identifier_texts_inner(node, bytes, false, false, out);
+    collect_used_identifier_texts_inner(node, bytes, false, false, out, 0);
 }
 
 /// `in_declaration_header` suppresses identifier-text collection while inside
@@ -214,7 +214,16 @@ fn collect_used_identifier_texts_inner<'a>(
     in_declaration_header: bool,
     parent_has_error: bool,
     out: &mut HashSet<&'a str>,
+    depth: usize,
 ) {
+    // This walks every node in the file, so ERROR recovery on a huge
+    // malformed buffer nests it far deeper than real syntax ever does — bail
+    // rather than overflow the stack. See `crate::util::MAX_CST_DESCENT_DEPTH`.
+    if depth >= crate::util::MAX_CST_DESCENT_DEPTH {
+        crate::util::report_cst_depth_exceeded!("collect_used_identifier_texts_inner", node);
+        return;
+    }
+
     let kind = node.kind();
     let in_declaration_header =
         in_declaration_header || kind == KIND_IMPORT_HEADER || kind == KIND_PACKAGE_HEADER;
@@ -276,6 +285,7 @@ fn collect_used_identifier_texts_inner<'a>(
             in_declaration_header,
             this_has_error,
             out,
+            depth + 1,
         );
     }
 }

@@ -115,7 +115,7 @@ fn collect_candidates(
     // far deeper than any real Kotlin syntax — bail rather than overflow the
     // stack. See `crate::util::MAX_CST_DESCENT_DEPTH`.
     if depth >= crate::util::MAX_CST_DESCENT_DEPTH {
-        crate::util::report_cst_depth_exceeded("collect_candidates", node);
+        crate::util::report_cst_depth_exceeded!("collect_candidates", node);
         return;
     }
 
