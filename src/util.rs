@@ -64,6 +64,28 @@ pub(crate) fn report_cst_depth_exceeded(site: &str, node: tree_sitter::Node<'_>)
     });
 }
 
+static RESOLUTION_CYCLE_REPORTS: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
+
+/// Record that a resolution refused to re-enter itself, breaking a cycle.
+///
+/// Unlike a depth cap — which can fire on merely deep input — reaching here
+/// always means the source contains a genuine reference loop, or that
+/// inference followed one it should not have. It is never routine, so it is
+/// always worth a line in the log: silently returning `None` here is what
+/// makes a missing type look like an ordinary unresolvable one.
+pub(crate) fn report_resolution_cycle(site: &str, name: &str, uri: &tower_lsp::lsp_types::Url) {
+    throttled_warn(&RESOLUTION_CYCLE_REPORTS, MAX_DEPTH_REPORTS, || {
+        format!(
+            "resolution cycle broken in {site}: `{name}` in {} is already being resolved further \
+             up the stack, so its type is reported as unknown. This means a self- or \
+             mutually-referential declaration, and without this guard it would recurse until the \
+             stack was exhausted.",
+            uri.path(),
+        )
+    });
+}
+
 /// Log `message()` via `log::warn!`, capped at `limit` calls through this
 /// particular `counter`.
 ///

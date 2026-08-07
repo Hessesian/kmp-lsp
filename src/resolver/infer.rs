@@ -451,10 +451,60 @@ pub(crate) fn infer_variable_type_from_cst(
     var_name: &str,
     uri: &Url,
 ) -> Option<String> {
+    // Cycle guard — see `ResolutionInFlight`. Inferring a variable's type
+    // infers its initializer, which resolves the identifiers inside it, which
+    // infers *their* variables. A self- or mutually-referential initializer
+    // closes that into a loop with no natural end.
+    let _guard = ResolutionInFlight::enter(uri, var_name)?;
     let doc = indexer.live_doc_or_parse(uri)?;
     let bytes = doc.bytes.as_slice();
     let init = find_prop_initializer(doc.tree.root_node(), bytes, var_name)?;
     crate::indexer::infer_expr_type(init, bytes, indexer, uri)
+}
+
+thread_local! {
+    /// Variables whose type inference is currently on the stack, per thread.
+    static RESOLVING_VARIABLES: std::cell::RefCell<std::collections::HashSet<(String, String)>> =
+        std::cell::RefCell::new(std::collections::HashSet::new());
+}
+
+/// Breaks reference cycles in variable-type inference by refusing to re-enter
+/// a resolution that is already in flight.
+///
+/// A depth cap cannot solve this. The loop runs
+/// `infer_expr_type` → `infer_ident_type` → `infer_variable_type_from_cst` →
+/// `infer_expr_type`, and `infer_expr_type` is a public entry point that
+/// restarts its depth counter at zero on every lap, so the counter never
+/// climbs. This was not theoretical: it aborted the server in normal editing
+/// with a 65,127-frame stack overflow, and the resulting core dump shows that
+/// exact four-frame cycle repeating to exhaustion.
+///
+/// Keyed on `(uri, var_name)` — the full identity of the query. Re-entering
+/// the *same* variable in the *same* file cannot produce an answer the outer
+/// call is not already computing, so returning `None` loses nothing; a
+/// different variable or file is unaffected and resolves normally.
+struct ResolutionInFlight {
+    key: (String, String),
+}
+
+impl ResolutionInFlight {
+    /// Claims `(uri, var_name)`, or returns `None` if it is already being
+    /// resolved further up the stack — the cycle case.
+    fn enter(uri: &Url, var_name: &str) -> Option<Self> {
+        let key = (uri.as_str().to_owned(), var_name.to_owned());
+        let claimed = RESOLVING_VARIABLES.with(|set| set.borrow_mut().insert(key.clone()));
+        if !claimed {
+            crate::util::report_resolution_cycle("infer_variable_type_from_cst", var_name, uri);
+            return None;
+        }
+        Some(ResolutionInFlight { key })
+    }
+}
+
+impl Drop for ResolutionInFlight {
+    fn drop(&mut self) {
+        RESOLVING_VARIABLES.with(|set| set.borrow_mut().remove(&self.key));
+    }
 }
 
 /// Depth-first search for the initializer expression of `val/var <var_name> = …`.

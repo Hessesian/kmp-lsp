@@ -5966,3 +5966,35 @@ fn an_unrelated_same_named_object_does_not_validate_an_enum_entry_branch() {
         "an unrelated same-named object must not validate an enum entry: {labels:?}"
     );
 }
+
+/// Regression, from a production stack overflow with a 65,127-frame core
+/// dump: inferring a variable's type infers its initializer, which resolves
+/// the identifiers in it, which infers *their* variables. A self-referential
+/// initializer closed that into an unbounded loop and aborted the server
+/// during ordinary editing.
+///
+/// A depth cap could not catch it — the cycle runs back through
+/// `infer_expr_type`, a public entry point that restarts its depth counter at
+/// zero every lap — so this is guarded by refusing to re-enter a resolution
+/// already in flight.
+#[test]
+fn a_self_referential_initializer_does_not_recurse_forever() {
+    let idx = Indexer::new();
+    let file_uri = uri("/Cycle.kt");
+    let src = "package app\nfun f() {\n    val a = a\n}\n";
+    idx.index_content(&file_uri, src);
+    idx.store_live_tree(&file_uri, src);
+    // Must terminate rather than exhaust the stack.
+    let _ = crate::resolver::infer::infer_variable_type_from_cst(&idx, "a", &file_uri);
+}
+
+/// The mutual case: two declarations whose initializers reference each other.
+#[test]
+fn mutually_referential_initializers_do_not_recurse_forever() {
+    let idx = Indexer::new();
+    let file_uri = uri("/Cycle2.kt");
+    let src = "package app\nfun f() {\n    val a = b\n    val b = a\n}\n";
+    idx.index_content(&file_uri, src);
+    idx.store_live_tree(&file_uri, src);
+    let _ = crate::resolver::infer::infer_variable_type_from_cst(&idx, "a", &file_uri);
+}
