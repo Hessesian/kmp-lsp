@@ -604,3 +604,34 @@ fn local_scope_occurrences_returns_none_when_cursor_is_on_a_named_argument_label
          the local fast path must not claim this position, got {result:?}"
     );
 }
+
+/// The walk descends only the body that declares the name, but one expression
+/// nested that deeply inside it still reaches the same frame count -- and this
+/// walker's frames are heavy enough to exhaust 8 MiB at ~10,000 levels.
+#[test]
+fn local_scope_occurrences_survives_a_pathologically_deep_body() {
+    let n = 4_000; // ~8x MAX_CST_DESCENT_DEPTH (512)
+    let mut src = String::from("fun run() {\n    val total = 0\n    print(total");
+    for _ in 0..n {
+        src.push_str("+1");
+    }
+    src.push_str(")\n}\n");
+
+    let handle = std::thread::Builder::new()
+        // Deliberately small: the guard caps the walk at 512 frames whatever
+        // the stack size, and n=4,000 overflows 2 MiB unguarded, so this pins
+        // the same defect as an 8 MiB thread would at n=10,000 -- without the
+        // quadratic parse-depth cost of getting there.
+        .stack_size(2 * 1024 * 1024)
+        .spawn(move || {
+            let (file_uri, indexer) = indexed_with_live("/Deep.kt", &src);
+            local_scope_occurrences(&indexer, &file_uri, Position::new(1, 8))
+        })
+        .unwrap();
+    // A stack overflow aborts the process rather than failing this join.
+    let result = handle.join().expect("must not overflow the stack");
+    assert!(
+        result.is_none(),
+        "a truncated walk must decline the local fast path, not rename a subset"
+    );
+}
