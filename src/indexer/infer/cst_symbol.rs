@@ -27,9 +27,18 @@ use super::deps::InferDeps as _;
 use super::speculative::ResolutionDoc;
 
 pub(crate) fn is_declaration_site(node: Node<'_>) -> bool {
-    let Some(parent) = node.parent() else {
-        return false;
-    };
+    node.parent()
+        .is_some_and(|parent| is_declaration_site_of(node, parent))
+}
+
+/// Like [`is_declaration_site`], but for callers that already hold the parent.
+///
+/// tree-sitter's `Node::parent()` is not a stored pointer — it re-finds the
+/// node by descending from the root, so it costs O(depth) per call. A walk
+/// that pushes children from a node it already has therefore knows the parent
+/// for free, and asking tree-sitter for it again once per node is what turns
+/// such a walk quadratic in nesting depth.
+pub(crate) fn is_declaration_site_of(node: Node<'_>, parent: Node<'_>) -> bool {
     let parent_kind = parent.kind();
     if parent_kind == KIND_CLASS_DECL
         || parent_kind == KIND_OBJECT_DECL
@@ -381,7 +390,7 @@ pub(crate) fn local_scope_occurrences(
         .find(|scope| declares_name_directly(*scope, &name, &doc.bytes).is_some())?;
 
     let mut occurrences: Vec<Occurrence> = Vec::new();
-    let complete = visit_unshadowed_name_matches(
+    let outcome = visit_unshadowed_name_matches(
         body,
         &name,
         0,
@@ -391,9 +400,8 @@ pub(crate) fn local_scope_occurrences(
         &mut |node, generation| occurrences.push(Occurrence { node, generation }),
         0,
     );
-    if !complete {
-        // Some occurrences were never seen; renaming the rest would corrupt
-        // the file. Fall through to the cross-file path instead.
+    if outcome == ScopeWalk::StoppedAtDepthCap {
+        // Renaming the subset we did see would corrupt the file.
         return None;
     }
 
@@ -525,9 +533,14 @@ fn is_functions_own_name(parent: Node<'_>, child: Node<'_>) -> bool {
 /// treated as opaque and not searched into. Also the shadow-check primitive:
 /// a nested scope "shadows" `name` exactly when it directly declares it.
 fn declares_name_directly<'a>(scope: Node<'a>, name: &str, bytes: &[u8]) -> Option<Node<'a>> {
-    let mut stack = vec![scope];
-    while let Some(node) = stack.pop() {
-        if is_declaration_site(node) && node.utf8_text_owned(bytes).as_deref() == Some(name) {
+    // Carry each node's parent alongside it: the walk already knows it, and
+    // re-deriving it per node via `Node::parent()` costs O(depth) each time —
+    // see [`is_declaration_site_of`].
+    let mut stack = vec![(scope, scope.parent())];
+    while let Some((node, parent)) = stack.pop() {
+        if parent.is_some_and(|parent| is_declaration_site_of(node, parent))
+            && node.utf8_text_owned(bytes).as_deref() == Some(name)
+        {
             return Some(node);
         }
         if node.id() != scope.id() && scope_boundary_at(node).is_some() {
@@ -535,10 +548,23 @@ fn declares_name_directly<'a>(scope: Node<'a>, name: &str, bytes: &[u8]) -> Opti
         }
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
-            stack.push(child);
+            stack.push((child, Some(node)));
         }
     }
     None
+}
+
+/// Whether a scope walk saw every occurrence of the name, or stopped early at
+/// [`crate::util::MAX_CST_DESCENT_DEPTH`].
+///
+/// Every other capped walker in this codebase under-reports a diagnostic when
+/// it bails, which degrades gracefully. This one feeds rename, where applying
+/// to some occurrences of a name and not others corrupts the file — so the
+/// distinction is a type the caller must match on, not a bool it can ignore.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ScopeWalk {
+    SawEveryOccurrence,
+    StoppedAtDepthCap,
 }
 
 /// Walk `statements`'s children in document order, incrementing `generation`
@@ -548,8 +574,8 @@ fn declares_name_directly<'a>(scope: Node<'a>, name: &str, bytes: &[u8]) -> Opti
 /// reference must see the FIRST `x`, since the second doesn't exist yet
 /// while its own initializer runs.
 ///
-/// Returns `false` if the walk stopped at [`crate::util::MAX_CST_DESCENT_DEPTH`],
-/// leaving `visit` incomplete — see [`visit_unshadowed_name_matches`].
+/// Stops and reports [`ScopeWalk::StoppedAtDepthCap`] the moment any nested
+/// walk does — see [`visit_unshadowed_name_matches`].
 #[must_use]
 fn visit_statements_with_generations<'a>(
     statements: Node<'a>,
@@ -559,12 +585,12 @@ fn visit_statements_with_generations<'a>(
     bytes: &[u8],
     visit: &mut impl FnMut(Node<'a>, usize),
     depth: usize,
-) -> bool {
+) -> ScopeWalk {
     let mut cursor = statements.walk();
     for statement in statements.children(&mut cursor) {
-        let complete = match declares_name_directly(statement, name, bytes) {
+        let outcome = match declares_name_directly(statement, name, bytes) {
             Some(declaration_node) => {
-                let complete = visit_unshadowed_name_matches(
+                let outcome = visit_unshadowed_name_matches(
                     statement,
                     name,
                     generation,
@@ -578,7 +604,7 @@ fn visit_statements_with_generations<'a>(
                 if !already_shadowed {
                     visit(declaration_node, generation);
                 }
-                complete
+                outcome
             }
             None => visit_unshadowed_name_matches(
                 statement,
@@ -591,11 +617,11 @@ fn visit_statements_with_generations<'a>(
                 depth + 1,
             ),
         };
-        if !complete {
-            return false;
+        if outcome == ScopeWalk::StoppedAtDepthCap {
+            return outcome;
         }
     }
-    true
+    ScopeWalk::SawEveryOccurrence
 }
 
 /// Walk `node`'s subtree, calling `visit` on every `simple_identifier`
@@ -604,11 +630,9 @@ fn visit_statements_with_generations<'a>(
 /// `exclude` suppresses one node — a declaration re-emitted separately by
 /// [`visit_statements_with_generations`] at its own new generation.
 ///
-/// Returns `false` if it stopped at [`crate::util::MAX_CST_DESCENT_DEPTH`]
-/// instead of finishing. Callers must not use a partial result: a rename that
-/// applies to some occurrences of a name and not others is worse than one that
-/// declines, so [`local_scope_occurrences`] gives up its fast path on `false`
-/// rather than returning the occurrences it did find.
+/// On [`ScopeWalk::StoppedAtDepthCap`] the occurrences collected so far are
+/// incomplete; [`local_scope_occurrences`] gives up its fast path rather than
+/// renaming the subset it did find.
 #[must_use]
 #[allow(clippy::too_many_arguments)]
 fn visit_unshadowed_name_matches<'a>(
@@ -620,10 +644,10 @@ fn visit_unshadowed_name_matches<'a>(
     bytes: &[u8],
     visit: &mut impl FnMut(Node<'a>, usize),
     depth: usize,
-) -> bool {
+) -> ScopeWalk {
     if depth >= crate::util::MAX_CST_DESCENT_DEPTH {
         crate::util::report_cst_depth_exceeded!("visit_unshadowed_name_matches", node);
-        return false;
+        return ScopeWalk::StoppedAtDepthCap;
     }
     let is_excluded = exclude.is_some_and(|excluded| excluded.id() == node.id());
     if !already_shadowed
@@ -650,7 +674,7 @@ fn visit_unshadowed_name_matches<'a>(
         let child_shadowed = already_shadowed
             || (scope_boundary_at(child).is_some()
                 && declares_name_directly(child, name, bytes).is_some());
-        if !visit_unshadowed_name_matches(
+        if visit_unshadowed_name_matches(
             child,
             name,
             generation,
@@ -659,11 +683,12 @@ fn visit_unshadowed_name_matches<'a>(
             bytes,
             visit,
             depth + 1,
-        ) {
-            return false;
+        ) == ScopeWalk::StoppedAtDepthCap
+        {
+            return ScopeWalk::StoppedAtDepthCap;
         }
     }
-    true
+    ScopeWalk::SawEveryOccurrence
 }
 
 /// Convert a tree-sitter node's byte-based position into an LSP `Location`

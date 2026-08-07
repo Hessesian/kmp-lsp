@@ -20,26 +20,8 @@ use super::helpers::{
 use super::{modifier_bit, type_index, RawToken, Source};
 
 pub(super) fn walk_kotlin(node: Node<'_>, src: &Source<'_>, out: &mut Vec<RawToken>) {
-    walk_kotlin_at(node, src, out, 0);
-}
-
-fn walk_kotlin_at(node: Node<'_>, src: &Source<'_>, out: &mut Vec<RawToken>, depth: usize) {
-    // See `crate::util::MAX_CST_DESCENT_DEPTH`: bail rather than overflow the
-    // stack on a pathologically deep tree (huge chained expression, or
-    // ERROR-recovery on a huge malformed file).
-    if depth >= crate::util::MAX_CST_DESCENT_DEPTH {
-        crate::util::report_cst_depth_exceeded!("walk_kotlin_at", node);
-        return;
-    }
-    classify_kotlin(node, src, out);
-    let mut cursor = node.walk();
-    if cursor.goto_first_child() {
-        loop {
-            walk_kotlin_at(cursor.node(), src, out, depth + 1);
-            if !cursor.goto_next_sibling() {
-                break;
-            }
-        }
+    for node in crate::indexer::walk::descendants(node) {
+        classify_kotlin(node, src, out);
     }
 }
 

@@ -642,6 +642,50 @@ fine — the position is structural, not arithmetic.
 - `named_arg_label` used `child(i + 1)` which fails if `child(i)` returns `None` early
 - `count_provided_args` reinvented `children_of_kind` with 8 lines of boilerplate
 
+### 18a. Walking a whole subtree: iterate, don't recurse
+
+A cursor satisfies §18 while still recursing per level, and that is its own bug class. Rust
+recursion spends a stack frame per level, so a machine-generated file or an ERROR-recovered
+buffer aborts the process — this happened in production and took four passes to fix.
+
+```rust
+// Wrong: one stack frame per level, and every accumulator becomes a parameter
+fn collect_at(node: Node, out: &mut Vec<Thing>, cache: &mut Cache, depth: usize) {
+    if depth >= MAX_CST_DESCENT_DEPTH { return; }   // and a comment explaining it
+    // ...
+    for child in node.children(&mut cursor) { collect_at(child, out, cache, depth + 1); }
+}
+
+// Right: depth is free, so there is no cap and nothing to explain
+for node in crate::indexer::walk::descendants(root) {
+    // ...
+}
+```
+
+The stack is the smaller half. Recursion forces every accumulator and cache through every
+frame — that is how `collect_call_nodes` reached eight parameters and an
+`#[allow(clippy::too_many_arguments)]`. Iteratively, that context is local variables in one
+function and the per-node work becomes a predicate over a single node, which is usually the
+function you actually wanted.
+
+`descendants` deliberately has no pruning or subtree-exit events yet. **Add them to
+`src/indexer/walk.rs` when you need them; do not reach back for recursion.**
+
+**Still legitimately recursive:** recursion over *expression structure* while doing inference
+(`infer_expr_type_at_depth`, `resolve_callee_chain_at_depth`) is not a uniform traversal and
+keeps its depth cap. So do walkers that rebind scoped state per subtree, until `walk` grows
+the `Leave` event they need.
+
+**A cap is not a substitute for either.** It converts a crash into silently truncated results,
+and it cannot catch a resolution *cycle* at all — a cycle re-enters a public entry point that
+resets the counter, which is why the real crash survived three rounds of capping. Cycles need
+an in-flight guard (see `ResolutionInFlight` in `src/resolver/infer.rs`).
+
+**`Node::parent()` is O(depth), not a pointer deref** — tree-sitter re-finds the node by
+descending from the root. Calling it once per node makes a walk quadratic *even when the walk
+is already iterative*; this cost 217s on a rename. If a walk knows the parent, pass it
+(`is_declaration_site_of`) rather than asking tree-sitter to recompute it.
+
 ## SOLID principles (Rust mapping)
 
 These are mapped to Rust idioms. Good examples are added here as they emerge from refactoring — when you write code that cleanly illustrates a principle, add it below.

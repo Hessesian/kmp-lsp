@@ -46,16 +46,15 @@ pub(crate) fn call_arg_diagnostics(indexer: &Indexer, uri: &Url, doc: &LiveDoc) 
     let mut sig_cache: std::collections::HashMap<(String, Option<String>), Resolution<Signature>> =
         std::collections::HashMap::new();
     let mut diagnostics = Vec::new();
-    collect_call_nodes(
-        root,
-        bytes,
-        indexer,
-        uri,
-        &mut diagnostics,
-        &mut stats,
-        &mut sig_cache,
-        0,
-    );
+    for node in crate::indexer::walk::descendants(root) {
+        if node.kind() == KIND_CALL_EXPR {
+            if let Some(diagnostic) =
+                check_call_args(&node, bytes, indexer, uri, &mut stats, &mut sig_cache)
+            {
+                diagnostics.push(diagnostic);
+            }
+        }
+    }
     log::debug!(
         "call_arg_diagnostics: {} call_expr nodes, {} skipped(lambda), {} skipped(scope), {} resolved ({} cache hits), {}ms",
         stats.total, stats.skipped_trailing_lambda, stats.skipped_scope, stats.resolved,
@@ -72,51 +71,6 @@ struct DiagStats {
     resolved: usize,
     cache_hits: usize,
     resolve_ms: u128,
-}
-
-#[allow(clippy::too_many_arguments)]
-fn collect_call_nodes(
-    node: tree_sitter::Node,
-    bytes: &[u8],
-    indexer: &Indexer,
-    uri: &Url,
-    diagnostics: &mut Vec<Diagnostic>,
-    stats: &mut DiagStats,
-    sig_cache: &mut std::collections::HashMap<(String, Option<String>), Resolution<Signature>>,
-    depth: usize,
-) {
-    // See `crate::util::MAX_CST_DESCENT_DEPTH`: bail rather than overflow the
-    // stack on a pathologically deep tree (huge chained expression, or
-    // ERROR-recovery on a huge malformed file).
-    if depth >= crate::util::MAX_CST_DESCENT_DEPTH {
-        crate::util::report_cst_depth_exceeded!("collect_call_nodes", node);
-        return;
-    }
-
-    if node.kind() == KIND_CALL_EXPR {
-        if let Some(diag) = check_call_args(&node, bytes, indexer, uri, stats, sig_cache) {
-            diagnostics.push(diag);
-        }
-    }
-
-    let mut cursor = node.walk();
-    if cursor.goto_first_child() {
-        loop {
-            collect_call_nodes(
-                cursor.node(),
-                bytes,
-                indexer,
-                uri,
-                diagnostics,
-                stats,
-                sig_cache,
-                depth + 1,
-            );
-            if !cursor.goto_next_sibling() {
-                break;
-            }
-        }
-    }
 }
 
 fn check_call_args(
