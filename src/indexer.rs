@@ -16,6 +16,7 @@ mod doc;
 mod html_md;
 
 mod cst_folding;
+pub(crate) mod walk;
 pub(crate) use self::cst_folding::cst_folding_ranges;
 
 mod infer;
