@@ -19,6 +19,11 @@ use tree_sitter::Node;
 /// no caller needs them yet. Add them here when one does, rather than reaching
 /// back for recursion.
 pub(crate) fn descendants<'tree>(root: Node<'tree>) -> impl Iterator<Item = Node<'tree>> {
+    // `root.walk()` confines the cursor to `root`'s subtree: at `root` itself
+    // both `goto_next_sibling` and `goto_parent` report failure even when
+    // `root.next_sibling()` exists. That is what keeps a walk started at an
+    // inner node from escaping sideways into the rest of the file, so prefer
+    // cursor movement over the `Node` accessors of the same name here.
     let mut cursor = root.walk();
     let mut finished = false;
     // `TreeCursor` has no "visit next in pre-order" primitive, so the walk is

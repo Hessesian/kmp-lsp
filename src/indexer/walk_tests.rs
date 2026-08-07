@@ -109,3 +109,27 @@ fn a_pathologically_deep_tree_costs_no_stack() {
         "expected to visit every node of a {n}-deep tree, saw {visited}"
     );
 }
+
+#[test]
+fn a_leaf_root_with_siblings_yields_only_itself() {
+    // A leaf has no child to descend into, so the walk immediately looks for a
+    // sibling — which for a leaf `root` lies outside the subtree it was given.
+    let tree = parse("fun first() {}\nfun second() {}\n");
+    let first_function = tree.root_node().child(0).expect("a first function");
+    let leaf = first_function.child(0).expect("the `fun` keyword");
+    assert_eq!(leaf.child_count(), 0, "test needs a genuine leaf");
+    assert!(
+        leaf.next_sibling().is_some(),
+        "test needs the leaf to have a sibling"
+    );
+
+    let visited: Vec<Node> = descendants(leaf).collect();
+
+    assert_eq!(
+        visited.len(),
+        1,
+        "a leaf is its own whole subtree, got {:?}",
+        visited.iter().map(|node| node.kind()).collect::<Vec<_>>()
+    );
+    assert_eq!(visited[0].id(), leaf.id());
+}
