@@ -45,7 +45,8 @@ jobs:
           set -euo pipefail
           MUSL_GCC="$(command -v musl-gcc)"
           echo "musl-gcc: $MUSL_GCC"
-          curl -fsSL -o /tmp/zlib.tar.gz https://zlib.net/zlib-1.3.1.tar.gz
+          curl -fsSL --retry 3 -o /tmp/zlib.tar.gz \
+            https://github.com/madler/zlib/releases/download/v1.3.1/zlib-1.3.1.tar.gz
           tar -xzf /tmp/zlib.tar.gz -C /tmp
           cd /tmp/zlib-1.3.1
           CC="$MUSL_GCC" ./configure --static
