@@ -72,6 +72,19 @@ graalvmNative {
                 "--gc=serial",
                 "-O2",
             )
+            // Opt-in static/musl build (test workflow only — never set for the real
+            // release matrix). Produces a linker-independent binary that runs under
+            // environments without a standard glibc dynamic linker, e.g. Termux.
+            // -PmuslZlibDir and -PmuslCC point at the toolchain the test workflow sets up.
+            if (project.hasProperty("staticMusl")) {
+                buildArgs.addAll("--static", "--libc=musl")
+                (project.findProperty("muslZlibDir") as String?)?.let {
+                    buildArgs.addAll("-H:NativeLinkerOption=-L$it", "-H:NativeLinkerOption=-lz")
+                }
+                (project.findProperty("muslCC") as String?)?.let {
+                    buildArgs.add("-H:CCompilerPath=$it")
+                }
+            }
         }
     }
     toolchainDetection.set(false)

@@ -1,0 +1,76 @@
+name: Test musl static sidecar build
+
+# Throwaway/discovery workflow — NOT part of the release pipeline.
+#
+# Validates whether kmp-jar-indexer can be built as a static, musl-libc-linked
+# native-image binary (no dynamic-linker dependency), which is what's needed to
+# run under environments without a standard glibc Linux userspace, e.g. Termux
+# on Android. See https://github.com/Hessesian/kmp-lsp/issues/263.
+#
+# Builds are uploaded as a workflow artifact only (no GitHub release created).
+# Delete this file once musl support is proven and folded into release.yml.
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/test-musl-sidecar.yml"
+      - "java-sidecar/**"
+  workflow_dispatch:
+
+jobs:
+  build-musl-sidecar:
+    runs-on: ubuntu-24.04-arm
+    defaults:
+      run:
+        working-directory: java-sidecar
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: graalvm/setup-graalvm@v1
+        with:
+          java-version: "21"
+          distribution: "graalvm-community"
+          native-image-job-reports: "true"
+
+      - name: Install musl toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools
+
+      # GraalVM's --libc=musl static build needs a static zlib built against
+      # musl (Ubuntu's zlib1g-dev is glibc-only). Built from the official
+      # upstream source and dropped in a fixed path the Gradle build points at.
+      - name: Build static zlib against musl
+        run: |
+          set -euo pipefail
+          MUSL_GCC="$(command -v musl-gcc)"
+          echo "musl-gcc: $MUSL_GCC"
+          curl -fsSL -o /tmp/zlib.tar.gz https://zlib.net/zlib-1.3.1.tar.gz
+          tar -xzf /tmp/zlib.tar.gz -C /tmp
+          cd /tmp/zlib-1.3.1
+          CC="$MUSL_GCC" ./configure --static
+          make -j"$(nproc)" libz.a
+          sudo mkdir -p /opt/musl-zlib
+          sudo cp libz.a /opt/musl-zlib/
+
+      - name: Build static musl native sidecar
+        run: |
+          ./gradlew nativeCompile \
+            -PstaticMusl=true \
+            -PmuslZlibDir=/opt/musl-zlib \
+            -PmuslCC="$(command -v musl-gcc)" \
+            --info
+
+      - name: Package sidecar
+        run: |
+          mkdir -p dist
+          cp build/native/nativeCompile/kmp-jar-indexer dist/kmp-jar-indexer-linux-aarch64-musl
+          chmod +x dist/kmp-jar-indexer-linux-aarch64-musl
+          file dist/kmp-jar-indexer-linux-aarch64-musl
+          ldd dist/kmp-jar-indexer-linux-aarch64-musl || true
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kmp-jar-indexer-linux-aarch64-musl
+          path: java-sidecar/dist/kmp-jar-indexer-linux-aarch64-musl
+          if-no-files-found: error
