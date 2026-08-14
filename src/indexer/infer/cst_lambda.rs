@@ -1070,7 +1070,10 @@ pub(super) fn resolve_call_params(
 /// Compute a call expression's argument shape (see [`CallShape`]) for overload
 /// disambiguation — the parenthesized argument count plus whether a trailing
 /// lambda follows.
-fn call_shape_of(call_expr: tree_sitter::Node<'_>, bytes: &[u8]) -> super::deps::CallShape {
+pub(crate) fn call_shape_of(
+    call_expr: tree_sitter::Node<'_>,
+    bytes: &[u8],
+) -> super::deps::CallShape {
     let arg_count = call_expr
         .find_value_arguments()
         .map(|va| crate::features::call_arg_diagnostics::count_provided_args(Some(&va), bytes))

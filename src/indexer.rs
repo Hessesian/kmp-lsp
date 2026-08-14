@@ -36,13 +36,13 @@ pub(crate) use self::infer::speculative::{
 pub(crate) use self::infer::{
     args::{extract_first_arg, find_as_call_arg_type, find_named_param_type_in_sig},
     cst_cursor::{cst_call_info, cst_outer_call_info, CallInfo},
-    cst_lambda::{cursor_node_at, LambdaScopeInfo},
+    cst_lambda::{call_shape_of, cursor_node_at, LambdaScopeInfo},
     cst_symbol::{
         classify_cursor, classify_symbol_at, is_call_callee, is_declaration_site,
         local_scope_occurrences, navigation_member_ident, navigation_receiver_node,
         resolve_identity, NavigationSource, SymbolAtCursor, SymbolRole,
     },
-    deps::{CallableInfo, InferDeps, OuterScopedParams},
+    deps::{CallShape, CallableInfo, InferDeps, OuterScopedParams},
     expr_type::infer_expr_type,
     it_this::{
         all_lambda_receivers_at, find_it_element_type, find_named_lambda_param_type,

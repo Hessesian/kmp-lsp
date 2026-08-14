@@ -8,9 +8,10 @@ use tower_lsp::lsp_types::{GotoDefinitionResponse, Location, Position, Url};
 
 use crate::backend::cursor::CursorContext;
 use crate::features::traits::{DocumentAccess, SearchAccess, SymbolIndex};
-use crate::indexer::Indexer;
+use crate::indexer::{CallShape, Indexer};
 use crate::parser::parse_by_extension;
 use crate::rg;
+use crate::types::CursorPos;
 
 // ─── Response helpers ─────────────────────────────────────────────────────────
 
@@ -164,6 +165,27 @@ fn try_cst_resolved_definition(
     }
 }
 
+/// The call shape of the call whose callee sits under `position`, or `None`
+/// when the cursor isn't precisely on a call's callee identifier (e.g. it's on
+/// an argument, or the position doesn't classify at all).
+///
+/// `is_call_callee` requires the cursor node to be the direct callee child of
+/// a `call_expression`, so `node.parent()` here is exactly that expression —
+/// no separate "find the enclosing call" walk needed.
+fn call_shape_at_callee(indexer: &Indexer, uri: &Url, position: Position) -> Option<CallShape> {
+    let doc = indexer.live_doc_or_parse(uri)?;
+    let cursor = CursorPos {
+        line: position.line as usize,
+        utf16_col: position.character as usize,
+    };
+    let node = crate::indexer::cursor_node_at(&doc, cursor)?;
+    if !crate::indexer::is_call_callee(node) {
+        return None;
+    }
+    let call_expr = node.parent()?;
+    Some(crate::indexer::call_shape_of(call_expr, &doc.bytes))
+}
+
 // ─── Main entry point ─────────────────────────────────────────────────────────
 
 /// Resolve goto-definition for the given cursor context.
@@ -233,7 +255,24 @@ pub(crate) async fn find_definition(
         }
     }
 
-    // General qualified or bare lookup.
+    // General qualified or bare lookup. An unqualified call's callee gets a
+    // shape-aware lookup instead of the plain name-based one — so a same-file
+    // declaration whose arity can't satisfy the call doesn't shadow the real
+    // (often library) target. Once the CST has confirmed this position is a
+    // call's callee, an empty shape-aware result must NOT fall through to the
+    // unfiltered lookup below — that would just re-find the same wrong-arity
+    // match by name and undo the whole point of computing the shape.
+    if ctx.qualifier.is_none() {
+        if let Some(shape) = call_shape_at_callee(index, uri, position) {
+            let locs = index.find_definition_for_call(&ctx.word, uri, shape);
+            return if locs.is_empty() {
+                let rg_locs = rg_resolve(index, uri, &ctx.word).await;
+                locs_to_opt_response(rg_locs)
+            } else {
+                locs_to_opt_response(locs)
+            };
+        }
+    }
     let locs = index.find_definition_qualified(&ctx.word, ctx.qualifier.as_deref(), uri);
     if !locs.is_empty() {
         return locs_to_opt_response(locs);

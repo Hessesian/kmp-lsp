@@ -49,6 +49,21 @@ impl Indexer {
         self.resolve_symbol(name, qualifier, from_uri)
     }
 
+    /// Resolve an unqualified call's callee name, filtering same-file
+    /// candidates whose arity can't satisfy `shape` — see
+    /// [`crate::resolver::resolve_callee_definition`]. Not part of
+    /// `find_definition_qualified`'s signature: every other caller of that
+    /// function has no call shape to offer, and this is the one goto-definition
+    /// path that does.
+    pub(crate) fn find_definition_for_call(
+        &self,
+        name: &str,
+        uri: &Url,
+        shape: crate::indexer::CallShape,
+    ) -> Vec<Location> {
+        crate::resolver::resolve_callee_definition(self, name, uri, shape)
+    }
+
     /// All symbols declared in the given file (for `documentSymbol`).
     pub(crate) fn file_symbols(&self, uri: &Url) -> Vec<SymbolEntry> {
         self.files

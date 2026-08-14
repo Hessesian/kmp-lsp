@@ -1,5 +1,5 @@
 use super::*;
-use crate::indexer::Indexer;
+use crate::indexer::{CallShape, Indexer};
 use crate::parser::{parse_java, parse_kotlin};
 use crate::stdlib::dot_completions_for;
 use tower_lsp::lsp_types::{CompletionItem, CompletionItemTag, InsertTextFormat, Url};
@@ -108,6 +108,155 @@ fn resolve_local_not_found_returns_empty_without_rg() {
     // We can't guarantee rg returns nothing in all environments,
     // so just verify local didn't find it in index.
     assert!(!locs.iter().any(|l| l.uri == u));
+}
+
+// ── resolve_callee_definition (call-shape-aware) ──────────────────────────
+
+#[test]
+fn resolve_callee_definition_skips_wrong_arity_self_reference() {
+    // The reported bug: `collect(block)` (1 arg) inside `Flow<T>.collect(scope,
+    // block)` (2 required args) must not resolve to the enclosing declaration.
+    let u = uri("/Flow.kt");
+    let idx = Indexer::new();
+    idx.index_content(
+        &u,
+        "package com.example\n\
+class CoroutineScope\n\
+fun <T : Any> Flow<T>.collect(scope: CoroutineScope, block: (T) -> Unit) {\n\
+    collect(block)\n\
+}\n",
+    );
+    let shape = CallShape {
+        arg_count: 1,
+        trailing_lambda: false,
+    };
+    let locs = resolve_callee_definition(&idx, "collect", &u, shape);
+    assert!(
+        !locs.iter().any(|location| location.uri == u),
+        "a 1-arg call must not resolve to the 2-required-arg self declaration, got: {locs:?}"
+    );
+}
+
+#[test]
+fn resolve_callee_definition_preserves_same_arity_self_recursion() {
+    let u = uri("/Factorial.kt");
+    let idx = Indexer::new();
+    idx.index_content(
+        &u,
+        "package com.example\n\
+fun factorial(n: Int): Int {\n\
+    return factorial(n - 1)\n\
+}\n",
+    );
+    let shape = CallShape {
+        arg_count: 1,
+        trailing_lambda: false,
+    };
+    let locs = resolve_callee_definition(&idx, "factorial", &u, shape);
+    assert!(
+        locs.iter().any(|location| location.uri == u),
+        "genuine same-arity self-recursion must still resolve to itself, got: {locs:?}"
+    );
+}
+
+#[test]
+fn resolve_callee_definition_picks_arity_matching_same_file_overload() {
+    let u = uri("/Overload.kt");
+    let idx = Indexer::new();
+    idx.index_content(
+        &u,
+        "package com.example\n\
+fun greet(name: String) {}\n\
+fun greet(name: String, loudly: Boolean) {\n\
+    greet(name)\n\
+}\n",
+    );
+    let shape = CallShape {
+        arg_count: 1,
+        trailing_lambda: false,
+    };
+    let locs = resolve_callee_definition(&idx, "greet", &u, shape);
+    let self_file_locs: Vec<_> = locs.iter().filter(|location| location.uri == u).collect();
+    assert_eq!(
+        self_file_locs.len(),
+        1,
+        "exactly one same-file overload should satisfy a 1-arg call, got: {locs:?}"
+    );
+    assert_eq!(
+        self_file_locs[0].range.start.line, 1,
+        "must resolve to the 1-arg overload (line 1), not the 2-arg one (line 2), got: {locs:?}"
+    );
+}
+
+#[test]
+fn resolve_callee_definition_keeps_vararg_self_reference() {
+    // `param_counts` has no vararg awareness (a vararg param counts as exactly
+    // one), so without the vararg guard this would wrongly filter itself out.
+    let u = uri("/Vararg.kt");
+    let idx = Indexer::new();
+    idx.index_content(
+        &u,
+        "package com.example\n\
+fun sumAll(vararg numbers: Int): Int {\n\
+    return sumAll(1, 2, 3)\n\
+}\n",
+    );
+    let shape = CallShape {
+        arg_count: 3,
+        trailing_lambda: false,
+    };
+    let locs = resolve_callee_definition(&idx, "sumAll", &u, shape);
+    assert!(
+        locs.iter().any(|location| location.uri == u),
+        "a vararg function called with more args than its param_counts total \
+         must still resolve to itself, got: {locs:?}"
+    );
+}
+
+/// `resolve_chain`'s step 1 (`resolve_local`) is arity-aware, but step 5's
+/// project-wide `rg` fallback is a blind text search with no arity of its own
+/// — without `rg_location_satisfies_call_shape`, a wrong-arity self match that
+/// step 1 correctly ruled out would come straight back here, since `rg`
+/// re-finds the same declaration by pattern match alone. Needs a real file on
+/// disk (matching `references_tests.rs`'s pattern) since `rg` operates on the
+/// filesystem, not the in-memory index — with no import/same-package/star/
+/// hierarchy candidate anywhere, this is the one file `rg` can find `collect`
+/// in, so reaching step 5 is guaranteed.
+///
+/// Plain top-level function, not the reported bug's generic extension-function
+/// form: `build_rg_pattern`'s extension-function branch requires `fun
+/// Receiver.name` immediately after `fun`, so `fun <T : Any> Flow<T>.collect`
+/// (a type-parameter list before the receiver) doesn't match it at all — `rg`
+/// finds nothing there regardless of this fix, so it can't exercise step 5.
+/// That's a pre-existing, separate limitation of the rg pattern, not something
+/// this fix needs to also solve.
+#[test]
+fn resolve_callee_definition_rg_fallback_respects_arity_too() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+
+    let src = "package com.example\n\
+fun collect(scope: Int, block: Int) {\n\
+    collect(block)\n\
+}\n";
+    let path = root.join("Collect.kt");
+    std::fs::write(&path, src).unwrap();
+    let collect_uri = Url::from_file_path(&path).unwrap();
+
+    let idx = Indexer::new();
+    idx.workspace_root.set(root.to_path_buf());
+    idx.index_content(&collect_uri, src);
+
+    let shape = CallShape {
+        arg_count: 1,
+        trailing_lambda: false,
+    };
+    let locs = resolve_callee_definition(&idx, "collect", &collect_uri, shape);
+    assert!(
+        !locs.iter().any(|location| location.uri == collect_uri),
+        "the rg fallback must not resurrect the arity-filtered self \
+         declaration, got: {locs:?}"
+    );
 }
 
 // ── resolve_via_imports (qualified index) ────────────────────────────────
