@@ -82,9 +82,23 @@ fn contextual_receiver_hover<W: WorkspaceRead>(
 ) -> Option<Hover> {
     let receiver_type = ctx.contextual.as_ref()?;
     ctx.qualifier.as_ref()?;
-    let location = resolve_with_receiver_fallback(workspace, &ctx.word, receiver_type, uri)
-        .into_iter()
-        .next()?;
+    let mut locations = resolve_with_receiver_fallback(workspace, &ctx.word, receiver_type, uri);
+    // `ctx.contextual` isn't only for `it`/`this`/named lambda params —
+    // `CursorContext::build` also populates it for *any* qualified reference
+    // via smart-cast narrowing, so a plain `triggers.collect { trigger -> }`
+    // reaches here too (same reasoning as goto-definition's identical
+    // branch). Filtering to empty returns `None` here rather than the wrong
+    // candidate — `compute_hover` then falls through to
+    // `regular_symbol_hover`'s string-qualifier path, which never consults
+    // the extension-in-scope registry that causes the wrong match.
+    if let Some(indexer) = workspace.as_indexer() {
+        if let Some(shape) =
+            crate::features::definition::call_shape_at_callee(indexer, uri, position)
+        {
+            crate::indexer::retain_call_shape_compatible(indexer, shape, &mut locations);
+        }
+    }
+    let location = locations.into_iter().next()?;
     let info = enrich_at_location(
         workspace,
         &location,

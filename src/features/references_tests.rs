@@ -2040,3 +2040,58 @@ async fn find_references_excludes_unrelated_same_named_member() {
         locations
     );
 }
+
+/// The "go refs" counterpart to the goto-definition/hover explicit-receiver
+/// self-shadow fix: find-references from the *real* 1-arg `Flow.collect`
+/// member's call site must not also surface a 2-arg call to a same-file,
+/// same-receiver-type `Flow.collect(scope, block)` self-declaration — they're
+/// different identities that only `receiver_type_agreement`'s type-only check
+/// can't tell apart.
+#[tokio::test]
+async fn find_references_excludes_wrong_arity_same_type_call_site() {
+    let idx = Indexer::new();
+    let uri = Url::parse("file:///t/Flow.kt").unwrap();
+    let src = "package com.example\n\
+               class CoroutineScope\n\
+               class Flow<T> {\n\
+                   fun collect(block: (T) -> Unit) {}\n\
+               }\n\
+               fun <T : Any> Flow<T>.collect(scope: CoroutineScope, block: (T) -> Unit) {\n\
+                   collect(block)\n\
+               }\n\
+               fun wrongShadowCall(x: Flow<String>, s: CoroutineScope, arg: (String) -> Unit) {\n\
+                   x.collect(s, arg)\n\
+               }\n\
+               fun realTarget(x: Flow<String>, arg: (String) -> Unit) {\n\
+                   x.collect(arg)\n\
+               }\n";
+    idx.index_content(&uri, src);
+    idx.store_live_tree(&uri, src);
+
+    let query_line = 12;
+    let col = src
+        .lines()
+        .nth(query_line as usize)
+        .unwrap()
+        .find("collect")
+        .unwrap() as u32;
+
+    let locations = find_references_with_qualifier(
+        "collect",
+        None,
+        &uri,
+        Position::new(query_line, col),
+        false,
+        &idx,
+    )
+    .await;
+
+    let wrong_shadow_line = 9;
+    assert!(
+        locations
+            .iter()
+            .all(|location| location.range.start.line != wrong_shadow_line),
+        "the 2-arg call to the arity-incompatible same-type shadow must not \
+         appear as a reference to the real 1-arg member; got: {locations:?}"
+    );
+}

@@ -9,7 +9,7 @@
 
 use tree_sitter::Node;
 
-use crate::indexer::{CstQuery, Indexer, NodeExt, Resolution};
+use crate::indexer::{CallShape, CstQuery, Indexer, NodeExt, Resolution};
 use crate::queries::{
     KIND_BINDING_PATTERN_KIND, KIND_CALL_EXPR, KIND_CATCH_BLOCK, KIND_CLASS_DECL, KIND_CLASS_PARAM,
     KIND_COMPANION_OBJ, KIND_CONTROL_STRUCTURE_BODY, KIND_ENUM_ENTRY, KIND_FINALLY_BLOCK,
@@ -131,6 +131,27 @@ pub(crate) fn navigation_member_ident(node: Node<'_>) -> Option<Node<'_>> {
     None
 }
 
+/// The enclosing `navigation_expression` when `node` is that expression's own
+/// member identifier (e.g. `node` is `collect` in `triggers.collect(...)`),
+/// else `None`.
+///
+/// `is_call_callee` (and `call_shape_of`) expect the *callee* node — for a
+/// dot-qualified call the callee is the whole `nav_expr` (`triggers.collect`),
+/// not the bare member identifier `collect`: `collect`'s own parent is a
+/// `nav_suffix`, not the `call_expression`, so checking `is_call_callee` on
+/// the identifier directly always misses qualified calls. Checking on this
+/// function's result instead — as `classify_symbol_at` already does — is what
+/// makes the check work identically for both `foo(...)` and `x.foo(...)`.
+pub(crate) fn enclosing_nav_expr_if_member(node: Node<'_>) -> Option<Node<'_>> {
+    let nav = node
+        .parent()
+        .and_then(|suffix| (suffix.kind() == KIND_NAV_SUFFIX).then_some(suffix))
+        .and_then(|suffix| suffix.parent())?;
+    (nav.kind() == KIND_NAV_EXPR
+        && navigation_member_ident(nav).is_some_and(|m| m.id() == node.id()))
+    .then_some(nav)
+}
+
 pub(crate) fn is_call_callee(node: Node<'_>) -> bool {
     let Some(parent) = node.parent() else {
         return false;
@@ -160,9 +181,14 @@ pub(crate) enum SymbolRole {
     /// `receiver_type` is `Some` only when the reference is a member access
     /// (`x.name`) AND the receiver's type resolved via `CstQuery::expr_type`.
     /// `is_call` is true when the reference is the callee of a call_expression.
+    /// `shape` is `Some` exactly when `is_call` is true — the call's own
+    /// argument shape, used by `resolve_identity` to reject a same-named,
+    /// wrong-arity candidate on the same receiver type (an explicit-receiver
+    /// counterpart to `resolve_callee_definition`'s bare-call arity filter).
     Reference {
         receiver_type: Option<String>,
         is_call: bool,
+        shape: Option<CallShape>,
     },
     ImportSegment,
 }
@@ -246,24 +272,20 @@ pub(crate) fn classify_symbol_at(
     }
 
     // Member reference: the identifier is the member name of a nav_expr's suffix.
-    if let Some(nav) = node
-        .parent()
-        .and_then(|suffix| (suffix.kind() == KIND_NAV_SUFFIX).then_some(suffix))
-        .and_then(|suffix| suffix.parent())
-    {
-        if nav.kind() == KIND_NAV_EXPR
-            && navigation_member_ident(nav).is_some_and(|m| m.id() == node.id())
-        {
-            let is_call = is_call_callee(nav);
-            // `expr_type` for a parameter/variable receiver echoes back its
-            // syntactic type annotation verbatim (see `infer_ident_type` /
-            // `find_var_type`) without checking that the annotated name is an
-            // actual known type — `x: Unknown` resolves to `Some("Unknown")`
-            // even though `Unknown` is declared nowhere. Gate on
-            // `has_type_definition` so a made-up/unresolvable annotation
-            // doesn't silently masquerade as a real receiver type (house
-            // decoy: `untypeable_receiver_yields_no_receiver_type`).
-            let receiver_type = navigation_receiver_node(nav).and_then(|receiver| {
+    if let Some(nav) = enclosing_nav_expr_if_member(node) {
+        let call_expr = is_call_callee(nav).then(|| nav.parent()).flatten();
+        let is_call = call_expr.is_some();
+        let shape = call_expr.map(|expr| super::cst_lambda::call_shape_of(expr, &doc.bytes));
+        // `expr_type` for a parameter/variable receiver echoes back its
+        // syntactic type annotation verbatim (see `infer_ident_type` /
+        // `find_var_type`) without checking that the annotated name is an
+        // actual known type — `x: Unknown` resolves to `Some("Unknown")`
+        // even though `Unknown` is declared nowhere. Gate on
+        // `has_type_definition` so a made-up/unresolvable annotation
+        // doesn't silently masquerade as a real receiver type (house
+        // decoy: `untypeable_receiver_yields_no_receiver_type`).
+        let receiver_type =
+            navigation_receiver_node(nav).and_then(|receiver| {
                 match CstQuery::new(receiver, doc, indexer, uri).expr_type() {
                     Resolution::Resolved(t) if indexer.has_type_definition(t.as_type_str()) => {
                         Some(t.as_type_str().to_owned())
@@ -271,28 +293,31 @@ pub(crate) fn classify_symbol_at(
                     _ => None,
                 }
             });
-            return Some(SymbolAtCursor {
-                name,
-                role: SymbolRole::Reference {
-                    receiver_type,
-                    is_call,
-                },
-            });
-        }
+        return Some(SymbolAtCursor {
+            name,
+            role: SymbolRole::Reference {
+                receiver_type,
+                is_call,
+                shape,
+            },
+        });
     }
 
     // Bare reference (local var, top-level name, etc.) — no receiver, scope
     // resolution deferred (see Global Constraints). Callers fall through to
     // today's NameScan path for these.
-    let is_call = node.parent().is_some_and(|parent| {
+    let bare_call_expr = node.parent().filter(|parent| {
         parent.kind() == KIND_CALL_EXPR
             && parent.child(0).map(|child| child.id()) == Some(node.id())
     });
+    let is_call = bare_call_expr.is_some();
+    let shape = bare_call_expr.map(|expr| super::cst_lambda::call_shape_of(expr, &doc.bytes));
     Some(SymbolAtCursor {
         name,
         role: SymbolRole::Reference {
             receiver_type: None,
             is_call,
+            shape,
         },
     })
 }
@@ -336,10 +361,24 @@ pub(crate) fn resolve_identity(
         }
         SymbolRole::Reference {
             receiver_type: Some(receiver_type),
+            shape,
             ..
         } => {
-            let locations =
+            let mut locations =
                 indexer.find_definition_qualified(&symbol.name, Some(receiver_type), uri);
+            // A call's own shape rules out a same-named, wrong-arity member/
+            // extension on the same receiver type — e.g. `triggers.collect {
+            // trigger -> }` (1 arg via trailing lambda) must not resolve to a
+            // same-file `Flow.collect(scope, block)` self-declaration just
+            // because both are in scope on `Flow`. Filtering to empty here
+            // (rather than keeping the wrong-arity candidate) demotes this to
+            // `NameScan`, so `find_definition`'s later, arity-blind but
+            // receiver-aware fallback (variable-type inference + hierarchy
+            // walk, which never consults the extension-in-scope registry that
+            // caused the wrong match) gets a chance to find the real target.
+            if let Some(shape) = shape {
+                retain_call_shape_compatible(indexer, *shape, &mut locations);
+            }
             if locations.is_empty() {
                 NavigationSource::NameScan(Definitions(locations))
             } else {
@@ -354,6 +393,48 @@ pub(crate) fn resolve_identity(
             indexer.find_definition_qualified(&symbol.name, None, uri),
         )),
     }
+}
+
+/// Drop any `Location` whose own declared arity `shape` can't satisfy — each
+/// `Location` is looked up by an exact `selection_range` match against the
+/// declaring file's own symbol table (how `resolve_qualified`'s candidates
+/// are always constructed), so a location that doesn't match any symbol, or
+/// whose file isn't indexed, is kept unfiltered (fail open: never lose a
+/// candidate this can't actually verify). Vararg declarations are exempt,
+/// same reasoning as `local_symbol_satisfies_call_shape`: `param_counts`
+/// can't represent a vararg's true unbounded upper end.
+///
+/// `pub(crate)`: also used directly by `find_definition`'s and
+/// `compute_hover`'s `ctx.contextual`-based branches — `CursorContext::build`
+/// populates `contextual` for *any* qualified reference via smart-cast
+/// narrowing (`infer_receiver_type_at`), not just `it`/`this`/named lambda
+/// params, so that path needs the identical arity filter this module's own
+/// CST-resolved path does, to avoid resurrecting the same self-shadow bug.
+pub(crate) fn retain_call_shape_compatible(
+    indexer: &Indexer,
+    shape: CallShape,
+    locations: &mut Vec<Location>,
+) {
+    locations.retain(|location| {
+        let Some(fd) = indexer
+            .files
+            .get(location.uri.as_str())
+            .or_else(|| indexer.jar_files.get(location.uri.as_str()))
+        else {
+            return true;
+        };
+        let Some(symbol) = fd
+            .symbols
+            .iter()
+            .find(|s| s.selection_range == location.range)
+        else {
+            return true;
+        };
+        if symbol.params.contains("vararg ") || symbol.params.contains("vararg\t") {
+            return true;
+        }
+        shape.accepts(symbol.param_counts.0, symbol.param_counts.1)
+    });
 }
 
 /// For the local variable / lambda-parameter the cursor is on (either its

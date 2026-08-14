@@ -38,9 +38,10 @@ pub(crate) use self::infer::{
     cst_cursor::{cst_call_info, cst_outer_call_info, CallInfo},
     cst_lambda::{call_shape_of, cursor_node_at, LambdaScopeInfo},
     cst_symbol::{
-        classify_cursor, classify_symbol_at, is_call_callee, is_declaration_site,
-        local_scope_occurrences, navigation_member_ident, navigation_receiver_node,
-        resolve_identity, NavigationSource, SymbolAtCursor, SymbolRole,
+        classify_cursor, classify_symbol_at, enclosing_nav_expr_if_member, is_call_callee,
+        is_declaration_site, local_scope_occurrences, navigation_member_ident,
+        navigation_receiver_node, resolve_identity, retain_call_shape_compatible, NavigationSource,
+        SymbolAtCursor, SymbolRole,
     },
     deps::{CallShape, CallableInfo, InferDeps, OuterScopedParams},
     expr_type::infer_expr_type,
@@ -588,6 +589,7 @@ impl InferDeps for Indexer {
         self.definition_locations(name).into_iter().any(|loc| {
             self.files
                 .get(loc.uri.as_str())
+                .or_else(|| self.jar_files.get(loc.uri.as_str()))
                 .map(|file_data| {
                     file_data.symbols.iter().any(|symbol| {
                         symbol.name == name

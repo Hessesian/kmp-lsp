@@ -199,3 +199,105 @@ async fn goto_definition_resolves_implicit_receiver_call_to_jar_member() {
          got: {loc:?}"
     );
 }
+
+/// A second, distinct manifestation of the same self-shadow bug, reported
+/// after the implicit-receiver fix above shipped: an *explicit*-receiver call
+/// (`triggers.collect { trigger -> }`, trailing-lambda-only — no `scope` arg
+/// at all) goes through a completely different pipeline
+/// (`classify_cursor`/`resolve_identity`'s CST-resolved path, not
+/// `call_shape_at_callee`/`find_definition_for_call`) that had no arity
+/// awareness whatsoever: `resolve_identity` resolved the receiver's type
+/// (`Flow`) and searched extensions-in-scope on it completely unfiltered,
+/// finding the arity-incompatible self-declaration before ever considering
+/// the real member.
+#[tokio::test]
+async fn goto_definition_resolves_explicit_receiver_call_to_jar_member_not_self() {
+    use crate::types::{FileData, SourceSet, SymbolEntry, Visibility};
+    use std::sync::Arc;
+
+    let idx = Indexer::new();
+    let uri = Url::parse("file:///t/Flow.kt").unwrap();
+    let src = "package com.example\n\
+               import kotlinx.coroutines.flow.Flow\n\
+               class CoroutineScope\n\
+               fun <T : Any> Flow<T>.collect(scope: CoroutineScope, block: (T) -> Unit) {\n\
+                   collect(block)\n\
+               }\n\
+               fun useTriggers(triggers: Flow<String>) {\n\
+                   triggers.collect { trigger -> println(trigger) }\n\
+               }\n";
+    idx.index_content(&uri, src);
+    idx.store_live_tree(&uri, src);
+
+    let jar_uri_str = "jar:file:///fake-coroutines.jar!/Flow.kt".to_string();
+    let jar_uri = Url::parse(&jar_uri_str).unwrap();
+    let type_range = tower_lsp::lsp_types::Range {
+        start: Position::new(0, 0),
+        end: Position::new(0, 4),
+    };
+    let member_range = tower_lsp::lsp_types::Range {
+        start: Position::new(1, 0),
+        end: Position::new(1, 7),
+    };
+    let member = SymbolEntry {
+        name: "collect".to_owned(),
+        kind: tower_lsp::lsp_types::SymbolKind::METHOD,
+        visibility: Visibility::Public,
+        range: member_range,
+        selection_range: member_range,
+        detail: "suspend fun collect(collector: FlowCollector<T>)".to_owned(),
+        container: Some("Flow".to_owned()),
+        params: "collector: FlowCollector<T>".to_owned(),
+        param_counts: (1, 1),
+        cold: crate::types::pack_cold_fields(vec![], String::new(), String::new(), String::new()),
+        trailing_lambda: false,
+        deprecated: false,
+    };
+    let flow_type = SymbolEntry {
+        name: "Flow".to_owned(),
+        kind: tower_lsp::lsp_types::SymbolKind::INTERFACE,
+        visibility: Visibility::Public,
+        range: type_range,
+        selection_range: type_range,
+        detail: "interface Flow<T>".to_owned(),
+        container: None,
+        params: String::new(),
+        param_counts: (0, 0),
+        cold: crate::types::pack_cold_fields(vec![], String::new(), String::new(), String::new()),
+        trailing_lambda: false,
+        deprecated: false,
+    };
+    idx.jar_files.insert(
+        jar_uri_str.clone(),
+        Arc::new(FileData {
+            symbols: vec![flow_type, member],
+            source_set: SourceSet::Library,
+            package: Some("kotlinx.coroutines.flow".to_owned()),
+            lines: Arc::new(vec![]),
+            ..Default::default()
+        }),
+    );
+    idx.jar_definitions
+        .entry("Flow".to_owned())
+        .or_default()
+        .push(tower_lsp::lsp_types::Location {
+            uri: jar_uri.clone(),
+            range: type_range,
+        });
+
+    let col = src.lines().nth(7).unwrap().find("collect").unwrap() as u32;
+    let position = Position::new(7, col);
+    let ctx = CursorContext::build(&idx, &uri, position).unwrap();
+    let response = find_definition(&ctx, &idx, &uri, position).await;
+    let loc = match response {
+        Some(GotoDefinitionResponse::Scalar(loc)) => loc,
+        Some(GotoDefinitionResponse::Array(mut locs)) if locs.len() == 1 => locs.remove(0),
+        other => panic!("expected exactly one resolved location, got: {other:?}"),
+    };
+    assert_eq!(
+        loc.uri, jar_uri,
+        "must resolve `triggers.collect {{ trigger -> }}` to Flow's own \
+         JAR-indexed collect member, not the arity-incompatible \
+         collect(scope, block) self-declaration, got: {loc:?}"
+    );
+}

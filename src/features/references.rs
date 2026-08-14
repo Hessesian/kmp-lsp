@@ -200,12 +200,56 @@ pub(crate) async fn verified_references_for(
         None => (None, None),
     };
 
+    // The query's own required arity, when knowable — used by
+    // `verify_candidates` to reject a same-type, wrong-arity candidate call
+    // site that `receiver_type_agreement` alone can't tell apart from the
+    // real target (the same self-shadow bug already fixed for goto-
+    // definition/hover's explicit-receiver path, surfacing here as a bogus
+    // "reference"). Cursor-on-declaration reuses the existing
+    // `declaration_param_counts` lookup.
+    //
+    // Cursor-on-call-site resolves via `resolve_implicit_receiver_callee`
+    // directly rather than `resolve_identity`/`find_definition_qualified`:
+    // the latter's `resolve_qualified` tries the receiver's
+    // extension-in-scope registry first and returns as soon as it finds
+    // *any* same-named entry — for the reported bug, that's the same-file,
+    // wrong-arity self-declaration, so it returns before ever trying the
+    // real member and never gets a second chance. Filtering that single
+    // wrong candidate out post-hoc (as goto-definition/hover's
+    // `retain_call_shape_compatible` does) just leaves nothing here, with no
+    // fallback path to retry — `resolve_implicit_receiver_callee` doesn't
+    // have that early-return gap: it always shape-filters *within* both the
+    // extension and member searches, not just on their combined output.
+    let query_arity = match &cursor_symbol {
+        Some(symbol) => match &symbol.role {
+            SymbolRole::Declaration { .. } => {
+                declaration_param_counts(index, uri, &symbol.name, line)
+            }
+            SymbolRole::Reference {
+                receiver_type: Some(receiver_type),
+                shape: Some(shape),
+                ..
+            } => crate::resolver::resolve_implicit_receiver_callee(
+                index,
+                receiver_type,
+                &symbol.name,
+                uri,
+                *shape,
+            )
+            .first()
+            .and_then(|loc| declaration_param_counts_at(index, loc)),
+            _ => None,
+        },
+        None => None,
+    };
+
     let verify_uri_arg = detect_reverse_overrides
         .then_some(query_declaring_type_uri.as_deref())
         .flatten();
     let verified = crate::features::references_verify::verify_candidates(
         index,
         query_declaring_type.as_deref(),
+        query_arity,
         verify_uri_arg,
         sidecar_budget,
         locations,
@@ -224,6 +268,33 @@ fn declaration_param_counts(index: &Indexer, uri: &Url, name: &str, line: u32) -
         .symbols
         .iter()
         .find(|symbol| symbol.name == name && symbol.selection_range.start.line == line)?;
+    if !matches!(
+        symbol.kind,
+        SymbolKind::FUNCTION | SymbolKind::METHOD | SymbolKind::CONSTRUCTOR | SymbolKind::OPERATOR
+    ) {
+        return None;
+    }
+    if symbol.params.contains("vararg ") || symbol.params.contains("vararg\t") {
+        return None;
+    }
+    Some(symbol.param_counts)
+}
+
+/// Like [`declaration_param_counts`], but for a target already resolved to a
+/// specific `Location` (an exact `selection_range` match against the
+/// declaring file's own symbol table) rather than looked up by name + line —
+/// how a query whose cursor sits on a *call site*, not the declaration
+/// itself, learns its target's required arity (see the `SymbolRole::Reference`
+/// arm in [`verified_references_for`]).
+fn declaration_param_counts_at(index: &Indexer, location: &Location) -> Option<(u8, u8)> {
+    let file_data = index
+        .files
+        .get(location.uri.as_str())
+        .or_else(|| index.jar_files.get(location.uri.as_str()))?;
+    let symbol = file_data
+        .symbols
+        .iter()
+        .find(|symbol| symbol.selection_range == location.range)?;
     if !matches!(
         symbol.kind,
         SymbolKind::FUNCTION | SymbolKind::METHOD | SymbolKind::CONSTRUCTOR | SymbolKind::OPERATOR

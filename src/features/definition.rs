@@ -169,9 +169,11 @@ fn try_cst_resolved_definition(
 /// when the cursor isn't precisely on a call's callee identifier (e.g. it's on
 /// an argument, or the position doesn't classify at all).
 ///
-/// `is_call_callee` requires the cursor node to be the direct callee child of
-/// a `call_expression`, so `node.parent()` here is exactly that expression —
-/// no separate "find the enclosing call" walk needed.
+/// Handles both a bare callee (`foo(...)`, where the identifier itself is the
+/// direct callee child of the `call_expression`) and a dot-qualified callee
+/// (`x.foo(...)`, where the callee is the whole `navigation_expression` —
+/// `foo`'s own parent is a `nav_suffix`, not the call — via
+/// `enclosing_nav_expr_if_member`, the same walk `classify_symbol_at` uses).
 ///
 /// `pub(crate)`, not `definition.rs`-private: hover's `regular_symbol_hover`
 /// reuses this directly rather than recomputing the same CST-shape lookup —
@@ -187,10 +189,11 @@ pub(crate) fn call_shape_at_callee(
         utf16_col: position.character as usize,
     };
     let node = crate::indexer::cursor_node_at(&doc, cursor)?;
-    if !crate::indexer::is_call_callee(node) {
+    let callee_node = crate::indexer::enclosing_nav_expr_if_member(node).unwrap_or(node);
+    if !crate::indexer::is_call_callee(callee_node) {
         return None;
     }
-    let call_expr = node.parent()?;
+    let call_expr = callee_node.parent()?;
     Some(crate::indexer::call_shape_of(call_expr, &doc.bytes))
 }
 
@@ -270,14 +273,28 @@ pub(crate) async fn find_definition(
     }
 
     // `this.field` / `it.field` — already-resolved contextual receiver.
+    //
+    // `ctx.contextual` isn't only for `it`/`this`/named lambda params —
+    // `CursorContext::build` also populates it for *any* qualified reference
+    // via smart-cast narrowing (`infer_receiver_type_at`), so a plain
+    // `triggers.collect { trigger -> }` reaches here too. A same-named,
+    // wrong-arity extension/member on that same receiver type (a same-file
+    // self-declaration registered as "in scope" on the receiver, same class
+    // of bug as the CST-resolved path above) can't be told apart from the
+    // real target by name alone — filter by the call's own shape when this
+    // is a call at all. Filtering to empty falls through (rather than
+    // returning the wrong candidate), giving the string-qualifier fallback
+    // further down — which never consults the extension-in-scope registry
+    // that causes the wrong match — a chance to find the real target.
     if ctx.qualifier.is_some() {
         if let Some(ref rt) = ctx.contextual {
-            let locs = index.find_definition_qualified(&ctx.word, Some(&rt.qualified), uri);
-            let locs = if locs.is_empty() && rt.leaf != rt.qualified {
-                index.find_definition_qualified(&ctx.word, Some(&rt.leaf), uri)
-            } else {
-                locs
-            };
+            let mut locs = index.find_definition_qualified(&ctx.word, Some(&rt.qualified), uri);
+            if locs.is_empty() && rt.leaf != rt.qualified {
+                locs = index.find_definition_qualified(&ctx.word, Some(&rt.leaf), uri);
+            }
+            if let Some(shape) = call_shape_at_callee(index, uri, position) {
+                crate::indexer::retain_call_shape_compatible(index, shape, &mut locs);
+            }
             if !locs.is_empty() {
                 return Some(locs_to_response(locs));
             }

@@ -58,6 +58,7 @@ fn classifies_a_typed_member_reference() {
         SymbolRole::Reference {
             receiver_type: Some(t),
             is_call: true,
+            ..
         } => assert_eq!(t, "User"),
         other => panic!("expected typed call reference, got {other:?}"),
     }
@@ -151,6 +152,7 @@ fn safely_degrades_when_cursor_sits_inside_an_error_node() {
         SymbolRole::Reference {
             receiver_type: None,
             is_call: false,
+            ..
         } => {}
         other => panic!("expected bare, unfabricated reference, got {other:?}"),
     }
