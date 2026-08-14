@@ -268,17 +268,15 @@ pub(crate) async fn find_definition(
     // declaration whose arity can't satisfy the call doesn't shadow the real
     // (often library) target. Once the CST has confirmed this position is a
     // call's callee, an empty shape-aware result must NOT fall through to the
-    // unfiltered lookup below — that would just re-find the same wrong-arity
-    // match by name and undo the whole point of computing the shape.
+    // unfiltered lookup below, NOR to the plain `rg_resolve` fallback further
+    // down — `resolve_callee_definition`'s own step 5 already ran the same
+    // `rg` search with shape filtering; a second, unfiltered `rg` search here
+    // would just re-find the same wrong-arity match by blind text match and
+    // undo the whole point of computing the shape. Empty stays empty.
     if ctx.qualifier.is_none() {
         if let Some(shape) = call_shape_at_callee(index, uri, position) {
             let locs = index.find_definition_for_call(&ctx.word, uri, shape);
-            return if locs.is_empty() {
-                let rg_locs = rg_resolve(index, uri, &ctx.word).await;
-                locs_to_opt_response(rg_locs)
-            } else {
-                locs_to_opt_response(locs)
-            };
+            return locs_to_opt_response(locs);
         }
     }
     let locs = index.find_definition_qualified(&ctx.word, ctx.qualifier.as_deref(), uri);

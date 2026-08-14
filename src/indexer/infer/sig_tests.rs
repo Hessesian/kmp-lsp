@@ -284,6 +284,7 @@ fn resolve_qualified_skips_top_level_function_before_type_body() {
         name: "run",
         qualifier: Some("service"),
         caller_uri: &caller_uri,
+        shape: None,
     };
 
     match resolve_call_signature(&call, &idx) {
@@ -311,6 +312,7 @@ fn resolve_qualified_matches_method_via_container() {
         name: "fetch",
         qualifier: Some("api"),
         caller_uri: &caller_uri,
+        shape: None,
     };
 
     match resolve_call_signature(&call, &idx) {
@@ -354,6 +356,7 @@ fn resolve_qualified_skips_extension_from_unimported_package() {
         name: "loadData",
         qualifier: Some("repo"),
         caller_uri: &caller_uri,
+        shape: None,
     };
 
     match resolve_call_signature(&call, &idx) {
@@ -406,6 +409,7 @@ fn resolve_unqualified_bails_on_ubiquitous_name() {
         name: "create",
         qualifier: None,
         caller_uri: &caller_uri,
+        shape: None,
     };
 
     assert!(
@@ -507,6 +511,7 @@ fn resolve_qualified_jar_extension_overloads_with_source_member() {
         name: "loadData",
         qualifier: Some("repo"),
         caller_uri: &caller_uri,
+        shape: None,
     };
 
     // Both 0-arg member + 1-arg extension → Ambiguous.
@@ -625,6 +630,7 @@ fn resolve_qualified_bails_on_ubiquitous_name_even_with_receiver_extension() {
         name: "loadData",
         qualifier: Some("repo"),
         caller_uri: &caller_uri,
+        shape: None,
     };
 
     // Must bail to Ambiguous, not resolve to the 1-arg extension as Resolved —
@@ -649,6 +655,7 @@ fn resolve_unqualified_data_class_constructor() {
         name: "Config",
         qualifier: None,
         caller_uri: &caller_uri,
+        shape: None,
     };
 
     match resolve_call_signature(&call, &idx) {
@@ -737,6 +744,7 @@ fn resolve_unqualified_test_definition_visible_only_to_test_callers() {
         name: "testOnlyHelper",
         qualifier: None,
         caller_uri: &test_caller_uri,
+        shape: None,
     };
     match resolve_call_signature(&test_call, &idx) {
         Resolution::Resolved(Signature {
@@ -753,6 +761,7 @@ fn resolve_unqualified_test_definition_visible_only_to_test_callers() {
         name: "testOnlyHelper",
         qualifier: None,
         caller_uri: &main_caller_uri,
+        shape: None,
     };
     assert!(
         matches!(

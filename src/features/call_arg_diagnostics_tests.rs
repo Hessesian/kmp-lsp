@@ -1668,3 +1668,39 @@ fn call_arg_diagnostics_survives_a_pathologically_deep_expression() {
     let (uri, idx, src) = setup(&[("/a.kt", &src)]);
     let _ = run_diagnostics(&idx, &uri, &src);
 }
+
+/// The reported bug: `collect(block)` (1 arg) inside `Flow<T>.collect(scope,
+/// block)` (2 required args) must not be diagnosed as "expected 2, found 1"
+/// -- it's a name collision meant to bind to a differently-shaped library
+/// function, not a genuine wrong-arity call to the enclosing declaration.
+#[test]
+fn extension_self_shadow_does_not_produce_a_false_diagnostic() {
+    let idx = Indexer::new();
+
+    // `collect` in a real project is ubiquitous (kotlinx.coroutines,
+    // build-classpath tooling, unrelated same-named workspace functions,
+    // …) — simulate enough of that here to actually trigger the ubiquity
+    // bail this test depends on, rather than the "nothing else anywhere"
+    // case a single decoy-free file would exercise instead.
+    for i in 0..(crate::indexer::MAX_BY_NAME_DEFS + 1) {
+        let other_uri = uri(&format!("/Other{i}.kt"));
+        let other_src = format!("class Other{i} {{\n  fun collect(x: Int) {{}}\n}}\n");
+        idx.index_content(&other_uri, &other_src);
+    }
+
+    let src = "class CoroutineScope { fun launch(block: () -> Unit) {} }\n\
+               class Job\n\
+               fun <T : Any> Flow<T>.collect(scope: CoroutineScope, block: (T) -> Unit): Job {\n\
+                   return scope.launch {\n\
+                       collect(block)\n\
+                   }\n\
+               }\n";
+    let u = uri("/Flow.kt");
+    idx.index_content(&u, src);
+    let doc = parse_live(src, tree_sitter_kotlin::language()).unwrap();
+    let diags = call_arg_diagnostics(&idx, &u, &doc);
+    assert!(
+        diags.is_empty(),
+        "must not diagnose the self-shadowed call, got: {diags:?}"
+    );
+}

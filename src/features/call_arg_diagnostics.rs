@@ -12,7 +12,8 @@
 use tower_lsp::lsp_types::*;
 
 use crate::indexer::{
-    live_tree::LiveDoc, resolve_call_signature, CallSite, Indexer, NodeExt, Resolution, Signature,
+    live_tree::LiveDoc, resolve_call_signature, CallShape, CallSite, Indexer, NodeExt, Resolution,
+    Signature,
 };
 use crate::queries::{
     KIND_CALL_EXPR, KIND_CALL_SUFFIX, KIND_FUN_DECL, KIND_LAMBDA_LIT, KIND_SIMPLE_IDENT,
@@ -121,6 +122,12 @@ fn check_call_args(
             name: &fn_name,
             qualifier: qualifier.as_deref(),
             caller_uri: uri,
+            // `has_trailing_lambda` already bailed above, so this call's
+            // shape is exactly the parenthesized argument count.
+            shape: Some(CallShape {
+                arg_count: provided_count,
+                trailing_lambda: false,
+            }),
         };
         stats.resolved += 1;
         let t0 = std::time::Instant::now();
