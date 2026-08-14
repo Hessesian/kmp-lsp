@@ -1973,3 +1973,43 @@ fn interface_misparsed_by_annotation_is_recovered() {
         Some(SymbolKind::INTERFACE)
     );
 }
+
+// ── enclosing_extension_receiver_at ──────────────────────────────────────
+
+fn enclosing_receiver_at(src: &str, line: u32, character: u32) -> Option<String> {
+    let doc = crate::indexer::live_tree::parse_live(src, tree_sitter_kotlin::language())
+        .expect("must parse");
+    let position = tower_lsp::lsp_types::Range {
+        start: tower_lsp::lsp_types::Position { line, character },
+        end: tower_lsp::lsp_types::Position { line, character },
+    };
+    enclosing_extension_receiver_at(doc.tree.root_node(), &doc.bytes, position)
+}
+
+#[test]
+fn enclosing_extension_receiver_finds_receiver_nested_inside_a_lambda() {
+    let src = "class CoroutineScope { fun launch(block: () -> Unit) {} }\n\
+               fun <T : Any> Flow<T>.collect(scope: CoroutineScope, block: (T) -> Unit) {\n\
+                   scope.launch {\n\
+                       collect(block)\n\
+                   }\n\
+               }\n";
+    let col = src.lines().nth(3).unwrap().find("collect").unwrap() as u32;
+    assert_eq!(
+        enclosing_receiver_at(src, 3, col).as_deref(),
+        Some("Flow"),
+        "must find Flow as the enclosing extension function's receiver, \
+         even from a position nested inside the scope.launch lambda"
+    );
+}
+
+#[test]
+fn enclosing_extension_receiver_is_none_outside_any_extension_function() {
+    let src = "fun plain() {\n    doSomething()\n}\n";
+    let col = src.lines().nth(1).unwrap().find("doSomething").unwrap() as u32;
+    assert_eq!(
+        enclosing_receiver_at(src, 1, col),
+        None,
+        "a non-extension function has no receiver to find"
+    );
+}

@@ -64,6 +64,23 @@ impl Indexer {
         crate::resolver::resolve_callee_definition(self, name, uri, shape)
     }
 
+    /// Resolve `name(...)` as an implicit `this.name(...)` against
+    /// `receiver_base` — see [`crate::resolver::resolve_implicit_receiver_callee`].
+    /// A separate entry point rather than folded into `find_definition_for_call`:
+    /// only callers that already know they're inside an extension function's
+    /// body (via `parser::enclosing_extension_receiver_at`) have a receiver to
+    /// offer, and it's tried only as a fallback after the plain bare-name
+    /// lookup comes up empty.
+    pub(crate) fn find_definition_for_implicit_receiver_call(
+        &self,
+        receiver_base: &str,
+        name: &str,
+        uri: &Url,
+        shape: crate::indexer::CallShape,
+    ) -> Vec<Location> {
+        crate::resolver::resolve_implicit_receiver_callee(self, receiver_base, name, uri, shape)
+    }
+
     /// All symbols declared in the given file (for `documentSymbol`).
     pub(crate) fn file_symbols(&self, uri: &Url) -> Vec<SymbolEntry> {
         self.files

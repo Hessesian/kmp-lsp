@@ -105,3 +105,97 @@ async fn goto_definition_on_unterminated_call_still_resolves() {
         other => panic!("expected a single resolved location, got: {other:?}"),
     }
 }
+
+/// The follow-up reported bug, once the self-shadow above was suppressed:
+/// with the self-declaration correctly excluded, goto-definition landed on
+/// nothing at all, because nothing ever tried "this bare call is really
+/// `this.collect(...)` against the enclosing extension function's own
+/// receiver" — the real target here is `Flow`'s own JAR-indexed interface
+/// member, reachable only via implicit-receiver resolution (Kotlin SAM-
+/// converts `block` to `FlowCollector<T>`). Exercises the whole path end to
+/// end through `find_definition`, not `resolve_implicit_receiver_callee`
+/// directly.
+#[tokio::test]
+async fn goto_definition_resolves_implicit_receiver_call_to_jar_member() {
+    use crate::types::{FileData, SourceSet, SymbolEntry, Visibility};
+    use std::sync::Arc;
+
+    let idx = Indexer::new();
+    let uri = Url::parse("file:///t/Flow.kt").unwrap();
+    let src = "package com.example\n\
+               import kotlinx.coroutines.flow.Flow\n\
+               class CoroutineScope\n\
+               fun <T : Any> Flow<T>.collect(scope: CoroutineScope, block: (T) -> Unit) {\n\
+                   collect(block)\n\
+               }\n";
+    idx.index_content(&uri, src);
+    idx.store_live_tree(&uri, src);
+
+    let jar_uri_str = "jar:file:///fake-coroutines.jar!/Flow.kt".to_string();
+    let jar_uri = Url::parse(&jar_uri_str).unwrap();
+    let range = tower_lsp::lsp_types::Range {
+        start: Position::new(0, 0),
+        end: Position::new(0, 7),
+    };
+    let member = SymbolEntry {
+        name: "collect".to_owned(),
+        kind: tower_lsp::lsp_types::SymbolKind::METHOD,
+        visibility: Visibility::Public,
+        range,
+        selection_range: range,
+        detail: "suspend fun collect(collector: FlowCollector<T>)".to_owned(),
+        container: Some("Flow".to_owned()),
+        params: "collector: FlowCollector<T>".to_owned(),
+        param_counts: (1, 1),
+        cold: crate::types::pack_cold_fields(vec![], String::new(), String::new(), String::new()),
+        trailing_lambda: false,
+        deprecated: false,
+    };
+    let flow_type = SymbolEntry {
+        name: "Flow".to_owned(),
+        kind: tower_lsp::lsp_types::SymbolKind::INTERFACE,
+        visibility: Visibility::Public,
+        range,
+        selection_range: range,
+        detail: "interface Flow<T>".to_owned(),
+        container: None,
+        params: String::new(),
+        param_counts: (0, 0),
+        cold: crate::types::pack_cold_fields(vec![], String::new(), String::new(), String::new()),
+        trailing_lambda: false,
+        deprecated: false,
+    };
+    idx.jar_files.insert(
+        jar_uri_str.clone(),
+        Arc::new(FileData {
+            symbols: vec![flow_type, member],
+            source_set: SourceSet::Library,
+            package: Some("kotlinx.coroutines.flow".to_owned()),
+            lines: Arc::new(vec![]),
+            ..Default::default()
+        }),
+    );
+    idx.jar_definitions
+        .entry("Flow".to_owned())
+        .or_default()
+        .push(tower_lsp::lsp_types::Location {
+            uri: jar_uri.clone(),
+            range,
+        });
+
+    let col = src.lines().nth(4).unwrap().find("collect").unwrap() as u32;
+    let position = Position::new(4, col);
+    let ctx = CursorContext::build(&idx, &uri, position).unwrap();
+    let response = find_definition(&ctx, &idx, &uri, position).await;
+    let loc = match response {
+        Some(GotoDefinitionResponse::Scalar(loc)) => loc,
+        Some(GotoDefinitionResponse::Array(mut locs)) if locs.len() == 1 => locs.remove(0),
+        other => panic!("expected exactly one resolved location, got: {other:?}"),
+    };
+    assert_eq!(
+        loc.uri, jar_uri,
+        "must resolve to Flow's own JAR-indexed collect member via the \
+         implicit `this` receiver, not the arity-incompatible self-declaration, \
+         got: {loc:?}"
+    );
+}

@@ -1534,6 +1534,26 @@ fn extract_extension_receiver_from_cst(
     empty
 }
 
+/// The base receiver type name of the extension function/property whose body
+/// encloses `position` (e.g. `"Flow"` for a position anywhere inside
+/// `fun <T> Flow<T>.collect(...) { ... }`, including nested inside a lambda —
+/// lambdas aren't `KIND_FUN_DECL`/`KIND_PROP_DECL`, so the ancestor walk this
+/// delegates to skips past them to the enclosing declaration). `None` when
+/// `position` isn't inside an extension function/property at all.
+///
+/// Reuses `extract_extension_receiver_from_cst` verbatim — that helper only
+/// uses `range` to *locate* the enclosing declaration before extracting its
+/// receiver, so a call-site position works exactly like a declaration's own
+/// position does.
+pub(crate) fn enclosing_extension_receiver_at(
+    root: Node,
+    bytes: &[u8],
+    position: Range,
+) -> Option<String> {
+    let (base, _receiver_type) = extract_extension_receiver_from_cst(root, bytes, &position);
+    (!base.is_empty()).then_some(base)
+}
+
 /// Find the declaration node at `range` in the tree and extract the text inside
 /// its `function_value_parameters` or `formal_parameters` child (the content
 /// between `(` and `)`). Returns empty string if not found.

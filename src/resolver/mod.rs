@@ -30,7 +30,8 @@ pub(crate) use infer::{
 pub(crate) use infer_lines::extract_collection_element_type;
 pub(crate) use resolve::{
     ensure_file_data, fqns_for_name, receiver_provides_member, resolve_callee_definition,
-    resolve_in_scope_strict, resolve_symbol_no_rg, resolve_symbol_scoped_only,
+    resolve_implicit_receiver_callee, resolve_in_scope_strict, resolve_symbol_no_rg,
+    resolve_symbol_scoped_only,
 };
 
 // Re-exports used only in tests.

@@ -194,6 +194,27 @@ pub(crate) fn call_shape_at_callee(
     Some(crate::indexer::call_shape_of(call_expr, &doc.bytes))
 }
 
+/// The base receiver type of the extension function/property whose body
+/// encloses `position` — see [`crate::parser::enclosing_extension_receiver_at`].
+/// `None` when `position` isn't inside an extension function/property, or the
+/// file can't be parsed.
+///
+/// `pub(crate)`, not `definition.rs`-private: hover's `call_callee_hover`
+/// reuses this directly rather than recomputing the same CST-position lookup
+/// — same reason `call_shape_at_callee` is shared.
+pub(crate) fn enclosing_extension_receiver_at(
+    indexer: &Indexer,
+    uri: &Url,
+    position: Position,
+) -> Option<String> {
+    let doc = indexer.live_doc_or_parse(uri)?;
+    let range = tower_lsp::lsp_types::Range {
+        start: position,
+        end: position,
+    };
+    crate::parser::enclosing_extension_receiver_at(doc.tree.root_node(), &doc.bytes, range)
+}
+
 // ─── Main entry point ─────────────────────────────────────────────────────────
 
 /// Resolve goto-definition for the given cursor context.
@@ -276,7 +297,20 @@ pub(crate) async fn find_definition(
     if ctx.qualifier.is_none() {
         if let Some(shape) = call_shape_at_callee(index, uri, position) {
             let locs = index.find_definition_for_call(&ctx.word, uri, shape);
-            return locs_to_opt_response(locs);
+            if !locs.is_empty() {
+                return locs_to_opt_response(locs);
+            }
+            // Bare-name search (imports/same-package/star/hierarchy/rg) has no
+            // receiver-type awareness at all, so a call inside an extension
+            // function's own body that targets a same-named member/extension
+            // of that function's *own* receiver (an implicit `this.name(...)`)
+            // is invisible to it — try that specifically before giving up.
+            if let Some(receiver) = enclosing_extension_receiver_at(index, uri, position) {
+                let locs = index
+                    .find_definition_for_implicit_receiver_call(&receiver, &ctx.word, uri, shape);
+                return locs_to_opt_response(locs);
+            }
+            return None;
         }
     }
     let locs = index.find_definition_qualified(&ctx.word, ctx.qualifier.as_deref(), uri);

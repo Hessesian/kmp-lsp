@@ -141,10 +141,20 @@ fn call_callee_hover<W: WorkspaceRead>(
 ) -> Option<Option<Hover>> {
     let indexer = workspace.as_indexer()?;
     let shape = crate::features::definition::call_shape_at_callee(indexer, uri, position)?;
-    let location = indexer
-        .find_definition_for_call(&ctx.word, uri, shape)
-        .into_iter()
-        .next();
+    let mut locations = indexer.find_definition_for_call(&ctx.word, uri, shape);
+    if locations.is_empty() {
+        // Same reasoning as goto-definition: a bare call inside an extension
+        // function's own body may target a same-named member/extension of
+        // that function's *own* receiver (an implicit `this.name(...)`),
+        // which the plain bare-name lookup above has no way to see.
+        if let Some(receiver) =
+            crate::features::definition::enclosing_extension_receiver_at(indexer, uri, position)
+        {
+            locations = indexer
+                .find_definition_for_implicit_receiver_call(&receiver, &ctx.word, uri, shape);
+        }
+    }
+    let location = locations.into_iter().next();
     Some(location.and_then(|location| {
         let info = enrich_at_location(
             workspace,

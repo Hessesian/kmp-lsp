@@ -259,6 +259,106 @@ fun collect(scope: Int, block: Int) {\n\
     );
 }
 
+// ── resolve_implicit_receiver_callee ───────────────────────────────────────
+
+/// The reported bug: `collect(block)` inside `fun <T> Flow<T>.collect(scope,
+/// block) { ... collect(block) }` has no import for any top-level `collect`
+/// -- the real target is `Flow`'s own interface member (reachable here only
+/// via Kotlin's implicit SAM conversion of `block` to `FlowCollector<T>`, a
+/// `fun interface`). `resolve_implicit_receiver_callee` must find that
+/// JAR-indexed member, not the arity-incompatible self-declaration (which is
+/// itself a registered "extension in scope" on `Flow`, same file).
+#[test]
+fn resolve_implicit_receiver_callee_finds_jar_member_not_self() {
+    use crate::types::{FileData, SourceSet, SymbolEntry, Visibility};
+    use std::sync::Arc;
+
+    let u = uri("/Flow.kt");
+    let idx = Indexer::new();
+    let src = "package com.example\n\
+import kotlinx.coroutines.flow.Flow\n\
+class CoroutineScope\n\
+fun <T : Any> Flow<T>.collect(scope: CoroutineScope, block: (T) -> Unit) {\n\
+    collect(block)\n\
+}\n";
+    idx.index_content(&u, src);
+
+    // Fake JAR-indexed Flow interface member: collect(collector: FlowCollector<T>).
+    let jar_uri_str = "jar:file:///fake-coroutines.jar!/Flow.kt".to_string();
+    let jar_uri = Url::parse(&jar_uri_str).unwrap();
+    let range = tower_lsp::lsp_types::Range {
+        start: tower_lsp::lsp_types::Position {
+            line: 0,
+            character: 0,
+        },
+        end: tower_lsp::lsp_types::Position {
+            line: 0,
+            character: 7,
+        },
+    };
+    let member = SymbolEntry {
+        name: "collect".to_owned(),
+        kind: tower_lsp::lsp_types::SymbolKind::METHOD,
+        visibility: Visibility::Public,
+        range,
+        selection_range: range,
+        detail: "suspend fun collect(collector: FlowCollector<T>)".to_owned(),
+        container: Some("Flow".to_owned()),
+        params: "collector: FlowCollector<T>".to_owned(),
+        param_counts: (1, 1),
+        cold: crate::types::pack_cold_fields(vec![], String::new(), String::new(), String::new()),
+        trailing_lambda: false,
+        deprecated: false,
+    };
+    let flow_type = SymbolEntry {
+        name: "Flow".to_owned(),
+        kind: tower_lsp::lsp_types::SymbolKind::INTERFACE,
+        visibility: Visibility::Public,
+        range,
+        selection_range: range,
+        detail: "interface Flow<T>".to_owned(),
+        container: None,
+        params: String::new(),
+        param_counts: (0, 0),
+        cold: crate::types::pack_cold_fields(vec![], String::new(), String::new(), String::new()),
+        trailing_lambda: false,
+        deprecated: false,
+    };
+    idx.jar_files.insert(
+        jar_uri_str.clone(),
+        Arc::new(FileData {
+            symbols: vec![flow_type, member],
+            source_set: SourceSet::Library,
+            package: Some("kotlinx.coroutines.flow".to_owned()),
+            lines: Arc::new(vec![]),
+            ..Default::default()
+        }),
+    );
+    idx.jar_definitions
+        .entry("Flow".to_owned())
+        .or_default()
+        .push(tower_lsp::lsp_types::Location {
+            uri: jar_uri.clone(),
+            range,
+        });
+
+    let shape = CallShape {
+        arg_count: 1,
+        trailing_lambda: false,
+    };
+    let locs = resolve_implicit_receiver_callee(&idx, "Flow", "collect", &u, shape);
+    assert_eq!(
+        locs.len(),
+        1,
+        "must resolve to exactly the JAR member, got: {locs:?}"
+    );
+    assert_eq!(
+        locs[0].uri, jar_uri,
+        "must resolve to the JAR member, not the arity-incompatible \
+         self-declaration, got: {locs:?}"
+    );
+}
+
 // ── resolve_via_imports (qualified index) ────────────────────────────────
 
 #[test]
