@@ -658,56 +658,137 @@ pub(crate) fn find_fun_signature_with_receiver(
 /// Supports dotted names like `"DepositAccountReducer.Factory"` — splits into
 /// container `"DepositAccountReducer"` and type_base `"Factory"`, then filters
 /// definitions to only those whose container matches.
+///
+/// Searches both members (`container == type_base`) and extension functions on
+/// the receiver (`extension_by_receiver`, member-less by definition) — a
+/// receiver type routinely has both, e.g. `Flow.collect(collector:
+/// FlowCollector<T>)` (member) alongside `Flow<T>.collect(action: suspend (T)
+/// -> Unit)` (extension), and only the caller's actual `shape` (arg count,
+/// trailing lambda) tells them apart; see [`CallShape`].
+///
+/// Deliberately gathers members by scanning files that declare `type_base`
+/// (bounded by how many classes share that name) rather than by scanning every
+/// file that declares a method named `method_name` — the latter is what makes
+/// `resolve_qualified` bail on ubiquitous names like `collect` (hundreds of
+/// unrelated declarations); this function has no such bail, so it must not
+/// take that path. The extension half is similarly cheap: `extension_by_receiver`
+/// is keyed by receiver type, not by method name.
 pub(crate) fn find_method_params_in_class(
     idx: &Indexer,
     class_name: &str,
     method_name: &str,
+    caller_uri: &Url,
+    shape: super::deps::CallShape,
 ) -> Option<String> {
     let (container, type_base) = match class_name.rsplit_once('.') {
         Some((container, base)) => (Some(container), base),
         None => (None, class_name),
     };
-    let locations = idx.definitions.get(type_base)?;
-    for loc in locations.iter() {
-        let Some(url) = idx.file_table.url(loc.file) else {
-            continue;
-        };
-        let Some(file_data) = idx.files.get(url.as_str()) else {
-            continue;
-        };
-        // Verify the class exists (and if qualified, check its own container).
-        let has_class = file_data.symbols.iter().any(|s| {
-            s.name == type_base
-                && is_class_like(s.kind)
-                && container.is_none_or(|c| s.container.as_deref() == Some(c))
-        });
-        if !has_class {
-            continue;
-        }
+    let mut candidates: Vec<(String, (u8, u8))> = Vec::new();
 
-        // Find the method as a direct member of type_base.
-        for symbol_entry in &file_data.symbols {
-            if symbol_entry.name != method_name {
+    if let Some(locations) = idx.definitions.get(type_base) {
+        for loc in locations.iter() {
+            let Some(url) = idx.file_table.url(loc.file) else {
+                continue;
+            };
+            let Some(file_data) = idx.files.get(url.as_str()) else {
+                continue;
+            };
+            // Verify the class exists (and if qualified, check its own container).
+            let has_class = file_data.symbols.iter().any(|s| {
+                s.name == type_base
+                    && is_class_like(s.kind)
+                    && container.is_none_or(|c| s.container.as_deref() == Some(c))
+            });
+            if !has_class {
                 continue;
             }
-            if !matches!(
-                symbol_entry.kind,
-                SymbolKind::FUNCTION | SymbolKind::METHOD | SymbolKind::OPERATOR
-            ) {
-                continue;
-            }
-            if symbol_entry.container.as_deref() != Some(type_base) {
-                continue;
-            }
-            if !symbol_entry.params.is_empty() {
-                return Some(symbol_entry.params.clone());
-            }
-            if let Some(params) = extract_params_from_detail(&symbol_entry.detail) {
-                return Some(params);
+
+            // The method as a direct member of type_base.
+            for symbol_entry in &file_data.symbols {
+                if symbol_entry.name != method_name {
+                    continue;
+                }
+                if !matches!(
+                    symbol_entry.kind,
+                    SymbolKind::FUNCTION | SymbolKind::METHOD | SymbolKind::OPERATOR
+                ) {
+                    continue;
+                }
+                if symbol_entry.container.as_deref() != Some(type_base) {
+                    continue;
+                }
+                if let Some(params) = extract_params_or_fallback(symbol_entry, &file_data.lines) {
+                    candidates.push((params, symbol_entry.param_counts));
+                }
             }
         }
     }
-    None
+
+    let mut cache_backed_only = 0usize;
+    if let Some(entries) =
+        crate::indexer::jar::extension_entries_for(idx, type_base, &mut cache_backed_only)
+    {
+        let mut seen_files = std::collections::HashSet::new();
+        for entry in entries.iter().filter(|e| e.name == method_name) {
+            if seen_files.insert(entry.file_uri.clone()) {
+                candidates.extend(collect_params_from_file(
+                    method_name,
+                    &entry.file_uri,
+                    idx,
+                    caller_uri.as_str(),
+                    ResolutionScope::CrossFile,
+                    Some(type_base),
+                ));
+            }
+        }
+    }
+
+    pick_candidate_matching_shape(candidates, shape)
+}
+
+/// Choose the candidate whose signature best matches how the call was
+/// actually written, rather than the first one found.
+///
+/// Prefers a candidate that matches both arity and lambda-shape; falls back to
+/// lambda-shape alone (the stronger signal — same-arity ties like `Flow`'s two
+/// `collect`s are common, and only one of them accepts a trailing lambda), then
+/// arity alone, then the first candidate — never worse than the old
+/// first-match behaviour.
+fn pick_candidate_matching_shape(
+    candidates: Vec<(String, (u8, u8))>,
+    shape: super::deps::CallShape,
+) -> Option<String> {
+    if candidates.len() <= 1 {
+        return candidates.into_iter().next().map(|(text, _)| text);
+    }
+    let total_args = shape.arg_count + usize::from(shape.trailing_lambda);
+    let scored: Vec<(bool, bool)> = candidates
+        .iter()
+        .map(|(text, (required, total))| {
+            let arity_ok = (*required as usize) <= total_args && total_args <= (*total as usize);
+            let lambda_ok = last_fun_param_type_str(text)
+                .map(|t| is_lambda_shaped(&t))
+                .unwrap_or(false)
+                == shape.trailing_lambda;
+            (arity_ok, lambda_ok)
+        })
+        .collect();
+    for wants in [(true, true), (false, true), (true, false)] {
+        if let Some(i) = scored.iter().position(|&s| s == wants) {
+            return Some(candidates[i].0.clone());
+        }
+    }
+    candidates.into_iter().next().map(|(text, _)| text)
+}
+
+/// Whether a parameter type string is a Kotlin function type (`(T) -> R`,
+/// `suspend (T) -> R`, `() -> Unit`, …) — i.e. a trailing-lambda call could
+/// supply it.
+fn is_lambda_shaped(type_str: &str) -> bool {
+    let t = type_str.trim();
+    let t = t.strip_prefix("suspend").map(str::trim_start).unwrap_or(t);
+    t.starts_with('(') && t.contains("->")
 }
 
 fn is_class_like(kind: SymbolKind) -> bool {

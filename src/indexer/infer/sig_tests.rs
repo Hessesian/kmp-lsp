@@ -663,6 +663,56 @@ fn resolve_unqualified_data_class_constructor() {
     }
 }
 
+// ─── find_method_params_in_class: member vs. extension overload ───────────────
+
+#[test]
+fn find_method_params_in_class_picks_by_call_shape_not_first_match() {
+    // Flow.collect has both a member (interface method, takes a FlowCollector
+    // object) and an extension (takes a lambda) — same arity, different shape.
+    // Real-world case: kotlinx.coroutines.flow.Flow. Before this fix,
+    // find_method_params_in_class only ever searched members, so
+    // `userData.collect { it }` resolved against the FlowCollector member and
+    // lost the lambda's `it` type entirely (its param isn't a function type).
+    let caller_uri = test_uri("/Caller.kt");
+    let idx = Indexer::new();
+    idx.index_content(
+        &caller_uri,
+        "package com.example\n\
+interface FlowCollector<T> {\n\
+    suspend fun emit(value: T)\n\
+}\n\
+interface Flow<T> {\n\
+    suspend fun collect(collector: FlowCollector<T>)\n\
+}\n\
+fun <T> Flow<T>.collect(action: (T) -> Unit) {}\n",
+    );
+
+    let trailing_lambda_shape = crate::indexer::infer::deps::CallShape {
+        arg_count: 0,
+        trailing_lambda: true,
+    };
+    let params =
+        find_method_params_in_class(&idx, "Flow", "collect", &caller_uri, trailing_lambda_shape)
+            .expect("collect must resolve for a trailing-lambda call");
+    assert!(
+        params.contains("->"),
+        "a trailing-lambda call must resolve to the lambda-accepting extension \
+         overload, got: {params:?}"
+    );
+
+    let object_arg_shape = crate::indexer::infer::deps::CallShape {
+        arg_count: 1,
+        trailing_lambda: false,
+    };
+    let params =
+        find_method_params_in_class(&idx, "Flow", "collect", &caller_uri, object_arg_shape)
+            .expect("collect must resolve for an object-argument call");
+    assert!(
+        params.contains("FlowCollector"),
+        "a plain-object-argument call must resolve to the interface member, got: {params:?}"
+    );
+}
+
 #[test]
 fn resolve_unqualified_test_definition_visible_only_to_test_callers() {
     let idx = Indexer::new();

@@ -30,6 +30,19 @@ pub(crate) struct CallableInfo {
     pub extension_receiver_type: String,
 }
 
+/// Shape of a call's actual arguments: how many sit inside the parens, and
+/// whether a trailing lambda follows. Used to pick the right candidate when a
+/// receiver type has more than one same-named, same-arity member — e.g.
+/// `Flow.collect(collector: FlowCollector<T>)` (member) vs.
+/// `Flow<T>.collect(action: suspend (T) -> Unit)` (extension): both take
+/// exactly one argument, so an arity-only match can't tell them apart, but
+/// only one of them accepts a trailing lambda.
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct CallShape {
+    pub(crate) arg_count: usize,
+    pub(crate) trailing_lambda: bool,
+}
+
 /// Outcome of scoping a function-signature search to the file that declares an
 /// outer type (qualified callees like `Outer.Nested(...)`).
 ///
@@ -133,14 +146,22 @@ pub(crate) trait InferDeps {
         None
     }
 
-    /// Return the raw parameter text for a method declared inside `class_name`.
+    /// Return the raw parameter text for a method declared inside `class_name`,
+    /// searching both members and extension functions on that receiver type.
     ///
     /// Used for receiver-aware positional param lookup in inline lambdas:
     /// `factory.create(arg, { it })` → resolve `factory` type → look up `create`
     /// on that type specifically (avoids ambiguity with other classes' `create`).
+    /// `shape` disambiguates same-arity candidates — see [`CallShape`].
     ///
     /// Returns `None` when the class or method is not found.
-    fn find_method_params_text(&self, _class_name: &str, _method_name: &str) -> Option<String> {
+    fn find_method_params_text(
+        &self,
+        _class_name: &str,
+        _method_name: &str,
+        _uri: &Url,
+        _shape: CallShape,
+    ) -> Option<String> {
         None
     }
 
@@ -381,7 +402,13 @@ impl InferDeps for TestDeps {
             .get(&(class_name.to_string(), method_name.to_string()))
             .cloned()
     }
-    fn find_method_params_text(&self, class_name: &str, method_name: &str) -> Option<String> {
+    fn find_method_params_text(
+        &self,
+        class_name: &str,
+        method_name: &str,
+        _uri: &Url,
+        _shape: CallShape,
+    ) -> Option<String> {
         self.method_params
             .get(&(class_name.to_string(), method_name.to_string()))
             .cloned()

@@ -481,8 +481,20 @@ impl InferDeps for Indexer {
         crate::resolver::Resolver::method_return_type(self, class_name, method_name, Some(uri))
             .map(crate::resolver::ReturnType::into_inner)
     }
-    fn find_method_params_text(&self, class_name: &str, method_name: &str) -> Option<String> {
-        crate::indexer::infer::sig::find_method_params_in_class(self, class_name, method_name)
+    fn find_method_params_text(
+        &self,
+        class_name: &str,
+        method_name: &str,
+        uri: &Url,
+        shape: crate::indexer::infer::deps::CallShape,
+    ) -> Option<String> {
+        crate::indexer::infer::sig::find_method_params_in_class(
+            self,
+            class_name,
+            method_name,
+            uri,
+            shape,
+        )
     }
     fn find_fun_callable_info(&self, fn_name: &str, uri: &Url) -> Option<CallableInfo> {
         // Workspace definitions first (scoped + capped — see find_in_workspace_defs).

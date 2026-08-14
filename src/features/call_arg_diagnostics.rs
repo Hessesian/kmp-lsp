@@ -270,7 +270,7 @@ fn is_inside_any_lambda(call_node: &tree_sitter::Node) -> bool {
 ///     call_expression (inner) → foo(a)
 ///     call_suffix → annotated_lambda → lambda_literal
 /// We check both the node itself AND its parent for the lambda suffix.
-fn has_trailing_lambda(call_node: &tree_sitter::Node) -> bool {
+pub(crate) fn has_trailing_lambda(call_node: &tree_sitter::Node) -> bool {
     if check_lambda_in_children(call_node) {
         return true;
     }
@@ -354,7 +354,10 @@ fn contains_lambda(node: &tree_sitter::Node) -> bool {
 }
 
 /// Count `value_argument` children inside a `value_arguments` node.
-fn count_provided_args(value_arguments: Option<&tree_sitter::Node>, _bytes: &[u8]) -> usize {
+pub(crate) fn count_provided_args(
+    value_arguments: Option<&tree_sitter::Node>,
+    _bytes: &[u8],
+) -> usize {
     let Some(va) = value_arguments else {
         return 0;
     };
