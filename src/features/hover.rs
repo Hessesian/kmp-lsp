@@ -101,6 +101,11 @@ fn regular_symbol_hover<W: WorkspaceRead>(
     uri: &Url,
     position: Position,
 ) -> Option<Hover> {
+    if ctx.qualifier.is_none() {
+        if let Some(hover) = call_callee_hover(workspace, ctx, uri, position) {
+            return hover;
+        }
+    }
     let markdown = resolve_hover_markdown(
         workspace,
         &ctx.word,
@@ -113,6 +118,43 @@ fn regular_symbol_hover<W: WorkspaceRead>(
         return Some(make_markdown_hover(markdown));
     }
     fallback_local_binding_hover(workspace, ctx, uri, position.line)
+}
+
+/// `Some(hover)` when the cursor sits on a call's callee and the call's own
+/// shape resolved it (`hover` itself may be `None`, meaning: don't fall
+/// through to the unfiltered lookups below — an arity-filtered miss is a
+/// deliberate "the same-file candidate can't be the target", not "give the
+/// name-only path another try", which would just re-find the same wrong-arity
+/// match `find_definition_for_call` already ruled out. `None` (not
+/// `Some(None)`) means the cursor isn't on a call's callee at all, so the
+/// normal name-based hover path should run as before.
+///
+/// Same shape computation `goto_definition` already uses (see
+/// `call_shape_at_callee`) — same underlying bug (`resolve_local`/
+/// `resolve_chain` matching same-file candidates by name alone, oblivious to
+/// arity), reached through hover's separate `resolve_symbol`-based path.
+fn call_callee_hover<W: WorkspaceRead>(
+    workspace: &W,
+    ctx: &CursorContext,
+    uri: &Url,
+    position: Position,
+) -> Option<Option<Hover>> {
+    let indexer = workspace.as_indexer()?;
+    let shape = crate::features::definition::call_shape_at_callee(indexer, uri, position)?;
+    let location = indexer
+        .find_definition_for_call(&ctx.word, uri, shape)
+        .into_iter()
+        .next();
+    Some(location.and_then(|location| {
+        let info = enrich_at_location(
+            workspace,
+            &location,
+            &ctx.word,
+            hover_substitution_context(uri, position.line),
+            &ResolveOptions::hover(),
+        )?;
+        Some(make_markdown_hover(format_symbol_hover(&info, uri.path())))
+    }))
 }
 
 fn fallback_local_binding_hover<W: WorkspaceRead>(
@@ -224,5 +266,70 @@ fn jar_loading_hint<W: WorkspaceRead>(workspace: &W) -> Option<Hover> {
         ))
     } else {
         None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::indexer::Indexer;
+
+    fn hover_text(hover: &Hover) -> String {
+        match &hover.contents {
+            HoverContents::Markup(markup) => markup.value.clone(),
+            _ => String::new(),
+        }
+    }
+
+    /// Same reported bug as goto-definition's regression test, reached through
+    /// hover's separate `resolve_symbol_info` path instead of
+    /// `find_definition`: hovering the inner `collect(block)` must not show
+    /// the enclosing 2-required-arg declaration's own signature.
+    #[test]
+    fn hover_does_not_show_wrong_arity_self_reference() {
+        let idx = Indexer::new();
+        let uri = Url::parse("file:///t/Flow.kt").unwrap();
+        let src = "class CoroutineScope\n\
+                   fun <T : Any> Flow<T>.collect(scope: CoroutineScope, block: (T) -> Unit) {\n\
+                       collect(block)\n\
+                   }\n";
+        idx.index_content(&uri, src);
+        idx.store_live_tree(&uri, src);
+        let col = src.lines().nth(2).unwrap().find("collect").unwrap() as u32;
+        let position = Position::new(2, col);
+        let ctx = CursorContext::build(&idx, &uri, position).unwrap();
+
+        let hover = compute_hover(&idx, &ctx, &uri, position);
+        if let Some(hover) = hover {
+            let text = hover_text(&hover);
+            assert!(
+                !text.contains("scope: CoroutineScope"),
+                "hover must not show the enclosing self declaration's own \
+                 signature, got: {text:?}"
+            );
+        }
+    }
+
+    /// Genuine same-arity self-recursion must still hover to itself — the
+    /// arity filter must not become a blanket "never show a same-file match."
+    #[test]
+    fn hover_shows_same_arity_self_recursion() {
+        let idx = Indexer::new();
+        let uri = Url::parse("file:///t/Factorial.kt").unwrap();
+        let src = "fun factorial(n: Int): Int {\n\
+                       return factorial(n - 1)\n\
+                   }\n";
+        idx.index_content(&uri, src);
+        idx.store_live_tree(&uri, src);
+        let col = src.lines().nth(1).unwrap().find("factorial").unwrap() as u32;
+        let position = Position::new(1, col);
+        let ctx = CursorContext::build(&idx, &uri, position).unwrap();
+
+        let hover = compute_hover(&idx, &ctx, &uri, position).expect("expected a hover result");
+        let text = hover_text(&hover);
+        assert!(
+            text.contains("factorial"),
+            "same-arity self-recursion must still hover to itself, got: {text:?}"
+        );
     }
 }

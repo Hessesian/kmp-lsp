@@ -172,7 +172,15 @@ fn try_cst_resolved_definition(
 /// `is_call_callee` requires the cursor node to be the direct callee child of
 /// a `call_expression`, so `node.parent()` here is exactly that expression —
 /// no separate "find the enclosing call" walk needed.
-fn call_shape_at_callee(indexer: &Indexer, uri: &Url, position: Position) -> Option<CallShape> {
+///
+/// `pub(crate)`, not `definition.rs`-private: hover's `regular_symbol_hover`
+/// reuses this directly rather than recomputing the same CST-shape lookup —
+/// both features hit the identical "cursor on a call's callee" question.
+pub(crate) fn call_shape_at_callee(
+    indexer: &Indexer,
+    uri: &Url,
+    position: Position,
+) -> Option<CallShape> {
     let doc = indexer.live_doc_or_parse(uri)?;
     let cursor = CursorPos {
         line: position.line as usize,
