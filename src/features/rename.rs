@@ -227,6 +227,95 @@ mod tests {
         assert_eq!(edits.len(), 3, "declaration + 2 call sites, got {edits:?}");
     }
 
+    /// The confirmed rename-corruption bug: a same-named, wrong-arity call
+    /// site inside the declaration's own body is a name collision (meant to
+    /// bind to a differently-shaped function elsewhere), not a genuine
+    /// reference -- renaming the declaration must not also rewrite it.
+    #[tokio::test]
+    async fn rename_does_not_corrupt_a_wrong_arity_self_call() {
+        let source = "class CoroutineScope\n\
+                      fun collect(scope: CoroutineScope, block: Int) {\n\
+                          collect(block)\n\
+                      }\n";
+        let file_uri = uri("/D.kt");
+        let indexer = std::sync::Arc::new(Indexer::new());
+        indexer.index_content(&file_uri, source);
+        indexer.store_live_tree(&file_uri, source);
+
+        let column = source.lines().nth(1).unwrap().find("collect").unwrap() as u32;
+        let result = rename_impl(&indexer, &file_uri, Position::new(1, column), "gather")
+            .await
+            .expect("no override, no ambiguity -- must succeed")
+            .expect("must produce an edit");
+        let edits = result
+            .changes
+            .expect("must have changes")
+            .remove(&file_uri)
+            .expect("must edit this file");
+        assert!(
+            edits.iter().all(|edit| edit.range.start.line != 2),
+            "must not rewrite the wrong-arity self-call on line 2, got: {edits:?}"
+        );
+    }
+
+    /// Genuine same-arity self-recursion must still be renamed everywhere --
+    /// the arity filter must not become a blanket "never touch a self-call."
+    #[tokio::test]
+    async fn rename_still_renames_a_genuine_same_arity_self_recursive_call() {
+        let source = "fun factorial(n: Int): Int {\n\
+                          return factorial(n - 1)\n\
+                      }\n";
+        let file_uri = uri("/D.kt");
+        let indexer = std::sync::Arc::new(Indexer::new());
+        indexer.index_content(&file_uri, source);
+        indexer.store_live_tree(&file_uri, source);
+
+        let column = source.lines().next().unwrap().find("factorial").unwrap() as u32;
+        let result = rename_impl(&indexer, &file_uri, Position::new(0, column), "fact")
+            .await
+            .expect("same-arity self-recursion must not be treated as ambiguous")
+            .expect("must produce an edit");
+        let edits = result
+            .changes
+            .expect("must have changes")
+            .remove(&file_uri)
+            .expect("must edit this file");
+        assert_eq!(
+            edits.len(),
+            2,
+            "declaration + the recursive call, got: {edits:?}"
+        );
+    }
+
+    /// Renaming a non-callable declaration (a class) must be completely
+    /// unaffected by the arity filter -- `declaration_param_counts` returns
+    /// `None` for non-callable kinds, so no filtering runs at all.
+    #[tokio::test]
+    async fn rename_of_a_class_is_unaffected_by_the_arity_filter() {
+        let source = "class Widget\n\
+                      fun make(): Widget { return Widget() }\n";
+        let file_uri = uri("/D.kt");
+        let indexer = std::sync::Arc::new(Indexer::new());
+        indexer.index_content(&file_uri, source);
+        indexer.store_live_tree(&file_uri, source);
+
+        let column = source.lines().next().unwrap().find("Widget").unwrap() as u32;
+        let result = rename_impl(&indexer, &file_uri, Position::new(0, column), "Gadget")
+            .await
+            .expect("class rename must succeed")
+            .expect("must produce an edit");
+        let edits = result
+            .changes
+            .expect("must have changes")
+            .remove(&file_uri)
+            .expect("must edit this file");
+        assert_eq!(
+            edits.len(),
+            3,
+            "declaration + return type + constructor call, got: {edits:?}"
+        );
+    }
+
     #[tokio::test]
     async fn local_rename_uses_the_cst_fast_path_and_never_refuses() {
         let source = "fun run() {\n    val total = 0\n    print(total)\n}\n";

@@ -1005,8 +1005,7 @@ fn local_symbol_satisfies_call_shape(symbol: &SymbolEntry, shape: CallShape) -> 
         return true;
     }
     let (required, total) = symbol.param_counts;
-    let call_arg_count = shape.arg_count + usize::from(shape.trailing_lambda);
-    (required as usize) <= call_arg_count && call_arg_count <= (total as usize)
+    shape.accepts(required, total)
 }
 
 /// The `rg`-step counterpart to [`local_symbol_satisfies_call_shape`]: `rg`

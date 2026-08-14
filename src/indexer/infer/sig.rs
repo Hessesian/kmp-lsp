@@ -762,11 +762,10 @@ fn pick_candidate_matching_shape(
     if candidates.len() <= 1 {
         return candidates.into_iter().next().map(|(text, _)| text);
     }
-    let total_args = shape.arg_count + usize::from(shape.trailing_lambda);
     let scored: Vec<(bool, bool)> = candidates
         .iter()
         .map(|(text, (required, total))| {
-            let arity_ok = (*required as usize) <= total_args && total_args <= (*total as usize);
+            let arity_ok = shape.accepts(*required, *total);
             let lambda_ok = last_fun_param_type_str(text)
                 .map(|t| is_lambda_shaped(&t))
                 .unwrap_or(false)

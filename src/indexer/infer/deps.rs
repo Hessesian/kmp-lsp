@@ -43,6 +43,27 @@ pub(crate) struct CallShape {
     pub(crate) trailing_lambda: bool,
 }
 
+impl CallShape {
+    /// Whether a candidate whose declared parameter counts are
+    /// `(required, total)` could be the target of a call shaped like `self`.
+    ///
+    /// The one arity-range check every consumer of `CallShape` needs, given a
+    /// type instead of reimplemented per call site: `resolve.rs` (same-file
+    /// shadow exclusion, both at `resolve_local` and its `rg` fallback),
+    /// `sig.rs` (candidate scoring), and `references.rs` (reference/rename
+    /// verification) all compare a call's actual argument count against a
+    /// candidate's declared range — this is that comparison, once.
+    ///
+    /// Callers decide *whether* to call this (a non-callable or vararg
+    /// candidate is exempt, not merely "always accepted") — vararg exemption
+    /// isn't part of the arithmetic itself, since `(required, total)` alone
+    /// can't distinguish a vararg's true unbounded upper end from a fixed one.
+    pub(crate) fn accepts(&self, required: u8, total: u8) -> bool {
+        let call_arg_count = self.arg_count + usize::from(self.trailing_lambda);
+        (required as usize) <= call_arg_count && call_arg_count <= (total as usize)
+    }
+}
+
 /// Outcome of scoping a function-signature search to the file that declares an
 /// outer type (qualified callees like `Outer.Nested(...)`).
 ///
