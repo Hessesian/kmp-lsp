@@ -59,13 +59,18 @@ fn main() {
     // thread's cannot be raised — and `block_on` below drives request
     // handlers on whichever thread calls it. Hand the whole server to a
     // thread we do control.
-    match std::thread::Builder::new()
+    let server_thread = match std::thread::Builder::new()
         .name("kmp-lsp".to_owned())
         .stack_size(ANALYSIS_STACK_SIZE)
         .spawn(run_server)
-        .expect("failed to spawn the server thread")
-        .join()
     {
+        Ok(handle) => handle,
+        Err(err) => {
+            eprintln!("kmp-lsp: failed to spawn the server thread: {err}");
+            std::process::exit(102);
+        }
+    };
+    match server_thread.join() {
         Ok(()) => {}
         // Panicking past `run_server`'s own `catch_unwind` means the runtime
         // itself failed to start; the hook has already reported it.
