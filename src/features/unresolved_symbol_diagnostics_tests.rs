@@ -257,7 +257,7 @@ fn recall_summary_counts_member_and_bare_lanes_separately() {
     assert_eq!(gaps.len(), 1);
     assert_eq!(gaps[0].0, "missing");
     assert_eq!(gaps[0].1.count, 1);
-    assert_eq!(gaps[0].1.sample_location, "A.kt:2");
+    assert_eq!(gaps[0].1.sample_location, "A.kt:2:1");
 }
 
 #[test]

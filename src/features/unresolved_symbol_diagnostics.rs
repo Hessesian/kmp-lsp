@@ -9,16 +9,6 @@
 //! like its `missing_import_diagnostics`/`unused_import_diagnostics`
 //! siblings so that reuse doesn't need restructuring later.
 
-// Temporary: this module's `pub(crate)` items have no consumer outside
-// `#[cfg(test)]` until Task 4 registers `cli::resolution_accuracy_poc` in
-// `cli/mod.rs`. The repo's pre-commit hook runs bare `cargo clippy -D
-// warnings` (no `--tests`), which doesn't compile `#[cfg(test)]` code, so
-// without this every commit before Task 4 fails on dead-code errors. Remove
-// this line in Task 4 once the CLI wiring makes the whole chain reachable
-// from a non-test entry point — `cargo clippy -- -D warnings` passing clean
-// afterward confirms every item here is genuinely used.
-#![cfg_attr(not(test), allow(dead_code))]
-
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 use tower_lsp::lsp_types::{Location, Position, Url};
@@ -261,7 +251,7 @@ impl ResolutionAccuracyAggregator {
     /// path (workspace-relative, e.g. `"src/Foo.kt"`) used only for sample
     /// locations in the reports below.
     pub(crate) fn add(&mut self, file_label: &str, outcome: &ReferenceOutcome) {
-        let sample_location = format!("{file_label}:{}", outcome.line + 1);
+        let sample_location = format!("{file_label}:{}:{}", outcome.line + 1, outcome.col + 1);
         let is_member = outcome.receiver_type.is_some();
         match &outcome.outcome {
             ResolutionOutcome::Success { tier, locations } => {
