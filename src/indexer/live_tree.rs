@@ -1,5 +1,6 @@
 use tree_sitter::{Language as TsLanguage, Parser, Tree};
 
+#[derive(Clone)]
 pub(crate) struct LiveDoc {
     pub bytes: Vec<u8>,
     pub tree: Tree,

@@ -207,29 +207,77 @@ fn lambda_tree_gate(node: tree_sitter::Node<'_>, tree_has_error: bool) -> Lambda
     }
 }
 
-/// Append-only brace repair for a tree whose cursor sits under an ERROR node.
+/// Whether `lang`'s grammar can ever produce a `lambda_literal` node.
 ///
-/// Appending `\n}` at end-of-file shifts no existing byte offsets, so `pos`
-/// remains a valid position in every repaired candidate. Each attempt appends
-/// one more closing brace, reparses (a transient parse — never cached), and
-/// self-verifies by checking that the cursor now has an enclosing
-/// `lambda_literal`; unverified candidates are discarded. Bounded by
-/// [`MAX_BRACE_REPAIRS`]; when no candidate verifies, the caller returns the
-/// authoritative `None`.
-fn repaired_doc_at(doc: &LiveDoc, uri: &Url, pos: CursorPos) -> Option<LiveDoc> {
-    let lang = lang_for_path(uri.path())?;
-    let mut source = std::str::from_utf8(&doc.bytes).ok()?.to_owned();
+/// [`build_repair_candidates`]'s self-verification requires an enclosing one
+/// to accept a candidate — when a grammar has no such node kind at all,
+/// every repair attempt is guaranteed to fail regardless of input, so
+/// [`lambda_doc_at`] skips repair entirely rather than burning
+/// [`MAX_BRACE_REPAIRS`] full re-parses on a foregone conclusion. Verified
+/// directly against each grammar's own `node-types.json` (never assume this
+/// from a bare "not Kotlin" check): Java has no `lambda_literal` node kind at
+/// all, but Swift's closure-expression grammar defines its own (distinct)
+/// `lambda_literal` node — so this must stay a per-language grammar query,
+/// not a hardcoded language list.
+fn grammar_has_lambda_literal(lang: &tree_sitter::Language) -> bool {
+    lang.id_for_node_kind(KIND_LAMBDA_LIT, true) != 0
+}
+
+/// Build the sequence of up to [`MAX_BRACE_REPAIRS`] append-only brace-repair
+/// candidate reparses for `doc`.
+///
+/// Appending `\n}` at end-of-file shifts no existing byte offsets, so any
+/// `pos` valid in `doc` remains valid in every candidate. Depends only on
+/// `doc`'s content, not on any particular cursor position — safe to compute
+/// once per file and reuse across every position checked against it (see
+/// [`repair_candidates_for`]). Stops early if a reparse fails.
+fn build_repair_candidates(doc: &LiveDoc, lang: &tree_sitter::Language) -> Vec<LiveDoc> {
+    let Ok(base) = std::str::from_utf8(&doc.bytes) else {
+        return Vec::new();
+    };
+    let mut source = base.to_owned();
+    let mut candidates = Vec::with_capacity(MAX_BRACE_REPAIRS);
     for _ in 0..MAX_BRACE_REPAIRS {
         source.push_str("\n}");
-        let candidate = parse_live(&source, lang.clone())?;
-        let cursor_in_lambda = cursor_node_at(&candidate, pos)
-            .and_then(|node| node.enclosing_lambda_literal())
-            .is_some();
-        if cursor_in_lambda {
-            return Some(candidate);
-        }
+        let Some(candidate) = parse_live(&source, lang.clone()) else {
+            break;
+        };
+        candidates.push(candidate);
     }
-    None
+    candidates
+}
+
+/// [`build_repair_candidates`], memoized per `uri` on `indexer`.
+///
+/// The candidate sequence is file-content-derived, not cursor-derived, so
+/// every identifier's repair attempt within the same file reuses the same
+/// up-to-[`MAX_BRACE_REPAIRS`] re-parses instead of rebuilding them from
+/// scratch each time — the dominant cost `classify_cursor` pays when called
+/// once per identifier across a whole file with any parse error.
+/// `store_live_tree`/`remove_live_tree` clear this cache alongside
+/// `live_trees` so a stale candidate list can never survive an edit.
+fn repair_candidates_for(
+    indexer: &Indexer,
+    uri: &Url,
+    doc: &LiveDoc,
+    lang: &tree_sitter::Language,
+) -> Arc<Vec<LiveDoc>> {
+    if let Some(cached) = indexer.repair_candidates.get(uri.as_str()) {
+        return Arc::clone(&*cached);
+    }
+    let candidates = Arc::new(build_repair_candidates(doc, lang));
+    indexer
+        .repair_candidates
+        .insert(uri.to_string(), Arc::clone(&candidates));
+    candidates
+}
+
+/// Whether the cursor at `pos` verifies against `candidate` — has an
+/// enclosing `lambda_literal`.
+fn verify_repair_candidate(candidate: &LiveDoc, pos: CursorPos) -> bool {
+    cursor_node_at(candidate, pos)
+        .and_then(|node| node.enclosing_lambda_literal())
+        .is_some()
 }
 
 /// Pick the tree to resolve `it`/`this` against at `pos`.
@@ -240,7 +288,8 @@ fn repaired_doc_at(doc: &LiveDoc, uri: &Url, pos: CursorPos) -> Option<LiveDoc> 
 /// `lambda_literal` for an unclosed `{`; the brace opens an ERROR node instead
 /// (`it` in `items.forEach { it.name` parses as `simple_identifier` →
 /// `navigation_expression` → `statements` → ERROR → `source_file`). In that
-/// case resolve against an append-only brace repair (see [`repaired_doc_at`]).
+/// case resolve against an append-only brace repair (see
+/// [`repair_candidates_for`]).
 pub(crate) fn lambda_doc_at(indexer: &Indexer, uri: &Url, pos: CursorPos) -> Option<ResolutionDoc> {
     let doc = indexer.live_doc_or_parse(uri)?;
     let node = cursor_node_at(&doc, pos)?;
@@ -248,7 +297,16 @@ pub(crate) fn lambda_doc_at(indexer: &Indexer, uri: &Url, pos: CursorPos) -> Opt
     match lambda_tree_gate(node, tree_has_error) {
         LambdaTreeGate::Resolvable => Some(ResolutionDoc::Parsed(doc)),
         LambdaTreeGate::BrokenSyntax => {
-            repaired_doc_at(&doc, uri, pos).map(ResolutionDoc::Repaired)
+            let lang = lang_for_path(uri.path())?;
+            if !grammar_has_lambda_literal(&lang) {
+                return None;
+            }
+            let candidates = repair_candidates_for(indexer, uri, &doc, &lang);
+            candidates
+                .iter()
+                .find(|candidate| verify_repair_candidate(candidate, pos))
+                .cloned()
+                .map(ResolutionDoc::Repaired)
         }
     }
 }
@@ -496,5 +554,132 @@ mod tests {
         let (kind, text) = receiver_of("fun f() { a?.b?.| }").unwrap();
         assert_eq!(kind, "navigation_expression");
         assert_eq!(text, "a?.b");
+    }
+
+    // ─── brace-repair grammar gating + memoization ──────────────────────────
+
+    #[test]
+    fn kotlin_grammar_has_a_lambda_literal_node_kind() {
+        assert!(grammar_has_lambda_literal(&tree_sitter_kotlin::language()));
+    }
+
+    #[test]
+    fn swift_grammar_has_a_lambda_literal_node_kind() {
+        // Swift's own closure-expression grammar defines a distinct
+        // `lambda_literal` node — this must NOT be treated as "not Kotlin,
+        // so skip repair," which would silently break Swift lambda/closure
+        // resolution mid-typing.
+        assert!(grammar_has_lambda_literal(
+            &tree_sitter_swift_bundled::language()
+        ));
+    }
+
+    #[test]
+    fn java_grammar_has_no_lambda_literal_node_kind() {
+        assert!(!grammar_has_lambda_literal(&tree_sitter_java::language()));
+    }
+
+    #[test]
+    fn lambda_doc_at_repairs_an_unclosed_lambda() {
+        let indexer = Indexer::new();
+        let uri = Url::parse("file:///t/Unclosed.kt").unwrap();
+        // No closing braces at all — both the function body's `{` and the
+        // lambda's `{` are open at EOF, matching lambda_doc_at's own doc
+        // comment example. Append-only repair supplies exactly what's
+        // missing (one `}` for the lambda, one more for the function).
+        let src = "fun f(items: List<String>) {\n    items.forEach { it.name\n";
+        indexer.store_live_tree(&uri, src);
+        let Some(line) = src.lines().nth(1) else {
+            panic!("fixture must have a line 1");
+        };
+        let Some(col) = line.find("it.name") else {
+            panic!("fixture line 1 must contain `it.name`");
+        };
+        let pos = CursorPos {
+            line: 1,
+            utf16_col: col,
+        };
+
+        let Some(resolution) = lambda_doc_at(&indexer, &uri, pos) else {
+            panic!("expected a repaired resolution");
+        };
+        assert!(
+            matches!(resolution, ResolutionDoc::Repaired(_)),
+            "expected the ERROR-node/no-lambda-literal case to go through repair"
+        );
+    }
+
+    #[test]
+    fn lambda_doc_at_skips_repair_for_broken_java() {
+        let indexer = Indexer::new();
+        let uri = Url::parse("file:///t/Broken.java").unwrap();
+        // A stray unmatched closing brace gives the tree a parse error
+        // somewhere; Java has no `lambda_literal` node kind at all, so
+        // repair could never verify regardless of where the cursor sits.
+        let src = "class Broken {\n    void f() {\n        int x = 1;\n    }\n}\n}\n";
+        indexer.store_live_tree(&uri, src);
+        let Some(doc) = indexer.live_doc_or_parse(&uri) else {
+            panic!("expected a live doc for the just-stored uri");
+        };
+        assert!(
+            doc.tree.root_node().has_error(),
+            "fixture must actually have a parse error for this test to be meaningful"
+        );
+
+        let pos = CursorPos {
+            line: 2,
+            utf16_col: 12,
+        }; // inside `int x = 1;`, nowhere near the stray brace
+        assert!(lambda_doc_at(&indexer, &uri, pos).is_none());
+        assert!(
+            indexer.repair_candidates.get(uri.as_str()).is_none(),
+            "Java must never populate the repair-candidates cache — repair is skipped \
+             before any candidate is ever built"
+        );
+    }
+
+    #[test]
+    fn repair_candidates_are_memoized_across_calls_for_the_same_file() {
+        let indexer = Indexer::new();
+        let uri = Url::parse("file:///t/Broken.kt").unwrap();
+        let src = "fun f(items: List<String>) {\n    items.forEach { it.name\n}\n";
+        indexer.store_live_tree(&uri, src);
+        let Some(doc) = indexer.live_doc_or_parse(&uri) else {
+            panic!("expected a live doc for the just-stored uri");
+        };
+        let lang = tree_sitter_kotlin::language();
+
+        let first = repair_candidates_for(&indexer, &uri, &doc, &lang);
+        let second = repair_candidates_for(&indexer, &uri, &doc, &lang);
+        assert!(
+            Arc::ptr_eq(&first, &second),
+            "second call should reuse the cached candidates, not rebuild them"
+        );
+        assert!(
+            !first.is_empty(),
+            "expected at least one repair candidate to be built for this unclosed-lambda fixture"
+        );
+    }
+
+    #[test]
+    fn storing_a_new_live_tree_clears_the_stale_repair_candidate_cache() {
+        let indexer = Indexer::new();
+        let uri = Url::parse("file:///t/Broken.kt").unwrap();
+        let src = "fun f(items: List<String>) {\n    items.forEach { it.name\n}\n";
+        indexer.store_live_tree(&uri, src);
+        let Some(doc) = indexer.live_doc_or_parse(&uri) else {
+            panic!("expected a live doc for the just-stored uri");
+        };
+        let lang = tree_sitter_kotlin::language();
+        let _ = repair_candidates_for(&indexer, &uri, &doc, &lang);
+        assert!(indexer.repair_candidates.get(uri.as_str()).is_some());
+
+        // Re-store the same URI with different (now well-formed) content.
+        indexer.store_live_tree(&uri, "fun f() {}\n");
+        assert!(
+            indexer.repair_candidates.get(uri.as_str()).is_none(),
+            "a fresh store_live_tree call must invalidate any memoized repair \
+             candidates from the previous content"
+        );
     }
 }
