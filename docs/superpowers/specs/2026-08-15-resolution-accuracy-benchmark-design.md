@@ -20,6 +20,15 @@ return *empty* rather than the wrong answer. That's the right per-call behavior,
 observability: nothing currently measures whether "return empty" is trending down (gaps closing)
 or just moving the failure from "wrong answer" to "no answer" without ever being followed up.
 
+The same corpus walk this needs (resolve every reference once, workspace-wide) also produces a
+second, independent signal for free: how often the resolver redoes *identical* work for the same
+symbol. Nothing in the resolution path memoizes by symbol today, so a frequently-referenced symbol
+(a common receiver type's method, a widely-used utility) is re-resolved from scratch on every
+occurrence — including on every live syntax-highlighting/hover request that touches it. Surfacing
+which symbols are resolved the most, and whether they resolve identically every time, points at
+where a resolver-level cache would pay off — see "Repeat-resolution / cache-candidate report"
+below.
+
 ## Framing
 
 No compiler ground-truth exists to validate recall against (an equivalent to "run against a
@@ -112,6 +121,35 @@ Mirrors the existing POCs' "top flagged names" style:
   the bucket to eyeball for self-shadow-style suppressions.
 - `Gap` count and top-N names by frequency (with one sample location each) — the actionable bucket.
 
+## Repeat-resolution / cache-candidate report
+
+A second signal from the same walk, unrelated to accuracy: how often does the resolver redo
+*identical* work? Every occurrence of the same symbol re-runs the full `classify_cursor` +
+`resolve_identity` pipeline from scratch today — there is no per-(name, receiver-type) memoization
+anywhere in the resolution path. A symbol referenced hundreds of times across a file or workspace
+(a common receiver type's frequently-called method, a widely-used utility function) means hundreds
+of redundant identical resolutions. This is exactly the pattern behind "syntax highlighting
+reparsing already-known symbols": semantic-tokens/hover requests hit the same resolver path anew
+for every occurrence of a symbol that has already been resolved once with an identical outcome.
+
+No new resolver calls needed — this is pure aggregation over the `ReferenceOutcome`s the walk
+already produces:
+
+- Group `Success` outcomes (both `CstResolved` and `NameScan`) by key `(name, receiver_type)` —
+  the same lane split as the recall report (`receiver_type: None` for bare refs).
+- Per key, track the occurrence count and the distinct set of resolved `Location`s seen.
+- A key is a **cache candidate** when its occurrence count is high *and* the resolved location set
+  is a singleton — i.e., every occurrence of this symbol resolved to the exact same place, so
+  memoizing `(name, receiver_type) → Location` would eliminate the redundant re-resolution without
+  changing behavior. A high-count key whose location set varies (the same bare name resolving to
+  different declarations depending on file/scope) is reported separately, flagged as **not**
+  cacheable by this simple a key — a real occurrence, not a bug in the report.
+- Output: top-N cache candidates by occurrence count (name, receiver_type, count, the one stable
+  location), plus a smaller "high-frequency but unstable" list for visibility.
+
+This report exists to point at where a resolver-level cache would pay off most, not to implement
+one — follow-up work, not this pass.
+
 ## Testing
 
 Unit tests for the classifier (mirroring `missing_import_diagnostics_tests.rs`'s structure) with
@@ -125,6 +163,12 @@ synthetic indexer setups:
 Identifier walker: a depth-bound test matching the existing `*_survives_a_pathologically_deep_*`
 convention (`collect_candidates`'s own sibling tests), confirming a pathologically nested input
 returns partial results rather than overflowing the stack.
+
+Cache-candidate grouping: a symbol referenced N times in a file resolving to the same location
+each time is grouped into one candidate with `count == N` and a singleton location set; a symbol
+resolving to different locations across occurrences (e.g. two same-named-but-different local
+variables shadowing each other in different scopes) is excluded from the cache-candidate list and
+appears only in the unstable list.
 
 ## Risks / deferred
 
