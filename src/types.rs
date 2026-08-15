@@ -272,6 +272,27 @@ impl SymbolEntry {
         self.selection_range.start.line
     }
 
+    /// This symbol's `(required, total)` parameter-count range, for checking
+    /// whether a call's `CallShape` could target it. `None` when arity
+    /// filtering doesn't apply — a non-callable `kind` (arity is meaningless)
+    /// or a vararg declaration (`param_counts` can't represent its true
+    /// unbounded upper end) — meaning always treat this symbol as compatible.
+    pub(crate) fn arity_for_call_shape_check(&self) -> Option<(u8, u8)> {
+        if !matches!(
+            self.kind,
+            SymbolKind::FUNCTION
+                | SymbolKind::METHOD
+                | SymbolKind::CONSTRUCTOR
+                | SymbolKind::OPERATOR
+        ) {
+            return None;
+        }
+        if self.params.contains("vararg ") || self.params.contains("vararg\t") {
+            return None;
+        }
+        Some(self.param_counts)
+    }
+
     /// Whether this is a `companion object` declaration, named
     /// (`companion object Factory`) or anonymous (synthesized under the
     /// implicit name `Companion` — see `parser::extract_anonymous_companion_objects`).

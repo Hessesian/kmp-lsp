@@ -9,7 +9,7 @@
 
 use tree_sitter::Node;
 
-use crate::indexer::{CallShape, CstQuery, Indexer, NodeExt, Resolution};
+use crate::indexer::{CallShape, CstQuery, Indexer, NodeExt, Resolution, ShapeFiltered};
 use crate::queries::{
     KIND_BINDING_PATTERN_KIND, KIND_CALL_EXPR, KIND_CATCH_BLOCK, KIND_CLASS_DECL, KIND_CLASS_PARAM,
     KIND_COMPANION_OBJ, KIND_CONTROL_STRUCTURE_BODY, KIND_ENUM_ENTRY, KIND_FINALLY_BLOCK,
@@ -364,7 +364,7 @@ pub(crate) fn resolve_identity(
             shape,
             ..
         } => {
-            let mut locations =
+            let locations =
                 indexer.find_definition_qualified(&symbol.name, Some(receiver_type), uri);
             // A call's own shape rules out a same-named, wrong-arity member/
             // extension on the same receiver type — e.g. `triggers.collect {
@@ -376,9 +376,10 @@ pub(crate) fn resolve_identity(
             // receiver-aware fallback (variable-type inference + hierarchy
             // walk, which never consults the extension-in-scope registry that
             // caused the wrong match) gets a chance to find the real target.
-            if let Some(shape) = shape {
-                retain_call_shape_compatible(indexer, *shape, &mut locations);
-            }
+            let locations = match shape {
+                Some(shape) => shape_filter_locations(indexer, *shape, locations).resolved(),
+                None => locations,
+            };
             if locations.is_empty() {
                 NavigationSource::NameScan(Definitions(locations))
             } else {
@@ -395,27 +396,23 @@ pub(crate) fn resolve_identity(
     }
 }
 
-/// Drop any `Location` whose own declared arity `shape` can't satisfy — each
-/// `Location` is looked up by an exact `selection_range` match against the
-/// declaring file's own symbol table (how `resolve_qualified`'s candidates
-/// are always constructed), so a location that doesn't match any symbol, or
-/// whose file isn't indexed, is kept unfiltered (fail open: never lose a
-/// candidate this can't actually verify). Vararg declarations are exempt,
-/// same reasoning as `local_symbol_satisfies_call_shape`: `param_counts`
-/// can't represent a vararg's true unbounded upper end.
+/// Classify `locations` by whether each one's own declared arity `shape`
+/// accepts — each `Location` is looked up by an exact `selection_range` match
+/// against the declaring file's own symbol table (how `resolve_qualified`'s
+/// candidates are always constructed), so a location that doesn't match any
+/// symbol, or whose file isn't indexed, is kept unfiltered — same fail-open
+/// reasoning `CallShape::accepts_symbol` applies to a symbol it *can* find.
 ///
-/// `pub(crate)`: also used directly by `find_definition`'s and
-/// `compute_hover`'s `ctx.contextual`-based branches — `CursorContext::build`
-/// populates `contextual` for *any* qualified reference via smart-cast
-/// narrowing (`infer_receiver_type_at`), not just `it`/`this`/named lambda
-/// params, so that path needs the identical arity filter this module's own
-/// CST-resolved path does, to avoid resurrecting the same self-shadow bug.
-pub(crate) fn retain_call_shape_compatible(
+/// `pub(crate)`: also used by `find_definition`'s and `compute_hover`'s
+/// `ctx.contextual`-based branches, for the identical self-shadow reason —
+/// see `CursorContext::contextual`'s own doc for why that field applies to
+/// more than `it`/`this`/named lambda params.
+pub(crate) fn shape_filter_locations(
     indexer: &Indexer,
     shape: CallShape,
-    locations: &mut Vec<Location>,
-) {
-    locations.retain(|location| {
+    locations: Vec<Location>,
+) -> ShapeFiltered<Location> {
+    ShapeFiltered::classify(locations, |location| {
         let Some(fd) = indexer
             .files
             .get(location.uri.as_str())
@@ -430,11 +427,8 @@ pub(crate) fn retain_call_shape_compatible(
         else {
             return true;
         };
-        if symbol.params.contains("vararg ") || symbol.params.contains("vararg\t") {
-            return true;
-        }
-        shape.accepts(symbol.param_counts.0, symbol.param_counts.1)
-    });
+        shape.accepts_symbol(symbol)
+    })
 }
 
 /// For the local variable / lambda-parameter the cursor is on (either its

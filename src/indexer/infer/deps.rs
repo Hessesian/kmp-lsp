@@ -19,6 +19,8 @@
 
 use tower_lsp::lsp_types::Url;
 
+use crate::types::SymbolEntry;
+
 /// Metadata about a resolved callable (function or method) used for generic
 /// type substitution in lambda parameter inference.
 #[derive(Clone, Debug, Default)]
@@ -61,6 +63,50 @@ impl CallShape {
     pub(crate) fn accepts(&self, required: u8, total: u8) -> bool {
         let call_arg_count = self.arg_count + usize::from(self.trailing_lambda);
         (required as usize) <= call_arg_count && call_arg_count <= (total as usize)
+    }
+
+    /// Whether `symbol`'s own declared arity could target a call shaped like
+    /// `self` — `accepts` plus `arity_for_call_shape_check`'s non-callable/
+    /// vararg exemption (fail open: always accepted when arity filtering
+    /// doesn't apply to `symbol` at all).
+    pub(crate) fn accepts_symbol(&self, symbol: &SymbolEntry) -> bool {
+        match symbol.arity_for_call_shape_check() {
+            Some((required, total)) => self.accepts(required, total),
+            None => true,
+        }
+    }
+}
+
+/// Outcome of narrowing a candidate list to the ones a call's own
+/// `CallShape` accepts. `RuledOut` (none matched) carries no payload —
+/// every current caller treats it as "found nothing" and falls through to a
+/// different lookup. `sig.rs`'s `SameFileVerdict::NameCollision` needs the
+/// *entire* unfiltered list instead, for later overload-ambiguity detection,
+/// so it stays its own type rather than building on this one.
+#[derive(Debug)]
+pub(crate) enum ShapeFiltered<T> {
+    Confirmed(Vec<T>),
+    RuledOut,
+}
+
+impl<T> ShapeFiltered<T> {
+    /// Partition `candidates` by `keep`: `Confirmed` with the matching subset
+    /// when at least one candidate satisfies it, `RuledOut` otherwise.
+    pub(crate) fn classify(mut candidates: Vec<T>, keep: impl Fn(&T) -> bool) -> Self {
+        candidates.retain(|c| keep(c));
+        if candidates.is_empty() {
+            ShapeFiltered::RuledOut
+        } else {
+            ShapeFiltered::Confirmed(candidates)
+        }
+    }
+
+    /// `Confirmed`'s payload, or empty for `RuledOut`.
+    pub(crate) fn resolved(self) -> Vec<T> {
+        match self {
+            ShapeFiltered::Confirmed(candidates) => candidates,
+            ShapeFiltered::RuledOut => Vec::new(),
+        }
     }
 }
 

@@ -40,10 +40,10 @@ pub(crate) use self::infer::{
     cst_symbol::{
         classify_cursor, classify_symbol_at, enclosing_nav_expr_if_member, is_call_callee,
         is_declaration_site, local_scope_occurrences, navigation_member_ident,
-        navigation_receiver_node, resolve_identity, retain_call_shape_compatible, NavigationSource,
+        navigation_receiver_node, resolve_identity, shape_filter_locations, NavigationSource,
         SymbolAtCursor, SymbolRole,
     },
-    deps::{CallShape, CallableInfo, InferDeps, OuterScopedParams},
+    deps::{CallShape, CallableInfo, InferDeps, OuterScopedParams, ShapeFiltered},
     expr_type::infer_expr_type,
     it_this::{
         all_lambda_receivers_at, find_it_element_type, find_named_lambda_param_type,
