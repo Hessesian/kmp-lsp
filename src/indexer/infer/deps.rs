@@ -19,6 +19,8 @@
 
 use tower_lsp::lsp_types::Url;
 
+use crate::types::SymbolEntry;
+
 /// Metadata about a resolved callable (function or method) used for generic
 /// type substitution in lambda parameter inference.
 #[derive(Clone, Debug, Default)]
@@ -61,6 +63,59 @@ impl CallShape {
     pub(crate) fn accepts(&self, required: u8, total: u8) -> bool {
         let call_arg_count = self.arg_count + usize::from(self.trailing_lambda);
         (required as usize) <= call_arg_count && call_arg_count <= (total as usize)
+    }
+
+    /// Whether `symbol`'s own declared arity could be the target of a call
+    /// shaped like `self` — `accepts` plus `SymbolEntry::arity_for_call_shape_check`'s
+    /// non-callable/vararg exemption, combined once instead of at each call
+    /// site. A symbol arity filtering doesn't apply to at all (see that
+    /// method) is always accepted — fail open, never rule out a candidate
+    /// this can't actually verify.
+    pub(crate) fn accepts_symbol(&self, symbol: &SymbolEntry) -> bool {
+        match symbol.arity_for_call_shape_check() {
+            Some((required, total)) => self.accepts(required, total),
+            None => true,
+        }
+    }
+}
+
+/// Outcome of narrowing a same-name/-receiver candidate list to the ones a
+/// call's own `CallShape` actually accepts.
+///
+/// `Confirmed` is the answer, carrying just the shape-compatible subset.
+/// `RuledOut` means none of the candidates satisfy the shape — a name
+/// collision, never the answer on its own; every current caller treats it
+/// the same as "found nothing" (see `ShapeFiltered::resolved`) and falls
+/// through to a different lookup rather than resurrecting the wrong
+/// candidate. Carries no payload: nothing here needs the rejected list back
+/// (unlike `sig.rs`'s own `SameFileVerdict::NameCollision`, which keeps its
+/// *entire*, unfiltered same-file candidate set as a worst-case last resort —
+/// a different partitioning than "the subset that passed," so it isn't built
+/// on this type).
+#[derive(Debug)]
+pub(crate) enum ShapeFiltered<T> {
+    Confirmed(Vec<T>),
+    RuledOut,
+}
+
+impl<T> ShapeFiltered<T> {
+    /// Partition `candidates` by `keep`: `Confirmed` with the matching subset
+    /// when at least one candidate satisfies it, `RuledOut` otherwise.
+    pub(crate) fn classify(candidates: Vec<T>, keep: impl Fn(&T) -> bool) -> Self {
+        let matched: Vec<T> = candidates.into_iter().filter(|c| keep(c)).collect();
+        if matched.is_empty() {
+            ShapeFiltered::RuledOut
+        } else {
+            ShapeFiltered::Confirmed(matched)
+        }
+    }
+
+    /// `Confirmed`'s payload, or empty for `RuledOut`.
+    pub(crate) fn resolved(self) -> Vec<T> {
+        match self {
+            ShapeFiltered::Confirmed(v) => v,
+            ShapeFiltered::RuledOut => Vec::new(),
+        }
     }
 }
 

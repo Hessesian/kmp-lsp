@@ -293,7 +293,7 @@ pub(crate) async fn find_definition(
                 locs = index.find_definition_qualified(&ctx.word, Some(&rt.leaf), uri);
             }
             if let Some(shape) = call_shape_at_callee(index, uri, position) {
-                crate::indexer::retain_call_shape_compatible(index, shape, &mut locs);
+                locs = crate::indexer::shape_filter_locations(index, shape, locs).resolved();
             }
             if !locs.is_empty() {
                 return Some(locs_to_response(locs));

@@ -95,7 +95,8 @@ fn contextual_receiver_hover<W: WorkspaceRead>(
         if let Some(shape) =
             crate::features::definition::call_shape_at_callee(indexer, uri, position)
         {
-            crate::indexer::retain_call_shape_compatible(indexer, shape, &mut locations);
+            locations =
+                crate::indexer::shape_filter_locations(indexer, shape, locations).resolved();
         }
     }
     let location = locations.into_iter().next()?;

@@ -268,16 +268,7 @@ fn declaration_param_counts(index: &Indexer, uri: &Url, name: &str, line: u32) -
         .symbols
         .iter()
         .find(|symbol| symbol.name == name && symbol.selection_range.start.line == line)?;
-    if !matches!(
-        symbol.kind,
-        SymbolKind::FUNCTION | SymbolKind::METHOD | SymbolKind::CONSTRUCTOR | SymbolKind::OPERATOR
-    ) {
-        return None;
-    }
-    if symbol.params.contains("vararg ") || symbol.params.contains("vararg\t") {
-        return None;
-    }
-    Some(symbol.param_counts)
+    symbol.arity_for_call_shape_check()
 }
 
 /// Like [`declaration_param_counts`], but for a target already resolved to a
@@ -295,16 +286,7 @@ fn declaration_param_counts_at(index: &Indexer, location: &Location) -> Option<(
         .symbols
         .iter()
         .find(|symbol| symbol.selection_range == location.range)?;
-    if !matches!(
-        symbol.kind,
-        SymbolKind::FUNCTION | SymbolKind::METHOD | SymbolKind::CONSTRUCTOR | SymbolKind::OPERATOR
-    ) {
-        return None;
-    }
-    if symbol.params.contains("vararg ") || symbol.params.contains("vararg\t") {
-        return None;
-    }
-    Some(symbol.param_counts)
+    symbol.arity_for_call_shape_check()
 }
 
 /// Drop any candidate `Location` that sits on a call whose argument shape a

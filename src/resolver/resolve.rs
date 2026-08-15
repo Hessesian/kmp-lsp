@@ -23,7 +23,7 @@ use std::path::Path;
 use std::process::Command;
 use std::sync::Arc;
 
-use tower_lsp::lsp_types::{Location, SymbolKind, Url};
+use tower_lsp::lsp_types::{Location, Url};
 
 use crate::indexer::{CallShape, Indexer};
 use crate::parser::parse_by_extension;
@@ -1115,26 +1115,11 @@ fn resolve_local(
 /// provably cannot satisfy the call, never to rank or prefer one candidate over
 /// another (that's `resolve_chain`'s job, by falling through to the next step).
 ///
-/// Three phases, in order: symbols that aren't callable at all (properties,
-/// classes, …) are never filtered — arity has no meaning for them. Vararg
-/// functions are never filtered either — `SymbolEntry::param_counts` has no
-/// vararg awareness (a vararg param always counts as exactly one), so `f(1, 2,
-/// 3)` against `fun f(vararg x: Int)` would otherwise be wrongly rejected; this
-/// mirrors the same guard `call_arg_diagnostics.rs` already uses for the same
-/// reason. Everything else is judged by whether the call's argument count
-/// falls within the candidate's `(required, total)` parameter-count range.
+/// A thin wrapper over `CallShape::accepts_symbol`, kept as its own named
+/// function since callers reason about it in terms of "this local
+/// declaration" rather than the general symbol/shape pairing.
 fn local_symbol_satisfies_call_shape(symbol: &SymbolEntry, shape: CallShape) -> bool {
-    if !matches!(
-        symbol.kind,
-        SymbolKind::FUNCTION | SymbolKind::METHOD | SymbolKind::CONSTRUCTOR | SymbolKind::OPERATOR
-    ) {
-        return true;
-    }
-    if symbol.params.contains("vararg ") || symbol.params.contains("vararg\t") {
-        return true;
-    }
-    let (required, total) = symbol.param_counts;
-    shape.accepts(required, total)
+    shape.accepts_symbol(symbol)
 }
 
 /// The `rg`-step counterpart to [`local_symbol_satisfies_call_shape`]: `rg`
