@@ -206,7 +206,7 @@ fn test_location(line: u32) -> tower_lsp::lsp_types::Location {
 }
 
 #[test]
-fn recall_summary_counts_member_and_bare_lanes_separately() {
+fn recall_summary_keeps_member_lane_separate_from_bare_lane() {
     let mut agg = ResolutionAccuracyAggregator::default();
     agg.add(
         "A.kt",
@@ -353,7 +353,7 @@ fn cache_candidate_location_is_the_resolved_target_not_the_reference_site() {
 }
 
 #[test]
-fn filtered_candidate_outcome_is_tracked_and_reported() {
+fn filtered_candidate_outcome_appears_in_top_filtered_candidates() {
     let mut agg = ResolutionAccuracyAggregator::default();
     agg.add(
         "A.kt",
