@@ -82,9 +82,23 @@ fn contextual_receiver_hover<W: WorkspaceRead>(
 ) -> Option<Hover> {
     let receiver_type = ctx.contextual.as_ref()?;
     ctx.qualifier.as_ref()?;
-    let location = resolve_with_receiver_fallback(workspace, &ctx.word, receiver_type, uri)
-        .into_iter()
-        .next()?;
+    let mut locations = resolve_with_receiver_fallback(workspace, &ctx.word, receiver_type, uri);
+    // `ctx.contextual` isn't only for `it`/`this`/named lambda params —
+    // `CursorContext::build` also populates it for *any* qualified reference
+    // via smart-cast narrowing, so a plain `triggers.collect { trigger -> }`
+    // reaches here too (same reasoning as goto-definition's identical
+    // branch). Filtering to empty returns `None` here rather than the wrong
+    // candidate — `compute_hover` then falls through to
+    // `regular_symbol_hover`'s string-qualifier path, which never consults
+    // the extension-in-scope registry that causes the wrong match.
+    if let Some(indexer) = workspace.as_indexer() {
+        if let Some(shape) =
+            crate::features::definition::call_shape_at_callee(indexer, uri, position)
+        {
+            crate::indexer::retain_call_shape_compatible(indexer, shape, &mut locations);
+        }
+    }
+    let location = locations.into_iter().next()?;
     let info = enrich_at_location(
         workspace,
         &location,
@@ -101,6 +115,11 @@ fn regular_symbol_hover<W: WorkspaceRead>(
     uri: &Url,
     position: Position,
 ) -> Option<Hover> {
+    if ctx.qualifier.is_none() {
+        if let Some(hover) = call_callee_hover(workspace, ctx, uri, position) {
+            return hover;
+        }
+    }
     let markdown = resolve_hover_markdown(
         workspace,
         &ctx.word,
@@ -113,6 +132,53 @@ fn regular_symbol_hover<W: WorkspaceRead>(
         return Some(make_markdown_hover(markdown));
     }
     fallback_local_binding_hover(workspace, ctx, uri, position.line)
+}
+
+/// `Some(hover)` when the cursor sits on a call's callee and the call's own
+/// shape resolved it (`hover` itself may be `None`, meaning: don't fall
+/// through to the unfiltered lookups below — an arity-filtered miss is a
+/// deliberate "the same-file candidate can't be the target", not "give the
+/// name-only path another try", which would just re-find the same wrong-arity
+/// match `find_definition_for_call` already ruled out. `None` (not
+/// `Some(None)`) means the cursor isn't on a call's callee at all, so the
+/// normal name-based hover path should run as before.
+///
+/// Same shape computation `goto_definition` already uses (see
+/// `call_shape_at_callee`) — same underlying bug (`resolve_local`/
+/// `resolve_chain` matching same-file candidates by name alone, oblivious to
+/// arity), reached through hover's separate `resolve_symbol`-based path.
+fn call_callee_hover<W: WorkspaceRead>(
+    workspace: &W,
+    ctx: &CursorContext,
+    uri: &Url,
+    position: Position,
+) -> Option<Option<Hover>> {
+    let indexer = workspace.as_indexer()?;
+    let shape = crate::features::definition::call_shape_at_callee(indexer, uri, position)?;
+    let mut locations = indexer.find_definition_for_call(&ctx.word, uri, shape);
+    if locations.is_empty() {
+        // Same reasoning as goto-definition: a bare call inside an extension
+        // function's own body may target a same-named member/extension of
+        // that function's *own* receiver (an implicit `this.name(...)`),
+        // which the plain bare-name lookup above has no way to see.
+        if let Some(receiver) =
+            crate::features::definition::enclosing_extension_receiver_at(indexer, uri, position)
+        {
+            locations = indexer
+                .find_definition_for_implicit_receiver_call(&receiver, &ctx.word, uri, shape);
+        }
+    }
+    let location = locations.into_iter().next();
+    Some(location.and_then(|location| {
+        let info = enrich_at_location(
+            workspace,
+            &location,
+            &ctx.word,
+            hover_substitution_context(uri, position.line),
+            &ResolveOptions::hover(),
+        )?;
+        Some(make_markdown_hover(format_symbol_hover(&info, uri.path())))
+    }))
 }
 
 fn fallback_local_binding_hover<W: WorkspaceRead>(
@@ -226,3 +292,7 @@ fn jar_loading_hint<W: WorkspaceRead>(workspace: &W) -> Option<Hover> {
         None
     }
 }
+
+#[cfg(test)]
+#[path = "hover_tests.rs"]
+mod tests;

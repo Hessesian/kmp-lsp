@@ -36,6 +36,7 @@ pub(crate) struct VerifiedReferences {
 pub(crate) fn verify_candidates(
     indexer: &Indexer,
     query_declaring_type: Option<&str>,
+    query_arity: Option<(u8, u8)>,
     query_declaring_type_uri: Option<&str>,
     sidecar_budget: usize,
     candidates: Vec<Location>,
@@ -82,8 +83,26 @@ pub(crate) fn verify_candidates(
         match &symbol.role {
             crate::indexer::SymbolRole::Reference {
                 receiver_type: Some(receiver_type),
+                shape,
                 ..
             } => {
+                // A same-type candidate whose own call shape can't satisfy
+                // the query's arity is a name collision, not a genuine
+                // reference — `receiver_type_agreement` below only compares
+                // types, so a same-file self-declaration/self-call
+                // registered on the same receiver type (e.g. `Flow.collect`
+                // vs. a local `Flow.collect(scope, block)` self-shadow)
+                // would otherwise look identical to the real target. Only
+                // rejects when both `shape` (the candidate is itself a call)
+                // and `query_arity` (the query's target arity is known and
+                // trustworthy — see `verified_references_for`) are present;
+                // anything else keeps today's behavior unfiltered.
+                if let (Some(shape), Some((required, total))) = (shape, query_arity) {
+                    if !shape.accepts(required, total) {
+                        rejected.push(candidate);
+                        continue;
+                    }
+                }
                 let candidate_type = ReceiverType::from_raw(receiver_type.clone()).leaf;
                 // Only charge the agreement-walk unit when a walk will
                 // actually run: `Exact` (same type, string equality) and
@@ -237,6 +256,7 @@ mod tests {
             &indexer,
             Some("User"),
             None,
+            None,
             MAX_VERIFICATION_IO_OPERATIONS,
             vec![candidate.clone()],
         );
@@ -249,6 +269,62 @@ mod tests {
             result.rejected,
             vec![candidate],
             "must be in rejected, not silently absent"
+        );
+    }
+
+    /// A call site whose receiver type agrees with the query's declaring
+    /// type, but whose own declared arity is provably incompatible with
+    /// what the query actually targets, must be rejected — not kept just
+    /// because `receiver_type_agreement` (type-only) can't tell it apart.
+    /// Reported bug: find-references on `Flow`'s real 1-arg `collect`
+    /// member also surfaced a same-file 2-arg `Flow.collect(scope, block)`
+    /// self-shadow's own call sites as if they were genuine references.
+    #[test]
+    fn same_type_wrong_arity_candidate_is_rejected() {
+        let source = "class CoroutineScope\n\
+                   class Flow<T>\n\
+                   fun realTarget(x: Flow<String>, arg: (String) -> Unit) {\n\
+                       x.collect(arg)\n\
+                   }\n\
+                   fun wrongShadowCall(x: Flow<String>, s: CoroutineScope, arg: (String) -> Unit) {\n\
+                       x.collect(s, arg)\n\
+                   }\n";
+        let file_uri = uri("/Flow.kt");
+        let indexer = Indexer::new();
+        indexer.index_content(&file_uri, source);
+        indexer.store_live_tree(&file_uri, source);
+
+        let Some(real_col) = source.lines().nth(3).and_then(|l| l.find("collect")) else {
+            panic!("fixture line missing `collect` on the real-target line");
+        };
+        let Some(wrong_col) = source.lines().nth(6).and_then(|l| l.find("collect")) else {
+            panic!("fixture line missing `collect` on the wrong-shadow line");
+        };
+        let real_candidate = location(&file_uri, 3, real_col as u32, real_col as u32 + 7);
+        let wrong_candidate = location(&file_uri, 6, wrong_col as u32, wrong_col as u32 + 7);
+
+        // Querying for Flow's real 1-required-arg `collect` member.
+        let result = verify_candidates(
+            &indexer,
+            Some("Flow"),
+            Some((1, 1)),
+            None,
+            MAX_VERIFICATION_IO_OPERATIONS,
+            vec![real_candidate.clone(), wrong_candidate.clone()],
+        );
+        assert!(
+            result.kept.iter().any(|k| match k {
+                NavigationSource::CstResolved(l) | NavigationSource::NameScan(l) =>
+                    *l == real_candidate,
+            }),
+            "the 1-arg call must be kept, got: {:?}",
+            result.kept
+        );
+        assert_eq!(
+            result.rejected,
+            vec![wrong_candidate],
+            "the 2-arg call to the arity-incompatible same-type shadow must \
+             be rejected, not kept as if it were a genuine reference"
         );
     }
 
@@ -269,6 +345,7 @@ mod tests {
         let result = verify_candidates(
             &indexer,
             Some("User"),
+            None,
             None,
             MAX_VERIFICATION_IO_OPERATIONS,
             vec![candidate.clone()],
@@ -301,6 +378,7 @@ mod tests {
             &indexer,
             Some("User"),
             None,
+            None,
             MAX_VERIFICATION_IO_OPERATIONS,
             vec![candidate.clone()],
         );
@@ -322,6 +400,7 @@ mod tests {
         let candidate = location(&file_uri, 0, 0, 4);
         let result = verify_candidates(
             &indexer,
+            None,
             None,
             None,
             MAX_VERIFICATION_IO_OPERATIONS,
@@ -384,6 +463,7 @@ mod tests {
         let result = verify_candidates(
             &indexer,
             Some("User"),
+            None,
             None,
             MAX_VERIFICATION_IO_OPERATIONS,
             candidates.clone(),
@@ -483,6 +563,7 @@ mod tests {
             &indexer,
             Some("User"),
             None,
+            None,
             MAX_VERIFICATION_IO_OPERATIONS,
             candidates,
         );
@@ -549,6 +630,7 @@ mod tests {
             &indexer,
             Some("Base"),
             None,
+            None,
             MAX_VERIFICATION_IO_OPERATIONS,
             candidates,
         );
@@ -593,6 +675,7 @@ mod tests {
         let result = verify_candidates(
             &indexer,
             Some("DerivedUser"),
+            None,
             Some(file_uri.as_str()),
             usize::MAX,
             vec![interface_candidate.clone()],
@@ -628,6 +711,7 @@ mod tests {
             &indexer,
             Some("User"),
             None,
+            None,
             usize::MAX,
             vec![override_candidate.clone()],
         );
@@ -656,6 +740,7 @@ mod tests {
         let result = verify_candidates(
             &indexer,
             Some("User"),
+            None,
             None,
             usize::MAX,
             vec![file_candidate],

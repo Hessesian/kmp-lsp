@@ -284,6 +284,7 @@ fn resolve_qualified_skips_top_level_function_before_type_body() {
         name: "run",
         qualifier: Some("service"),
         caller_uri: &caller_uri,
+        shape: None,
     };
 
     match resolve_call_signature(&call, &idx) {
@@ -311,6 +312,7 @@ fn resolve_qualified_matches_method_via_container() {
         name: "fetch",
         qualifier: Some("api"),
         caller_uri: &caller_uri,
+        shape: None,
     };
 
     match resolve_call_signature(&call, &idx) {
@@ -354,6 +356,7 @@ fn resolve_qualified_skips_extension_from_unimported_package() {
         name: "loadData",
         qualifier: Some("repo"),
         caller_uri: &caller_uri,
+        shape: None,
     };
 
     match resolve_call_signature(&call, &idx) {
@@ -406,6 +409,7 @@ fn resolve_unqualified_bails_on_ubiquitous_name() {
         name: "create",
         qualifier: None,
         caller_uri: &caller_uri,
+        shape: None,
     };
 
     assert!(
@@ -507,6 +511,7 @@ fn resolve_qualified_jar_extension_overloads_with_source_member() {
         name: "loadData",
         qualifier: Some("repo"),
         caller_uri: &caller_uri,
+        shape: None,
     };
 
     // Both 0-arg member + 1-arg extension → Ambiguous.
@@ -625,6 +630,7 @@ fn resolve_qualified_bails_on_ubiquitous_name_even_with_receiver_extension() {
         name: "loadData",
         qualifier: Some("repo"),
         caller_uri: &caller_uri,
+        shape: None,
     };
 
     // Must bail to Ambiguous, not resolve to the 1-arg extension as Resolved —
@@ -649,6 +655,7 @@ fn resolve_unqualified_data_class_constructor() {
         name: "Config",
         qualifier: None,
         caller_uri: &caller_uri,
+        shape: None,
     };
 
     match resolve_call_signature(&call, &idx) {
@@ -661,6 +668,56 @@ fn resolve_unqualified_data_class_constructor() {
         }
         other => panic!("expected unique constructor match, got {other:?}"),
     }
+}
+
+// ─── find_method_params_in_class: member vs. extension overload ───────────────
+
+#[test]
+fn find_method_params_in_class_picks_by_call_shape_not_first_match() {
+    // Flow.collect has both a member (interface method, takes a FlowCollector
+    // object) and an extension (takes a lambda) — same arity, different shape.
+    // Real-world case: kotlinx.coroutines.flow.Flow. Before this fix,
+    // find_method_params_in_class only ever searched members, so
+    // `userData.collect { it }` resolved against the FlowCollector member and
+    // lost the lambda's `it` type entirely (its param isn't a function type).
+    let caller_uri = test_uri("/Caller.kt");
+    let idx = Indexer::new();
+    idx.index_content(
+        &caller_uri,
+        "package com.example\n\
+interface FlowCollector<T> {\n\
+    suspend fun emit(value: T)\n\
+}\n\
+interface Flow<T> {\n\
+    suspend fun collect(collector: FlowCollector<T>)\n\
+}\n\
+fun <T> Flow<T>.collect(action: (T) -> Unit) {}\n",
+    );
+
+    let trailing_lambda_shape = crate::indexer::infer::deps::CallShape {
+        arg_count: 0,
+        trailing_lambda: true,
+    };
+    let params =
+        find_method_params_in_class(&idx, "Flow", "collect", &caller_uri, trailing_lambda_shape)
+            .expect("collect must resolve for a trailing-lambda call");
+    assert!(
+        params.contains("->"),
+        "a trailing-lambda call must resolve to the lambda-accepting extension \
+         overload, got: {params:?}"
+    );
+
+    let object_arg_shape = crate::indexer::infer::deps::CallShape {
+        arg_count: 1,
+        trailing_lambda: false,
+    };
+    let params =
+        find_method_params_in_class(&idx, "Flow", "collect", &caller_uri, object_arg_shape)
+            .expect("collect must resolve for an object-argument call");
+    assert!(
+        params.contains("FlowCollector"),
+        "a plain-object-argument call must resolve to the interface member, got: {params:?}"
+    );
 }
 
 #[test]
@@ -687,6 +744,7 @@ fn resolve_unqualified_test_definition_visible_only_to_test_callers() {
         name: "testOnlyHelper",
         qualifier: None,
         caller_uri: &test_caller_uri,
+        shape: None,
     };
     match resolve_call_signature(&test_call, &idx) {
         Resolution::Resolved(Signature {
@@ -703,6 +761,7 @@ fn resolve_unqualified_test_definition_visible_only_to_test_callers() {
         name: "testOnlyHelper",
         qualifier: None,
         caller_uri: &main_caller_uri,
+        shape: None,
     };
     assert!(
         matches!(

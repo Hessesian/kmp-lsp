@@ -8,9 +8,10 @@ use tower_lsp::lsp_types::{GotoDefinitionResponse, Location, Position, Url};
 
 use crate::backend::cursor::CursorContext;
 use crate::features::traits::{DocumentAccess, SearchAccess, SymbolIndex};
-use crate::indexer::Indexer;
+use crate::indexer::{CallShape, Indexer};
 use crate::parser::parse_by_extension;
 use crate::rg;
+use crate::types::CursorPos;
 
 // ─── Response helpers ─────────────────────────────────────────────────────────
 
@@ -164,6 +165,59 @@ fn try_cst_resolved_definition(
     }
 }
 
+/// The call shape of the call whose callee sits under `position`, or `None`
+/// when the cursor isn't precisely on a call's callee identifier (e.g. it's on
+/// an argument, or the position doesn't classify at all).
+///
+/// Handles both a bare callee (`foo(...)`, where the identifier itself is the
+/// direct callee child of the `call_expression`) and a dot-qualified callee
+/// (`x.foo(...)`, where the callee is the whole `navigation_expression` —
+/// `foo`'s own parent is a `nav_suffix`, not the call — via
+/// `enclosing_nav_expr_if_member`, the same walk `classify_symbol_at` uses).
+///
+/// `pub(crate)`, not `definition.rs`-private: hover's `regular_symbol_hover`
+/// reuses this directly rather than recomputing the same CST-shape lookup —
+/// both features hit the identical "cursor on a call's callee" question.
+pub(crate) fn call_shape_at_callee(
+    indexer: &Indexer,
+    uri: &Url,
+    position: Position,
+) -> Option<CallShape> {
+    let doc = indexer.live_doc_or_parse(uri)?;
+    let cursor = CursorPos {
+        line: position.line as usize,
+        utf16_col: position.character as usize,
+    };
+    let node = crate::indexer::cursor_node_at(&doc, cursor)?;
+    let callee_node = crate::indexer::enclosing_nav_expr_if_member(node).unwrap_or(node);
+    if !crate::indexer::is_call_callee(callee_node) {
+        return None;
+    }
+    let call_expr = callee_node.parent()?;
+    Some(crate::indexer::call_shape_of(call_expr, &doc.bytes))
+}
+
+/// The base receiver type of the extension function/property whose body
+/// encloses `position` — see [`crate::parser::enclosing_extension_receiver_at`].
+/// `None` when `position` isn't inside an extension function/property, or the
+/// file can't be parsed.
+///
+/// `pub(crate)`, not `definition.rs`-private: hover's `call_callee_hover`
+/// reuses this directly rather than recomputing the same CST-position lookup
+/// — same reason `call_shape_at_callee` is shared.
+pub(crate) fn enclosing_extension_receiver_at(
+    indexer: &Indexer,
+    uri: &Url,
+    position: Position,
+) -> Option<String> {
+    let doc = indexer.live_doc_or_parse(uri)?;
+    let range = tower_lsp::lsp_types::Range {
+        start: position,
+        end: position,
+    };
+    crate::parser::enclosing_extension_receiver_at(doc.tree.root_node(), &doc.bytes, range)
+}
+
 // ─── Main entry point ─────────────────────────────────────────────────────────
 
 /// Resolve goto-definition for the given cursor context.
@@ -219,21 +273,63 @@ pub(crate) async fn find_definition(
     }
 
     // `this.field` / `it.field` — already-resolved contextual receiver.
+    //
+    // `ctx.contextual` isn't only for `it`/`this`/named lambda params —
+    // `CursorContext::build` also populates it for *any* qualified reference
+    // via smart-cast narrowing (`infer_receiver_type_at`), so a plain
+    // `triggers.collect { trigger -> }` reaches here too. A same-named,
+    // wrong-arity extension/member on that same receiver type (a same-file
+    // self-declaration registered as "in scope" on the receiver, same class
+    // of bug as the CST-resolved path above) can't be told apart from the
+    // real target by name alone — filter by the call's own shape when this
+    // is a call at all. Filtering to empty falls through (rather than
+    // returning the wrong candidate), giving the string-qualifier fallback
+    // further down — which never consults the extension-in-scope registry
+    // that causes the wrong match — a chance to find the real target.
     if ctx.qualifier.is_some() {
         if let Some(ref rt) = ctx.contextual {
-            let locs = index.find_definition_qualified(&ctx.word, Some(&rt.qualified), uri);
-            let locs = if locs.is_empty() && rt.leaf != rt.qualified {
-                index.find_definition_qualified(&ctx.word, Some(&rt.leaf), uri)
-            } else {
-                locs
-            };
+            let mut locs = index.find_definition_qualified(&ctx.word, Some(&rt.qualified), uri);
+            if locs.is_empty() && rt.leaf != rt.qualified {
+                locs = index.find_definition_qualified(&ctx.word, Some(&rt.leaf), uri);
+            }
+            if let Some(shape) = call_shape_at_callee(index, uri, position) {
+                crate::indexer::retain_call_shape_compatible(index, shape, &mut locs);
+            }
             if !locs.is_empty() {
                 return Some(locs_to_response(locs));
             }
         }
     }
 
-    // General qualified or bare lookup.
+    // General qualified or bare lookup. An unqualified call's callee gets a
+    // shape-aware lookup instead of the plain name-based one — so a same-file
+    // declaration whose arity can't satisfy the call doesn't shadow the real
+    // (often library) target. Once the CST has confirmed this position is a
+    // call's callee, an empty shape-aware result must NOT fall through to the
+    // unfiltered lookup below, NOR to the plain `rg_resolve` fallback further
+    // down — `resolve_callee_definition`'s own step 5 already ran the same
+    // `rg` search with shape filtering; a second, unfiltered `rg` search here
+    // would just re-find the same wrong-arity match by blind text match and
+    // undo the whole point of computing the shape. Empty stays empty.
+    if ctx.qualifier.is_none() {
+        if let Some(shape) = call_shape_at_callee(index, uri, position) {
+            let locs = index.find_definition_for_call(&ctx.word, uri, shape);
+            if !locs.is_empty() {
+                return locs_to_opt_response(locs);
+            }
+            // Bare-name search (imports/same-package/star/hierarchy/rg) has no
+            // receiver-type awareness at all, so a call inside an extension
+            // function's own body that targets a same-named member/extension
+            // of that function's *own* receiver (an implicit `this.name(...)`)
+            // is invisible to it — try that specifically before giving up.
+            if let Some(receiver) = enclosing_extension_receiver_at(index, uri, position) {
+                let locs = index
+                    .find_definition_for_implicit_receiver_call(&receiver, &ctx.word, uri, shape);
+                return locs_to_opt_response(locs);
+            }
+            return None;
+        }
+    }
     let locs = index.find_definition_qualified(&ctx.word, ctx.qualifier.as_deref(), uri);
     if !locs.is_empty() {
         return locs_to_opt_response(locs);

@@ -30,6 +30,40 @@ pub(crate) struct CallableInfo {
     pub extension_receiver_type: String,
 }
 
+/// Shape of a call's actual arguments: how many sit inside the parens, and
+/// whether a trailing lambda follows. Used to pick the right candidate when a
+/// receiver type has more than one same-named, same-arity member — e.g.
+/// `Flow.collect(collector: FlowCollector<T>)` (member) vs.
+/// `Flow<T>.collect(action: suspend (T) -> Unit)` (extension): both take
+/// exactly one argument, so an arity-only match can't tell them apart, but
+/// only one of them accepts a trailing lambda.
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct CallShape {
+    pub(crate) arg_count: usize,
+    pub(crate) trailing_lambda: bool,
+}
+
+impl CallShape {
+    /// Whether a candidate whose declared parameter counts are
+    /// `(required, total)` could be the target of a call shaped like `self`.
+    ///
+    /// The one arity-range check every consumer of `CallShape` needs, given a
+    /// type instead of reimplemented per call site: `resolve.rs` (same-file
+    /// shadow exclusion, both at `resolve_local` and its `rg` fallback),
+    /// `sig.rs` (candidate scoring), and `references.rs` (reference/rename
+    /// verification) all compare a call's actual argument count against a
+    /// candidate's declared range — this is that comparison, once.
+    ///
+    /// Callers decide *whether* to call this (a non-callable or vararg
+    /// candidate is exempt, not merely "always accepted") — vararg exemption
+    /// isn't part of the arithmetic itself, since `(required, total)` alone
+    /// can't distinguish a vararg's true unbounded upper end from a fixed one.
+    pub(crate) fn accepts(&self, required: u8, total: u8) -> bool {
+        let call_arg_count = self.arg_count + usize::from(self.trailing_lambda);
+        (required as usize) <= call_arg_count && call_arg_count <= (total as usize)
+    }
+}
+
 /// Outcome of scoping a function-signature search to the file that declares an
 /// outer type (qualified callees like `Outer.Nested(...)`).
 ///
@@ -133,14 +167,22 @@ pub(crate) trait InferDeps {
         None
     }
 
-    /// Return the raw parameter text for a method declared inside `class_name`.
+    /// Return the raw parameter text for a method declared inside `class_name`,
+    /// searching both members and extension functions on that receiver type.
     ///
     /// Used for receiver-aware positional param lookup in inline lambdas:
     /// `factory.create(arg, { it })` → resolve `factory` type → look up `create`
     /// on that type specifically (avoids ambiguity with other classes' `create`).
+    /// `shape` disambiguates same-arity candidates — see [`CallShape`].
     ///
     /// Returns `None` when the class or method is not found.
-    fn find_method_params_text(&self, _class_name: &str, _method_name: &str) -> Option<String> {
+    fn find_method_params_text(
+        &self,
+        _class_name: &str,
+        _method_name: &str,
+        _uri: &Url,
+        _shape: CallShape,
+    ) -> Option<String> {
         None
     }
 
@@ -381,7 +423,13 @@ impl InferDeps for TestDeps {
             .get(&(class_name.to_string(), method_name.to_string()))
             .cloned()
     }
-    fn find_method_params_text(&self, class_name: &str, method_name: &str) -> Option<String> {
+    fn find_method_params_text(
+        &self,
+        class_name: &str,
+        method_name: &str,
+        _uri: &Url,
+        _shape: CallShape,
+    ) -> Option<String> {
         self.method_params
             .get(&(class_name.to_string(), method_name.to_string()))
             .cloned()

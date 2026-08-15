@@ -45,6 +45,7 @@ pub(crate) async fn find_implementation_at(
         if let SymbolRole::Reference {
             receiver_type: Some(receiver_type),
             is_call: true,
+            ..
         } = &sym.role
         {
             if let Some(response) =

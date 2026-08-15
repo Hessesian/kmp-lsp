@@ -8,9 +8,13 @@ use tower_lsp::lsp_types::{Location, Position, Range, SymbolKind, Url};
 
 use super::text_utils::{utf16_column, word_byte_offsets};
 use crate::features::traits::{DocumentAccess, ScopeQuery, SearchAccess, SymbolIndex};
-use crate::indexer::{classify_cursor, Indexer, NavigationSource, SymbolRole};
+use crate::indexer::{
+    call_shape_of, classify_cursor, cursor_node_at, is_call_callee, Indexer, NavigationSource,
+    SymbolRole,
+};
 use crate::resolver::MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK;
 use crate::rg::RgSearchRequest;
+use crate::types::CursorPos;
 use crate::StrExt;
 
 // ─── Public entry point ───────────────────────────────────────────────────────
@@ -164,21 +168,80 @@ pub(crate) async fn verified_references_for(
         );
     }
 
-    let (query_declaring_type, query_declaring_type_uri) =
-        match classify_cursor(index, uri, position) {
-            Some(symbol) => match &symbol.role {
-                SymbolRole::Declaration { .. } => (
-                    index.enclosing_class_at(uri, line),
-                    Some(uri.as_str().to_owned()),
-                ),
-                SymbolRole::Reference {
-                    receiver_type: Some(receiver_type),
-                    ..
-                } => (Some(receiver_type.clone()), None),
-                _ => (None, None),
-            },
-            None => (None, None),
-        };
+    let cursor_symbol = classify_cursor(index, uri, position);
+
+    // A same-named, wrong-arity call elsewhere in the file is a name
+    // collision, not a genuine reference to *this* declaration — without this,
+    // renaming e.g. `fun collect(scope, block)` also rewrites an unrelated
+    // 1-arg `collect(block)` self-call that was only ever meant to bind to a
+    // different, differently-shaped function. Only applies when the cursor is
+    // on the declaration itself and it's callable; a class/property rename is
+    // untouched.
+    if let Some(symbol) = &cursor_symbol {
+        if let SymbolRole::Declaration { .. } = &symbol.role {
+            if let Some(param_counts) = declaration_param_counts(index, uri, &symbol.name, line) {
+                retain_arity_compatible_locations(index, param_counts, &mut locations);
+            }
+        }
+    }
+
+    let (query_declaring_type, query_declaring_type_uri) = match &cursor_symbol {
+        Some(symbol) => match &symbol.role {
+            SymbolRole::Declaration { .. } => (
+                index.enclosing_class_at(uri, line),
+                Some(uri.as_str().to_owned()),
+            ),
+            SymbolRole::Reference {
+                receiver_type: Some(receiver_type),
+                ..
+            } => (Some(receiver_type.clone()), None),
+            _ => (None, None),
+        },
+        None => (None, None),
+    };
+
+    // The query's own required arity, when knowable — used by
+    // `verify_candidates` to reject a same-type, wrong-arity candidate call
+    // site that `receiver_type_agreement` alone can't tell apart from the
+    // real target (the same self-shadow bug already fixed for goto-
+    // definition/hover's explicit-receiver path, surfacing here as a bogus
+    // "reference"). Cursor-on-declaration reuses the existing
+    // `declaration_param_counts` lookup.
+    //
+    // Cursor-on-call-site resolves via `resolve_implicit_receiver_callee`
+    // directly rather than `resolve_identity`/`find_definition_qualified`:
+    // the latter's `resolve_qualified` tries the receiver's
+    // extension-in-scope registry first and returns as soon as it finds
+    // *any* same-named entry — for the reported bug, that's the same-file,
+    // wrong-arity self-declaration, so it returns before ever trying the
+    // real member and never gets a second chance. Filtering that single
+    // wrong candidate out post-hoc (as goto-definition/hover's
+    // `retain_call_shape_compatible` does) just leaves nothing here, with no
+    // fallback path to retry — `resolve_implicit_receiver_callee` doesn't
+    // have that early-return gap: it always shape-filters *within* both the
+    // extension and member searches, not just on their combined output.
+    let query_arity = match &cursor_symbol {
+        Some(symbol) => match &symbol.role {
+            SymbolRole::Declaration { .. } => {
+                declaration_param_counts(index, uri, &symbol.name, line)
+            }
+            SymbolRole::Reference {
+                receiver_type: Some(receiver_type),
+                shape: Some(shape),
+                ..
+            } => crate::resolver::resolve_implicit_receiver_callee(
+                index,
+                receiver_type,
+                &symbol.name,
+                uri,
+                *shape,
+            )
+            .first()
+            .and_then(|loc| declaration_param_counts_at(index, loc)),
+            _ => None,
+        },
+        None => None,
+    };
 
     let verify_uri_arg = detect_reverse_overrides
         .then_some(query_declaring_type_uri.as_deref())
@@ -186,11 +249,97 @@ pub(crate) async fn verified_references_for(
     let verified = crate::features::references_verify::verify_candidates(
         index,
         query_declaring_type.as_deref(),
+        query_arity,
         verify_uri_arg,
         sidecar_budget,
         locations,
     );
     (verified, query_declaring_type, query_declaring_type_uri)
+}
+
+/// The declaration's `(required, total)` param counts, when `name`'s
+/// declaration at `line` in `uri` is a callable kind — `None` for anything
+/// else (class, property, …, or a vararg declaration, which `param_counts`
+/// can't represent accurately), which tells the caller arity filtering
+/// doesn't apply at all.
+fn declaration_param_counts(index: &Indexer, uri: &Url, name: &str, line: u32) -> Option<(u8, u8)> {
+    let file_data = index.files.get(uri.as_str())?;
+    let symbol = file_data
+        .symbols
+        .iter()
+        .find(|symbol| symbol.name == name && symbol.selection_range.start.line == line)?;
+    if !matches!(
+        symbol.kind,
+        SymbolKind::FUNCTION | SymbolKind::METHOD | SymbolKind::CONSTRUCTOR | SymbolKind::OPERATOR
+    ) {
+        return None;
+    }
+    if symbol.params.contains("vararg ") || symbol.params.contains("vararg\t") {
+        return None;
+    }
+    Some(symbol.param_counts)
+}
+
+/// Like [`declaration_param_counts`], but for a target already resolved to a
+/// specific `Location` (an exact `selection_range` match against the
+/// declaring file's own symbol table) rather than looked up by name + line —
+/// how a query whose cursor sits on a *call site*, not the declaration
+/// itself, learns its target's required arity (see the `SymbolRole::Reference`
+/// arm in [`verified_references_for`]).
+fn declaration_param_counts_at(index: &Indexer, location: &Location) -> Option<(u8, u8)> {
+    let file_data = index
+        .files
+        .get(location.uri.as_str())
+        .or_else(|| index.jar_files.get(location.uri.as_str()))?;
+    let symbol = file_data
+        .symbols
+        .iter()
+        .find(|symbol| symbol.selection_range == location.range)?;
+    if !matches!(
+        symbol.kind,
+        SymbolKind::FUNCTION | SymbolKind::METHOD | SymbolKind::CONSTRUCTOR | SymbolKind::OPERATOR
+    ) {
+        return None;
+    }
+    if symbol.params.contains("vararg ") || symbol.params.contains("vararg\t") {
+        return None;
+    }
+    Some(symbol.param_counts)
+}
+
+/// Drop any candidate `Location` that sits on a call whose argument shape a
+/// `(required, total)`-arity declaration can't satisfy — see
+/// [`declaration_param_counts`] for when this runs at all.
+///
+/// Fails open: a location that isn't a call callee at all (an import, a type
+/// reference, a bare property read), or whose file can't be parsed, is kept
+/// exactly as before — this must never *lose* a legitimate reference, only
+/// exclude a provably wrong-arity one.
+fn retain_arity_compatible_locations(
+    index: &Indexer,
+    param_counts: (u8, u8),
+    locations: &mut Vec<Location>,
+) {
+    let (required, total) = param_counts;
+    locations.retain(|location| {
+        let Some(doc) = index.live_doc_or_parse(&location.uri) else {
+            return true;
+        };
+        let cursor = CursorPos {
+            line: location.range.start.line as usize,
+            utf16_col: location.range.start.character as usize,
+        };
+        let Some(node) = cursor_node_at(&doc, cursor) else {
+            return true;
+        };
+        if !is_call_callee(node) {
+            return true;
+        }
+        let Some(call_expr) = node.parent() else {
+            return true;
+        };
+        call_shape_of(call_expr, &doc.bytes).accepts(required, total)
+    });
 }
 
 // ─── Scope resolution ─────────────────────────────────────────────────────────

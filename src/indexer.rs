@@ -16,6 +16,7 @@ mod doc;
 mod html_md;
 
 mod cst_folding;
+pub(crate) mod walk;
 pub(crate) use self::cst_folding::cst_folding_ranges;
 
 mod infer;
@@ -35,13 +36,14 @@ pub(crate) use self::infer::speculative::{
 pub(crate) use self::infer::{
     args::{extract_first_arg, find_as_call_arg_type, find_named_param_type_in_sig},
     cst_cursor::{cst_call_info, cst_outer_call_info, CallInfo},
-    cst_lambda::{cursor_node_at, LambdaScopeInfo},
+    cst_lambda::{call_shape_of, cursor_node_at, LambdaScopeInfo},
     cst_symbol::{
-        classify_cursor, classify_symbol_at, is_call_callee, is_declaration_site,
-        local_scope_occurrences, navigation_member_ident, navigation_receiver_node,
-        resolve_identity, NavigationSource, SymbolAtCursor, SymbolRole,
+        classify_cursor, classify_symbol_at, enclosing_nav_expr_if_member, is_call_callee,
+        is_declaration_site, local_scope_occurrences, navigation_member_ident,
+        navigation_receiver_node, resolve_identity, retain_call_shape_compatible, NavigationSource,
+        SymbolAtCursor, SymbolRole,
     },
-    deps::{CallableInfo, InferDeps, OuterScopedParams},
+    deps::{CallShape, CallableInfo, InferDeps, OuterScopedParams},
     expr_type::infer_expr_type,
     it_this::{
         all_lambda_receivers_at, find_it_element_type, find_named_lambda_param_type,
@@ -480,10 +482,22 @@ impl InferDeps for Indexer {
         crate::resolver::Resolver::method_return_type(self, class_name, method_name, Some(uri))
             .map(crate::resolver::ReturnType::into_inner)
     }
-    fn find_method_params_text(&self, class_name: &str, method_name: &str) -> Option<String> {
-        crate::indexer::infer::sig::find_method_params_in_class(self, class_name, method_name)
+    fn find_method_params_text(
+        &self,
+        class_name: &str,
+        method_name: &str,
+        uri: &Url,
+        shape: crate::indexer::infer::deps::CallShape,
+    ) -> Option<String> {
+        crate::indexer::infer::sig::find_method_params_in_class(
+            self,
+            class_name,
+            method_name,
+            uri,
+            shape,
+        )
     }
-    fn find_fun_callable_info(&self, fn_name: &str, _uri: &Url) -> Option<CallableInfo> {
+    fn find_fun_callable_info(&self, fn_name: &str, uri: &Url) -> Option<CallableInfo> {
         // Workspace definitions first (scoped + capped — see find_in_workspace_defs).
         let from_workspace = self.find_in_workspace_defs(fn_name, |loc| {
             let file_data = self.files.get(loc.uri.as_str())?;
@@ -507,7 +521,26 @@ impl InferDeps for Indexer {
         let mut cache_backed_only = 0usize;
         crate::indexer::jar::ensure_jar_definitions_for(self, fn_name, &mut cache_backed_only);
         let jar_locs = self.jar_definitions.get(fn_name)?;
-        for loc in jar_locs.iter().take(MAX_BY_NAME_DEFS) {
+
+        // A common name collides across the whole Gradle cache -- `collect` has
+        // 175 declarations in a real Android project, of which ~140 are build
+        // tooling (the Kotlin compiler, KSP, IntelliJ core) that application
+        // code can never import. Taking the first match makes the answer depend
+        // on JAR load order, which is on-demand and so varies between sessions.
+        // Try the candidates the caller could actually have imported first.
+        let caller_file_data = self
+            .files
+            .get(uri.as_str())
+            .map(|entry| entry.value().clone());
+        let reachable_first = jar_locs
+            .iter()
+            .filter(|loc| {
+                self.jar_candidate_is_reachable(loc, fn_name, caller_file_data.as_deref())
+            })
+            .chain(jar_locs.iter())
+            .take(MAX_BY_NAME_DEFS);
+
+        for loc in reachable_first {
             if let Some(file_data) = self.jar_files.get(loc.uri.as_str()) {
                 if let Some(sym) = file_data
                     .symbols
@@ -556,6 +589,7 @@ impl InferDeps for Indexer {
         self.definition_locations(name).into_iter().any(|loc| {
             self.files
                 .get(loc.uri.as_str())
+                .or_else(|| self.jar_files.get(loc.uri.as_str()))
                 .map(|file_data| {
                     file_data.symbols.iter().any(|symbol| {
                         symbol.name == name
@@ -1011,6 +1045,32 @@ impl Indexer {
     /// `definitions` read guard is dropped before `f` runs, so `f` may freely resolve
     /// other names (re-enter `definitions`) without risking a reader/writer deadlock
     /// on the shard.
+    /// Whether a JAR-declared `name` at `loc` sits in a package the caller
+    /// could have reached — same package, or covered by one of its imports.
+    ///
+    /// The workspace equivalent lives in `resolver::infer`, but reads
+    /// `self.files`; JAR symbols live in `jar_files`, so the lookup differs even
+    /// though the package/import rule is the same.
+    ///
+    /// Answers `false` when the JAR file's package is unknown, which only
+    /// deprioritises the candidate: callers try unreachable ones afterwards
+    /// rather than discarding them.
+    pub(crate) fn jar_candidate_is_reachable(
+        &self,
+        loc: &Location,
+        name: &str,
+        caller_file_data: Option<&crate::types::FileData>,
+    ) -> bool {
+        let Some(jar_file_data) = self.jar_files.get(loc.uri.as_str()) else {
+            return false;
+        };
+        crate::resolver::infer::extension_is_in_scope(
+            jar_file_data.package.as_ref(),
+            name,
+            caller_file_data,
+        )
+    }
+
     pub(crate) fn find_in_workspace_defs<T>(
         &self,
         name: &str,

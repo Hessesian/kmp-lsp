@@ -224,10 +224,16 @@ fn lambda_this_ctx(
             .filter(|parent| parent.kind() == KIND_VALUE_ARG)
             .and_then(|value_argument| value_argument.named_arg_label(&doc.bytes));
         if let Some(label) = argument_label {
-            if let Some(receiver_type) =
-                receiver_aware_params(call, &doc.bytes, idx, uri, Some(&label))
-                    .and_then(|signature| find_named_param_type_in_sig(&signature, &label))
-                    .and_then(|parameter_type| lambda_type_receiver(&parameter_type))
+            if let Some(receiver_type) = receiver_aware_params(
+                call,
+                &doc.bytes,
+                idx,
+                uri,
+                Some(&label),
+                call_shape_of(call, &doc.bytes),
+            )
+            .and_then(|signature| find_named_param_type_in_sig(&signature, &label))
+            .and_then(|parameter_type| lambda_type_receiver(&parameter_type))
             {
                 return ThisLambdaCtx::Resolved(receiver_type);
             }
@@ -875,8 +881,15 @@ fn find_enclosing_call_and_param<'a>(
         if kind == KIND_VALUE_ARG {
             let call_expr = parent.enclosing_call_expression()?;
             let named_arg_label = parent.named_arg_label(bytes);
-            let sig =
-                receiver_aware_params(call_expr, bytes, deps, uri, named_arg_label.as_deref())?;
+            let shape = call_shape_of(call_expr, bytes);
+            let sig = receiver_aware_params(
+                call_expr,
+                bytes,
+                deps,
+                uri,
+                named_arg_label.as_deref(),
+                shape,
+            )?;
             let param_type = if let Some(label) = named_arg_label {
                 find_named_param_type_in_sig(&sig, &label)?
             } else {
@@ -890,7 +903,8 @@ fn find_enclosing_call_and_param<'a>(
                 "find_enclosing_call_and_param: call_suffix, call_expr fn={:?}",
                 call_expr.call_fn_name(bytes)
             );
-            let sig = receiver_aware_params(call_expr, bytes, deps, uri, None)?;
+            let shape = call_shape_of(call_expr, bytes);
+            let sig = receiver_aware_params(call_expr, bytes, deps, uri, None, shape)?;
             log::trace!("find_enclosing_call_and_param: sig={sig}");
             let last_type = last_fun_param_type_str(&sig)?;
             return Some((call_expr, last_type.to_owned()));
@@ -966,8 +980,14 @@ fn cst_lambda_call_param_type(
         if kind == KIND_VALUE_ARG {
             let call_expr = parent.enclosing_call_expression()?;
             let named_arg_label = parent.named_arg_label(bytes);
-            let sig =
-                receiver_aware_params(call_expr, bytes, deps, uri, named_arg_label.as_deref())?;
+            let sig = receiver_aware_params(
+                call_expr,
+                bytes,
+                deps,
+                uri,
+                named_arg_label.as_deref(),
+                call_shape_of(call_expr, bytes),
+            )?;
             return if let Some(label) = named_arg_label {
                 find_named_param_type_in_sig(&sig, &label)
             } else {
@@ -976,7 +996,14 @@ fn cst_lambda_call_param_type(
         }
         if kind == KIND_CALL_SUFFIX {
             let call_expr = lambda.enclosing_call_expression()?;
-            let sig = receiver_aware_params(call_expr, bytes, deps, uri, None)?;
+            let sig = receiver_aware_params(
+                call_expr,
+                bytes,
+                deps,
+                uri,
+                None,
+                call_shape_of(call_expr, bytes),
+            )?;
             let last_type = last_fun_param_type_str(&sig)?;
             return Some(last_type.to_owned());
         }
@@ -1027,16 +1054,35 @@ pub(super) fn resolve_call_params(
     receiver_type: Option<&str>,
     deps: &impl InferDeps,
     uri: &Url,
+    shape: super::deps::CallShape,
 ) -> Option<String> {
     if let Some(raw_type) = receiver_type {
         let dotted = raw_type.dotted_ident_prefix();
         if !dotted.is_empty() {
-            if let Some(params) = deps.find_method_params_text(&dotted, fn_name) {
+            if let Some(params) = deps.find_method_params_text(&dotted, fn_name, uri, shape) {
                 return Some(params);
             }
         }
     }
     deps.find_fun_params_text(fn_name, uri)
+}
+
+/// Compute a call expression's argument shape (see [`CallShape`]) for overload
+/// disambiguation — the parenthesized argument count plus whether a trailing
+/// lambda follows.
+pub(crate) fn call_shape_of(
+    call_expr: tree_sitter::Node<'_>,
+    bytes: &[u8],
+) -> super::deps::CallShape {
+    let arg_count = call_expr
+        .find_value_arguments()
+        .map(|va| crate::features::call_arg_diagnostics::count_provided_args(Some(&va), bytes))
+        .unwrap_or(0);
+    let trailing_lambda = crate::features::call_arg_diagnostics::has_trailing_lambda(&call_expr);
+    super::deps::CallShape {
+        arg_count,
+        trailing_lambda,
+    }
 }
 
 /// Signature lookup for a lambda's enclosing call, aware of two qualifier kinds:
@@ -1050,6 +1096,7 @@ fn receiver_aware_params(
     deps: &impl InferDeps,
     uri: &Url,
     named_arg_label: Option<&str>,
+    shape: super::deps::CallShape,
 ) -> Option<String> {
     let (fn_name, qualifier) = call_expr.call_fn_and_qualifier(bytes)?;
     let recv_type = qualifier
@@ -1069,7 +1116,7 @@ fn receiver_aware_params(
             }
         }
     }
-    resolve_call_params(&fn_name, recv_type.as_deref(), deps, uri)
+    resolve_call_params(&fn_name, recv_type.as_deref(), deps, uri, shape)
 }
 
 /// `Outer` / `Outer.Nested` — a dotted identifier starting with an uppercase

@@ -38,6 +38,15 @@ pub(crate) struct CallSite<'a> {
     pub qualifier: Option<&'a str>,
     /// URI of the file containing the call.
     pub caller_uri: &'a Url,
+    /// The call's actual argument shape, when the caller has one — used by
+    /// [`resolve_unqualified`] to notice when its same-file-first shortcut
+    /// picked a candidate the call's own arity can't satisfy (a same-named,
+    /// wrong-arity same-file declaration is a name collision, e.g. a
+    /// same-named enclosing extension function calling a differently-shaped
+    /// library function of the same name — not necessarily the call's real
+    /// target). `None` preserves the unfiltered same-file-first behavior
+    /// exactly, for callers with no shape to offer.
+    pub shape: Option<super::deps::CallShape>,
 }
 
 /// A resolved call-site signature — exactly one arity envelope, safe to emit
@@ -658,56 +667,136 @@ pub(crate) fn find_fun_signature_with_receiver(
 /// Supports dotted names like `"DepositAccountReducer.Factory"` — splits into
 /// container `"DepositAccountReducer"` and type_base `"Factory"`, then filters
 /// definitions to only those whose container matches.
+///
+/// Searches both members (`container == type_base`) and extension functions on
+/// the receiver (`extension_by_receiver`, member-less by definition) — a
+/// receiver type routinely has both, e.g. `Flow.collect(collector:
+/// FlowCollector<T>)` (member) alongside `Flow<T>.collect(action: suspend (T)
+/// -> Unit)` (extension), and only the caller's actual `shape` (arg count,
+/// trailing lambda) tells them apart; see [`CallShape`].
+///
+/// Deliberately gathers members by scanning files that declare `type_base`
+/// (bounded by how many classes share that name) rather than by scanning every
+/// file that declares a method named `method_name` — the latter is what makes
+/// `resolve_qualified` bail on ubiquitous names like `collect` (hundreds of
+/// unrelated declarations); this function has no such bail, so it must not
+/// take that path. The extension half is similarly cheap: `extension_by_receiver`
+/// is keyed by receiver type, not by method name.
 pub(crate) fn find_method_params_in_class(
     idx: &Indexer,
     class_name: &str,
     method_name: &str,
+    caller_uri: &Url,
+    shape: super::deps::CallShape,
 ) -> Option<String> {
     let (container, type_base) = match class_name.rsplit_once('.') {
         Some((container, base)) => (Some(container), base),
         None => (None, class_name),
     };
-    let locations = idx.definitions.get(type_base)?;
-    for loc in locations.iter() {
-        let Some(url) = idx.file_table.url(loc.file) else {
-            continue;
-        };
-        let Some(file_data) = idx.files.get(url.as_str()) else {
-            continue;
-        };
-        // Verify the class exists (and if qualified, check its own container).
-        let has_class = file_data.symbols.iter().any(|s| {
-            s.name == type_base
-                && is_class_like(s.kind)
-                && container.is_none_or(|c| s.container.as_deref() == Some(c))
-        });
-        if !has_class {
-            continue;
-        }
+    let mut candidates: Vec<(String, (u8, u8))> = Vec::new();
 
-        // Find the method as a direct member of type_base.
-        for symbol_entry in &file_data.symbols {
-            if symbol_entry.name != method_name {
+    if let Some(locations) = idx.definitions.get(type_base) {
+        for loc in locations.iter() {
+            let Some(url) = idx.file_table.url(loc.file) else {
+                continue;
+            };
+            let Some(file_data) = idx.files.get(url.as_str()) else {
+                continue;
+            };
+            // Verify the class exists (and if qualified, check its own container).
+            let has_class = file_data.symbols.iter().any(|s| {
+                s.name == type_base
+                    && is_class_like(s.kind)
+                    && container.is_none_or(|c| s.container.as_deref() == Some(c))
+            });
+            if !has_class {
                 continue;
             }
-            if !matches!(
-                symbol_entry.kind,
-                SymbolKind::FUNCTION | SymbolKind::METHOD | SymbolKind::OPERATOR
-            ) {
-                continue;
-            }
-            if symbol_entry.container.as_deref() != Some(type_base) {
-                continue;
-            }
-            if !symbol_entry.params.is_empty() {
-                return Some(symbol_entry.params.clone());
-            }
-            if let Some(params) = extract_params_from_detail(&symbol_entry.detail) {
-                return Some(params);
+
+            // The method as a direct member of type_base.
+            for symbol_entry in &file_data.symbols {
+                if symbol_entry.name != method_name {
+                    continue;
+                }
+                if !matches!(
+                    symbol_entry.kind,
+                    SymbolKind::FUNCTION | SymbolKind::METHOD | SymbolKind::OPERATOR
+                ) {
+                    continue;
+                }
+                if symbol_entry.container.as_deref() != Some(type_base) {
+                    continue;
+                }
+                if let Some(params) = extract_params_or_fallback(symbol_entry, &file_data.lines) {
+                    candidates.push((params, symbol_entry.param_counts));
+                }
             }
         }
     }
-    None
+
+    let mut cache_backed_only = 0usize;
+    if let Some(entries) =
+        crate::indexer::jar::extension_entries_for(idx, type_base, &mut cache_backed_only)
+    {
+        let mut seen_files = std::collections::HashSet::new();
+        for entry in entries.iter().filter(|e| e.name == method_name) {
+            if seen_files.insert(entry.file_uri.clone()) {
+                candidates.extend(collect_params_from_file(
+                    method_name,
+                    &entry.file_uri,
+                    idx,
+                    caller_uri.as_str(),
+                    ResolutionScope::CrossFile,
+                    Some(type_base),
+                ));
+            }
+        }
+    }
+
+    pick_candidate_matching_shape(candidates, shape)
+}
+
+/// Choose the candidate whose signature best matches how the call was
+/// actually written, rather than the first one found.
+///
+/// Prefers a candidate that matches both arity and lambda-shape; falls back to
+/// lambda-shape alone (the stronger signal — same-arity ties like `Flow`'s two
+/// `collect`s are common, and only one of them accepts a trailing lambda), then
+/// arity alone, then the first candidate — never worse than the old
+/// first-match behaviour.
+fn pick_candidate_matching_shape(
+    candidates: Vec<(String, (u8, u8))>,
+    shape: super::deps::CallShape,
+) -> Option<String> {
+    if candidates.len() <= 1 {
+        return candidates.into_iter().next().map(|(text, _)| text);
+    }
+    let scored: Vec<(bool, bool)> = candidates
+        .iter()
+        .map(|(text, (required, total))| {
+            let arity_ok = shape.accepts(*required, *total);
+            let lambda_ok = last_fun_param_type_str(text)
+                .map(|t| is_lambda_shaped(&t))
+                .unwrap_or(false)
+                == shape.trailing_lambda;
+            (arity_ok, lambda_ok)
+        })
+        .collect();
+    for wants in [(true, true), (false, true), (true, false)] {
+        if let Some(i) = scored.iter().position(|&s| s == wants) {
+            return Some(candidates[i].0.clone());
+        }
+    }
+    candidates.into_iter().next().map(|(text, _)| text)
+}
+
+/// Whether a parameter type string is a Kotlin function type (`(T) -> R`,
+/// `suspend (T) -> R`, `() -> Unit`, …) — i.e. a trailing-lambda call could
+/// supply it.
+fn is_lambda_shaped(type_str: &str) -> bool {
+    let t = type_str.trim();
+    let t = t.strip_prefix("suspend").map(str::trim_start).unwrap_or(t);
+    t.starts_with('(') && t.contains("->")
 }
 
 fn is_class_like(kind: SymbolKind) -> bool {
@@ -982,16 +1071,27 @@ fn resolve_qualified(call: &CallSite<'_>, qualifier: &str, idx: &Indexer) -> Res
     build_result(found)
 }
 
-/// Resolve the signature for an unqualified call `name(…)`.
-///
-/// Priority:
-/// 1. Current file (same-file definitions are exact — no import filtering needed).
-/// 2. Definitions map, cross-file with import-aware filtering.
-///
-/// If multiple distinct arity envelopes are found, returns `Resolution::Ambiguous`.
-fn resolve_unqualified(call: &CallSite<'_>, idx: &Indexer) -> Resolution<Signature> {
-    // Same-file first: if defined here, use only those — avoids workspace-wide
-    // overload explosion (e.g. 945 `loadData` implementations).
+/// What the same-file scan for `call.name` settles about resolution, before
+/// any cross-file/JAR search runs.
+enum SameFileVerdict {
+    /// A member of the class the call is textually inside. Kotlin binds an
+    /// unqualified call to the enclosing class's own member unconditionally
+    /// — decisive regardless of the call's shape.
+    MemberWins(Vec<(String, (u8, u8))>),
+    /// A same-file top-level/extension declaration whose shape the call
+    /// actually satisfies — also decisive.
+    ShapeMatches(Vec<(String, (u8, u8))>),
+    /// A same-file top-level/extension declaration exists, but the call's
+    /// shape doesn't satisfy it (e.g. a same-named enclosing extension
+    /// function calling a differently-shaped library function of the same
+    /// name — a name collision, not this call's target). Not decisive on its
+    /// own; carried through as `resolve_unqualified`'s last resort.
+    NameCollision(Vec<(String, (u8, u8))>),
+    /// No same-file declaration of this name at all.
+    None,
+}
+
+fn classify_same_file(call: &CallSite<'_>, idx: &Indexer) -> SameFileVerdict {
     let same_file = collect_params_from_file(
         call.name,
         call.caller_uri.as_str(),
@@ -1000,20 +1100,69 @@ fn resolve_unqualified(call: &CallSite<'_>, idx: &Indexer) -> Resolution<Signatu
         ResolutionScope::SameFile,
         None,
     );
-    if !same_file.is_empty() {
-        return build_result(same_file);
+    if same_file.is_empty() {
+        return SameFileVerdict::None;
     }
+    let is_member = idx
+        .files
+        .get(call.caller_uri.as_str())
+        .is_some_and(|file_data| {
+            file_data
+                .symbols
+                .iter()
+                .any(|symbol| symbol.name == call.name && symbol.container.is_some())
+        });
+    if is_member {
+        return SameFileVerdict::MemberWins(same_file);
+    }
+    let matches_shape = call.shape.is_none_or(|shape| {
+        same_file
+            .iter()
+            .any(|(_, (required, total))| shape.accepts(*required, *total))
+    });
+    if matches_shape {
+        SameFileVerdict::ShapeMatches(same_file)
+    } else {
+        SameFileVerdict::NameCollision(same_file)
+    }
+}
 
+/// Resolve the signature for an unqualified call `name(…)`.
+///
+/// Priority:
+/// 1. Same-file (see [`SameFileVerdict`] for exactly when this is decisive).
+/// 2. Cross-file/JAR, import-aware — see [`resolve_cross_file`].
+/// 3. A same-file candidate the call's shape ruled out is still preferred
+///    over nothing: if step 2 finds no candidate anywhere else either, the
+///    ruled-out same-file one is, after all, the only real candidate in
+///    scope, so a genuine arity typo against it is still worth flagging.
+fn resolve_unqualified(call: &CallSite<'_>, idx: &Indexer) -> Resolution<Signature> {
+    match classify_same_file(call, idx) {
+        SameFileVerdict::MemberWins(entries) | SameFileVerdict::ShapeMatches(entries) => {
+            build_result(entries)
+        }
+        SameFileVerdict::NameCollision(rejected) => match resolve_cross_file(call, idx) {
+            Resolution::Unresolved => build_result(rejected),
+            resolved_elsewhere => resolved_elsewhere,
+        },
+        SameFileVerdict::None => resolve_cross_file(call, idx),
+    }
+}
+
+/// Search every *other* file/JAR declaring `call.name`, import/reachability
+/// filtered — the caller's own file was already fully considered by
+/// [`classify_same_file`], so its locations are skipped here rather than
+/// re-scanned.
+///
+/// Bails to `Ambiguous` without scanning for names ubiquitous enough that the
+/// scan itself would be a multi-second diagnostics-hot-path stall *and* the
+/// result would resolve to `Ambiguous` regardless (e.g. `collect`, `create`).
+fn resolve_cross_file(call: &CallSite<'_>, idx: &Indexer) -> Resolution<Signature> {
     // Promote-before-read (zero budget): param-count diagnostics run per call
     // site — no blocking sidecar IPC here. Promoting before the ubiquity count
     // also keeps that count accurate for Tier-1-only cache-backed JARs.
     let mut cache_backed_only = 0usize;
     crate::indexer::jar::ensure_jar_definitions_for(idx, call.name, &mut cache_backed_only);
-
-    // Ubiquitous name (hundreds of source-JAR overloads of `create`, `loadData`, …):
-    // scanning every cross-file definition is a multi-second stall on the diagnostics
-    // hot path, and the wide arity envelope would resolve to `Ambiguous` regardless —
-    // so bail without scanning. (Same-file calls above already resolved exactly.)
     if total_definition_count(call.name, idx) > crate::indexer::MAX_BY_NAME_DEFS {
         // known-ambiguous (ubiquitous name) — see `total_definition_count`.
         return Resolution::Ambiguous;
@@ -1025,7 +1174,6 @@ fn resolve_unqualified(call: &CallSite<'_>, idx: &Indexer) -> Resolution<Signatu
         .map(|file| file.source_set)
         .unwrap_or_default();
 
-    // Cross-file: definitions + jar_definitions with import + nested-class filtering.
     let mut all: Vec<(String, (u8, u8))> = Vec::new();
     let mut locations: Vec<tower_lsp::lsp_types::Location> = Vec::new();
     if let Some(locs) = idx.definitions.get(call.name) {
@@ -1039,6 +1187,9 @@ fn resolve_unqualified(call: &CallSite<'_>, idx: &Indexer) -> Resolution<Signatu
         locations.extend(locs.iter().cloned());
     }
     for loc in &locations {
+        if loc.uri.as_str() == call.caller_uri.as_str() {
+            continue;
+        }
         let definition_source_set = idx
             .files
             .get(loc.uri.as_str())

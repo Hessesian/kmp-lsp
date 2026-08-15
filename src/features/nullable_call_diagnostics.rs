@@ -51,47 +51,24 @@ pub(crate) fn nullable_dot_call_diagnostics(
     //     them — `s.let { }` on a nullable `s` is never flagged.
     let bytes = &doc.bytes;
     let mut diagnostics = Vec::new();
-    collect_nav_nodes(
-        doc.tree.root_node(),
-        bytes,
-        indexer,
-        uri,
-        &mut diagnostics,
-        0,
-    );
+    for node in crate::indexer::walk::descendants(doc.tree.root_node()) {
+        check_nav_node(node, bytes, indexer, uri, &mut diagnostics);
+    }
     diagnostics
 }
 
-fn collect_nav_nodes(
+fn check_nav_node(
     node: tree_sitter::Node,
     bytes: &[u8],
     indexer: &Indexer,
     uri: &Url,
     diagnostics: &mut Vec<Diagnostic>,
-    depth: usize,
 ) {
-    // See `crate::util::MAX_CST_DESCENT_DEPTH`: bail rather than overflow the
-    // stack on a pathologically deep tree (huge chained expression, or
-    // ERROR-recovery on a huge malformed file).
-    if depth >= crate::util::MAX_CST_DESCENT_DEPTH {
-        crate::util::report_cst_depth_exceeded!("collect_nav_nodes", node);
+    if node.kind() != KIND_NAV_EXPR {
         return;
     }
-
-    if node.kind() == KIND_NAV_EXPR {
-        if let Some(diag) = check_nullable_dot_call(&node, bytes, indexer, uri) {
-            diagnostics.push(diag);
-        }
-    }
-
-    let mut cursor = node.walk();
-    if cursor.goto_first_child() {
-        loop {
-            collect_nav_nodes(cursor.node(), bytes, indexer, uri, diagnostics, depth + 1);
-            if !cursor.goto_next_sibling() {
-                break;
-            }
-        }
+    if let Some(diagnostic) = check_nullable_dot_call(&node, bytes, indexer, uri) {
+        diagnostics.push(diagnostic);
     }
 }
 

@@ -39,9 +39,46 @@ use std::sync::Arc;
 use tokio::sync::mpsc;
 use tower_lsp::{LspService, Server};
 
+/// Stack size for every thread that can run analysis.
+///
+/// Resolution and CST traversal recurse with the shape of the user's code, so
+/// stack use scales with nesting rather than staying flat. The platform
+/// default is 8 MiB on Linux and 1 MiB on Windows, which is not enough for
+/// generated or machine-written files; rust-analyzer settles on the same
+/// 16 MiB for the same reason.
+///
+/// This is a safety net, not a licence to recurse without bound: it raises the
+/// depth at which a walker dies, it does not make an unbounded one safe. The
+/// depth caps and cycle guards still carry that.
+const ANALYSIS_STACK_SIZE: usize = 16 * 1024 * 1024;
+
 fn main() {
     install_panic_hook();
 
+    // A thread's stack size is fixed when it is created, so the OS main
+    // thread's cannot be raised — and `block_on` below drives request
+    // handlers on whichever thread calls it. Hand the whole server to a
+    // thread we do control.
+    let server_thread = match std::thread::Builder::new()
+        .name("kmp-lsp".to_owned())
+        .stack_size(ANALYSIS_STACK_SIZE)
+        .spawn(run_server)
+    {
+        Ok(handle) => handle,
+        Err(err) => {
+            eprintln!("kmp-lsp: failed to spawn the server thread: {err}");
+            std::process::exit(102);
+        }
+    };
+    match server_thread.join() {
+        Ok(()) => {}
+        // Panicking past `run_server`'s own `catch_unwind` means the runtime
+        // itself failed to start; the hook has already reported it.
+        Err(_) => std::process::exit(101),
+    }
+}
+
+fn run_server() {
     // Build custom tokio runtime — scale workers to available cores.
     let worker_count = std::thread::available_parallelism()
         .map(|n| n.get())
@@ -49,6 +86,10 @@ fn main() {
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(worker_count)
         .max_blocking_threads(512)
+        // Covers both the async workers and the `spawn_blocking` pool: tokio
+        // launches its core workers through the same blocking-pool path, and
+        // that is where indexing and diagnostics actually run.
+        .thread_stack_size(ANALYSIS_STACK_SIZE)
         .enable_all()
         .build()
         .unwrap();

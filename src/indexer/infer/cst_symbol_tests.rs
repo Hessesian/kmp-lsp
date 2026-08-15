@@ -58,6 +58,7 @@ fn classifies_a_typed_member_reference() {
         SymbolRole::Reference {
             receiver_type: Some(t),
             is_call: true,
+            ..
         } => assert_eq!(t, "User"),
         other => panic!("expected typed call reference, got {other:?}"),
     }
@@ -151,6 +152,7 @@ fn safely_degrades_when_cursor_sits_inside_an_error_node() {
         SymbolRole::Reference {
             receiver_type: None,
             is_call: false,
+            ..
         } => {}
         other => panic!("expected bare, unfabricated reference, got {other:?}"),
     }
@@ -633,5 +635,29 @@ fn local_scope_occurrences_survives_a_pathologically_deep_body() {
     assert!(
         result.is_none(),
         "a truncated walk must decline the local fast path, not rename a subset"
+    );
+}
+
+/// The scope search is iterative, so depth costs it no stack — but it used to
+/// cost quadratic *time*, because it asked tree-sitter for each node's parent
+/// (an O(depth) operation) once per node. At this size that took minutes.
+#[test]
+fn local_scope_occurrences_is_not_quadratic_in_nesting_depth() {
+    let n = 20_000;
+    let mut src = String::from("fun run() {\n    val total = 0\n    print(total");
+    for _ in 0..n {
+        src.push_str("+1");
+    }
+    src.push_str(")\n}\n");
+    let (file_uri, indexer) = indexed_with_live("/Deep.kt", &src);
+
+    let start = std::time::Instant::now();
+    let _ = local_scope_occurrences(&indexer, &file_uri, Position::new(1, 8));
+    let elapsed = start.elapsed();
+    // Quadratic cost here is ~3.5 minutes; linear is tens of milliseconds. The
+    // bound is loose enough that only a return to quadratic can trip it.
+    assert!(
+        elapsed < std::time::Duration::from_secs(10),
+        "took {elapsed:?} — the parent lookup is quadratic again"
     );
 }

@@ -9,7 +9,7 @@
 
 use tree_sitter::Node;
 
-use crate::indexer::{CstQuery, Indexer, NodeExt, Resolution};
+use crate::indexer::{CallShape, CstQuery, Indexer, NodeExt, Resolution};
 use crate::queries::{
     KIND_BINDING_PATTERN_KIND, KIND_CALL_EXPR, KIND_CATCH_BLOCK, KIND_CLASS_DECL, KIND_CLASS_PARAM,
     KIND_COMPANION_OBJ, KIND_CONTROL_STRUCTURE_BODY, KIND_ENUM_ENTRY, KIND_FINALLY_BLOCK,
@@ -27,9 +27,18 @@ use super::deps::InferDeps as _;
 use super::speculative::ResolutionDoc;
 
 pub(crate) fn is_declaration_site(node: Node<'_>) -> bool {
-    let Some(parent) = node.parent() else {
-        return false;
-    };
+    node.parent()
+        .is_some_and(|parent| is_declaration_site_of(node, parent))
+}
+
+/// Like [`is_declaration_site`], but for callers that already hold the parent.
+///
+/// tree-sitter's `Node::parent()` is not a stored pointer — it re-finds the
+/// node by descending from the root, so it costs O(depth) per call. A walk
+/// that pushes children from a node it already has therefore knows the parent
+/// for free, and asking tree-sitter for it again once per node is what turns
+/// such a walk quadratic in nesting depth.
+pub(crate) fn is_declaration_site_of(node: Node<'_>, parent: Node<'_>) -> bool {
     let parent_kind = parent.kind();
     if parent_kind == KIND_CLASS_DECL
         || parent_kind == KIND_OBJECT_DECL
@@ -122,6 +131,27 @@ pub(crate) fn navigation_member_ident(node: Node<'_>) -> Option<Node<'_>> {
     None
 }
 
+/// The enclosing `navigation_expression` when `node` is that expression's own
+/// member identifier (e.g. `node` is `collect` in `triggers.collect(...)`),
+/// else `None`.
+///
+/// `is_call_callee` (and `call_shape_of`) expect the *callee* node — for a
+/// dot-qualified call the callee is the whole `nav_expr` (`triggers.collect`),
+/// not the bare member identifier `collect`: `collect`'s own parent is a
+/// `nav_suffix`, not the `call_expression`, so checking `is_call_callee` on
+/// the identifier directly always misses qualified calls. Checking on this
+/// function's result instead — as `classify_symbol_at` already does — is what
+/// makes the check work identically for both `foo(...)` and `x.foo(...)`.
+pub(crate) fn enclosing_nav_expr_if_member(node: Node<'_>) -> Option<Node<'_>> {
+    let nav = node
+        .parent()
+        .and_then(|suffix| (suffix.kind() == KIND_NAV_SUFFIX).then_some(suffix))
+        .and_then(|suffix| suffix.parent())?;
+    (nav.kind() == KIND_NAV_EXPR
+        && navigation_member_ident(nav).is_some_and(|m| m.id() == node.id()))
+    .then_some(nav)
+}
+
 pub(crate) fn is_call_callee(node: Node<'_>) -> bool {
     let Some(parent) = node.parent() else {
         return false;
@@ -151,9 +181,14 @@ pub(crate) enum SymbolRole {
     /// `receiver_type` is `Some` only when the reference is a member access
     /// (`x.name`) AND the receiver's type resolved via `CstQuery::expr_type`.
     /// `is_call` is true when the reference is the callee of a call_expression.
+    /// `shape` is `Some` exactly when `is_call` is true — the call's own
+    /// argument shape, used by `resolve_identity` to reject a same-named,
+    /// wrong-arity candidate on the same receiver type (an explicit-receiver
+    /// counterpart to `resolve_callee_definition`'s bare-call arity filter).
     Reference {
         receiver_type: Option<String>,
         is_call: bool,
+        shape: Option<CallShape>,
     },
     ImportSegment,
 }
@@ -237,24 +272,20 @@ pub(crate) fn classify_symbol_at(
     }
 
     // Member reference: the identifier is the member name of a nav_expr's suffix.
-    if let Some(nav) = node
-        .parent()
-        .and_then(|suffix| (suffix.kind() == KIND_NAV_SUFFIX).then_some(suffix))
-        .and_then(|suffix| suffix.parent())
-    {
-        if nav.kind() == KIND_NAV_EXPR
-            && navigation_member_ident(nav).is_some_and(|m| m.id() == node.id())
-        {
-            let is_call = is_call_callee(nav);
-            // `expr_type` for a parameter/variable receiver echoes back its
-            // syntactic type annotation verbatim (see `infer_ident_type` /
-            // `find_var_type`) without checking that the annotated name is an
-            // actual known type — `x: Unknown` resolves to `Some("Unknown")`
-            // even though `Unknown` is declared nowhere. Gate on
-            // `has_type_definition` so a made-up/unresolvable annotation
-            // doesn't silently masquerade as a real receiver type (house
-            // decoy: `untypeable_receiver_yields_no_receiver_type`).
-            let receiver_type = navigation_receiver_node(nav).and_then(|receiver| {
+    if let Some(nav) = enclosing_nav_expr_if_member(node) {
+        let call_expr = is_call_callee(nav).then(|| nav.parent()).flatten();
+        let is_call = call_expr.is_some();
+        let shape = call_expr.map(|expr| super::cst_lambda::call_shape_of(expr, &doc.bytes));
+        // `expr_type` for a parameter/variable receiver echoes back its
+        // syntactic type annotation verbatim (see `infer_ident_type` /
+        // `find_var_type`) without checking that the annotated name is an
+        // actual known type — `x: Unknown` resolves to `Some("Unknown")`
+        // even though `Unknown` is declared nowhere. Gate on
+        // `has_type_definition` so a made-up/unresolvable annotation
+        // doesn't silently masquerade as a real receiver type (house
+        // decoy: `untypeable_receiver_yields_no_receiver_type`).
+        let receiver_type =
+            navigation_receiver_node(nav).and_then(|receiver| {
                 match CstQuery::new(receiver, doc, indexer, uri).expr_type() {
                     Resolution::Resolved(t) if indexer.has_type_definition(t.as_type_str()) => {
                         Some(t.as_type_str().to_owned())
@@ -262,28 +293,31 @@ pub(crate) fn classify_symbol_at(
                     _ => None,
                 }
             });
-            return Some(SymbolAtCursor {
-                name,
-                role: SymbolRole::Reference {
-                    receiver_type,
-                    is_call,
-                },
-            });
-        }
+        return Some(SymbolAtCursor {
+            name,
+            role: SymbolRole::Reference {
+                receiver_type,
+                is_call,
+                shape,
+            },
+        });
     }
 
     // Bare reference (local var, top-level name, etc.) — no receiver, scope
     // resolution deferred (see Global Constraints). Callers fall through to
     // today's NameScan path for these.
-    let is_call = node.parent().is_some_and(|parent| {
+    let bare_call_expr = node.parent().filter(|parent| {
         parent.kind() == KIND_CALL_EXPR
             && parent.child(0).map(|child| child.id()) == Some(node.id())
     });
+    let is_call = bare_call_expr.is_some();
+    let shape = bare_call_expr.map(|expr| super::cst_lambda::call_shape_of(expr, &doc.bytes));
     Some(SymbolAtCursor {
         name,
         role: SymbolRole::Reference {
             receiver_type: None,
             is_call,
+            shape,
         },
     })
 }
@@ -327,10 +361,24 @@ pub(crate) fn resolve_identity(
         }
         SymbolRole::Reference {
             receiver_type: Some(receiver_type),
+            shape,
             ..
         } => {
-            let locations =
+            let mut locations =
                 indexer.find_definition_qualified(&symbol.name, Some(receiver_type), uri);
+            // A call's own shape rules out a same-named, wrong-arity member/
+            // extension on the same receiver type — e.g. `triggers.collect {
+            // trigger -> }` (1 arg via trailing lambda) must not resolve to a
+            // same-file `Flow.collect(scope, block)` self-declaration just
+            // because both are in scope on `Flow`. Filtering to empty here
+            // (rather than keeping the wrong-arity candidate) demotes this to
+            // `NameScan`, so `find_definition`'s later, arity-blind but
+            // receiver-aware fallback (variable-type inference + hierarchy
+            // walk, which never consults the extension-in-scope registry that
+            // caused the wrong match) gets a chance to find the real target.
+            if let Some(shape) = shape {
+                retain_call_shape_compatible(indexer, *shape, &mut locations);
+            }
             if locations.is_empty() {
                 NavigationSource::NameScan(Definitions(locations))
             } else {
@@ -345,6 +393,48 @@ pub(crate) fn resolve_identity(
             indexer.find_definition_qualified(&symbol.name, None, uri),
         )),
     }
+}
+
+/// Drop any `Location` whose own declared arity `shape` can't satisfy — each
+/// `Location` is looked up by an exact `selection_range` match against the
+/// declaring file's own symbol table (how `resolve_qualified`'s candidates
+/// are always constructed), so a location that doesn't match any symbol, or
+/// whose file isn't indexed, is kept unfiltered (fail open: never lose a
+/// candidate this can't actually verify). Vararg declarations are exempt,
+/// same reasoning as `local_symbol_satisfies_call_shape`: `param_counts`
+/// can't represent a vararg's true unbounded upper end.
+///
+/// `pub(crate)`: also used directly by `find_definition`'s and
+/// `compute_hover`'s `ctx.contextual`-based branches — `CursorContext::build`
+/// populates `contextual` for *any* qualified reference via smart-cast
+/// narrowing (`infer_receiver_type_at`), not just `it`/`this`/named lambda
+/// params, so that path needs the identical arity filter this module's own
+/// CST-resolved path does, to avoid resurrecting the same self-shadow bug.
+pub(crate) fn retain_call_shape_compatible(
+    indexer: &Indexer,
+    shape: CallShape,
+    locations: &mut Vec<Location>,
+) {
+    locations.retain(|location| {
+        let Some(fd) = indexer
+            .files
+            .get(location.uri.as_str())
+            .or_else(|| indexer.jar_files.get(location.uri.as_str()))
+        else {
+            return true;
+        };
+        let Some(symbol) = fd
+            .symbols
+            .iter()
+            .find(|s| s.selection_range == location.range)
+        else {
+            return true;
+        };
+        if symbol.params.contains("vararg ") || symbol.params.contains("vararg\t") {
+            return true;
+        }
+        shape.accepts(symbol.param_counts.0, symbol.param_counts.1)
+    });
 }
 
 /// For the local variable / lambda-parameter the cursor is on (either its
@@ -381,7 +471,7 @@ pub(crate) fn local_scope_occurrences(
         .find(|scope| declares_name_directly(*scope, &name, &doc.bytes).is_some())?;
 
     let mut occurrences: Vec<Occurrence> = Vec::new();
-    let complete = visit_unshadowed_name_matches(
+    let outcome = visit_unshadowed_name_matches(
         body,
         &name,
         0,
@@ -391,9 +481,8 @@ pub(crate) fn local_scope_occurrences(
         &mut |node, generation| occurrences.push(Occurrence { node, generation }),
         0,
     );
-    if !complete {
-        // Some occurrences were never seen; renaming the rest would corrupt
-        // the file. Fall through to the cross-file path instead.
+    if outcome == ScopeWalk::StoppedAtDepthCap {
+        // Renaming the subset we did see would corrupt the file.
         return None;
     }
 
@@ -525,9 +614,14 @@ fn is_functions_own_name(parent: Node<'_>, child: Node<'_>) -> bool {
 /// treated as opaque and not searched into. Also the shadow-check primitive:
 /// a nested scope "shadows" `name` exactly when it directly declares it.
 fn declares_name_directly<'a>(scope: Node<'a>, name: &str, bytes: &[u8]) -> Option<Node<'a>> {
-    let mut stack = vec![scope];
-    while let Some(node) = stack.pop() {
-        if is_declaration_site(node) && node.utf8_text_owned(bytes).as_deref() == Some(name) {
+    // Carry each node's parent alongside it: the walk already knows it, and
+    // re-deriving it per node via `Node::parent()` costs O(depth) each time —
+    // see [`is_declaration_site_of`].
+    let mut stack = vec![(scope, scope.parent())];
+    while let Some((node, parent)) = stack.pop() {
+        if parent.is_some_and(|parent| is_declaration_site_of(node, parent))
+            && node.utf8_text_owned(bytes).as_deref() == Some(name)
+        {
             return Some(node);
         }
         if node.id() != scope.id() && scope_boundary_at(node).is_some() {
@@ -535,10 +629,23 @@ fn declares_name_directly<'a>(scope: Node<'a>, name: &str, bytes: &[u8]) -> Opti
         }
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
-            stack.push(child);
+            stack.push((child, Some(node)));
         }
     }
     None
+}
+
+/// Whether a scope walk saw every occurrence of the name, or stopped early at
+/// [`crate::util::MAX_CST_DESCENT_DEPTH`].
+///
+/// Every other capped walker in this codebase under-reports a diagnostic when
+/// it bails, which degrades gracefully. This one feeds rename, where applying
+/// to some occurrences of a name and not others corrupts the file — so the
+/// distinction is a type the caller must match on, not a bool it can ignore.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ScopeWalk {
+    SawEveryOccurrence,
+    StoppedAtDepthCap,
 }
 
 /// Walk `statements`'s children in document order, incrementing `generation`
@@ -548,8 +655,8 @@ fn declares_name_directly<'a>(scope: Node<'a>, name: &str, bytes: &[u8]) -> Opti
 /// reference must see the FIRST `x`, since the second doesn't exist yet
 /// while its own initializer runs.
 ///
-/// Returns `false` if the walk stopped at [`crate::util::MAX_CST_DESCENT_DEPTH`],
-/// leaving `visit` incomplete — see [`visit_unshadowed_name_matches`].
+/// Stops and reports [`ScopeWalk::StoppedAtDepthCap`] the moment any nested
+/// walk does — see [`visit_unshadowed_name_matches`].
 #[must_use]
 fn visit_statements_with_generations<'a>(
     statements: Node<'a>,
@@ -559,12 +666,12 @@ fn visit_statements_with_generations<'a>(
     bytes: &[u8],
     visit: &mut impl FnMut(Node<'a>, usize),
     depth: usize,
-) -> bool {
+) -> ScopeWalk {
     let mut cursor = statements.walk();
     for statement in statements.children(&mut cursor) {
-        let complete = match declares_name_directly(statement, name, bytes) {
+        let outcome = match declares_name_directly(statement, name, bytes) {
             Some(declaration_node) => {
-                let complete = visit_unshadowed_name_matches(
+                let outcome = visit_unshadowed_name_matches(
                     statement,
                     name,
                     generation,
@@ -578,7 +685,7 @@ fn visit_statements_with_generations<'a>(
                 if !already_shadowed {
                     visit(declaration_node, generation);
                 }
-                complete
+                outcome
             }
             None => visit_unshadowed_name_matches(
                 statement,
@@ -591,11 +698,11 @@ fn visit_statements_with_generations<'a>(
                 depth + 1,
             ),
         };
-        if !complete {
-            return false;
+        if outcome == ScopeWalk::StoppedAtDepthCap {
+            return outcome;
         }
     }
-    true
+    ScopeWalk::SawEveryOccurrence
 }
 
 /// Walk `node`'s subtree, calling `visit` on every `simple_identifier`
@@ -604,11 +711,9 @@ fn visit_statements_with_generations<'a>(
 /// `exclude` suppresses one node — a declaration re-emitted separately by
 /// [`visit_statements_with_generations`] at its own new generation.
 ///
-/// Returns `false` if it stopped at [`crate::util::MAX_CST_DESCENT_DEPTH`]
-/// instead of finishing. Callers must not use a partial result: a rename that
-/// applies to some occurrences of a name and not others is worse than one that
-/// declines, so [`local_scope_occurrences`] gives up its fast path on `false`
-/// rather than returning the occurrences it did find.
+/// On [`ScopeWalk::StoppedAtDepthCap`] the occurrences collected so far are
+/// incomplete; [`local_scope_occurrences`] gives up its fast path rather than
+/// renaming the subset it did find.
 #[must_use]
 #[allow(clippy::too_many_arguments)]
 fn visit_unshadowed_name_matches<'a>(
@@ -620,10 +725,10 @@ fn visit_unshadowed_name_matches<'a>(
     bytes: &[u8],
     visit: &mut impl FnMut(Node<'a>, usize),
     depth: usize,
-) -> bool {
+) -> ScopeWalk {
     if depth >= crate::util::MAX_CST_DESCENT_DEPTH {
         crate::util::report_cst_depth_exceeded!("visit_unshadowed_name_matches", node);
-        return false;
+        return ScopeWalk::StoppedAtDepthCap;
     }
     let is_excluded = exclude.is_some_and(|excluded| excluded.id() == node.id());
     if !already_shadowed
@@ -650,7 +755,7 @@ fn visit_unshadowed_name_matches<'a>(
         let child_shadowed = already_shadowed
             || (scope_boundary_at(child).is_some()
                 && declares_name_directly(child, name, bytes).is_some());
-        if !visit_unshadowed_name_matches(
+        if visit_unshadowed_name_matches(
             child,
             name,
             generation,
@@ -659,11 +764,12 @@ fn visit_unshadowed_name_matches<'a>(
             bytes,
             visit,
             depth + 1,
-        ) {
-            return false;
+        ) == ScopeWalk::StoppedAtDepthCap
+        {
+            return ScopeWalk::StoppedAtDepthCap;
         }
     }
-    true
+    ScopeWalk::SawEveryOccurrence
 }
 
 /// Convert a tree-sitter node's byte-based position into an LSP `Location`

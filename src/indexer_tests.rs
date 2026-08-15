@@ -3401,3 +3401,91 @@ fn find_class_type_params_falls_back_to_jar_indexed_classes() {
         "an unindexed class name must return an empty Vec, not panic"
     );
 }
+
+/// A ubiquitous name collides across the whole Gradle cache: `collect` has 175
+/// JAR declarations in a real Android project, ~140 of them build tooling the
+/// application can never import. Picking the first match made the answer depend
+/// on JAR load order, which is on-demand and so varies between sessions.
+#[test]
+fn jar_callable_info_prefers_an_importable_declaration_over_build_tooling() {
+    use crate::indexer::infer::deps::InferDeps as _;
+    use crate::types::{SourceSet, SymbolEntry, Visibility};
+
+    let idx = Indexer::new();
+    let caller_uri = Url::parse("file:///app/Caller.kt").unwrap();
+
+    // Two JARs declare `collect`. Only the coroutines one is importable here;
+    // the compiler-internal one stands in for the ~140 build-tooling hits.
+    let decoy_uri = Url::parse("jar:///kotlin-compiler-embeddable.jar").unwrap();
+    let wanted_uri = Url::parse("jar:///kotlinx-coroutines-core.jar").unwrap();
+
+    for (uri, package, type_param) in [
+        (&decoy_uri, "org.jetbrains.kotlin.backend.common", "D"),
+        (&wanted_uri, "kotlinx.coroutines.flow", "T"),
+    ] {
+        let zero = Range {
+            start: Position {
+                line: 0,
+                character: 0,
+            },
+            end: Position {
+                line: 0,
+                character: 7,
+            },
+        };
+        let symbol = SymbolEntry {
+            name: "collect".into(),
+            kind: SymbolKind::FUNCTION,
+            visibility: Visibility::Public,
+            range: zero,
+            selection_range: zero,
+            detail: format!("fun <{type_param}> collect()"),
+            params: String::new(),
+            param_counts: (0, 0),
+            container: None,
+            cold: crate::types::pack_cold_fields(
+                vec![type_param.to_string()],
+                String::new(),
+                String::new(),
+                String::new(),
+            ),
+            trailing_lambda: false,
+            deprecated: false,
+        };
+        idx.jar_definitions
+            .entry("collect".into())
+            .or_default()
+            .push(Location {
+                uri: uri.clone(),
+                range: symbol.range,
+            });
+        idx.jar_files.insert(
+            uri.to_string(),
+            Arc::new(FileData {
+                symbols: vec![symbol],
+                source_set: SourceSet::Library,
+                lines: Arc::new(vec![]),
+                package: Some(package.to_string()),
+                ..Default::default()
+            }),
+        );
+    }
+
+    idx.index_content(
+        &caller_uri,
+        "package app\n\
+         import kotlinx.coroutines.flow.collect\n\
+         \n\
+         fun use() {}\n",
+    );
+
+    let info = idx
+        .find_fun_callable_info("collect", &caller_uri)
+        .expect("one of the two declarations must resolve");
+    assert_eq!(
+        info.type_params,
+        vec!["T".to_string()],
+        "the imported coroutines `collect` must win over the compiler-internal \
+         one that happens to be indexed first"
+    );
+}

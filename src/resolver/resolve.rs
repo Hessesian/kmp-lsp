@@ -23,12 +23,12 @@ use std::path::Path;
 use std::process::Command;
 use std::sync::Arc;
 
-use tower_lsp::lsp_types::{Location, Url};
+use tower_lsp::lsp_types::{Location, SymbolKind, Url};
 
-use crate::indexer::Indexer;
+use crate::indexer::{CallShape, Indexer};
 use crate::parser::parse_by_extension;
 use crate::rg::{build_rg_pattern, parse_rg_line, rg_find_definition};
-use crate::types::{CallerContext, FileData};
+use crate::types::{CallerContext, FileData, SymbolEntry};
 use crate::StrExt;
 
 use super::fd::{fd_find_and_parse, import_package_prefix};
@@ -183,7 +183,28 @@ pub(crate) fn resolve_symbol_inner(
     from_uri: &Url,
     with_hierarchy: bool,
 ) -> Vec<Location> {
-    resolve_chain(indexer, name, from_uri, ResolveIo::Full, with_hierarchy)
+    resolve_chain(
+        indexer,
+        name,
+        from_uri,
+        ResolveIo::Full,
+        with_hierarchy,
+        None,
+    )
+}
+
+/// Resolve a call's callee name, filtering same-file candidates by `shape`
+/// (see [`resolve_local`]/[`local_symbol_satisfies_call_shape`]) so an
+/// enclosing declaration that shares the callee's name but can't satisfy the
+/// call's arity doesn't shadow the real target. Used only by goto-definition's
+/// unqualified-callee path (`Indexer::find_definition_for_call`).
+pub(crate) fn resolve_callee_definition(
+    indexer: &Indexer,
+    name: &str,
+    uri: &Url,
+    shape: CallShape,
+) -> Vec<Location> {
+    resolve_chain(indexer, name, uri, ResolveIo::Full, true, Some(shape))
 }
 
 /// The single prioritised resolution chain, parameterised by IO policy.
@@ -197,12 +218,16 @@ pub(crate) fn resolve_symbol_inner(
 /// The chain order is fixed (local → local-decl → imports → swift → same-package →
 /// star → hierarchy → rg → tail); each step that is policy-gated simply no-ops when
 /// the policy forbids it, so every policy walks the same steps in the same order.
+///
+/// `shape` is forwarded to step 1 only (see [`resolve_local`]) — every existing
+/// caller passes `None`; only [`resolve_callee_definition`] passes a real shape.
 fn resolve_chain(
     indexer: &Indexer,
     name: &str,
     from_uri: &Url,
     io: ResolveIo,
     with_hierarchy: bool,
+    shape: Option<CallShape>,
 ) -> Vec<Location> {
     // Behavioural knobs derived from the policy (see the `ResolveIo` table):
     //  - `full_io`: cold-index + local-decl + swift + hierarchy + project-wide rg
@@ -224,7 +249,7 @@ fn resolve_chain(
     }
 
     // 1 ── local (indexed symbols) ────────────────────────────────────────────
-    let local = resolve_local(indexer, name, from_uri);
+    let local = resolve_local(indexer, name, from_uri, shape);
     if !local.is_empty() {
         return local;
     }
@@ -329,7 +354,18 @@ fn resolve_chain(
         ) {
             return vec![];
         }
-        return rg_find_definition(name, root.as_deref(), &source_roots, matcher.as_deref());
+        let rg_locations =
+            rg_find_definition(name, root.as_deref(), &source_roots, matcher.as_deref());
+        return match shape {
+            // `rg` is a blind text search with no arity awareness of its own — without this,
+            // a same-file, wrong-arity declaration that step 1 already ruled out can come
+            // straight back here, since `rg` re-finds it by pattern match alone.
+            Some(shape) => rg_locations
+                .into_iter()
+                .filter(|location| rg_location_satisfies_call_shape(indexer, location, name, shape))
+                .collect(),
+            None => rg_locations,
+        };
     }
 
     // Tail fallback — global definitions index (includes JAR symbols).
@@ -375,7 +411,7 @@ fn find_in_star_imports(indexer: &Indexer, name: &str, star_pkgs: &[String]) -> 
 /// Completion is triggered on every keystroke; spawning external `rg`/`fd`
 /// processes on each request would block the LSP thread and spike CPU.
 pub(crate) fn resolve_symbol_no_rg(indexer: &Indexer, name: &str, from_uri: &Url) -> Vec<Location> {
-    resolve_chain(indexer, name, from_uri, ResolveIo::NoRg, false)
+    resolve_chain(indexer, name, from_uri, ResolveIo::NoRg, false, None)
 }
 
 /// Like [`resolve_symbol_no_rg`] but without its global-defs tail fallback --
@@ -386,7 +422,7 @@ pub(crate) fn resolve_symbol_scoped_only(
     name: &str,
     from_uri: &Url,
 ) -> Vec<Location> {
-    resolve_chain(indexer, name, from_uri, ResolveIo::ScopedOnly, false)
+    resolve_chain(indexer, name, from_uri, ResolveIo::ScopedOnly, false, None)
 }
 
 /// Index-only type resolver for the diagnostics hot path.
@@ -422,7 +458,7 @@ pub(crate) fn resolve_type_index_only(
 
 /// Inner helper: resolves a simple (non-dotted) type name using the index-only chain.
 fn resolve_type_index_only_simple(indexer: &Indexer, name: &str, from_uri: &Url) -> Vec<Location> {
-    resolve_chain(indexer, name, from_uri, ResolveIo::IndexOnly, false)
+    resolve_chain(indexer, name, from_uri, ResolveIo::IndexOnly, false, None)
 }
 
 // ─── missing-import diagnostic helpers ────────────────────────────────────────
@@ -546,7 +582,7 @@ fn resolvable_via_default_import(indexer: &Indexer, name: &str) -> bool {
 /// isn't reachable here is exactly a missing-import candidate, so we must not let the
 /// global index mask it.
 pub(crate) fn resolve_in_scope_strict(indexer: &Indexer, name: &str, from_uri: &Url) -> bool {
-    if !resolve_local(indexer, name, from_uri).is_empty() {
+    if !resolve_local(indexer, name, from_uri, None).is_empty() {
         return true;
     }
     // An explicit import of `name` (`import a.b.Name` / `… as Alias`) brings the symbol
@@ -733,6 +769,135 @@ fn resolve_extension_in_scope(
     vec![]
 }
 
+/// Resolve `name(...)` as an implicit `this.name(...)` against `receiver_base`
+/// — the enclosing extension function's own declared receiver type (see
+/// `parser::enclosing_extension_receiver_at`) — tried only when nothing else
+/// resolves `name` by plain bare-name search (imports/same-package/star/
+/// hierarchy/rg have no receiver-type awareness at all, so a bare call inside
+/// an extension function's own body that targets a same-named member/
+/// extension of that receiver is invisible to every one of them).
+///
+/// Mirrors `resolve_qualified`'s member-vs-extension precedence for
+/// `TypeName.member`, but shape-filters both halves: `resolve_extension_in_scope`
+/// has no arity awareness of its own, and the enclosing declaration itself is
+/// one of its own registered "extensions in scope" (same file) — without
+/// filtering, this would just resurrect the self-shadow bug through a new path.
+pub(crate) fn resolve_implicit_receiver_callee(
+    indexer: &Indexer,
+    receiver_base: &str,
+    name: &str,
+    from_uri: &Url,
+    shape: CallShape,
+) -> Vec<Location> {
+    if let Some(loc) =
+        implicit_receiver_extension_match(indexer, receiver_base, name, from_uri, shape)
+    {
+        return vec![loc];
+    }
+    implicit_receiver_member_match(indexer, receiver_base, name, from_uri, shape)
+        .map(|loc| vec![loc])
+        .unwrap_or_default()
+}
+
+/// The extension-in-scope half of [`resolve_implicit_receiver_callee`] — same
+/// registry and in-scope check as `resolve_extension_in_scope`, plus a
+/// `shape.accepts(...)` gate on each candidate's own declared arity (vararg
+/// declarations are exempt, matching `local_symbol_satisfies_call_shape`'s
+/// same reasoning: `param_counts` can't represent a vararg's true unbounded
+/// upper end).
+fn implicit_receiver_extension_match(
+    indexer: &Indexer,
+    receiver_base: &str,
+    name: &str,
+    from_uri: &Url,
+    shape: CallShape,
+) -> Option<Location> {
+    let mut cache_backed_only = 0usize;
+    let entries =
+        crate::indexer::jar::extension_entries_for(indexer, receiver_base, &mut cache_backed_only)?;
+    let caller_file_data = indexer.files.get(from_uri.as_str());
+    let caller_file_data_ref: Option<&FileData> = caller_file_data.as_deref().map(|v| v.as_ref());
+    for entry in entries.iter() {
+        if entry.name != name {
+            continue;
+        }
+        let in_scope = crate::resolver::infer::extension_is_in_scope(
+            entry.package.as_ref(),
+            &entry.name,
+            caller_file_data_ref,
+        );
+        if !in_scope {
+            continue;
+        }
+        let Ok(uri) = Url::parse(&entry.file_uri) else {
+            continue;
+        };
+        let symbol = indexer
+            .files
+            .get(&entry.file_uri)
+            .or_else(|| indexer.jar_files.get(&entry.file_uri))
+            .and_then(|fd| {
+                fd.symbols
+                    .iter()
+                    .find(|s| {
+                        s.name == name
+                            && s.extension_receiver() == receiver_base
+                            && s.container.is_none()
+                    })
+                    .cloned()
+            });
+        let Some(symbol) = symbol else { continue };
+        let is_vararg = symbol.params.contains("vararg ") || symbol.params.contains("vararg\t");
+        if is_vararg || shape.accepts(symbol.param_counts.0, symbol.param_counts.1) {
+            return Some(Location {
+                uri,
+                range: symbol.selection_range,
+            });
+        }
+    }
+    None
+}
+
+/// The member half of [`resolve_implicit_receiver_callee`] — resolves
+/// `receiver_base` to its declaring file (import-aware, via the same
+/// `resolve_symbol` the explicit-qualifier path already uses — this is what
+/// makes a compiled-JAR-only receiver type work), then scans *every*
+/// same-named symbol declared there (not just the first, unlike
+/// `find_name_in_uri_after_line`) for one whose arity `shape` accepts.
+fn implicit_receiver_member_match(
+    indexer: &Indexer,
+    receiver_base: &str,
+    name: &str,
+    from_uri: &Url,
+    shape: CallShape,
+) -> Option<Location> {
+    for type_loc in resolve_symbol(indexer, receiver_base, None, from_uri) {
+        let Some(symbol) = indexer
+            .files
+            .get(type_loc.uri.as_str())
+            .or_else(|| indexer.jar_files.get(type_loc.uri.as_str()))
+            .and_then(|fd| {
+                fd.symbols
+                    .iter()
+                    .find(|s| {
+                        s.name == name
+                            && (s.params.contains("vararg ")
+                                || s.params.contains("vararg\t")
+                                || shape.accepts(s.param_counts.0, s.param_counts.1))
+                    })
+                    .cloned()
+            })
+        else {
+            continue;
+        };
+        return Some(Location {
+            uri: type_loc.uri,
+            range: symbol.selection_range,
+        });
+    }
+    None
+}
+
 /// Step 0 — dot-qualified access.
 ///
 /// Handles two families of chains:
@@ -913,21 +1078,91 @@ fn resolve_qualified(
 }
 
 /// Step 1 — symbols defined in the same source file.
-fn resolve_local(indexer: &Indexer, name: &str, uri: &Url) -> Vec<Location> {
+///
+/// `shape` is `Some` only when the caller knows it's resolving a call's callee
+/// (see [`resolve_callee_definition`]) — a same-file match whose arity provably
+/// can't satisfy the call is dropped, so a same-named-but-wrong-arity enclosing
+/// declaration doesn't shadow the real (often library) target. `None` preserves
+/// today's pure name-match behaviour exactly, for every other caller.
+fn resolve_local(
+    indexer: &Indexer,
+    name: &str,
+    uri: &Url,
+    shape: Option<CallShape>,
+) -> Vec<Location> {
     indexer
         .files
         .get(uri.as_str())
         .map(|f| {
             f.symbols
                 .iter()
-                .filter(|s| s.name == name)
-                .map(|s| Location {
+                .filter(|symbol| {
+                    symbol.name == name
+                        && shape
+                            .is_none_or(|shape| local_symbol_satisfies_call_shape(symbol, shape))
+                })
+                .map(|symbol| Location {
                     uri: uri.clone(),
-                    range: s.selection_range,
+                    range: symbol.selection_range,
                 })
                 .collect()
         })
         .unwrap_or_default()
+}
+
+/// Whether a same-file `symbol` could plausibly be the target of a call shaped
+/// like `shape` — used only to rule out same-named local declarations that
+/// provably cannot satisfy the call, never to rank or prefer one candidate over
+/// another (that's `resolve_chain`'s job, by falling through to the next step).
+///
+/// Three phases, in order: symbols that aren't callable at all (properties,
+/// classes, …) are never filtered — arity has no meaning for them. Vararg
+/// functions are never filtered either — `SymbolEntry::param_counts` has no
+/// vararg awareness (a vararg param always counts as exactly one), so `f(1, 2,
+/// 3)` against `fun f(vararg x: Int)` would otherwise be wrongly rejected; this
+/// mirrors the same guard `call_arg_diagnostics.rs` already uses for the same
+/// reason. Everything else is judged by whether the call's argument count
+/// falls within the candidate's `(required, total)` parameter-count range.
+fn local_symbol_satisfies_call_shape(symbol: &SymbolEntry, shape: CallShape) -> bool {
+    if !matches!(
+        symbol.kind,
+        SymbolKind::FUNCTION | SymbolKind::METHOD | SymbolKind::CONSTRUCTOR | SymbolKind::OPERATOR
+    ) {
+        return true;
+    }
+    if symbol.params.contains("vararg ") || symbol.params.contains("vararg\t") {
+        return true;
+    }
+    let (required, total) = symbol.param_counts;
+    shape.accepts(required, total)
+}
+
+/// The `rg`-step counterpart to [`local_symbol_satisfies_call_shape`]: `rg`
+/// finds `location` by blind text match, with no parsed symbol of its own, so
+/// this first has to find the `SymbolEntry` `location` actually landed on —
+/// its file must already be indexed (an `rg` hit in a file the index has never
+/// seen has no `param_counts` to check against) and must contain a `name`
+/// symbol whose range encloses the point `rg` reported. Fails open (keeps
+/// `location`) whenever either lookup comes up empty, matching this module's
+/// existing fail-open convention (see [`is_import_reachable`]) — arity-gating
+/// only fires when it can be answered with confidence, never as a guess.
+fn rg_location_satisfies_call_shape(
+    indexer: &Indexer,
+    location: &Location,
+    name: &str,
+    shape: CallShape,
+) -> bool {
+    let Some(file_data) = indexer.files.get(location.uri.as_str()) else {
+        return true;
+    };
+    let Some(symbol) = file_data
+        .symbols
+        .iter()
+        .find(|symbol| symbol.name == name && range_encloses(symbol.range, location.range))
+    else {
+        return true;
+    };
+    local_symbol_satisfies_call_shape(symbol, shape)
 }
 
 /// Package of the JAR symbol at `loc`, from the `jar_symbol_packages` side table.
