@@ -28,7 +28,7 @@ use tower_lsp::lsp_types::{Location, Url};
 use crate::indexer::{CallShape, Indexer};
 use crate::parser::parse_by_extension;
 use crate::rg::{build_rg_pattern, parse_rg_line, rg_find_definition};
-use crate::types::{CallerContext, FileData, SymbolEntry};
+use crate::types::{CallerContext, FileData};
 use crate::StrExt;
 
 use super::fd::{fd_find_and_parse, import_package_prefix};
@@ -194,7 +194,7 @@ pub(crate) fn resolve_symbol_inner(
 }
 
 /// Resolve a call's callee name, filtering same-file candidates by `shape`
-/// (see [`resolve_local`]/[`local_symbol_satisfies_call_shape`]) so an
+/// (see [`resolve_local`], built on `CallShape::accepts_symbol`) so an
 /// enclosing declaration that shares the callee's name but can't satisfy the
 /// call's arity doesn't shadow the real target. Used only by goto-definition's
 /// unqualified-callee path (`Indexer::find_definition_for_call`).
@@ -802,9 +802,11 @@ pub(crate) fn resolve_implicit_receiver_callee(
 /// The extension-in-scope half of [`resolve_implicit_receiver_callee`] — same
 /// registry and in-scope check as `resolve_extension_in_scope`, plus a
 /// `shape.accepts(...)` gate on each candidate's own declared arity (vararg
-/// declarations are exempt, matching `local_symbol_satisfies_call_shape`'s
-/// same reasoning: `param_counts` can't represent a vararg's true unbounded
-/// upper end).
+/// declarations are exempt: `param_counts` can't represent a vararg's true
+/// unbounded upper end). Deliberately not `CallShape::accepts_symbol` — that
+/// also exempts non-callable *kinds*, which would let a same-named property
+/// wrongly satisfy any shape here; this is a selection loop picking the one
+/// real candidate, not a rejection filter over an already-narrowed list.
 fn implicit_receiver_extension_match(
     indexer: &Indexer,
     receiver_base: &str,
@@ -1097,9 +1099,7 @@ fn resolve_local(
             f.symbols
                 .iter()
                 .filter(|symbol| {
-                    symbol.name == name
-                        && shape
-                            .is_none_or(|shape| local_symbol_satisfies_call_shape(symbol, shape))
+                    symbol.name == name && shape.is_none_or(|shape| shape.accepts_symbol(symbol))
                 })
                 .map(|symbol| Location {
                     uri: uri.clone(),
@@ -1110,27 +1110,15 @@ fn resolve_local(
         .unwrap_or_default()
 }
 
-/// Whether a same-file `symbol` could plausibly be the target of a call shaped
-/// like `shape` — used only to rule out same-named local declarations that
-/// provably cannot satisfy the call, never to rank or prefer one candidate over
-/// another (that's `resolve_chain`'s job, by falling through to the next step).
-///
-/// A thin wrapper over `CallShape::accepts_symbol`, kept as its own named
-/// function since callers reason about it in terms of "this local
-/// declaration" rather than the general symbol/shape pairing.
-fn local_symbol_satisfies_call_shape(symbol: &SymbolEntry, shape: CallShape) -> bool {
-    shape.accepts_symbol(symbol)
-}
-
-/// The `rg`-step counterpart to [`local_symbol_satisfies_call_shape`]: `rg`
-/// finds `location` by blind text match, with no parsed symbol of its own, so
-/// this first has to find the `SymbolEntry` `location` actually landed on —
-/// its file must already be indexed (an `rg` hit in a file the index has never
-/// seen has no `param_counts` to check against) and must contain a `name`
-/// symbol whose range encloses the point `rg` reported. Fails open (keeps
-/// `location`) whenever either lookup comes up empty, matching this module's
-/// existing fail-open convention (see [`is_import_reachable`]) — arity-gating
-/// only fires when it can be answered with confidence, never as a guess.
+/// The `rg`-step counterpart to the arity check above: `rg` finds `location`
+/// by blind text match, with no parsed symbol of its own, so this first has
+/// to find the `SymbolEntry` `location` actually landed on — its file must
+/// already be indexed (an `rg` hit in a file the index has never seen has no
+/// `param_counts` to check against) and must contain a `name` symbol whose
+/// range encloses the point `rg` reported. Fails open (keeps `location`)
+/// whenever either lookup comes up empty, matching this module's existing
+/// fail-open convention (see [`is_import_reachable`]) — arity-gating only
+/// fires when it can be answered with confidence, never as a guess.
 fn rg_location_satisfies_call_shape(
     indexer: &Indexer,
     location: &Location,
@@ -1147,7 +1135,7 @@ fn rg_location_satisfies_call_shape(
     else {
         return true;
     };
-    local_symbol_satisfies_call_shape(symbol, shape)
+    shape.accepts_symbol(symbol)
 }
 
 /// Package of the JAR symbol at `loc`, from the `jar_symbol_packages` side table.

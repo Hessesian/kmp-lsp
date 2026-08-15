@@ -203,22 +203,18 @@ pub(crate) async fn verified_references_for(
     // The query's own required arity, when knowable — used by
     // `verify_candidates` to reject a same-type, wrong-arity candidate call
     // site that `receiver_type_agreement` alone can't tell apart from the
-    // real target (the same self-shadow bug already fixed for goto-
-    // definition/hover's explicit-receiver path, surfacing here as a bogus
-    // "reference"). Cursor-on-declaration reuses the existing
-    // `declaration_param_counts` lookup.
+    // real target (the same self-shadow bug fixed for goto-definition/
+    // hover's explicit-receiver path, surfacing here as a bogus "reference").
+    // Cursor-on-declaration reuses `declaration_param_counts`.
     //
-    // Cursor-on-call-site resolves via `resolve_implicit_receiver_callee`
-    // directly rather than `resolve_identity`/`find_definition_qualified`:
-    // the latter's `resolve_qualified` tries the receiver's
-    // extension-in-scope registry first and returns as soon as it finds
-    // *any* same-named entry — for the reported bug, that's the same-file,
-    // wrong-arity self-declaration, so it returns before ever trying the
-    // real member and never gets a second chance. Filtering that single
-    // wrong candidate out post-hoc (as goto-definition/hover's
-    // `retain_call_shape_compatible` does) just leaves nothing here, with no
-    // fallback path to retry — `resolve_implicit_receiver_callee` doesn't
-    // have that early-return gap: it always shape-filters *within* both the
+    // Cursor-on-call-site resolves via `resolve_implicit_receiver_callee`,
+    // not `resolve_identity`: `resolve_identity`'s `resolve_qualified` tries
+    // the receiver's extension-in-scope registry first and returns on the
+    // first same-named entry — for the reported bug, the same-file wrong-
+    // arity self-declaration, before ever trying the real member. Filtering
+    // that post-hoc (as `shape_filter_locations` does elsewhere) just leaves
+    // nothing, with no fallback to retry. `resolve_implicit_receiver_callee`
+    // has no such early-return gap — it shape-filters within both the
     // extension and member searches, not just on their combined output.
     let query_arity = match &cursor_symbol {
         Some(symbol) => match &symbol.role {

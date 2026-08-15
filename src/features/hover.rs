@@ -83,12 +83,9 @@ fn contextual_receiver_hover<W: WorkspaceRead>(
     let receiver_type = ctx.contextual.as_ref()?;
     ctx.qualifier.as_ref()?;
     let mut locations = resolve_with_receiver_fallback(workspace, &ctx.word, receiver_type, uri);
-    // `ctx.contextual` isn't only for `it`/`this`/named lambda params —
-    // `CursorContext::build` also populates it for *any* qualified reference
-    // via smart-cast narrowing, so a plain `triggers.collect { trigger -> }`
-    // reaches here too (same reasoning as goto-definition's identical
-    // branch). Filtering to empty returns `None` here rather than the wrong
-    // candidate — `compute_hover` then falls through to
+    // Same self-shadow reasoning as goto-definition's identical branch (see
+    // `CursorContext::contextual`'s doc). Filtering to empty returns `None`
+    // rather than the wrong candidate — `compute_hover` then falls through to
     // `regular_symbol_hover`'s string-qualifier path, which never consults
     // the extension-in-scope registry that causes the wrong match.
     if let Some(indexer) = workspace.as_indexer() {

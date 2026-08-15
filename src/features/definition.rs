@@ -274,18 +274,12 @@ pub(crate) async fn find_definition(
 
     // `this.field` / `it.field` — already-resolved contextual receiver.
     //
-    // `ctx.contextual` isn't only for `it`/`this`/named lambda params —
-    // `CursorContext::build` also populates it for *any* qualified reference
-    // via smart-cast narrowing (`infer_receiver_type_at`), so a plain
-    // `triggers.collect { trigger -> }` reaches here too. A same-named,
-    // wrong-arity extension/member on that same receiver type (a same-file
-    // self-declaration registered as "in scope" on the receiver, same class
-    // of bug as the CST-resolved path above) can't be told apart from the
-    // real target by name alone — filter by the call's own shape when this
-    // is a call at all. Filtering to empty falls through (rather than
-    // returning the wrong candidate), giving the string-qualifier fallback
-    // further down — which never consults the extension-in-scope registry
-    // that causes the wrong match — a chance to find the real target.
+    // `ctx.contextual` also covers plain qualified calls like `triggers.collect
+    // { trigger -> }` (see `CursorContext::contextual`'s doc), so this needs
+    // the same self-shadow arity filter as the CST-resolved path above.
+    // Filtering to empty falls through rather than returning the wrong
+    // candidate — the string-qualifier fallback further down never consults
+    // the extension-in-scope registry that causes the wrong match.
     if ctx.qualifier.is_some() {
         if let Some(ref rt) = ctx.contextual {
             let mut locs = index.find_definition_qualified(&ctx.word, Some(&rt.qualified), uri);

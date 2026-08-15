@@ -272,16 +272,11 @@ impl SymbolEntry {
         self.selection_range.start.line
     }
 
-    /// This symbol's `(required, total)` parameter-count range, for the
-    /// purpose of checking whether a call's `CallShape` could target it —
-    /// `None` when arity filtering doesn't apply at all, either because the
-    /// symbol's `kind` isn't callable (a class, property, … — arity has no
-    /// meaning) or because it's a vararg declaration (`param_counts` can't
-    /// represent a vararg's true unbounded upper end, so a vararg symbol
-    /// must always be treated as compatible, never filtered out).
-    ///
-    /// The single source of truth for a check every arity-filtering call
-    /// site in this codebase used to reimplement independently by hand.
+    /// This symbol's `(required, total)` parameter-count range, for checking
+    /// whether a call's `CallShape` could target it. `None` when arity
+    /// filtering doesn't apply — a non-callable `kind` (arity is meaningless)
+    /// or a vararg declaration (`param_counts` can't represent its true
+    /// unbounded upper end) — meaning always treat this symbol as compatible.
     pub(crate) fn arity_for_call_shape_check(&self) -> Option<(u8, u8)> {
         if !matches!(
             self.kind,

@@ -23,9 +23,14 @@ pub(crate) struct CursorContext {
     /// The dot-qualifier to the left of the cursor (e.g. `"it"`, `"viewModel"`).
     /// `None` when cursor is on a bare name with no qualifying expression.
     pub qualifier: Option<String>,
-    /// Resolved contextual receiver — set for `it`, `this`, named lambda
-    /// parameters, and plain qualifiers narrowed by smart casts at the cursor.
-    /// Other variable or type qualifiers are left for callers to resolve via
+    /// Resolved contextual receiver — despite the name, this is set for more
+    /// than `it`/`this`/named lambda parameters: also *any* qualified
+    /// reference narrowed by smart-cast inference (`infer_receiver_type_at`),
+    /// e.g. `triggers.collect { ... }`. Callers that resolve a call through
+    /// this field therefore need the same arity-shape filtering as any other
+    /// receiver-typed call site, to avoid the self-shadow bug (see
+    /// `cst_symbol.rs::shape_filter_locations`'s callers). Other variable or
+    /// type qualifiers are left for callers to resolve via
     /// `find_definition_qualified`.
     pub contextual: Option<ReceiverType>,
     /// When `contextual` is `None` and the word appears to be a named lambda
