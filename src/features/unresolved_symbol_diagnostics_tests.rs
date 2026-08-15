@@ -253,11 +253,17 @@ fn recall_summary_counts_member_and_bare_lanes_separately() {
     assert_eq!(recall.bare_success, 1);
     assert_eq!(recall.bare_recall_pct(), 100.0);
 
-    let gaps = agg.top_gaps(10);
-    assert_eq!(gaps.len(), 1);
-    assert_eq!(gaps[0].0, "missing");
-    assert_eq!(gaps[0].1.count, 1);
-    assert_eq!(gaps[0].1.sample_location, "A.kt:2:1");
+    // The `missing` outcome above has `receiver_type: Some("Bar")`, i.e. a
+    // member-ref Gap — it must land in `top_member_gaps`, not `top_bare_gaps`.
+    let member_gaps = agg.top_member_gaps(10);
+    assert_eq!(member_gaps.len(), 1);
+    assert_eq!(member_gaps[0].0, "missing");
+    assert_eq!(member_gaps[0].1.count, 1);
+    assert_eq!(member_gaps[0].1.sample_location, "A.kt:2:1");
+    assert_eq!(recall.member_gap_total, 1);
+    assert_eq!(recall.bare_gap_total, 0);
+
+    assert!(agg.top_bare_gaps(10).is_empty());
 }
 
 #[test]
@@ -305,4 +311,93 @@ fn cache_candidate_grouping_separates_stable_from_unstable_keys() {
     assert_eq!(unstable[0].name, "shadowed");
     assert_eq!(unstable[0].count, 2);
     assert_eq!(unstable[0].distinct_locations, 2);
+}
+
+/// `CacheCandidate.location` must be the resolved target's location, not the
+/// reference site where the symbol was first seen — `sample_location`-style
+/// formatting (`"{file}:{line}:{col}"` of the *reference*) would silently
+/// pass the old assertion shape, so this pins the actual resolved-location
+/// string instead. Fixture picks a reference site (`A.kt:1:1`, from
+/// `outcome.line`/`col` both `0`) that's clearly distinct from the resolved
+/// target (`file:///t/Target.kt`, line 11) so the test fails pre-fix
+/// (would've asserted on `"A.kt:1:1"`) and passes post-fix.
+#[test]
+fn cache_candidate_location_is_the_resolved_target_not_the_reference_site() {
+    let mut agg = ResolutionAccuracyAggregator::default();
+    let target = test_location(10); // resolved target: Target.kt, line 11 (0-indexed 10)
+    agg.add(
+        "A.kt",
+        &ReferenceOutcome {
+            name: "widelyUsed".to_owned(),
+            receiver_type: Some("Bar".to_owned()),
+            line: 0,
+            col: 0,
+            outcome: ResolutionOutcome::Success {
+                tier: SuccessTier::CstResolved,
+                locations: vec![target.clone()],
+            },
+        },
+    );
+
+    let candidates = agg.cache_candidates(10);
+    assert_eq!(candidates.len(), 1);
+    let location = &candidates[0].location;
+    assert!(
+        location.contains("Target.kt") && location.contains("10"),
+        "expected the resolved target's location (Target.kt, line 10), got: {location}"
+    );
+    assert!(
+        !location.contains("A.kt"),
+        "location must not be the reference site (A.kt), got: {location}"
+    );
+}
+
+#[test]
+fn filtered_candidate_outcome_is_tracked_and_reported() {
+    let mut agg = ResolutionAccuracyAggregator::default();
+    agg.add(
+        "A.kt",
+        &ReferenceOutcome {
+            name: "ambiguousMember".to_owned(),
+            receiver_type: Some("Bar".to_owned()),
+            line: 4,
+            col: 2,
+            outcome: ResolutionOutcome::FilteredCandidate,
+        },
+    );
+
+    let recall = agg.recall();
+    assert_eq!(recall.member_total, 1);
+    assert_eq!(recall.filtered_candidate_total, 1);
+
+    let filtered = agg.top_filtered_candidates(10);
+    assert_eq!(filtered.len(), 1);
+    assert_eq!(filtered[0].0, "ambiguousMember");
+    assert_eq!(filtered[0].1.count, 1);
+    assert_eq!(filtered[0].1.sample_location, "A.kt:5:3");
+}
+
+#[test]
+fn package_header_segments_are_not_flagged_as_gaps() {
+    let idx = Indexer::new();
+    let uri = Url::parse("file:///t/Pkg.kt").unwrap();
+    // `com`/`example` are package-header path segments, not references —
+    // walking into `package_header` would classify them as bare references
+    // that never resolve, producing spurious Gaps for every file.
+    let src = "package com.example\n\
+               import kotlin.collections.List\n\
+               fun useIt(list: List<Int>) {\n\
+                   println(list)\n\
+               }\n";
+    idx.index_content(&uri, src);
+    idx.store_live_tree(&uri, src);
+
+    let doc = crate::indexer::live_tree::parse_live(src, tree_sitter_kotlin::language()).unwrap();
+    let outcomes = collect_resolution_outcomes(&idx, &uri, &doc);
+    assert!(
+        !outcomes
+            .iter()
+            .any(|o| o.name == "com" || o.name == "example"),
+        "package-header segments must not appear as classified outcomes at all, got: {outcomes:?}"
+    );
 }

@@ -9,9 +9,14 @@
 //! project you know compiles, so every flag is a false positive), there is
 //! no compiler ground truth for recall — treat this as a trend metric:
 //! compare the same corpus before/after a resolver change, not an absolute
-//! score. `Gap` names are the actionable bucket; `FilteredCandidate` is
-//! ambiguous by design (see `ResolutionOutcome`'s doc) and needs
-//! spot-checking, not blind trust.
+//! score. This also only exercises `classify_cursor`+`resolve_identity`, not
+//! the full goto-definition pipeline (no rg-grep fallback, no local-scope/
+//! parameter/lambda-param resolution) — so its numbers are a conservative
+//! floor, not what a user would see from goto-definition. Member-ref `Gap`
+//! names are the actionable bucket; bare-ref `Gap`s are mostly expected
+//! noise (locals/params this benchmark's resolver can't see, by design);
+//! `FilteredCandidate` is ambiguous by design (see `ResolutionOutcome`'s
+//! doc) and needs spot-checking, not blind trust.
 
 use std::path::Path;
 
@@ -23,26 +28,33 @@ use crate::features::unresolved_symbol_diagnostics::{
 use crate::indexer::live_tree::{lang_for_path, parse_live};
 use crate::indexer::Indexer;
 
-/// Feed one already-indexed workspace file's reference outcomes into `aggregator`.
+/// Feed one already-indexed workspace file's reference outcomes into
+/// `aggregator`. Returns whether the file's tree had a parse error — the
+/// visible proxy for "this file's identifiers may have gone through
+/// `classify_symbol_at`'s expensive speculative brace-repair path"
+/// (`lambda_doc_at` re-parses the whole file, up to `MAX_BRACE_REPAIRS`
+/// times, whenever the tree has an error and no enclosing lambda is found).
 fn scan_file(
     indexer: &Indexer,
     uri: &Url,
     source: &str,
     file_label: &str,
     aggregator: &mut ResolutionAccuracyAggregator,
-) {
+) -> bool {
     let Some(lang) = lang_for_path(uri.path()) else {
-        return;
+        return false;
     };
     let Some(doc) = parse_live(source, lang) else {
-        return;
+        return false;
     };
+    let has_parse_error = doc.tree.root_node().has_error();
     indexer.store_live_tree(uri, source);
     let outcomes = collect_resolution_outcomes(indexer, uri, &doc);
     indexer.remove_live_tree(uri);
     for outcome in &outcomes {
         aggregator.add(file_label, outcome);
     }
+    has_parse_error
 }
 
 /// Run the benchmark over every indexed workspace `.kt`/`.java` file under
@@ -83,7 +95,9 @@ pub(crate) async fn run_resolution_accuracy(root: &Path) {
 
     let mut aggregator = ResolutionAccuracyAggregator::default();
     let mut total_files = 0usize;
-    for uri_str in &uris {
+    let mut files_with_parse_errors = 0usize;
+    let total_uris = uris.len();
+    for (i, uri_str) in uris.iter().enumerate() {
         let Ok(uri) = Url::parse(uri_str) else {
             continue;
         };
@@ -99,16 +113,36 @@ pub(crate) async fn run_resolution_accuracy(root: &Path) {
             .unwrap_or(&path)
             .display()
             .to_string();
-        scan_file(&index, &uri, &source, &rel, &mut aggregator);
+        // A real corpus can take a while — print progress so a long run
+        // doesn't look silent/hung (matches `missing_import_poc`'s
+        // streaming-output convention).
+        eprintln!("[{}/{total_uris}] {rel}", i + 1);
+        if scan_file(&index, &uri, &source, &rel, &mut aggregator) {
+            files_with_parse_errors += 1;
+        }
     }
 
-    print_report(total_files, &aggregator);
+    print_report(total_files, files_with_parse_errors, &aggregator);
 }
 
-fn print_report(total_files: usize, aggregator: &ResolutionAccuracyAggregator) {
+fn print_report(
+    total_files: usize,
+    files_with_parse_errors: usize,
+    aggregator: &ResolutionAccuracyAggregator,
+) {
     let recall = aggregator.recall();
     eprintln!("\n──────── resolution-accuracy summary ────────");
-    eprintln!("files scanned          : {total_files}");
+    eprintln!(
+        "NOTE: this measures classify_cursor+resolve_identity only — not the full\n\
+         goto-definition pipeline (no rg-grep fallback, no local-scope/parameter/\n\
+         lambda-param resolution). Real user-facing resolution is higher than these\n\
+         numbers. Treat this as a floor / trend metric: compare runs on the same\n\
+         corpus over time, don't read the percentage as an absolute accuracy score."
+    );
+    eprintln!("files scanned           : {total_files}");
+    eprintln!(
+        "files with parse errors : {files_with_parse_errors} (identifiers in these may have hit the speculative brace-repair path)"
+    );
     eprintln!(
         "member refs             : {} ({} CstResolved, {:.1}% recall)",
         recall.member_total,
@@ -121,9 +155,27 @@ fn print_report(total_files: usize, aggregator: &ResolutionAccuracyAggregator) {
         recall.bare_success,
         recall.bare_recall_pct()
     );
+    eprintln!(
+        "FilteredCandidate total : {} (ambiguous — spot-check, not a plain miss)",
+        recall.filtered_candidate_total
+    );
+    eprintln!(
+        "Gap total               : {} member (actionable) + {} bare (expected — mostly locals/params)",
+        recall.member_gap_total, recall.bare_gap_total
+    );
 
-    eprintln!("\ntop Gap names (actionable — no candidate found anywhere):");
-    for (name, sample) in aggregator.top_gaps(20) {
+    eprintln!("\ntop member-ref Gap names (actionable — no candidate found anywhere):");
+    for (name, sample) in aggregator.top_member_gaps(20) {
+        eprintln!(
+            "  {:>4}  {name:<32} e.g. {}",
+            sample.count, sample.sample_location
+        );
+    }
+
+    eprintln!(
+        "\ntop bare-ref Gap names (mostly locals/params outside this benchmark's resolution surface — not actionable):"
+    );
+    for (name, sample) in aggregator.top_bare_gaps(20) {
         eprintln!(
             "  {:>4}  {name:<32} e.g. {}",
             sample.count, sample.sample_location

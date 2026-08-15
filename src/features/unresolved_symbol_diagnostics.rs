@@ -18,7 +18,7 @@ use crate::indexer::live_tree::LiveDoc;
 use crate::indexer::{
     classify_cursor, resolve_identity, Indexer, NavigationSource, SymbolAtCursor, SymbolRole,
 };
-use crate::queries::{KIND_SIMPLE_IDENT, KIND_TYPE_IDENT};
+use crate::queries::{KIND_IMPORT_HEADER, KIND_PACKAGE_HEADER, KIND_SIMPLE_IDENT, KIND_TYPE_IDENT};
 
 /// Which resolution path produced a `Success` outcome.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -69,6 +69,15 @@ pub(crate) struct ReferenceOutcome {
 fn collect_identifier_positions(node: Node, out: &mut Vec<Position>, depth: usize) {
     if depth >= crate::util::MAX_CST_DESCENT_DEPTH {
         crate::util::report_cst_depth_exceeded!("collect_identifier_positions", node);
+        return;
+    }
+    // Don't descend into import/package declarations — their segments aren't
+    // `Reference`-role identifiers (`classify_cursor` tags them
+    // `ImportSegment`/skips them), so walking in only produces bare-name
+    // lookups against `com`/`example`-style path segments that can never
+    // resolve — spurious `Gap`s that crowd out genuinely actionable names.
+    // Mirrors `missing_import_diagnostics.rs`'s own `collect_candidates` walk.
+    if matches!(node.kind(), KIND_IMPORT_HEADER | KIND_PACKAGE_HEADER) {
         return;
     }
     if matches!(node.kind(), KIND_SIMPLE_IDENT | KIND_TYPE_IDENT) {
@@ -170,6 +179,16 @@ pub(crate) struct RecallSummary {
     pub member_cst_resolved: usize,
     pub bare_total: usize,
     pub bare_success: usize,
+    /// Member refs whose receiver-typed lookup came back empty but an
+    /// untyped lookup found something elsewhere (`ResolutionOutcome::FilteredCandidate`
+    /// — only ever constructed for member refs, see `classify_reference`).
+    pub filtered_candidate_total: usize,
+    /// Member refs with no candidate found anywhere — the actionable Gap bucket.
+    pub member_gap_total: usize,
+    /// Bare refs with no candidate found anywhere — expected/mostly-noise,
+    /// since this benchmark's `resolve_identity` path has no local-scope,
+    /// parameter, or lambda-param awareness (see module doc).
+    pub bare_gap_total: usize,
 }
 
 impl RecallSummary {
@@ -200,6 +219,9 @@ pub(crate) struct CacheCandidate {
     pub name: String,
     pub receiver_type: Option<String>,
     pub count: usize,
+    /// The resolved target's location (`location_key` of the singleton
+    /// entry in `group.locations`) — where this symbol resolves *to*, not
+    /// where it was first referenced.
     pub location: String,
 }
 
@@ -217,7 +239,6 @@ pub(crate) struct UnstableHotKey {
 struct CacheGroupState {
     count: usize,
     locations: HashSet<String>,
-    sample_location: String,
 }
 
 /// `Location`'s own `uri`/`range` fields, flattened to a string key —
@@ -242,7 +263,16 @@ fn location_key(location: &Location) -> String {
 pub(crate) struct ResolutionAccuracyAggregator {
     recall: RecallSummary,
     filtered_candidate: BTreeMap<String, NamedSample>,
-    gap: BTreeMap<String, NamedSample>,
+    /// `Gap`s for member references (`x.foo()`) — the actionable bucket:
+    /// these should have resolved via a typed lookup and didn't.
+    member_gap: BTreeMap<String, NamedSample>,
+    /// `Gap`s for bare references (locals/params/unqualified calls) — mostly
+    /// expected noise, since `resolve_identity`'s bare-reference arm has no
+    /// local-scope/parameter/lambda-param awareness (that lives in
+    /// `find_definition`'s async pipeline, which this benchmark deliberately
+    /// doesn't use). Kept separate so it doesn't crowd out `member_gap`'s
+    /// genuinely actionable names.
+    bare_gap: BTreeMap<String, NamedSample>,
     cache: HashMap<(String, Option<String>), CacheGroupState>,
 }
 
@@ -268,7 +298,6 @@ impl ResolutionAccuracyAggregator {
                 let group = self.cache.entry(key).or_insert_with(|| CacheGroupState {
                     count: 0,
                     locations: HashSet::new(),
-                    sample_location: sample_location.clone(),
                 });
                 group.count += 1;
                 for location in locations {
@@ -276,7 +305,16 @@ impl ResolutionAccuracyAggregator {
                 }
             }
             ResolutionOutcome::FilteredCandidate => {
+                // Only ever constructed from `classify_reference`'s
+                // `receiver_type.is_some()` arm — a bare-reference
+                // `FilteredCandidate` would silently miscount into
+                // `member_total` below.
+                debug_assert!(
+                    outcome.receiver_type.is_some(),
+                    "FilteredCandidate outcome without a receiver_type: {outcome:?}"
+                );
                 self.recall.member_total += 1;
+                self.recall.filtered_candidate_total += 1;
                 let entry = self
                     .filtered_candidate
                     .entry(outcome.name.clone())
@@ -287,13 +325,16 @@ impl ResolutionAccuracyAggregator {
                 entry.count += 1;
             }
             ResolutionOutcome::Gap => {
-                if is_member {
+                let map = if is_member {
                     self.recall.member_total += 1;
+                    self.recall.member_gap_total += 1;
+                    &mut self.member_gap
                 } else {
                     self.recall.bare_total += 1;
-                }
-                let entry = self
-                    .gap
+                    self.recall.bare_gap_total += 1;
+                    &mut self.bare_gap
+                };
+                let entry = map
                     .entry(outcome.name.clone())
                     .or_insert_with(|| NamedSample {
                         count: 0,
@@ -313,9 +354,16 @@ impl ResolutionAccuracyAggregator {
         top_n(&self.filtered_candidate, n)
     }
 
-    /// Top `n` `Gap` names by occurrence count, ties broken by name.
-    pub(crate) fn top_gaps(&self, n: usize) -> Vec<(String, NamedSample)> {
-        top_n(&self.gap, n)
+    /// Top `n` member-reference `Gap` names by occurrence count, ties broken
+    /// by name — the actionable bucket (see `member_gap`'s doc).
+    pub(crate) fn top_member_gaps(&self, n: usize) -> Vec<(String, NamedSample)> {
+        top_n(&self.member_gap, n)
+    }
+
+    /// Top `n` bare-reference `Gap` names by occurrence count, ties broken
+    /// by name — mostly expected noise (see `bare_gap`'s doc).
+    pub(crate) fn top_bare_gaps(&self, n: usize) -> Vec<(String, NamedSample)> {
+        top_n(&self.bare_gap, n)
     }
 
     /// Top `n` cache candidates (singleton resolved location) by occurrence count.
@@ -328,7 +376,11 @@ impl ResolutionAccuracyAggregator {
                 name: name.clone(),
                 receiver_type: receiver_type.clone(),
                 count: group.count,
-                location: group.sample_location.clone(),
+                // `group.locations` is a singleton exactly when this
+                // candidate qualifies (the `filter` above) — that one entry
+                // is the actual resolved target, unlike the reference-site
+                // `sample_location` this used to (incorrectly) report.
+                location: group.locations.iter().next().cloned().unwrap_or_default(),
             })
             .collect();
         candidates.sort_by(|a, b| b.count.cmp(&a.count).then_with(|| a.name.cmp(&b.name)));
