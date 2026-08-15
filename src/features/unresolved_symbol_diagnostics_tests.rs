@@ -194,3 +194,115 @@ fn collect_resolution_outcomes_survives_a_pathologically_deep_expression() {
     let doc = crate::indexer::live_tree::parse_live(&src, tree_sitter_kotlin::language()).unwrap();
     let _ = collect_resolution_outcomes(&idx, &uri, &doc);
 }
+
+fn test_location(line: u32) -> tower_lsp::lsp_types::Location {
+    tower_lsp::lsp_types::Location {
+        uri: Url::parse("file:///t/Target.kt").unwrap(),
+        range: tower_lsp::lsp_types::Range {
+            start: Position::new(line, 0),
+            end: Position::new(line, 5),
+        },
+    }
+}
+
+#[test]
+fn recall_summary_counts_member_and_bare_lanes_separately() {
+    let mut agg = ResolutionAccuracyAggregator::default();
+    agg.add(
+        "A.kt",
+        &ReferenceOutcome {
+            name: "foo".to_owned(),
+            receiver_type: Some("Bar".to_owned()),
+            line: 0,
+            col: 0,
+            outcome: ResolutionOutcome::Success {
+                tier: SuccessTier::CstResolved,
+                locations: vec![test_location(0)],
+            },
+        },
+    );
+    agg.add(
+        "A.kt",
+        &ReferenceOutcome {
+            name: "missing".to_owned(),
+            receiver_type: Some("Bar".to_owned()),
+            line: 1,
+            col: 0,
+            outcome: ResolutionOutcome::Gap,
+        },
+    );
+    agg.add(
+        "A.kt",
+        &ReferenceOutcome {
+            name: "helper".to_owned(),
+            receiver_type: None,
+            line: 2,
+            col: 0,
+            outcome: ResolutionOutcome::Success {
+                tier: SuccessTier::NameScan,
+                locations: vec![test_location(0)],
+            },
+        },
+    );
+
+    let recall = agg.recall();
+    assert_eq!(recall.member_total, 2);
+    assert_eq!(recall.member_cst_resolved, 1);
+    assert!((recall.member_recall_pct() - 50.0).abs() < 0.01);
+    assert_eq!(recall.bare_total, 1);
+    assert_eq!(recall.bare_success, 1);
+    assert_eq!(recall.bare_recall_pct(), 100.0);
+
+    let gaps = agg.top_gaps(10);
+    assert_eq!(gaps.len(), 1);
+    assert_eq!(gaps[0].0, "missing");
+    assert_eq!(gaps[0].1.count, 1);
+    assert_eq!(gaps[0].1.sample_location, "A.kt:2");
+}
+
+#[test]
+fn cache_candidate_grouping_separates_stable_from_unstable_keys() {
+    let mut agg = ResolutionAccuracyAggregator::default();
+    let stable_loc = test_location(10);
+    for line in 0..5u32 {
+        agg.add(
+            "A.kt",
+            &ReferenceOutcome {
+                name: "widelyUsed".to_owned(),
+                receiver_type: Some("Bar".to_owned()),
+                line,
+                col: 0,
+                outcome: ResolutionOutcome::Success {
+                    tier: SuccessTier::CstResolved,
+                    locations: vec![stable_loc.clone()],
+                },
+            },
+        );
+    }
+    for (line, loc_line) in [(0u32, 1u32), (1, 2)] {
+        agg.add(
+            "B.kt",
+            &ReferenceOutcome {
+                name: "shadowed".to_owned(),
+                receiver_type: None,
+                line,
+                col: 0,
+                outcome: ResolutionOutcome::Success {
+                    tier: SuccessTier::NameScan,
+                    locations: vec![test_location(loc_line)],
+                },
+            },
+        );
+    }
+
+    let candidates = agg.cache_candidates(10);
+    assert_eq!(candidates.len(), 1);
+    assert_eq!(candidates[0].name, "widelyUsed");
+    assert_eq!(candidates[0].count, 5);
+
+    let unstable = agg.unstable_hot_keys(10);
+    assert_eq!(unstable.len(), 1);
+    assert_eq!(unstable[0].name, "shadowed");
+    assert_eq!(unstable[0].count, 2);
+    assert_eq!(unstable[0].distinct_locations, 2);
+}

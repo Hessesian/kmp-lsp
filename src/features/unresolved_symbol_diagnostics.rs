@@ -19,6 +19,8 @@
 // afterward confirms every item here is genuinely used.
 #![cfg_attr(not(test), allow(dead_code))]
 
+use std::collections::{BTreeMap, HashMap, HashSet};
+
 use tower_lsp::lsp_types::{Location, Position, Url};
 use tree_sitter::Node;
 
@@ -161,6 +163,214 @@ fn classify_reference(
         }
         None => ResolutionOutcome::Gap,
     }
+}
+
+/// One name's occurrence count plus a representative location, for the
+/// `FilteredCandidate`/`Gap` top-N reports.
+#[derive(Debug, Clone)]
+pub(crate) struct NamedSample {
+    pub count: usize,
+    pub sample_location: String,
+}
+
+/// Aggregate recall counts across a workspace scan.
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct RecallSummary {
+    pub member_total: usize,
+    pub member_cst_resolved: usize,
+    pub bare_total: usize,
+    pub bare_success: usize,
+}
+
+impl RecallSummary {
+    /// `CstResolved / total` for member refs, as a percentage. `0.0` when
+    /// there were no member refs to score (an empty corpus, not a failure).
+    pub(crate) fn member_recall_pct(&self) -> f64 {
+        percent(self.member_cst_resolved, self.member_total)
+    }
+
+    /// `Success / total` for bare refs, as a percentage.
+    pub(crate) fn bare_recall_pct(&self) -> f64 {
+        percent(self.bare_success, self.bare_total)
+    }
+}
+
+fn percent(part: usize, total: usize) -> f64 {
+    if total == 0 {
+        0.0
+    } else {
+        (part as f64 / total as f64) * 100.0
+    }
+}
+
+/// A `(name, receiver_type)` symbol resolved repeatedly to the exact same
+/// location — a candidate for a resolver-level memoization cache.
+#[derive(Debug, Clone)]
+pub(crate) struct CacheCandidate {
+    pub name: String,
+    pub receiver_type: Option<String>,
+    pub count: usize,
+    pub location: String,
+}
+
+/// A `(name, receiver_type)` symbol resolved often but to *different*
+/// locations across occurrences — not cacheable by this simple a key.
+#[derive(Debug, Clone)]
+pub(crate) struct UnstableHotKey {
+    pub name: String,
+    pub receiver_type: Option<String>,
+    pub count: usize,
+    pub distinct_locations: usize,
+}
+
+#[derive(Debug, Default)]
+struct CacheGroupState {
+    count: usize,
+    locations: HashSet<String>,
+    sample_location: String,
+}
+
+/// `Location`'s own `uri`/`range` fields, flattened to a string key —
+/// `Location` implements `Eq`/`PartialEq` but not `Hash`, so it can't sit in
+/// a `HashSet` directly.
+fn location_key(location: &Location) -> String {
+    format!(
+        "{}#{}:{}-{}:{}",
+        location.uri,
+        location.range.start.line,
+        location.range.start.character,
+        location.range.end.line,
+        location.range.end.character
+    )
+}
+
+/// Accumulates `ReferenceOutcome`s across a workspace scan, one file at a
+/// time, into a recall summary and a repeat-resolution/cache-candidate
+/// report — avoids holding every reference from a large corpus in memory
+/// simultaneously.
+#[derive(Debug, Default)]
+pub(crate) struct ResolutionAccuracyAggregator {
+    recall: RecallSummary,
+    filtered_candidate: BTreeMap<String, NamedSample>,
+    gap: BTreeMap<String, NamedSample>,
+    cache: HashMap<(String, Option<String>), CacheGroupState>,
+}
+
+impl ResolutionAccuracyAggregator {
+    /// Record one reference's outcome. `file_label` is a display-friendly
+    /// path (workspace-relative, e.g. `"src/Foo.kt"`) used only for sample
+    /// locations in the reports below.
+    pub(crate) fn add(&mut self, file_label: &str, outcome: &ReferenceOutcome) {
+        let sample_location = format!("{file_label}:{}", outcome.line + 1);
+        let is_member = outcome.receiver_type.is_some();
+        match &outcome.outcome {
+            ResolutionOutcome::Success { tier, locations } => {
+                if is_member {
+                    self.recall.member_total += 1;
+                    if *tier == SuccessTier::CstResolved {
+                        self.recall.member_cst_resolved += 1;
+                    }
+                } else {
+                    self.recall.bare_total += 1;
+                    self.recall.bare_success += 1;
+                }
+                let key = (outcome.name.clone(), outcome.receiver_type.clone());
+                let group = self.cache.entry(key).or_insert_with(|| CacheGroupState {
+                    count: 0,
+                    locations: HashSet::new(),
+                    sample_location: sample_location.clone(),
+                });
+                group.count += 1;
+                for location in locations {
+                    group.locations.insert(location_key(location));
+                }
+            }
+            ResolutionOutcome::FilteredCandidate => {
+                self.recall.member_total += 1;
+                let entry = self
+                    .filtered_candidate
+                    .entry(outcome.name.clone())
+                    .or_insert_with(|| NamedSample {
+                        count: 0,
+                        sample_location: sample_location.clone(),
+                    });
+                entry.count += 1;
+            }
+            ResolutionOutcome::Gap => {
+                if is_member {
+                    self.recall.member_total += 1;
+                } else {
+                    self.recall.bare_total += 1;
+                }
+                let entry = self
+                    .gap
+                    .entry(outcome.name.clone())
+                    .or_insert_with(|| NamedSample {
+                        count: 0,
+                        sample_location: sample_location.clone(),
+                    });
+                entry.count += 1;
+            }
+        }
+    }
+
+    pub(crate) fn recall(&self) -> RecallSummary {
+        self.recall
+    }
+
+    /// Top `n` `FilteredCandidate` names by occurrence count, ties broken by name.
+    pub(crate) fn top_filtered_candidates(&self, n: usize) -> Vec<(String, NamedSample)> {
+        top_n(&self.filtered_candidate, n)
+    }
+
+    /// Top `n` `Gap` names by occurrence count, ties broken by name.
+    pub(crate) fn top_gaps(&self, n: usize) -> Vec<(String, NamedSample)> {
+        top_n(&self.gap, n)
+    }
+
+    /// Top `n` cache candidates (singleton resolved location) by occurrence count.
+    pub(crate) fn cache_candidates(&self, n: usize) -> Vec<CacheCandidate> {
+        let mut candidates: Vec<CacheCandidate> = self
+            .cache
+            .iter()
+            .filter(|(_, group)| group.locations.len() == 1)
+            .map(|((name, receiver_type), group)| CacheCandidate {
+                name: name.clone(),
+                receiver_type: receiver_type.clone(),
+                count: group.count,
+                location: group.sample_location.clone(),
+            })
+            .collect();
+        candidates.sort_by(|a, b| b.count.cmp(&a.count).then_with(|| a.name.cmp(&b.name)));
+        candidates.truncate(n);
+        candidates
+    }
+
+    /// Top `n` high-frequency but location-unstable keys, by occurrence count.
+    pub(crate) fn unstable_hot_keys(&self, n: usize) -> Vec<UnstableHotKey> {
+        let mut hot: Vec<UnstableHotKey> = self
+            .cache
+            .iter()
+            .filter(|(_, group)| group.locations.len() > 1)
+            .map(|((name, receiver_type), group)| UnstableHotKey {
+                name: name.clone(),
+                receiver_type: receiver_type.clone(),
+                count: group.count,
+                distinct_locations: group.locations.len(),
+            })
+            .collect();
+        hot.sort_by(|a, b| b.count.cmp(&a.count).then_with(|| a.name.cmp(&b.name)));
+        hot.truncate(n);
+        hot
+    }
+}
+
+fn top_n(map: &BTreeMap<String, NamedSample>, n: usize) -> Vec<(String, NamedSample)> {
+    let mut entries: Vec<(String, NamedSample)> =
+        map.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+    entries.sort_by(|a, b| b.1.count.cmp(&a.1.count).then_with(|| a.0.cmp(&b.0)));
+    entries.truncate(n);
+    entries
 }
 
 #[cfg(test)]
