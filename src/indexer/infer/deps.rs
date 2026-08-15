@@ -92,19 +92,19 @@ pub(crate) enum ShapeFiltered<T> {
 impl<T> ShapeFiltered<T> {
     /// Partition `candidates` by `keep`: `Confirmed` with the matching subset
     /// when at least one candidate satisfies it, `RuledOut` otherwise.
-    pub(crate) fn classify(candidates: Vec<T>, keep: impl Fn(&T) -> bool) -> Self {
-        let matched: Vec<T> = candidates.into_iter().filter(|c| keep(c)).collect();
-        if matched.is_empty() {
+    pub(crate) fn classify(mut candidates: Vec<T>, keep: impl Fn(&T) -> bool) -> Self {
+        candidates.retain(|c| keep(c));
+        if candidates.is_empty() {
             ShapeFiltered::RuledOut
         } else {
-            ShapeFiltered::Confirmed(matched)
+            ShapeFiltered::Confirmed(candidates)
         }
     }
 
     /// `Confirmed`'s payload, or empty for `RuledOut`.
     pub(crate) fn resolved(self) -> Vec<T> {
         match self {
-            ShapeFiltered::Confirmed(v) => v,
+            ShapeFiltered::Confirmed(candidates) => candidates,
             ShapeFiltered::RuledOut => Vec::new(),
         }
     }
