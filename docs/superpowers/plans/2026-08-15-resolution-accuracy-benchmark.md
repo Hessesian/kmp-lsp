@@ -65,12 +65,17 @@ fn member_call_on_jar_receiver_resolves_cst_resolved() {
 
     let idx = Indexer::new();
     let uri = Url::parse("file:///t/Flow.kt").unwrap();
+    // Deliberately no same-file `collect` declaration here — that collision
+    // scenario is `same_file_shape_mismatched_self_declaration_is_filtered_candidate_not_gap`'s
+    // own job below. `resolve_qualified`'s uppercase-root branch tries
+    // `resolve_extension_in_scope` before the member/jar lookup and returns
+    // immediately on any name match there, with no arity check — so a
+    // same-file same-named extension would short-circuit before this jar
+    // member is ever reached, regardless of this test's call shape. This
+    // fixture isolates the claim this test actually makes: an unambiguous
+    // JAR-member reference resolves via `resolve_identity` alone.
     let src = "package com.example\n\
                import kotlinx.coroutines.flow.Flow\n\
-               class CoroutineScope\n\
-               fun <T : Any> Flow<T>.collect(scope: CoroutineScope, block: (T) -> Unit) {\n\
-                   collect(block)\n\
-               }\n\
                fun useTriggers(triggers: Flow<String>) {\n\
                    triggers.collect { trigger -> println(trigger) }\n\
                }\n";
@@ -135,7 +140,7 @@ fn member_call_on_jar_receiver_resolves_cst_resolved() {
 
     let doc = crate::indexer::live_tree::parse_live(src, tree_sitter_kotlin::language()).unwrap();
     let outcomes = collect_resolution_outcomes(&idx, &uri, &doc);
-    let outcome = outcome_at(&outcomes, "collect", 7);
+    let outcome = outcome_at(&outcomes, "collect", 3);
     match &outcome.outcome {
         ResolutionOutcome::Success { tier, locations } => {
             assert_eq!(*tier, SuccessTier::CstResolved);
@@ -268,6 +273,16 @@ Replace `src/features/unresolved_symbol_diagnostics.rs`'s content (keep the `mod
 //! methodology. Not wired into a live diagnostic yet; named and positioned
 //! like its `missing_import_diagnostics`/`unused_import_diagnostics`
 //! siblings so that reuse doesn't need restructuring later.
+
+// Temporary: this module's `pub(crate)` items have no consumer outside
+// `#[cfg(test)]` until Task 4 registers `cli::resolution_accuracy_poc` in
+// `cli/mod.rs`. The repo's pre-commit hook runs bare `cargo clippy -D
+// warnings` (no `--tests`), which doesn't compile `#[cfg(test)]` code, so
+// without this every commit before Task 4 fails on dead-code errors. Remove
+// this line in Task 4 once the CLI wiring makes the whole chain reachable
+// from a non-test entry point — `cargo clippy -- -D warnings` passing clean
+// afterward confirms every item here is genuinely used.
+#![cfg_attr(not(test), allow(dead_code))]
 
 use tower_lsp::lsp_types::{Location, Position, Url};
 use tree_sitter::Node;
@@ -424,6 +439,8 @@ Expected: PASS (5 tests: `member_call_on_jar_receiver_resolves_cst_resolved`,
 `collect_resolution_outcomes_survives_a_pathologically_deep_expression`).
 
 Also run the full suite to confirm nothing else broke: `cargo test --bin kmp-lsp` — expected all pass (1743 pre-existing + 5 new).
+
+Also run: `cargo clippy -- -D warnings` (no `--tests`/`--all-targets` — matches this repo's pre-commit hook exactly, `.git/hooks/pre-commit`, which does not compile `#[cfg(test)]` code). Without the `#![cfg_attr(not(test), allow(dead_code))]` line from Step 3, this fails with 6 dead-code errors (nothing outside tests consumes these items until Task 4). Expected: clean, because that line is present.
 
 - [ ] **Step 5: Commit**
 
@@ -794,7 +811,7 @@ fn top_n(map: &BTreeMap<String, NamedSample>, n: usize) -> Vec<(String, NamedSam
 Run: `cargo test --bin kmp-lsp unresolved_symbol_diagnostics -- --nocapture`
 Expected: PASS (7 tests total in this module now).
 
-Also run: `cargo clippy --all-targets -- -D warnings` — expected clean (no unused-field warnings; every field is read by at least one method already in this same commit).
+Also run: `cargo clippy -- -D warnings` (no `--tests`/`--all-targets` — matches the pre-commit hook). Expected: clean — the `#![cfg_attr(not(test), allow(dead_code))]` line from Task 1 still covers every new item here too (same file), and every field added in this task is read by at least one method already in this same commit (no *additional* dead-code risk beyond what that line already suppresses).
 
 - [ ] **Step 5: Commit**
 
@@ -1002,6 +1019,7 @@ git commit -m "feat(resolution-accuracy): add CLI workspace-walk + report printi
 - Modify: `src/cli/mod.rs`
 - Modify: `src/cli/args.rs`
 - Modify: `src/cli/run.rs`
+- Modify: `src/features/unresolved_symbol_diagnostics.rs` (remove the Task 1 temporary dead-code suppression, Step 6)
 
 **Interfaces:**
 - Consumes: `super::resolution_accuracy_poc::run_resolution_accuracy` (Task 3).
@@ -1075,18 +1093,31 @@ In `src/cli/run.rs`'s `run` function, add a match arm (after the `Subcommand::Un
         }
 ```
 
-- [ ] **Step 6: Build and run the full test suite**
+- [ ] **Step 6: Remove the temporary dead-code suppression**
+
+This step 1-5 wiring is what finally gives `src/features/unresolved_symbol_diagnostics.rs`'s items a non-test consumer
+(`cli::resolution_accuracy_poc`, now reachable from `run()`). Remove the line added in Task 1 Step 3:
+
+```rust
+#![cfg_attr(not(test), allow(dead_code))]
+```
+
+and its explanatory comment block immediately above it, from the top of `src/features/unresolved_symbol_diagnostics.rs`.
+
+- [ ] **Step 7: Build and run the full test suite**
 
 Run: `cargo build`
 Expected: builds clean, no warnings.
 
+Run: `cargo clippy -- -D warnings` (no `--tests`/`--all-targets` — matches the pre-commit hook). Expected: clean, with the suppression from Step 6 already removed — this is the confirmation that every item in `unresolved_symbol_diagnostics.rs` is now genuinely reachable from the CLI binary, not just from tests. If this fails, something in `resolution_accuracy_poc.rs` (Task 3) doesn't actually call the item clippy flags — do not restore the suppression to work around it; fix the missing call instead.
+
 Run: `cargo test --bin kmp-lsp`
 Expected: all pass (1743 pre-existing + 7 new from Tasks 1–2 = 1750).
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
-git add src/cli/mod.rs src/cli/args.rs src/cli/run.rs
+git add src/cli/mod.rs src/cli/args.rs src/cli/run.rs src/features/unresolved_symbol_diagnostics.rs
 git commit -m "feat(resolution-accuracy): wire the resolution-accuracy CLI subcommand"
 ```
 
