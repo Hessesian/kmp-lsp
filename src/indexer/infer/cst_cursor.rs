@@ -45,10 +45,8 @@ fn cst_call_info_skip(pos: Position, indexer: &Indexer, uri: &Url, skip: u32) ->
         row: line_idx,
         column: byte_col,
     };
-    let start_node = doc
-        .tree
-        .root_node()
-        .descendant_for_point_range(point, point)?;
+    let start_node =
+        crate::indexer::node_ext::descendant_for_point(doc.tree.root_node(), bytes, point)?;
 
     let mut cur = start_node;
     let mut skipped = 0u32;

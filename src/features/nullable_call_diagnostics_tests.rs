@@ -28,7 +28,7 @@ fn run_diagnostics(
     uri: &Url,
     source: &str,
 ) -> Vec<tower_lsp::lsp_types::Diagnostic> {
-    let doc = parse_live(source, tree_sitter_kotlin::language()).unwrap();
+    let doc = parse_live(source, tree_sitter_kotlin::LANGUAGE.into()).unwrap();
     nullable_dot_call_diagnostics(idx, uri, &doc)
 }
 

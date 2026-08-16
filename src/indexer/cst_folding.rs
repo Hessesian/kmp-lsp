@@ -160,7 +160,7 @@ mod depth_guard_tests {
             .spawn(move || {
                 let mut parser = Parser::new();
                 parser
-                    .set_language(&tree_sitter_kotlin::language())
+                    .set_language(&tree_sitter_kotlin::LANGUAGE.into())
                     .unwrap();
                 let tree = parser.parse(&src, None).unwrap();
                 let mut out = Vec::new();

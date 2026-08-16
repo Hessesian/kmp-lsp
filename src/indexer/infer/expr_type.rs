@@ -320,7 +320,7 @@ fn infer_range_expr_type<D: InferDeps>(
     depth: usize,
 ) -> Option<String> {
     let lhs = node.child(0)?;
-    let rhs_idx = node.child_count().checked_sub(1)?;
+    let rhs_idx = (node.child_count() as u32).checked_sub(1)?;
     let rhs = node.child(rhs_idx)?;
     let lhs_ty = infer_expr_type_at_depth(lhs, bytes, deps, uri, depth + 1)?;
     let rhs_ty = infer_expr_type_at_depth(rhs, bytes, deps, uri, depth + 1)?;

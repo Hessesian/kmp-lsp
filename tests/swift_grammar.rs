@@ -1,4 +1,4 @@
-use tree_sitter::{Parser, Query, QueryCursor};
+use tree_sitter::{Parser, Query, QueryCursor, StreamingIterator};
 
 fn parse_swift(code: &str) -> tree_sitter::Tree {
     let lang = tree_sitter_swift_bundled::language();
@@ -113,7 +113,8 @@ func topLevelFunction(param: String) -> Bool {
     let mut best: std::collections::BTreeMap<(u32, u32), (usize, String, String)> =
         std::collections::BTreeMap::new();
 
-    for m in cur.matches(&q, root, bytes) {
+    let mut match_iter = cur.matches(&q, root, bytes);
+    while let Some(m) = match_iter.next() {
         let pidx = m.pattern_index;
         let mut def_text = String::new();
         let mut name_text = String::new();
@@ -219,7 +220,8 @@ import class CoreData.NSManagedObject
     let import_q = r#"(import_declaration (identifier) @path)"#;
     let q = Query::new(&lang, import_q).unwrap();
     let mut cur = QueryCursor::new();
-    for m in cur.matches(&q, root, bytes) {
+    let mut match_iter = cur.matches(&q, root, bytes);
+    while let Some(m) = match_iter.next() {
         for cap in m.captures {
             let text = cap.node.utf8_text(bytes).unwrap_or("?");
             println!("import path: '{text}'");

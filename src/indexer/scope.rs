@@ -308,10 +308,11 @@ impl Indexer {
             .and_then(|lines| lines.get(cursor_line).cloned())
             .unwrap_or_default();
         let point = lambda_cursor_point(&line_text, cursor_line, cursor_col);
-        let node = doc
-            .tree
-            .root_node()
-            .descendant_for_point_range(point, point)?;
+        let node = crate::indexer::node_ext::descendant_for_point(
+            doc.tree.root_node(),
+            &doc.bytes,
+            point,
+        )?;
         let params = collect_cst_lambda_params(node, &doc.bytes);
         if params.is_empty() && doc.tree.root_node().has_error() {
             // A broken tree may simply have failed to FORM the enclosing
@@ -398,11 +399,11 @@ impl Indexer {
                 row,
                 column: probe_col,
             };
-            if let Some(node) = doc
-                .tree
-                .root_node()
-                .descendant_for_point_range(point, point)
-            {
+            if let Some(node) = crate::indexer::node_ext::descendant_for_point(
+                doc.tree.root_node(),
+                &doc.bytes,
+                point,
+            ) {
                 let mut cur = node;
                 loop {
                     match cur.kind() {

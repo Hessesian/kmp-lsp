@@ -3,7 +3,7 @@ use std::sync::OnceLock;
 use std::thread::LocalKey;
 
 use tower_lsp::lsp_types::{Position, Range, SymbolKind};
-use tree_sitter::{Node, Parser, Query, QueryCursor};
+use tree_sitter::{Node, Parser, Query, QueryCursor, StreamingIterator};
 
 use crate::indexer::NodeExt;
 use crate::queries::{
@@ -18,10 +18,11 @@ use crate::queries::{
     KIND_METHOD_DECL, KIND_MODIFIERS, KIND_MOD_FINAL, KIND_MOD_STATIC, KIND_NAV_EXPR,
     KIND_NULLABLE_TYPE, KIND_OBJECT_DECL, KIND_PACKAGE_DECL, KIND_PACKAGE_HEADER, KIND_PARAMETER,
     KIND_PREFIX_EXPR, KIND_PRIMARY_CTOR, KIND_PROP_DECL, KIND_PROP_DELEGATE, KIND_PROTOCOL_DECL,
-    KIND_PROTOCOL_FUNC_DECL, KIND_RECORD_DECL, KIND_SCOPED_IDENT, KIND_SECONDARY_CTOR,
-    KIND_SIMPLE_IDENT, KIND_SOURCE_FILE, KIND_STATEMENTS, KIND_SUPERCLASS, KIND_SUPER_INTERFACES,
-    KIND_TYPE_IDENT, KIND_USER_TYPE, KIND_VALUE_ARG, KIND_VALUE_ARGS, KIND_VAR_DECL,
-    KIND_VAR_DECLARATOR, KIND_WILDCARD_IMPORT, KOTLIN_DEFINITIONS, SWIFT_DEFINITIONS,
+    KIND_PROTOCOL_FUNC_DECL, KIND_RECEIVER_TYPE, KIND_RECORD_DECL, KIND_SCOPED_IDENT,
+    KIND_SECONDARY_CTOR, KIND_SIMPLE_IDENT, KIND_SOURCE_FILE, KIND_STATEMENTS, KIND_SUPERCLASS,
+    KIND_SUPER_INTERFACES, KIND_TYPE_IDENT, KIND_USER_TYPE, KIND_VALUE_ARG, KIND_VALUE_ARGS,
+    KIND_VAR_DECL, KIND_VAR_DECLARATOR, KIND_WILDCARD_IMPORT, KOTLIN_DEFINITIONS,
+    SWIFT_DEFINITIONS,
 };
 use crate::StrExt;
 
@@ -49,8 +50,8 @@ static SWIFT_DEF_QUERY_CACHE: OnceLock<Option<DefQueryCache>> = OnceLock::new();
 
 fn kotlin_def_query() -> Option<&'static DefQueryCache> {
     KOTLIN_DEF_QUERY_CACHE
-        .get_or_init(
-            || match Query::new(&tree_sitter_kotlin::language(), KOTLIN_DEFINITIONS) {
+        .get_or_init(|| {
+            match Query::new(&tree_sitter_kotlin::LANGUAGE.into(), KOTLIN_DEFINITIONS) {
                 Ok(query) => {
                     let def_idx = query.capture_index_for_name("def").unwrap_or(0);
                     let name_idx = query.capture_index_for_name("name").unwrap_or(1);
@@ -64,8 +65,8 @@ fn kotlin_def_query() -> Option<&'static DefQueryCache> {
                     log::error!("Kotlin definitions query compile error: {e}");
                     None
                 }
-            },
-        )
+            }
+        })
         .as_ref()
 }
 
@@ -101,7 +102,7 @@ fn swift_def_query() -> Option<&'static DefQueryCache> {
 thread_local! {
     static KOTLIN_PARSER: RefCell<Parser> = RefCell::new({
         let mut p = Parser::new();
-        let _ = p.set_language(&tree_sitter_kotlin::language());
+        let _ = p.set_language(&tree_sitter_kotlin::LANGUAGE.into());
         p
     });
     static SWIFT_PARSER: RefCell<Parser> = RefCell::new({
@@ -111,7 +112,7 @@ thread_local! {
     });
     static JAVA_PARSER: RefCell<Parser> = RefCell::new({
         let mut p = Parser::new();
-        let _ = p.set_language(&tree_sitter_java::language());
+        let _ = p.set_language(&tree_sitter_java::LANGUAGE.into());
         p
     });
 }
@@ -152,10 +153,11 @@ pub(crate) fn parse_kotlin(content: &str) -> FileData {
             return;
         };
         let mut cur = QueryCursor::new();
-        let matches: Vec<MatchEntry> = cur
-            .matches(&qc.query, root, bytes)
-            .map(|m| map_def_captures(&m, qc.def_idx, qc.name_idx, bytes))
-            .collect();
+        let mut match_iter = cur.matches(&qc.query, root, bytes);
+        let mut matches: Vec<MatchEntry> = Vec::new();
+        while let Some(m) = match_iter.next() {
+            matches.push(map_def_captures(m, qc.def_idx, qc.name_idx, bytes));
+        }
 
         // Deduplicate: multiple patterns can fire on the same node
         // (e.g. enum class matches both pattern 0 "enum" AND pattern 2 "class").
@@ -229,35 +231,38 @@ pub(crate) fn parse_swift(content: &str) -> FileData {
         let def_idx = qc.def_idx;
         let name_idx = qc.name_idx;
         let mut cur = QueryCursor::new();
-        let matches: Vec<MatchEntry> = cur
-            .matches(&qc.query, root, bytes)
-            .map(|m| {
-                let (pidx, slot) = map_def_captures(&m, def_idx, name_idx, bytes);
-                if pidx == queries::SWIFT_INIT_PATTERN_IDX && slot[0].is_none() {
-                    // init_declaration — no @name, synthesize "init"; type_params from @def node.
-                    let def_cap = m.captures.iter().find(|cap| cap.index == def_idx);
-                    if let Some(cap) = def_cap {
-                        let dr = ts_to_lsp(cap.node.range());
-                        let sel = Range::new(
-                            Position::new(dr.start.line, dr.start.character),
-                            Position::new(
-                                dr.start.line,
-                                dr.start.character + queries::SWIFT_INIT_NAME.len() as u32,
-                            ),
-                        );
-                        let type_params = cap.node.extract_type_params(bytes);
-                        return (
-                            pidx,
-                            [
-                                Some((queries::SWIFT_INIT_NAME.to_owned(), dr, sel, type_params)),
-                                None,
-                            ],
-                        );
-                    }
+        let mut match_iter = cur.matches(&qc.query, root, bytes);
+        let mut matches: Vec<MatchEntry> = Vec::new();
+        while let Some(m) = match_iter.next() {
+            let (pidx, slot) = map_def_captures(m, def_idx, name_idx, bytes);
+            let entry = if pidx == queries::SWIFT_INIT_PATTERN_IDX && slot[0].is_none() {
+                // init_declaration — no @name, synthesize "init"; type_params from @def node.
+                let def_cap = m.captures.iter().find(|cap| cap.index == def_idx);
+                if let Some(cap) = def_cap {
+                    let dr = ts_to_lsp(cap.node.range());
+                    let sel = Range::new(
+                        Position::new(dr.start.line, dr.start.character),
+                        Position::new(
+                            dr.start.line,
+                            dr.start.character + queries::SWIFT_INIT_NAME.len() as u32,
+                        ),
+                    );
+                    let type_params = cap.node.extract_type_params(bytes);
+                    (
+                        pidx,
+                        [
+                            Some((queries::SWIFT_INIT_NAME.to_owned(), dr, sel, type_params)),
+                            None,
+                        ],
+                    )
+                } else {
+                    (pidx, slot)
                 }
+            } else {
                 (pidx, slot)
-            })
-            .collect();
+            };
+            matches.push(entry);
+        }
 
         // Deduplicate: use same BTreeMap strategy as Kotlin parser.
         let best = dedup_matches(&matches);
@@ -477,7 +482,7 @@ fn primary_ctor_class_params(root: Node, bytes: &[u8], cls: &SymbolEntry) -> Vec
         row: cls.selection_range.start.line as usize,
         column: cls.selection_range.start.character as usize,
     };
-    let Some(name_node) = root.descendant_for_point_range(start, start) else {
+    let Some(name_node) = crate::indexer::node_ext::descendant_for_point(root, bytes, start) else {
         return vec![];
     };
     // Walk up to the enclosing class_declaration.
@@ -548,7 +553,7 @@ fn synthesize_swift_implicit_init(root: Node, bytes: &[u8], symbols: &mut Vec<Sy
     let types: Vec<SymbolEntry> = symbols
         .iter()
         .filter(|s| matches!(s.kind, SymbolKind::STRUCT | SymbolKind::CLASS))
-        .filter(|s| !swift_class_decl_is_extension(root, &s.range))
+        .filter(|s| !swift_class_decl_is_extension(root, bytes, &s.range))
         .cloned()
         .collect();
 
@@ -616,12 +621,13 @@ fn range_contains_lines(outer: &Range, inner: &Range) -> bool {
 /// starting at `range` is actually an `extension` — the Swift grammar
 /// reuses the same `class_declaration` node kind for all four, distinguished
 /// only by an anonymous keyword child (see `SWIFT_DEFINITIONS`).
-fn swift_class_decl_is_extension(root: Node, range: &Range) -> bool {
+fn swift_class_decl_is_extension(root: Node, bytes: &[u8], range: &Range) -> bool {
     let start_point = tree_sitter::Point {
         row: range.start.line as usize,
         column: range.start.character as usize,
     };
-    let Some(node) = root.descendant_for_point_range(start_point, start_point) else {
+    let Some(node) = crate::indexer::node_ext::descendant_for_point(root, bytes, start_point)
+    else {
         return false;
     };
     let decl = find_ancestor_decl(node);
@@ -655,7 +661,7 @@ fn swift_stored_property_signature(
         row: range.start.line as usize,
         column: range.start.character as usize,
     };
-    let node = root.descendant_for_point_range(start_point, start_point)?;
+    let node = crate::indexer::node_ext::descendant_for_point(root, bytes, start_point)?;
     let decl = find_ancestor_decl(node);
     if decl.kind() != KIND_PROP_DECL {
         return None;
@@ -1492,7 +1498,8 @@ fn extract_extension_receiver_from_cst(
         row: range.start.line as usize,
         column: range.start.character as usize,
     };
-    let Some(node) = root.descendant_for_point_range(start_point, start_point) else {
+    let Some(node) = crate::indexer::node_ext::descendant_for_point(root, bytes, start_point)
+    else {
         return empty;
     };
     let decl = find_ancestor_decl(node);
@@ -1502,17 +1509,22 @@ fn extract_extension_receiver_from_cst(
 
     let mut cursor = decl.walk();
     for child in decl.children(&mut cursor) {
-        if child.kind() != KIND_USER_TYPE {
+        if child.kind() != KIND_RECEIVER_TYPE {
             continue;
         }
-        let Some(next) = child.next_sibling() else {
+        // `receiver_type` wraps `user_type` directly for a plain or
+        // qualified receiver (`Foo`, `Foo.Bar` — the dot is internal to the
+        // one `user_type` node), or wraps `nullable_type (user_type ...)`
+        // for a nullable receiver (`Foo?`).
+        let Some(user_type) = child.first_child_of_kind(KIND_USER_TYPE).or_else(|| {
+            child
+                .first_child_of_kind(KIND_NULLABLE_TYPE)?
+                .first_child_of_kind(KIND_USER_TYPE)
+        }) else {
             continue;
         };
-        if next.kind() != "." {
-            continue;
-        }
 
-        let full = child
+        let full = user_type
             .utf8_text(bytes)
             .unwrap_or("")
             .lines()
@@ -1568,7 +1580,8 @@ fn extract_params_and_counts(root: Node, bytes: &[u8], range: &Range) -> (String
         row: range.start.line as usize,
         column: range.start.character as usize,
     };
-    let Some(node) = root.descendant_for_point_range(start_point, start_point) else {
+    let Some(node) = crate::indexer::node_ext::descendant_for_point(root, bytes, start_point)
+    else {
         return (String::new(), (0, 0));
     };
     let decl = find_ancestor_decl(node);
@@ -1621,12 +1634,13 @@ fn params_container_node(decl: Node) -> Option<Node> {
 
 /// Returns `true` when the last value parameter of the function at `range` has a function
 /// type, indicating the function supports trailing-lambda call syntax (`foo { }`).
-fn last_value_param_is_function_type(root: Node, _bytes: &[u8], range: &Range) -> bool {
+fn last_value_param_is_function_type(root: Node, bytes: &[u8], range: &Range) -> bool {
     let start_point = tree_sitter::Point {
         row: range.start.line as usize,
         column: range.start.character as usize,
     };
-    let Some(node) = root.descendant_for_point_range(start_point, start_point) else {
+    let Some(node) = crate::indexer::node_ext::descendant_for_point(root, bytes, start_point)
+    else {
         return false;
     };
     let decl = find_ancestor_decl(node);
@@ -1783,7 +1797,7 @@ pub(crate) fn extract_detail_from_node(
     lines: &[String],
 ) -> String {
     // Find the body child — `function_body` or `class_body` — and take text before it.
-    let body_start = (0..node.child_count())
+    let body_start = (0..node.child_count() as u32)
         .filter_map(|i| node.child(i))
         .find(|c| c.kind() == KIND_FUN_BODY || c.kind() == KIND_CLASS_BODY)
         .map(|body| body.start_byte());
@@ -2304,7 +2318,7 @@ fn call_expr_receiver_method(call: Node, bytes: &[u8]) -> Option<(String, String
         return None;
     }
     let receiver_node = callee.named_child(0)?;
-    let suffix_node = callee.named_child(named_count - 1)?;
+    let suffix_node = callee.named_child(named_count as u32 - 1)?;
 
     // Reject multi-level chaining (e.g. `a.b.method()`)
     if receiver_node.kind() == KIND_NAV_EXPR {
@@ -2334,7 +2348,7 @@ fn nav_expr_receiver_field(nav: Node, bytes: &[u8]) -> Option<(String, String)> 
         return None;
     }
     let receiver_node = nav.named_child(0)?;
-    let suffix_node = nav.named_child(named_count - 1)?;
+    let suffix_node = nav.named_child(named_count as u32 - 1)?;
     // Reject multi-level chaining (e.g. `a.b.field`)
     if receiver_node.kind() == KIND_NAV_EXPR {
         return None;
@@ -2722,7 +2736,7 @@ impl crate::types::FileData {
         let kind = if node
             .first_child_of_kind(KIND_MODIFIERS)
             .is_some_and(|mods| {
-                let found_kinds: Vec<&str> = (0..mods.child_count())
+                let found_kinds: Vec<&str> = (0..mods.child_count() as u32)
                     .filter_map(|i| mods.child(i))
                     .map(|c| c.kind())
                     .collect();

@@ -931,7 +931,7 @@ fn find_insert_position(
     if child_count == 0 {
         return None;
     }
-    let last_child = when_node.child(child_count - 1)?;
+    let last_child = when_node.child(child_count as u32 - 1)?;
     if last_child.kind() != KIND_RBRACE {
         return None;
     }

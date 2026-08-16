@@ -32,7 +32,7 @@ fn run_diagnostics(
     uri: &Url,
     source: &str,
 ) -> Vec<tower_lsp::lsp_types::Diagnostic> {
-    let doc = parse_live(source, tree_sitter_kotlin::language()).unwrap();
+    let doc = parse_live(source, tree_sitter_kotlin::LANGUAGE.into()).unwrap();
     missing_import_diagnostics(idx, uri, &doc)
 }
 

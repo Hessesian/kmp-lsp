@@ -29,7 +29,7 @@ fn run_diagnostics(
     uri: &Url,
     source: &str,
 ) -> Vec<tower_lsp::lsp_types::Diagnostic> {
-    let doc = parse_live(source, tree_sitter_kotlin::language()).unwrap();
+    let doc = parse_live(source, tree_sitter_kotlin::LANGUAGE.into()).unwrap();
     call_arg_diagnostics(idx, uri, &doc)
 }
 
@@ -652,8 +652,9 @@ fn same_file_diagnostic_with_live_lines_cycle() {
                                                         // We still need diagnostics to fire using stale diag_indexer.files (set in step 3)
     let diags3 = if none_result.is_none() {
         // Production code: use diag_indexer.files when index_content returned None
-        let doc = crate::indexer::live_tree::parse_live(with_call, tree_sitter_kotlin::language())
-            .unwrap();
+        let doc =
+            crate::indexer::live_tree::parse_live(with_call, tree_sitter_kotlin::LANGUAGE.into())
+                .unwrap();
         call_arg_diagnostics(&idx, &u, &doc)
     } else {
         run_diagnostics(&idx, &u, with_call)
@@ -715,7 +716,7 @@ fn method_call_wrong_args_with_base_class_indexed() {
     idx.index_content(&impl_uri, impl_src);
     idx.store_live_tree(&impl_uri, impl_src);
 
-    let doc = parse_live(impl_src, tree_sitter_kotlin::language()).unwrap();
+    let doc = parse_live(impl_src, tree_sitter_kotlin::LANGUAGE.into()).unwrap();
     let diags = call_arg_diagnostics(&idx, &impl_uri, &doc);
     assert!(
         !diags.is_empty(),
@@ -754,7 +755,7 @@ fn method_call_same_file_wins_over_workspace_overloads() {
     );
     let u = uri("/MyClass.kt");
     idx.index_content(&u, src);
-    let doc = parse_live(src, tree_sitter_kotlin::language()).unwrap();
+    let doc = parse_live(src, tree_sitter_kotlin::LANGUAGE.into()).unwrap();
     let diags = call_arg_diagnostics(&idx, &u, &doc);
     assert!(
         !diags.is_empty(),
@@ -1209,7 +1210,7 @@ fn jar_multi_overload_call_is_not_diagnosed() {
     );
     let u = uri("/Screen.kt");
     idx.index_content(&u, src);
-    let doc = parse_live(src, tree_sitter_kotlin::language()).unwrap();
+    let doc = parse_live(src, tree_sitter_kotlin::LANGUAGE.into()).unwrap();
     let diags = call_arg_diagnostics(&idx, &u, &doc);
     assert!(
         diags.iter().all(|d| !d.message.contains("WindowInsets")),
@@ -1243,7 +1244,7 @@ fn jar_single_overload_with_defaults_allows_fewer_args() {
     );
     let u = uri("/Screen.kt");
     idx.index_content(&u, src);
-    let doc = parse_live(src, tree_sitter_kotlin::language()).unwrap();
+    let doc = parse_live(src, tree_sitter_kotlin::LANGUAGE.into()).unwrap();
     let diags = call_arg_diagnostics(&idx, &u, &doc);
     assert!(
         diags.iter().all(|d| !d.message.contains("pad")),
@@ -1275,7 +1276,7 @@ fn jar_call_with_too_many_args_is_still_diagnosed() {
     );
     let u = uri("/Screen.kt");
     idx.index_content(&u, src);
-    let doc = parse_live(src, tree_sitter_kotlin::language()).unwrap();
+    let doc = parse_live(src, tree_sitter_kotlin::LANGUAGE.into()).unwrap();
     let diags = call_arg_diagnostics(&idx, &u, &doc);
     assert!(
         diags
@@ -1697,7 +1698,7 @@ fn extension_self_shadow_does_not_produce_a_false_diagnostic() {
                }\n";
     let u = uri("/Flow.kt");
     idx.index_content(&u, src);
-    let doc = parse_live(src, tree_sitter_kotlin::language()).unwrap();
+    let doc = parse_live(src, tree_sitter_kotlin::LANGUAGE.into()).unwrap();
     let diags = call_arg_diagnostics(&idx, &u, &doc);
     assert!(
         diags.is_empty(),

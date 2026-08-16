@@ -7,7 +7,7 @@ use crate::queries::{
 fn parse_kotlin(src: &str) -> (tree_sitter::Tree, Vec<u8>) {
     let mut parser = tree_sitter::Parser::new();
     parser
-        .set_language(&tree_sitter_kotlin::language())
+        .set_language(&tree_sitter_kotlin::LANGUAGE.into())
         .unwrap();
     let bytes = src.as_bytes().to_vec();
     let tree = parser.parse(src, None).unwrap();
@@ -18,7 +18,7 @@ fn find_node_kind<'a>(node: tree_sitter::Node<'a>, kind: &str) -> Option<tree_si
     if node.kind() == kind {
         return Some(node);
     }
-    for i in 0..node.child_count() {
+    for i in 0..node.child_count() as u32 {
         if let Some(n) = node.child(i).and_then(|c| find_node_kind(c, kind)) {
             return Some(n);
         }
@@ -35,7 +35,7 @@ fn find_node_text<'a>(
     if node.kind() == kind && node.utf8_text(bytes).ok() == Some(text) {
         return Some(node);
     }
-    for i in 0..node.child_count() {
+    for i in 0..node.child_count() as u32 {
         if let Some(n) = node
             .child(i)
             .and_then(|c| find_node_text(c, kind, text, bytes))
@@ -72,7 +72,7 @@ fn value_arg_position_first_and_second() {
     let call = find_node_kind(tree.root_node(), KIND_CALL_EXPR).unwrap();
     let value_args_node = find_node_kind(call, KIND_VALUE_ARGS).unwrap();
     let mut args = vec![];
-    for i in 0..value_args_node.child_count() {
+    for i in 0..value_args_node.child_count() as u32 {
         if let Some(c) = value_args_node.child(i) {
             if c.kind() == KIND_VALUE_ARG {
                 args.push(c);

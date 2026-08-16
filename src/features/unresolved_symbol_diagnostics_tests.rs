@@ -96,7 +96,8 @@ fn member_call_on_jar_receiver_resolves_cst_resolved() {
             range: type_range,
         });
 
-    let doc = crate::indexer::live_tree::parse_live(src, tree_sitter_kotlin::language()).unwrap();
+    let doc =
+        crate::indexer::live_tree::parse_live(src, tree_sitter_kotlin::LANGUAGE.into()).unwrap();
     let outcomes = collect_resolution_outcomes(&indexer, &uri, &doc);
     let outcome = outcome_at(&outcomes, "collect", 3);
     match &outcome.outcome {
@@ -124,7 +125,8 @@ fn same_file_shape_mismatched_self_declaration_is_filtered_candidate_not_gap() {
     indexer.index_content(&uri, src);
     indexer.store_live_tree(&uri, src);
 
-    let doc = crate::indexer::live_tree::parse_live(src, tree_sitter_kotlin::language()).unwrap();
+    let doc =
+        crate::indexer::live_tree::parse_live(src, tree_sitter_kotlin::LANGUAGE.into()).unwrap();
     let outcomes = collect_resolution_outcomes(&indexer, &uri, &doc);
     let outcome = outcome_at(&outcomes, "collect", 6);
     assert!(
@@ -146,7 +148,8 @@ fn undeclared_member_reference_is_gap() {
     indexer.index_content(&uri, src);
     indexer.store_live_tree(&uri, src);
 
-    let doc = crate::indexer::live_tree::parse_live(src, tree_sitter_kotlin::language()).unwrap();
+    let doc =
+        crate::indexer::live_tree::parse_live(src, tree_sitter_kotlin::LANGUAGE.into()).unwrap();
     let outcomes = collect_resolution_outcomes(&indexer, &uri, &doc);
     let outcome = outcome_at(&outcomes, "totallyUndeclaredMethod", 3);
     assert!(
@@ -168,7 +171,8 @@ fn bare_call_to_top_level_function_resolves_name_scan_success() {
     indexer.index_content(&uri, src);
     indexer.store_live_tree(&uri, src);
 
-    let doc = crate::indexer::live_tree::parse_live(src, tree_sitter_kotlin::language()).unwrap();
+    let doc =
+        crate::indexer::live_tree::parse_live(src, tree_sitter_kotlin::LANGUAGE.into()).unwrap();
     let outcomes = collect_resolution_outcomes(&indexer, &uri, &doc);
     let outcome = outcome_at(&outcomes, "helper", 3);
     match &outcome.outcome {
@@ -192,7 +196,8 @@ fn collect_resolution_outcomes_survives_a_pathologically_deep_expression() {
     let uri = Url::parse("file:///t/Deep.kt").unwrap();
     indexer.index_content(&uri, &src);
     indexer.store_live_tree(&uri, &src);
-    let doc = crate::indexer::live_tree::parse_live(&src, tree_sitter_kotlin::language()).unwrap();
+    let doc =
+        crate::indexer::live_tree::parse_live(&src, tree_sitter_kotlin::LANGUAGE.into()).unwrap();
     let _ = collect_resolution_outcomes(&indexer, &uri, &doc);
 }
 
@@ -393,7 +398,8 @@ fn package_header_segments_are_not_flagged_as_gaps() {
     indexer.index_content(&uri, src);
     indexer.store_live_tree(&uri, src);
 
-    let doc = crate::indexer::live_tree::parse_live(src, tree_sitter_kotlin::language()).unwrap();
+    let doc =
+        crate::indexer::live_tree::parse_live(src, tree_sitter_kotlin::LANGUAGE.into()).unwrap();
     let outcomes = collect_resolution_outcomes(&indexer, &uri, &doc);
     assert!(
         !outcomes

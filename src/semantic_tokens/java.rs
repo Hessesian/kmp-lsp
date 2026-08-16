@@ -101,7 +101,7 @@ fn push_java_field_tokens(node: Node<'_>, src: &Source<'_>, out: &mut Vec<RawTok
     if has_java_deprecated(node, src.bytes) {
         mods |= modifier_bit(&SemanticTokenModifier::DEPRECATED);
     }
-    for index in 0..node.child_count() {
+    for index in 0..node.child_count() as u32 {
         let Some(child) = node.child(index) else {
             continue;
         };

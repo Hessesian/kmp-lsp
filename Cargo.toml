@@ -24,13 +24,20 @@ tower-lsp  = "0.20"
 tokio      = { version = "1", features = ["full"] }
 
 # Parsing
-tree-sitter      = "0.22"
-tree-sitter-java = "0.21"
-# tree-sitter-kotlin on crates.io ships its own bundled grammar.
-# Pin to the version that declared tree-sitter compat with 0.22.
-# If 0.3 fails to resolve, try: git = "https://github.com/fwcd/tree-sitter-kotlin"
-tree-sitter-kotlin = "0.3"
-tree-sitter-swift-bundled = "0.1.0"
+tree-sitter      = "0.26"
+tree-sitter-java = "0.23"
+# The canonical tree-sitter-kotlin crate has been stuck at 0.3.8 (ABI 14) on
+# crates.io since 2024-08, ~2 years behind its own upstream `fwcd/tree-sitter-kotlin`
+# main branch, with an open unanswered "please cut a release" issue. This is
+# BrokkAI's fork, tracking upstream main, published to route around the stall —
+# aliased under the same crate name so every `tree_sitter_kotlin::` path in this
+# codebase keeps working unchanged.
+tree-sitter-kotlin = { package = "brokk-tree-sitter-kotlin", version = "0.4.0" }
+# The published crate hard-pins tree-sitter = "0.22", which conflicts with
+# the core bump above (Cargo's `links` uniqueness rule) — this is our own
+# sibling repo (https://github.com/Hessesian/tree-sitter-swift), bumped to
+# 0.26 there and referenced by rev rather than vendoring its source here.
+tree-sitter-swift-bundled = { git = "https://github.com/Hessesian/tree-sitter-swift", rev = "00ddccfa09fc556f7e1120d3d3a2fd62ec86bd65" }
 
 # Concurrent index storage (no Mutex needed)
 dashmap = "5"

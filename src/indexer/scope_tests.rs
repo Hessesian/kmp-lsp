@@ -697,7 +697,7 @@ fn lambda_params_at_col_cst_excludes_it() {
 fn parse_kotlin_scope(src: &str) -> tree_sitter::Tree {
     let mut parser = tree_sitter::Parser::new();
     parser
-        .set_language(&tree_sitter_kotlin::language())
+        .set_language(&tree_sitter_kotlin::LANGUAGE.into())
         .unwrap();
     parser.parse(src, None).unwrap()
 }
@@ -706,7 +706,7 @@ fn find_node_scope<'a>(node: tree_sitter::Node<'a>, kind: &str) -> Option<tree_s
     if node.kind() == kind {
         return Some(node);
     }
-    for i in 0..node.child_count() {
+    for i in 0..node.child_count() as u32 {
         if let Some(n) = node.child(i).and_then(|c| find_node_scope(c, kind)) {
             return Some(n);
         }

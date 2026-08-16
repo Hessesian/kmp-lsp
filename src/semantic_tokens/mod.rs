@@ -118,6 +118,15 @@ impl<'a> Source<'a> {
         crate::inlay_hints::ts_byte_col_to_utf16(self.bytes, &self.line_starts, row, byte_col)
             as u32
     }
+
+    /// Row and in-line byte column for an absolute byte offset — for tokens
+    /// that don't correspond to any CST node (e.g. the `constructor` keyword,
+    /// which the ABI-15 tree-sitter-kotlin grammar no longer represents as
+    /// its own node; see `kotlin_primary_constructor_keyword_token`).
+    fn row_col_for_byte(&self, byte: usize) -> (usize, usize) {
+        let row = self.line_starts.partition_point(|&start| start <= byte) - 1;
+        (row, byte - self.line_starts[row])
+    }
 }
 
 /// Per-phase token breakdown for debug output.

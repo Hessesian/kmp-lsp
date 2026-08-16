@@ -707,7 +707,7 @@ fn it_type_indexed_inner_fn_cst_still_works() {
 fn parse_kotlin(src: &str) -> tree_sitter::Tree {
     let mut parser = tree_sitter::Parser::new();
     parser
-        .set_language(&tree_sitter_kotlin::language())
+        .set_language(&tree_sitter_kotlin::LANGUAGE.into())
         .unwrap();
     parser.parse(src, None).unwrap()
 }
@@ -716,7 +716,7 @@ fn find_node_kind<'a>(node: tree_sitter::Node<'a>, kind: &str) -> Option<tree_si
     if node.kind() == kind {
         return Some(node);
     }
-    for i in 0..node.child_count() {
+    for i in 0..node.child_count() as u32 {
         if let Some(n) = node.child(i).and_then(|c| find_node_kind(c, kind)) {
             return Some(n);
         }
@@ -738,7 +738,7 @@ fn cst_param_type(
     deps: &super::super::deps::TestDeps,
     uri: &Url,
 ) -> Option<String> {
-    let doc = crate::indexer::live_tree::parse_live(code, tree_sitter_kotlin::language())
+    let doc = crate::indexer::live_tree::parse_live(code, tree_sitter_kotlin::LANGUAGE.into())
         .expect("parse_live");
     let mut lambdas = Vec::new();
     collect_nodes_of_kind(doc.tree.root_node(), KIND_LAMBDA_LIT, &mut lambdas);
@@ -755,7 +755,7 @@ fn collect_nodes_of_kind<'a>(
     if node.kind() == kind {
         out.push(node);
     }
-    for i in 0..node.child_count() {
+    for i in 0..node.child_count() as u32 {
         if let Some(child) = node.child(i) {
             collect_nodes_of_kind(child, kind, out);
         }

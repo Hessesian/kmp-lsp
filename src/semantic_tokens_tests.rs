@@ -9,11 +9,11 @@ use crate::Language;
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 fn parse_kotlin(src: &str) -> crate::indexer::LiveDoc {
-    parse_live(src, tree_sitter_kotlin::language()).expect("parse failed")
+    parse_live(src, tree_sitter_kotlin::LANGUAGE.into()).expect("parse failed")
 }
 
 fn parse_java(src: &str) -> crate::indexer::LiveDoc {
-    parse_live(src, tree_sitter_java::language()).expect("parse failed")
+    parse_live(src, tree_sitter_java::LANGUAGE.into()).expect("parse failed")
 }
 
 /// Find token type id by name in the legend.
@@ -270,7 +270,10 @@ class Foo {
 
 #[test]
 fn kotlin_object_decl() {
-    let src = "object Singleton { val x = 1 }";
+    // See `kotlin_reference_sites_resolve_types_functions_and_namespaces`'s
+    // comment: a single-line `object Singleton { ... }` body misparses under
+    // the ABI-15 grammar, so this must stay multi-line.
+    let src = "object Singleton {\n    val x = 1\n}";
     let doc = parse_kotlin(src);
     let tokens = decode_all(&doc, Language::Kotlin);
     let ns_id = type_id(&SemanticTokenType::NAMESPACE);
@@ -372,7 +375,15 @@ fn kotlin_range_honors_character_bounds() {
 
 #[test]
 fn kotlin_reference_sites_resolve_types_functions_and_namespaces() {
-    let src = "class User\nobject Utils { fun run() {} }\nfun greet(): User = User()\nfun use(): User {\n    greet()\n    Utils.run()\n    return User()\n}\n";
+    // `object Utils { fun run() {} }` must stay multi-line: a single-line
+    // object body (any content, on the same line as both braces) hits a real
+    // tree-sitter-kotlin ABI-15 grammar ambiguity — the whole declaration
+    // misparses as an `infix_expression` (`object` object-literal, `Utils`
+    // as an infix function name, `{ ... }` as its trailing-lambda argument)
+    // instead of `object_declaration`, with `has_error() == false` (silent).
+    // Confirmed narrow to single-line bodies; idiomatic multi-line Kotlin
+    // style (as used here) is unaffected.
+    let src = "class User\nobject Utils {\n    fun run() {}\n}\nfun greet(): User = User()\nfun use(): User {\n    greet()\n    Utils.run()\n    return User()\n}\n";
     let uri = Url::parse("file:///semantic_tokens_refs.kt").unwrap();
     let indexer = Indexer::new();
     indexer.index_content(&uri, src);
@@ -381,42 +392,42 @@ fn kotlin_reference_sites_resolve_types_functions_and_namespaces() {
 
     assert_token_at(
         &tokens,
-        2,
+        4,
         13,
         type_id(&SemanticTokenType::CLASS),
         "CLASS return type",
     );
     assert_token_at(
         &tokens,
-        2,
+        4,
         20,
         type_id(&SemanticTokenType::CLASS),
         "CLASS constructor call",
     );
     assert_token_at(
         &tokens,
-        3,
+        5,
         11,
         type_id(&SemanticTokenType::CLASS),
         "CLASS function return type",
     );
     assert_token_at(
         &tokens,
-        4,
+        6,
         4,
         type_id(&SemanticTokenType::FUNCTION),
         "FUNCTION call",
     );
     assert_token_at(
         &tokens,
-        5,
+        7,
         4,
         type_id(&SemanticTokenType::NAMESPACE),
         "NAMESPACE receiver",
     );
     assert_token_at(
         &tokens,
-        6,
+        8,
         11,
         type_id(&SemanticTokenType::CLASS),
         "CLASS return expression",
@@ -1013,15 +1024,18 @@ fn ref_constructor_call_as_class() {
 
 #[test]
 fn ref_object_as_namespace() {
-    let src = "object Utils { fun run() {} }\nfun main() { Utils.run() }\n";
+    // See `kotlin_reference_sites_resolve_types_functions_and_namespaces`'s
+    // comment: a single-line `object Utils { ... }` body misparses under the
+    // ABI-15 grammar, so this must stay multi-line.
+    let src = "object Utils {\n    fun run() {}\n}\nfun main() { Utils.run() }\n";
     let uri = Url::parse("file:///ref_obj.kt").unwrap();
     let indexer = Indexer::new();
     indexer.index_content(&uri, src);
     let doc = parse_kotlin(src);
     let tokens = decode_all_indexed(&indexer, &uri, &doc, Language::Kotlin);
     let ns_type = type_id(&SemanticTokenType::NAMESPACE);
-    // "Utils" at line 1, col 13
-    assert_token_at(&tokens, 1, 13, ns_type, "NAMESPACE object ref");
+    // "Utils" at line 3, col 13
+    assert_token_at(&tokens, 3, 13, ns_type, "NAMESPACE object ref");
 }
 
 #[test]

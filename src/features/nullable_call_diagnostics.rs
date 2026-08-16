@@ -84,7 +84,7 @@ fn check_nullable_dot_call(
         return None;
     }
     let receiver_node = navigation_node.named_child(0)?;
-    let suffix_node = navigation_node.named_child(named_count - 1)?;
+    let suffix_node = navigation_node.named_child(named_count as u32 - 1)?;
 
     // The member-access operator is the suffix's first (anonymous) child:
     // "." for plain access, "?." for a safe call, "::" for a callable
@@ -222,7 +222,7 @@ fn pure_field_chain_at(
                 return None;
             }
             let receiver = node.named_child(0)?;
-            let suffix = node.named_child(named_count - 1)?;
+            let suffix = node.named_child(named_count as u32 - 1)?;
             // Only plain `.` field access — reject `?.`, `::`, and any suffix
             // whose accessed name isn't a simple identifier.
             if suffix.child(0)?.kind() != "." {

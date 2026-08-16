@@ -12,6 +12,95 @@ use crate::queries::{
 use crate::StrExt;
 use tree_sitter::Node;
 
+/// Zero-width point→node lookup. Starts from tree-sitter's own built-in
+/// `descendant_for_byte_range` (correct for Kotlin/Java, and still a valid —
+/// if sometimes too coarse — ancestor for Swift), then manually continues
+/// descending as long as a child's byte range still contains the target.
+///
+/// The vendored Swift grammar (ABI 13, external scanner) has a real
+/// regression under `tree-sitter` >=0.24: for any sibling after the first at
+/// a given nesting level, the built-in binary-search descent stops early and
+/// returns a coarse ancestor (e.g. the enclosing `class_body`) instead of
+/// continuing to the leaf token — confirmed empirically by comparing against
+/// `start_byte()`/`end_byte()` read directly off each child during an
+/// explicit `.children()` walk, which report the correct positions
+/// throughout. So the tree itself is fine; only the built-in's internal
+/// subtree-summary index (which the external scanner apparently doesn't
+/// populate correctly under the newer runtime) is broken.
+///
+/// Resuming the manual walk from the built-in's own result — rather than
+/// re-deriving the whole path from `root` with a from-scratch boundary rule —
+/// matters: at an exact boundary between adjacent siblings (end of one token
+/// = start of the next), tree-sitter's own tie-break differs from a naive
+/// first-match-in-document-order rule, and re-deriving it changed behavior
+/// for Kotlin/Java call sites that already worked. Continuing from the
+/// built-in's result is a no-op wherever the built-in already fully
+/// descended (Kotlin/Java, and Swift's own first-child cases), and only
+/// takes over where the built-in gave up early.
+///
+/// `point.column` is treated as a raw byte offset within the row, matching
+/// every existing call site's convention of assigning an LSP `character`
+/// (UTF-16 units) directly into `Point::column` with no conversion — this
+/// only reproduces that existing (ASCII-only-correct) behavior, not a new
+/// UTF-16 fix.
+///
+/// Depth-bounded (see [`crate::util::MAX_CST_DESCENT_DEPTH`]) — this walks
+/// one path root-to-target, not a subtree, so real syntax never comes close;
+/// the cap only guards against a pathological/cyclic tree.
+pub(crate) fn descendant_for_point<'a>(
+    root: Node<'a>,
+    bytes: &[u8],
+    point: tree_sitter::Point,
+) -> Option<Node<'a>> {
+    let mut offset = 0usize;
+    let mut row = 0usize;
+    while row < point.row {
+        match bytes[offset..].iter().position(|&b| b == b'\n') {
+            Some(nl) => {
+                offset += nl + 1;
+                row += 1;
+            }
+            None => {
+                offset = bytes.len();
+                break;
+            }
+        }
+    }
+    // Clamp to the target row's own end, not the whole file's — an
+    // overlong `point.column` must not overshoot into a later row's bytes.
+    let line_end = bytes[offset..]
+        .iter()
+        .position(|&b| b == b'\n')
+        .map_or(bytes.len(), |nl| offset + nl);
+    let byte = (offset + point.column).min(line_end);
+    let mut current = root.descendant_for_byte_range(byte, byte)?;
+    for _ in 0..crate::util::MAX_CST_DESCENT_DEPTH {
+        let mut cursor = current.walk();
+        let mut next = None;
+        if cursor.goto_first_child() {
+            loop {
+                let child = cursor.node();
+                // Half-open containment, matching every `start_byte()..end_byte()`
+                // slice elsewhere in this codebase — an inclusive end would pick
+                // the *preceding* sibling when `byte` sits exactly on a shared
+                // boundary between two adjacent children.
+                if byte >= child.start_byte() && byte < child.end_byte() {
+                    next = Some(child);
+                    break;
+                }
+                if !cursor.goto_next_sibling() {
+                    break;
+                }
+            }
+        }
+        match next {
+            Some(child) => current = child,
+            None => return Some(current),
+        }
+    }
+    Some(current)
+}
+
 pub(crate) trait NodeExt<'a>: Sized + Copy {
     /// Extract the node's text as an owned `String`.  Returns `None` if the bytes
     /// are not valid UTF-8 (should never happen in practice for Kotlin/Java source).
@@ -242,7 +331,7 @@ impl<'a> NodeExt<'a> for Node<'a> {
         let Some(lp) = self.first_child_of_kind(KIND_LAMBDA_PARAMS) else {
             return false;
         };
-        (0..lp.child_count())
+        (0..lp.child_count() as u32)
             .filter_map(|i| lp.child(i))
             .filter(|c| c.kind() == KIND_VAR_DECL)
             .any(|vd| {

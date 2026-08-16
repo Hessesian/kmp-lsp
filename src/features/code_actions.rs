@@ -498,10 +498,8 @@ fn expand_selection_to_call_inner(
         row: cursor_line,
         column: start_byte_col,
     };
-    let leaf = doc
-        .tree
-        .root_node()
-        .descendant_for_point_range(point, point)?;
+    let leaf =
+        crate::indexer::node_ext::descendant_for_point(doc.tree.root_node(), &doc.bytes, point)?;
 
     let call_node = call_expr_ancestor(leaf)?;
 

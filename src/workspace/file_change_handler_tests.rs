@@ -73,7 +73,7 @@ async fn retype_cycle_indexer_state_supports_diagnostics() {
         "step1: indexer.files should have uri after debounce"
     );
     let diags1 = {
-        let doc = parse_live(with_call, tree_sitter_kotlin::language()).unwrap();
+        let doc = parse_live(with_call, tree_sitter_kotlin::LANGUAGE.into()).unwrap();
         call_arg_diagnostics(&indexer, &uri, &doc)
     };
     assert!(
@@ -88,7 +88,7 @@ async fn retype_cycle_indexer_state_supports_diagnostics() {
     handler.wait_for_pending_reindex(&uri).await;
 
     let diags2 = {
-        let doc = parse_live(without_call, tree_sitter_kotlin::language()).unwrap();
+        let doc = parse_live(without_call, tree_sitter_kotlin::LANGUAGE.into()).unwrap();
         call_arg_diagnostics(&indexer, &uri, &doc)
     };
     assert!(
@@ -104,7 +104,7 @@ async fn retype_cycle_indexer_state_supports_diagnostics() {
 
     // The indexer state must support diagnostics on the retyped content.
     let diags3 = {
-        let doc = parse_live(with_call, tree_sitter_kotlin::language()).unwrap();
+        let doc = parse_live(with_call, tree_sitter_kotlin::LANGUAGE.into()).unwrap();
         call_arg_diagnostics(&indexer, &uri, &doc)
     };
     assert!(

@@ -9,14 +9,14 @@ fn test_url(path: &str) -> Url {
 }
 
 fn live_doc_for(src: &str) -> crate::indexer::live_tree::LiveDoc {
-    crate::indexer::live_tree::parse_live(src, tree_sitter_kotlin::language())
+    crate::indexer::live_tree::parse_live(src, tree_sitter_kotlin::LANGUAGE.into())
         .expect("kotlin parse")
 }
 
 fn first_expr_in_fun(tree: &tree_sitter::Tree) -> Option<tree_sitter::Node<'_>> {
     let root = tree.root_node();
     let fun_decl = root.child(0)?;
-    let body = (0..fun_decl.child_count())
+    let body = (0..fun_decl.child_count() as u32)
         .map(|i| fun_decl.child(i).unwrap())
         .find(|n| n.kind() == KIND_FUN_BODY)?;
     body.child(1)
@@ -106,7 +106,7 @@ fn find_first_node_of_kind<'a>(
     if node.kind() == kind {
         return Some(node);
     }
-    for i in 0..node.child_count() {
+    for i in 0..node.child_count() as u32 {
         if let Some(found) = find_first_node_of_kind(node.child(i)?, kind) {
             return Some(found);
         }
