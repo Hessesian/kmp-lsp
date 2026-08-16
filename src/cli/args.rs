@@ -76,6 +76,10 @@ pub(crate) enum Subcommand {
     UnusedImports {
         root: Option<PathBuf>,
     },
+    /// POC: report resolution-accuracy recall + cache-candidate signals across the workspace.
+    ResolutionAccuracy {
+        root: Option<PathBuf>,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -322,6 +326,9 @@ fn build_subcommand(subcommand: &str, parsed: ParsedCliFlags) -> Result<Subcomma
         "unused-imports" => Ok(Subcommand::UnusedImports {
             root: positionals.first().map(PathBuf::from),
         }),
+        "resolution-accuracy" => Ok(Subcommand::ResolutionAccuracy {
+            root: positionals.first().map(PathBuf::from),
+        }),
         _ => unreachable!(),
     }
 }
@@ -453,6 +460,7 @@ fn is_subcommand(value: &str) -> bool {
             | "check"
             | "missing-imports"
             | "unused-imports"
+            | "resolution-accuracy"
     )
 }
 

@@ -57,8 +57,13 @@ jobs:
 
       - name: Install runtime tools (Linux)
         if: runner.os == 'Linux'
+        # azure.archive.ubuntu.com (the runner's default mirror) has hung
+        # apt-get update indefinitely before, silently eating the full
+        # 6h job timeout instead of failing — bound both apt's own
+        # retry/timeout and the step itself so a flaky mirror fails fast.
+        timeout-minutes: 5
         run: |
-          sudo apt-get update
+          sudo apt-get update -o Acquire::Retries=3 -o Acquire::http::Timeout=15 -o Acquire::https::Timeout=15
           sudo apt-get install -y ripgrep fd-find
           sudo ln -sf "$(command -v fdfind)" /usr/local/bin/fd
 

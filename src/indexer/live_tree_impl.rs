@@ -19,6 +19,10 @@ impl Indexer {
                 self.live_trees.remove(uri.as_str());
             }
         }
+        // The new content invalidates any memoized brace-repair candidates —
+        // they're derived from the old bytes and would silently answer every
+        // repair attempt against stale text otherwise.
+        self.repair_candidates.remove(uri.as_str());
     }
 
     /// Return the `LiveDoc` for `uri`, or `None` if the file is not open.
@@ -65,5 +69,6 @@ impl Indexer {
     /// Remove the live parse tree for `uri` (called on `textDocument/didClose`).
     pub(crate) fn remove_live_tree(&self, uri: &Url) {
         self.live_trees.remove(uri.as_str());
+        self.repair_candidates.remove(uri.as_str());
     }
 }

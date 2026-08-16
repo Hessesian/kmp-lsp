@@ -444,6 +444,10 @@ pub(crate) async fn run(args: CliArgs) {
             let root = resolve_root(root.as_deref().or(args.root.as_deref()));
             super::unused_import_poc::run_unused_imports(&root).await;
         }
+        Subcommand::ResolutionAccuracy { root } => {
+            let root = resolve_root(root.as_deref().or(args.root.as_deref()));
+            super::resolution_accuracy_poc::run_resolution_accuracy(&root).await;
+        }
     }
 }
 

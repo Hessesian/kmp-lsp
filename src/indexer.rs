@@ -295,6 +295,13 @@ pub(crate) struct Indexer {
     /// Updated synchronously on every `did_open` / `did_change`; removed on `did_close`.
     /// Not cleared on `reset_index_state` — open-file trees survive workspace reindex.
     pub(crate) live_trees: DashMap<String, Arc<LiveDoc>>,
+    /// URI string → memoized append-only brace-repair candidate trees (see
+    /// `indexer::infer::speculative`'s `repair_candidates_for`). Content-derived,
+    /// not cursor-derived — the same up-to-`MAX_BRACE_REPAIRS` re-parses answer
+    /// every identifier's repair attempt within one file, so this avoids
+    /// rebuilding them per call. Cleared alongside `live_trees` in
+    /// `store_live_tree`/`remove_live_tree` whenever it could go stale.
+    pub(crate) repair_candidates: DashMap<String, Arc<Vec<LiveDoc>>>,
     /// Per-session cache for function signature lookups.
     /// Key: (fn_name, uri_string) → cached params text.
     /// Cleared on reindex to avoid stale results.
@@ -737,6 +744,7 @@ impl Indexer {
             extracted_jar_sources: DashMap::new(),
             importable_fqns: std::sync::RwLock::new(std::collections::HashMap::new()),
             live_trees: DashMap::new(),
+            repair_candidates: DashMap::new(),
             sig_cache: DashMap::new(),
             sig_fast_cache: DashMap::new(),
             enrichment: std::sync::RwLock::new(EnrichmentHandle::noop()),

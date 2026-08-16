@@ -29,6 +29,7 @@ pub(crate) mod extract_sources;
 mod hover;
 mod missing_import_poc;
 mod output;
+mod resolution_accuracy_poc;
 mod run;
 mod sources;
 mod tokens;
