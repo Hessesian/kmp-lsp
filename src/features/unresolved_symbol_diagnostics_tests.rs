@@ -20,7 +20,7 @@ fn member_call_on_jar_receiver_resolves_cst_resolved() {
     use crate::types::{FileData, SourceSet, SymbolEntry, Visibility};
     use std::sync::Arc;
 
-    let idx = Indexer::new();
+    let indexer = Indexer::new();
     let uri = Url::parse("file:///t/Flow.kt").unwrap();
     // Deliberately no same-file `collect` declaration here — that collision
     // scenario is `same_file_shape_mismatched_self_declaration_is_filtered_candidate_not_gap`'s
@@ -36,8 +36,8 @@ fn member_call_on_jar_receiver_resolves_cst_resolved() {
                fun useTriggers(triggers: Flow<String>) {\n\
                    triggers.collect { trigger -> println(trigger) }\n\
                }\n";
-    idx.index_content(&uri, src);
-    idx.store_live_tree(&uri, src);
+    indexer.index_content(&uri, src);
+    indexer.store_live_tree(&uri, src);
 
     let jar_uri_str = "jar:file:///fake-coroutines.jar!/Flow.kt".to_string();
     let jar_uri = Url::parse(&jar_uri_str).unwrap();
@@ -77,7 +77,7 @@ fn member_call_on_jar_receiver_resolves_cst_resolved() {
         trailing_lambda: false,
         deprecated: false,
     };
-    idx.jar_files.insert(
+    indexer.jar_files.insert(
         jar_uri_str.clone(),
         Arc::new(FileData {
             symbols: vec![flow_type, member],
@@ -87,7 +87,8 @@ fn member_call_on_jar_receiver_resolves_cst_resolved() {
             ..Default::default()
         }),
     );
-    idx.jar_definitions
+    indexer
+        .jar_definitions
         .entry("Flow".to_owned())
         .or_default()
         .push(tower_lsp::lsp_types::Location {
@@ -96,7 +97,7 @@ fn member_call_on_jar_receiver_resolves_cst_resolved() {
         });
 
     let doc = crate::indexer::live_tree::parse_live(src, tree_sitter_kotlin::language()).unwrap();
-    let outcomes = collect_resolution_outcomes(&idx, &uri, &doc);
+    let outcomes = collect_resolution_outcomes(&indexer, &uri, &doc);
     let outcome = outcome_at(&outcomes, "collect", 3);
     match &outcome.outcome {
         ResolutionOutcome::Success { tier, locations } => {
@@ -110,7 +111,7 @@ fn member_call_on_jar_receiver_resolves_cst_resolved() {
 
 #[test]
 fn same_file_shape_mismatched_self_declaration_is_filtered_candidate_not_gap() {
-    let idx = Indexer::new();
+    let indexer = Indexer::new();
     let uri = Url::parse("file:///t/Flow.kt").unwrap();
     let src = "package com.example\n\
                class Flow<T>\n\
@@ -120,11 +121,11 @@ fn same_file_shape_mismatched_self_declaration_is_filtered_candidate_not_gap() {
                fun useTriggers(triggers: Flow<String>, scope: CoroutineScope) {\n\
                    triggers.collect { trigger -> println(trigger) }\n\
                }\n";
-    idx.index_content(&uri, src);
-    idx.store_live_tree(&uri, src);
+    indexer.index_content(&uri, src);
+    indexer.store_live_tree(&uri, src);
 
     let doc = crate::indexer::live_tree::parse_live(src, tree_sitter_kotlin::language()).unwrap();
-    let outcomes = collect_resolution_outcomes(&idx, &uri, &doc);
+    let outcomes = collect_resolution_outcomes(&indexer, &uri, &doc);
     let outcome = outcome_at(&outcomes, "collect", 6);
     assert!(
         matches!(outcome.outcome, ResolutionOutcome::FilteredCandidate),
@@ -135,18 +136,18 @@ fn same_file_shape_mismatched_self_declaration_is_filtered_candidate_not_gap() {
 
 #[test]
 fn undeclared_member_reference_is_gap() {
-    let idx = Indexer::new();
+    let indexer = Indexer::new();
     let uri = Url::parse("file:///t/Foo.kt").unwrap();
     let src = "package com.example\n\
                class Foo\n\
                fun useFoo(foo: Foo) {\n\
                    foo.totallyUndeclaredMethod()\n\
                }\n";
-    idx.index_content(&uri, src);
-    idx.store_live_tree(&uri, src);
+    indexer.index_content(&uri, src);
+    indexer.store_live_tree(&uri, src);
 
     let doc = crate::indexer::live_tree::parse_live(src, tree_sitter_kotlin::language()).unwrap();
-    let outcomes = collect_resolution_outcomes(&idx, &uri, &doc);
+    let outcomes = collect_resolution_outcomes(&indexer, &uri, &doc);
     let outcome = outcome_at(&outcomes, "totallyUndeclaredMethod", 3);
     assert!(
         matches!(outcome.outcome, ResolutionOutcome::Gap),
@@ -157,18 +158,18 @@ fn undeclared_member_reference_is_gap() {
 
 #[test]
 fn bare_call_to_top_level_function_resolves_name_scan_success() {
-    let idx = Indexer::new();
+    let indexer = Indexer::new();
     let uri = Url::parse("file:///t/Helper.kt").unwrap();
     let src = "package com.example\n\
                fun helper(): Int = 5\n\
                fun useHelper() {\n\
                    val result = helper()\n\
                }\n";
-    idx.index_content(&uri, src);
-    idx.store_live_tree(&uri, src);
+    indexer.index_content(&uri, src);
+    indexer.store_live_tree(&uri, src);
 
     let doc = crate::indexer::live_tree::parse_live(src, tree_sitter_kotlin::language()).unwrap();
-    let outcomes = collect_resolution_outcomes(&idx, &uri, &doc);
+    let outcomes = collect_resolution_outcomes(&indexer, &uri, &doc);
     let outcome = outcome_at(&outcomes, "helper", 3);
     match &outcome.outcome {
         ResolutionOutcome::Success { tier, locations } => {
@@ -187,12 +188,12 @@ fn collect_resolution_outcomes_survives_a_pathologically_deep_expression() {
         src.push_str("+1");
     }
     src.push_str("\n}\n");
-    let idx = Indexer::new();
+    let indexer = Indexer::new();
     let uri = Url::parse("file:///t/Deep.kt").unwrap();
-    idx.index_content(&uri, &src);
-    idx.store_live_tree(&uri, &src);
+    indexer.index_content(&uri, &src);
+    indexer.store_live_tree(&uri, &src);
     let doc = crate::indexer::live_tree::parse_live(&src, tree_sitter_kotlin::language()).unwrap();
-    let _ = collect_resolution_outcomes(&idx, &uri, &doc);
+    let _ = collect_resolution_outcomes(&indexer, &uri, &doc);
 }
 
 fn test_location(line: u32) -> tower_lsp::lsp_types::Location {
@@ -379,7 +380,7 @@ fn filtered_candidate_outcome_appears_in_top_filtered_candidates() {
 
 #[test]
 fn package_header_segments_are_not_flagged_as_gaps() {
-    let idx = Indexer::new();
+    let indexer = Indexer::new();
     let uri = Url::parse("file:///t/Pkg.kt").unwrap();
     // `com`/`example` are package-header path segments, not references —
     // walking into `package_header` would classify them as bare references
@@ -389,11 +390,11 @@ fn package_header_segments_are_not_flagged_as_gaps() {
                fun useIt(list: List<Int>) {\n\
                    println(list)\n\
                }\n";
-    idx.index_content(&uri, src);
-    idx.store_live_tree(&uri, src);
+    indexer.index_content(&uri, src);
+    indexer.store_live_tree(&uri, src);
 
     let doc = crate::indexer::live_tree::parse_live(src, tree_sitter_kotlin::language()).unwrap();
-    let outcomes = collect_resolution_outcomes(&idx, &uri, &doc);
+    let outcomes = collect_resolution_outcomes(&indexer, &uri, &doc);
     assert!(
         !outcomes
             .iter()

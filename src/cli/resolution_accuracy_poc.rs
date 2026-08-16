@@ -29,8 +29,10 @@ use crate::indexer::live_tree::{lang_for_path, parse_live};
 use crate::indexer::Indexer;
 
 /// Feed one already-indexed workspace file's reference outcomes into
-/// `aggregator`. Returns whether the file's tree had a parse error — the
-/// visible proxy for "this file's identifiers may have gone through
+/// `aggregator`. Returns `None` if the file was skipped (unsupported
+/// language or unparsable), or `Some(has_parse_error)` if it was scanned —
+/// callers must not count a skipped file as scanned. `has_parse_error` is
+/// the visible proxy for "this file's identifiers may have gone through
 /// `classify_symbol_at`'s expensive speculative brace-repair path"
 /// (`lambda_doc_at` re-parses the whole file, up to `MAX_BRACE_REPAIRS`
 /// times, whenever the tree has an error and no enclosing lambda is found).
@@ -40,13 +42,9 @@ fn scan_file(
     source: &str,
     file_label: &str,
     aggregator: &mut ResolutionAccuracyAggregator,
-) -> bool {
-    let Some(lang) = lang_for_path(uri.path()) else {
-        return false;
-    };
-    let Some(doc) = parse_live(source, lang) else {
-        return false;
-    };
+) -> Option<bool> {
+    let lang = lang_for_path(uri.path())?;
+    let doc = parse_live(source, lang)?;
     let has_parse_error = doc.tree.root_node().has_error();
     indexer.store_live_tree(uri, source);
     let outcomes = collect_resolution_outcomes(indexer, uri, &doc);
@@ -54,7 +52,7 @@ fn scan_file(
     for outcome in &outcomes {
         aggregator.add(file_label, outcome);
     }
-    has_parse_error
+    Some(has_parse_error)
 }
 
 /// Run the benchmark over every indexed workspace `.kt`/`.java` file under
@@ -75,9 +73,9 @@ pub(crate) async fn run_resolution_accuracy(root: &Path) {
     let gradle_paths = crate::indexer::jar::scan_gradle_jars(None);
     if !gradle_paths.is_empty() {
         let mut sidecar = index.jar_sidecar.lock().unwrap_or_else(|e| e.into_inner());
-        let n = crate::indexer::jar::index_jars(&index, &gradle_paths, &mut sidecar);
+        let jar_symbol_count = crate::indexer::jar::index_jars(&index, &gradle_paths, &mut sidecar);
         eprintln!(
-            "Indexed {n} compiled-jar symbols from {} gradle jars",
+            "Indexed {jar_symbol_count} compiled-jar symbols from {} gradle jars",
             gradle_paths.len()
         );
     } else {
@@ -97,8 +95,8 @@ pub(crate) async fn run_resolution_accuracy(root: &Path) {
     let mut total_files = 0usize;
     let mut files_with_parse_errors = 0usize;
     let total_uris = uris.len();
-    for (i, uri_str) in uris.iter().enumerate() {
-        let Ok(uri) = Url::parse(uri_str) else {
+    for (uri_index, uri_string) in uris.iter().enumerate() {
+        let Ok(uri) = Url::parse(uri_string) else {
             continue;
         };
         let Ok(path) = uri.to_file_path() else {
@@ -107,8 +105,7 @@ pub(crate) async fn run_resolution_accuracy(root: &Path) {
         let Ok(source) = std::fs::read_to_string(&path) else {
             continue;
         };
-        total_files += 1;
-        let rel = path
+        let relative_path = path
             .strip_prefix(root)
             .unwrap_or(&path)
             .display()
@@ -116,9 +113,14 @@ pub(crate) async fn run_resolution_accuracy(root: &Path) {
         // A real corpus can take a while — print progress so a long run
         // doesn't look silent/hung (matches `missing_import_poc`'s
         // streaming-output convention).
-        eprintln!("[{}/{total_uris}] {rel}", i + 1);
-        if scan_file(&index, &uri, &source, &rel, &mut aggregator) {
-            files_with_parse_errors += 1;
+        eprintln!("[{}/{total_uris}] {relative_path}", uri_index + 1);
+        if let Some(has_parse_error) =
+            scan_file(&index, &uri, &source, &relative_path, &mut aggregator)
+        {
+            total_files += 1;
+            if has_parse_error {
+                files_with_parse_errors += 1;
+            }
         }
     }
 
