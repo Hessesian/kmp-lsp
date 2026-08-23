@@ -581,7 +581,8 @@ fn no_false_positive_file_annotation_single() {
 
 #[test]
 fn no_false_positive_file_annotation_comma() {
-    // @file:[Ann1, Ann2] comma separator triggers a tree-sitter-kotlin 0.3 bug —
+    // @file:[Ann1, Ann2] comma separator triggers a tree-sitter-kotlin grammar bug,
+    // still present as of the ABI-15 migration (`brokk-tree-sitter-kotlin` 0.4.0) —
     // the lone `,` must be suppressed, not reported as a syntax error.
     let data =
         parse_kotlin("@file:[JvmName(\"Foo\"), Suppress(\"unused\")]\npackage com.example\n");

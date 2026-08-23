@@ -263,3 +263,67 @@ fn missing_import_diagnostics_survives_a_pathologically_deep_expression() {
     let (uri, idx, src) = setup(&[("/a.kt", &src)]);
     let _ = run_diagnostics(&idx, &uri, &src);
 }
+
+/// Regression (2026-08-23, tree-sitter 0.26 / tree-sitter-kotlin ABI-15
+/// migration, PR #268): an extension function/property reached only through
+/// an enclosing extension function's implicit receiver was flagged as a
+/// missing import — `extension_receiver_of`'s CST walk still assumed
+/// `user_type` was a direct child of the declaration, a shape the new
+/// grammar replaced with a `receiver_type` wrapper. Mirrors the real
+/// regression found scanning a production Kotlin monorepo: `item` and
+/// `requireActivity` are themselves top-level extensions (Compose's
+/// `LazyListScope.item`, androidx's `Fragment.requireActivity`), which is
+/// exactly why `fqns_for_name` considers them "importable" candidates in the
+/// first place — a class *member* wouldn't reach this check at all.
+#[test]
+fn no_diagnostic_for_a_trailing_lambda_call_provided_by_the_extension_receiver() {
+    let (uri, idx, src) = setup(&[
+        (
+            "/lib/LazyListScope.kt",
+            "package com.example.lib\n\
+             class LazyListScope\n\
+             fun LazyListScope.item(key: String, content: () -> Unit) {}\n",
+        ),
+        (
+            "/app/Caller.kt",
+            "package app\n\
+             import com.example.lib.LazyListScope\n\n\
+             fun LazyListScope.addressContent() {\n\
+             \x20   item(key = \"street\") {\n\
+             \x20   }\n\
+             }\n",
+        ),
+    ]);
+    let diags = run_diagnostics(&idx, &uri, &src);
+    assert!(
+        diags.is_empty(),
+        "item is an extension registered for the enclosing extension \
+         receiver LazyListScope and must not be flagged: {diags:?}"
+    );
+}
+
+/// Same regression as above, for a plain (non-trailing-lambda) call —
+/// mirrors the real `fun Fragment.getConfig() { requireActivity() }` pattern.
+#[test]
+fn no_diagnostic_for_a_plain_call_provided_by_the_extension_receiver() {
+    let (uri, idx, src) = setup(&[
+        (
+            "/lib/Fragment.kt",
+            "package com.example.lib\n\
+             class Fragment\n\
+             fun Fragment.requireActivity(): Any = TODO()\n",
+        ),
+        (
+            "/app/Caller.kt",
+            "package app\n\
+             import com.example.lib.Fragment\n\n\
+             fun Fragment.getActivity(): Any = requireActivity()\n",
+        ),
+    ]);
+    let diags = run_diagnostics(&idx, &uri, &src);
+    assert!(
+        diags.is_empty(),
+        "requireActivity is a member of the enclosing extension receiver \
+         Fragment and must not be flagged: {diags:?}"
+    );
+}

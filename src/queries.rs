@@ -278,7 +278,6 @@ pub(crate) const KIND_USER_TYPE: &str = "user_type";
 /// `extract_extension_receiver_from_cst`.
 pub(crate) const KIND_RECEIVER_TYPE: &str = "receiver_type";
 pub(crate) const KIND_FUN_DECL: &str = "function_declaration";
-pub(crate) const KIND_FUN: &str = "fun";
 
 // ─── Declaration node kinds (shared or language-specific) ──────────────────
 pub(crate) const KIND_CLASS_DECL: &str = "class_declaration";
