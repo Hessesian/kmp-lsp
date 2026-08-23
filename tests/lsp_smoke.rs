@@ -68,7 +68,7 @@ impl LspClient {
         });
         let mut child = Command::new(BIN)
             .args(["--stdio"])
-            .env("KOTLIN_LSP_WORKSPACE_ROOT", &canonical)
+            .env("KMP_LSP_WORKSPACE_ROOT", &canonical)
             .env("GRADLE_USER_HOME", &empty_gradle_home)
             .current_dir(&canonical)
             .stdin(Stdio::piped())

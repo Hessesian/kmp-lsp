@@ -1,7 +1,7 @@
 {
   "$schema": "https://aka.ms/codetour-schema",
   "title": "Feature Contributor Guide",
-  "description": "Learn how to implement a new LSP feature in kotlin-lsp by adding a capability end-to-end, from handler to tests.",
+  "description": "Learn how to implement a new LSP feature in kmp-lsp by adding a capability end-to-end, from handler to tests.",
   "ref": "main",
   "isPrimary": false,
   "steps": [
@@ -9,12 +9,12 @@
       "file": "README.md",
       "line": 48,
       "title": "Welcome: Current LSP Capabilities",
-      "description": "**Situation:** kotlin-lsp is an LSP server for Kotlin, Java, and Swift with many capabilities already implemented.\n\n**Mechanism:** Each LSP capability (hover, definition, completion, references, etc.) is a feature request from the client that the server handles and responds to.\n\n**Implication:** To add a new feature, you'll follow the same pattern for all 10+ existing capabilities.\n\n**Gotcha:** Just because a feature *could* be built doesn't mean it's worth the complexity — check if ripgrep fallback already provides it (e.g., references).\n\nLet's trace through how a feature is built, step by step. We'll use `hover` and `completion` as examples (already merged) and understand the pattern so you can add the next one."
+      "description": "**Situation:** kmp-lsp is an LSP server for Kotlin, Java, and Swift with many capabilities already implemented.\n\n**Mechanism:** Each LSP capability (hover, definition, completion, references, etc.) is a feature request from the client that the server handles and responds to.\n\n**Implication:** To add a new feature, you'll follow the same pattern for all 10+ existing capabilities.\n\n**Gotcha:** Just because a feature *could* be built doesn't mean it's worth the complexity — check if ripgrep fallback already provides it (e.g., references).\n\nLet's trace through how a feature is built, step by step. We'll use `hover` and `completion` as examples (already merged) and understand the pattern so you can add the next one."
     },
     {
       "directory": "src",
       "title": "Architecture: Four Layers",
-      "description": "**Situation:** kotlin-lsp follows hexagonal architecture (Ports & Adapters).\n\n**Mechanism:** Code is organized in four layers:\n- `backend/` = inbound adapters (LSP protocol handlers)\n- `resolver/` = domain layer (pure symbol resolution, type inference)\n- `indexer/` = application layer (orchestration, caching)\n- `parser.rs`, `types.rs` = cross-cutting domain types\n\n**Implication:** When adding a feature, you'll:\n1. Write a handler in `backend/`\n2. Call public API in `resolver/` (or create new function there)\n3. Use `Indexer` to access the symbol index\n4. Return domain types, not LSP types (conversion happens in backend)\n\n**Gotcha:** Never import `lsp_types` in `resolver/` or `indexer/` — that breaks the layer boundary. LSP types stay in `backend/`."
+      "description": "**Situation:** kmp-lsp follows hexagonal architecture (Ports & Adapters).\n\n**Mechanism:** Code is organized in four layers:\n- `backend/` = inbound adapters (LSP protocol handlers)\n- `resolver/` = domain layer (pure symbol resolution, type inference)\n- `indexer/` = application layer (orchestration, caching)\n- `parser.rs`, `types.rs` = cross-cutting domain types\n\n**Implication:** When adding a feature, you'll:\n1. Write a handler in `backend/`\n2. Call public API in `resolver/` (or create new function there)\n3. Use `Indexer` to access the symbol index\n4. Return domain types, not LSP types (conversion happens in backend)\n\n**Gotcha:** Never import `lsp_types` in `resolver/` or `indexer/` — that breaks the layer boundary. LSP types stay in `backend/`."
     },
     {
       "file": "src/backend/mod.rs",

@@ -8,7 +8,7 @@
 packages:
   - type: github_release
     repo_owner: Hessesian
-    repo_name: kotlin-lsp
+    repo_name: kmp-lsp
     asset: kmp-lsp-{{.OS}}-{{.Arch}}.tar.gz
     format: tar.gz
     files:

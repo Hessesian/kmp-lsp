@@ -94,6 +94,8 @@ jobs:
             asset: kmp-jar-indexer-linux-aarch64
           - os: macos-latest
             asset: kmp-jar-indexer-darwin-aarch64
+          - os: windows-latest
+            asset: kmp-jar-indexer-windows-x86_64
 
     runs-on: ${{ matrix.os }}
     defaults:
@@ -108,20 +110,42 @@ jobs:
           distribution: 'graalvm-community'
           native-image-job-reports: 'true'
 
-      - name: Build native sidecar
+      # native-image on Windows shells out to cl.exe/link.exe from the MSVC
+      # toolchain, which isn't on PATH by default on windows-latest runners.
+      - uses: ilammy/msvc-dev-cmd@v1
+        if: runner.os == 'Windows'
+
+      - name: Build native sidecar (Unix)
+        if: runner.os != 'Windows'
         run: ./gradlew nativeCompile
 
-      - name: Package sidecar
+      - name: Build native sidecar (Windows)
+        if: runner.os == 'Windows'
+        run: .\gradlew.bat nativeCompile
+
+      - name: Package sidecar (Unix)
+        if: runner.os != 'Windows'
         run: |
           mkdir -p dist
           cp build/native/nativeCompile/kmp-jar-indexer dist/${{ matrix.asset }}
           chmod +x dist/${{ matrix.asset }}
           tar -czf dist/${{ matrix.asset }}.tar.gz -C dist ${{ matrix.asset }}
 
+      - name: Package sidecar (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Copy-Item "build/native/nativeCompile/kmp-jar-indexer.exe" "dist/${{ matrix.asset }}.exe"
+          Compress-Archive -Path "dist/${{ matrix.asset }}.exe" -DestinationPath "dist/${{ matrix.asset }}.zip"
+
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.asset }}
-          path: java-sidecar/dist/${{ matrix.asset }}.tar.gz
+          path: |
+            java-sidecar/dist/${{ matrix.asset }}.tar.gz
+            java-sidecar/dist/${{ matrix.asset }}.zip
+          if-no-files-found: ignore
 
   vscode-extension:
     needs: [build, build-sidecar]
@@ -156,6 +180,11 @@ jobs:
            tar -xzf ../../artifacts/kmp-jar-indexer-${arch}/kmp-jar-indexer-${arch}.tar.gz -C bin/
           done
           cp bin/kmp-jar-indexer-darwin-aarch64 bin/kmp-jar-indexer-darwin-x86_64
+
+          # Extract Windows sidecar (aarch64 not built — Windows-on-ARM runs the
+          # x86_64 binary via built-in emulation, so reuse it for both targets)
+          unzip -j "../../artifacts/kmp-jar-indexer-windows-x86_64/kmp-jar-indexer-windows-x86_64.zip" -d bin/
+          cp bin/kmp-jar-indexer-windows-x86_64.exe bin/kmp-jar-indexer-windows-aarch64.exe
 
       - name: Update extension version
         run: |
@@ -204,11 +233,12 @@ jobs:
           npx @vscode/vsce package --no-dependencies --target darwin-arm64 -o ../../kmp-lsp-darwin-arm64-${GITHUB_REF_NAME}.vsix
           rm -rf server
 
-          # win32-x64 (no bundled sidecar yet — sidecar not yet cross-compiled for Windows)
+          # win32-x64
           mkdir -p server
           unzip -j "../../artifacts/kmp-lsp-windows-x86_64/kmp-lsp-windows-x86_64.zip" \
               -d server/
           mv server/kmp-lsp-windows-x86_64.exe server/kmp-lsp.exe
+          cp bin/kmp-jar-indexer-windows-x86_64.exe server/kmp-jar-indexer.exe
           npx @vscode/vsce package --no-dependencies --target win32-x64 -o ../../kmp-lsp-win32-x64-${GITHUB_REF_NAME}.vsix
           rm -rf server
 
@@ -217,6 +247,7 @@ jobs:
           unzip -j "../../artifacts/kmp-lsp-windows-aarch64/kmp-lsp-windows-aarch64.zip" \
               -d server/
           mv server/kmp-lsp-windows-aarch64.exe server/kmp-lsp.exe
+          cp bin/kmp-jar-indexer-windows-aarch64.exe server/kmp-jar-indexer.exe
           npx @vscode/vsce package --no-dependencies --target win32-arm64 -o ../../kmp-lsp-win32-arm64-${GITHUB_REF_NAME}.vsix
           rm -rf server
 
@@ -271,7 +302,21 @@ jobs:
 
           cp artifacts/vsix-packages/*.vsix release/
 
-          # Windows: copy .zip files directly — no combined tarball since sidecar not yet built for Windows.
+          # Windows: kmp-lsp and kmp-jar-indexer ship as separate .zip files
+          # (install.ps1 downloads each independently — no combined archive).
+          # aarch64 sidecar not built — Windows-on-ARM runs the x86_64 binary
+          # via built-in emulation, so reuse it for both targets. install.ps1
+          # expects the .exe inside each zip to match that zip's asset name,
+          # so the reused binary is renamed before rezipping.
+          cp "artifacts/kmp-jar-indexer-windows-x86_64/kmp-jar-indexer-windows-x86_64.zip" release/
+
+          mkdir -p staging/windows-aarch64-sidecar
+          unzip -j "artifacts/kmp-jar-indexer-windows-x86_64/kmp-jar-indexer-windows-x86_64.zip" \
+              -d staging/windows-aarch64-sidecar/
+          mv staging/windows-aarch64-sidecar/kmp-jar-indexer-windows-x86_64.exe \
+             staging/windows-aarch64-sidecar/kmp-jar-indexer-windows-aarch64.exe
+          (cd staging/windows-aarch64-sidecar && zip -q ../../release/kmp-jar-indexer-windows-aarch64.zip kmp-jar-indexer-windows-aarch64.exe)
+
           for win_asset in windows-x86_64 windows-aarch64; do
             if [ -f "artifacts/kmp-lsp-${win_asset}/kmp-lsp-${win_asset}.zip" ]; then
               cp "artifacts/kmp-lsp-${win_asset}/kmp-lsp-${win_asset}.zip" release/

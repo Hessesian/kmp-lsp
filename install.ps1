@@ -1,4 +1,4 @@
-# install.ps1 — download and install kotlin-lsp + kotlin-jar-indexer on Windows
+# install.ps1 — download and install kmp-lsp + kmp-jar-indexer on Windows
 #
 # Usage (run in PowerShell as Administrator or a user with write access to prefix):
 #   iwr -useb https://raw.githubusercontent.com/Hessesian/kmp-lsp/main/install.ps1 | iex
@@ -6,12 +6,12 @@
 #
 # Parameters:
 #   -Version    pin a specific release tag (default: latest)
-#   -Prefix     install directory        (default: $env:KOTLIN_LSP_PREFIX or "$env:LOCALAPPDATA\kotlin-lsp\bin")
-#   -NoSidecar  skip kotlin-jar-indexer installation
+#   -Prefix     install directory        (default: $env:KMP_LSP_PREFIX or "$env:LOCALAPPDATA\kmp-lsp\bin")
+#   -NoSidecar  skip kmp-jar-indexer installation
 [CmdletBinding()]
 param(
-    [string] $Version  = $env:KOTLIN_LSP_VERSION,
-    [string] $Prefix   = $env:KOTLIN_LSP_PREFIX,
+    [string] $Version  = $env:KMP_LSP_VERSION,
+    [string] $Prefix   = $env:KMP_LSP_PREFIX,
     [switch] $NoSidecar
 )
 Set-StrictMode -Version Latest
@@ -45,12 +45,12 @@ Write-Info "version: $Version"
 
 # ---- install prefix ----
 if (-not $Prefix) {
-    $Prefix = Join-Path $env:LOCALAPPDATA "kotlin-lsp\bin"
+    $Prefix = Join-Path $env:LOCALAPPDATA "kmp-lsp\bin"
 }
 New-Item -ItemType Directory -Force -Path $Prefix | Out-Null
 
 # ---- temp dir ----
-$TmpDir = Join-Path ([System.IO.Path]::GetTempPath()) "kotlin-lsp-install-$([System.IO.Path]::GetRandomFileName())"
+$TmpDir = Join-Path ([System.IO.Path]::GetTempPath()) "kmp-lsp-install-$([System.IO.Path]::GetRandomFileName())"
 New-Item -ItemType Directory -Force -Path $TmpDir | Out-Null
 try {
 
@@ -92,21 +92,25 @@ function Install-Asset {
     Expand-Archive -Path "$TmpDir\$zipName" -DestinationPath "$TmpDir\$asset" -Force
 }
 
-Install-Asset "kotlin-lsp-$Platform"
+Install-Asset "kmp-lsp-$Platform"
 if (-not $NoSidecar) {
-    Install-Asset "kotlin-jar-indexer-$Platform"
+    Install-Asset "kmp-jar-indexer-$Platform"
 }
 
 # ---- copy binaries to prefix ----
 function Copy-Binary {
     param([string] $name, [string] $assetDir)
-    $src = Join-Path $TmpDir "$assetDir\$name.exe"
+    # release zips contain "<assetDir>.exe" (e.g. kmp-lsp-windows-x86_64.exe)
+    $src = Join-Path $TmpDir "$assetDir\$assetDir.exe"
     if (-not (Test-Path $src)) {
-        # some archives place binaries at the root of the zip
-        $src = Join-Path $TmpDir "$assetDir\$name"
+        $src = Join-Path $TmpDir "$assetDir\$name.exe"
         if (-not (Test-Path $src)) {
-            Write-Err "binary '$name' not found in archive under $assetDir"
-            exit 1
+            # some archives place the binary at "<assetDir>\<name>" with no .exe suffix
+            $src = Join-Path $TmpDir "$assetDir\$name"
+            if (-not (Test-Path $src)) {
+                Write-Err "binary '$name' not found in archive under $assetDir"
+                exit 1
+            }
         }
     }
     $dst = Join-Path $Prefix "$name.exe"
@@ -114,9 +118,9 @@ function Copy-Binary {
     Write-Ok "$name.exe -> $dst"
 }
 
-Copy-Binary "kotlin-lsp"         "kotlin-lsp-$Platform"
+Copy-Binary "kmp-lsp"         "kmp-lsp-$Platform"
 if (-not $NoSidecar) {
-    Copy-Binary "kotlin-jar-indexer" "kotlin-jar-indexer-$Platform"
+    Copy-Binary "kmp-jar-indexer" "kmp-jar-indexer-$Platform"
 }
 
 } finally {
@@ -124,7 +128,7 @@ if (-not $NoSidecar) {
 }
 
 # ---- verify ----
-$binary = Join-Path $Prefix "kotlin-lsp.exe"
+$binary = Join-Path $Prefix "kmp-lsp.exe"
 try {
     $ver = & $binary --version 2>&1
     Write-Info $ver

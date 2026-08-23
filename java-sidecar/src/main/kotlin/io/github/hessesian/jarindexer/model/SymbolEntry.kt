@@ -4,7 +4,7 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 /**
- * Mirrors Rust's SymbolEntry — fields the kotlin-lsp indexer understands.
+ * Mirrors Rust's SymbolEntry — fields the kmp-lsp indexer understands.
  * `file` and `range` are omitted: the Rust side fills them in (empty/zero for JAR symbols).
  */
 @Serializable
