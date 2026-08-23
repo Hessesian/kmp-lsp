@@ -105,7 +105,7 @@ function Copy-Binary {
     if (-not (Test-Path $src)) {
         $src = Join-Path $TmpDir "$assetDir\$name.exe"
         if (-not (Test-Path $src)) {
-            # some archives place binaries at the root of the zip, unnamed
+            # some archives place the binary at "<assetDir>\<name>" with no .exe suffix
             $src = Join-Path $TmpDir "$assetDir\$name"
             if (-not (Test-Path $src)) {
                 Write-Err "binary '$name' not found in archive under $assetDir"
