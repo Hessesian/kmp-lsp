@@ -100,13 +100,17 @@ if (-not $NoSidecar) {
 # ---- copy binaries to prefix ----
 function Copy-Binary {
     param([string] $name, [string] $assetDir)
-    $src = Join-Path $TmpDir "$assetDir\$name.exe"
+    # release zips contain "<assetDir>.exe" (e.g. kmp-lsp-windows-x86_64.exe)
+    $src = Join-Path $TmpDir "$assetDir\$assetDir.exe"
     if (-not (Test-Path $src)) {
-        # some archives place binaries at the root of the zip
-        $src = Join-Path $TmpDir "$assetDir\$name"
+        $src = Join-Path $TmpDir "$assetDir\$name.exe"
         if (-not (Test-Path $src)) {
-            Write-Err "binary '$name' not found in archive under $assetDir"
-            exit 1
+            # some archives place binaries at the root of the zip, unnamed
+            $src = Join-Path $TmpDir "$assetDir\$name"
+            if (-not (Test-Path $src)) {
+                Write-Err "binary '$name' not found in archive under $assetDir"
+                exit 1
+            }
         }
     }
     $dst = Join-Path $Prefix "$name.exe"
