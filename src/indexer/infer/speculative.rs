@@ -317,7 +317,10 @@ mod tests {
     use crate::indexer::live_tree::parse_live;
 
     fn kotlin_doc(src: &str) -> LiveDoc {
-        parse_live(src, tree_sitter_kotlin::language()).unwrap()
+        let Some(doc) = parse_live(src, tree_sitter_kotlin::LANGUAGE.into()) else {
+            panic!("parse_live failed");
+        };
+        doc
     }
 
     #[test]
@@ -328,8 +331,11 @@ mod tests {
             line: 0,
             utf16_col: 12,
         };
-        let (doc, marker_byte) =
-            speculative_doc(&base, tree_sitter_kotlin::language(), cursor).expect("parse");
+        let Some((doc, marker_byte)) =
+            speculative_doc(&base, tree_sitter_kotlin::LANGUAGE.into(), cursor)
+        else {
+            panic!("speculative_doc failed to parse");
+        };
         assert_eq!(marker_byte, 12);
         let text = std::str::from_utf8(&doc.bytes).unwrap();
         assert_eq!(text, "val x = foo.kmpLspRulezz\n");
@@ -362,7 +368,10 @@ mod tests {
             line: 4,
             utf16_col: 13,
         };
-        let (doc, _) = speculative_doc(&base, tree_sitter_kotlin::language(), cursor).unwrap();
+        let Some((doc, _)) = speculative_doc(&base, tree_sitter_kotlin::LANGUAGE.into(), cursor)
+        else {
+            panic!("speculative_doc failed to parse");
+        };
         let fresh = kotlin_doc(std::str::from_utf8(&doc.bytes).unwrap());
         assert_eq!(
             doc.tree.root_node().to_sexp(),
@@ -380,8 +389,11 @@ mod tests {
             line: 2,
             utf16_col: 12,
         };
-        let (doc, marker_byte) =
-            speculative_doc(&base, tree_sitter_kotlin::language(), cursor).unwrap();
+        let Some((doc, marker_byte)) =
+            speculative_doc(&base, tree_sitter_kotlin::LANGUAGE.into(), cursor)
+        else {
+            panic!("speculative_doc failed to parse");
+        };
         let text = std::str::from_utf8(&doc.bytes).unwrap();
         assert_eq!(
             &text[marker_byte..marker_byte + COMPLETION_MARKER.len()],
@@ -409,8 +421,11 @@ mod tests {
             line: 1,
             utf16_col: 0,
         };
-        let (doc, marker_byte) =
-            speculative_doc(&base, tree_sitter_kotlin::language(), cursor).unwrap();
+        let Some((doc, marker_byte)) =
+            speculative_doc(&base, tree_sitter_kotlin::LANGUAGE.into(), cursor)
+        else {
+            panic!("speculative_doc failed to parse");
+        };
         assert_eq!(marker_byte, 13);
         assert!(std::str::from_utf8(&doc.bytes)
             .unwrap()
@@ -424,7 +439,7 @@ mod tests {
             line: 7,
             utf16_col: 0,
         };
-        assert!(speculative_doc(&base, tree_sitter_kotlin::language(), cursor).is_none());
+        assert!(speculative_doc(&base, tree_sitter_kotlin::LANGUAGE.into(), cursor).is_none());
     }
 
     // ─── receiver extraction ─────────────────────────────────────────────────
@@ -439,7 +454,7 @@ mod tests {
         let base = kotlin_doc(&src);
         let (doc, marker) = speculative_doc(
             &base,
-            tree_sitter_kotlin::language(),
+            tree_sitter_kotlin::LANGUAGE.into(),
             CursorPos {
                 line,
                 utf16_col: col,
@@ -560,7 +575,9 @@ mod tests {
 
     #[test]
     fn kotlin_grammar_has_a_lambda_literal_node_kind() {
-        assert!(grammar_has_lambda_literal(&tree_sitter_kotlin::language()));
+        assert!(grammar_has_lambda_literal(
+            &tree_sitter_kotlin::LANGUAGE.into()
+        ));
     }
 
     #[test]
@@ -576,7 +593,9 @@ mod tests {
 
     #[test]
     fn java_grammar_has_no_lambda_literal_node_kind() {
-        assert!(!grammar_has_lambda_literal(&tree_sitter_java::language()));
+        assert!(!grammar_has_lambda_literal(
+            &tree_sitter_java::LANGUAGE.into()
+        ));
     }
 
     #[test]
@@ -647,7 +666,7 @@ mod tests {
         let Some(doc) = indexer.live_doc_or_parse(&uri) else {
             panic!("expected a live doc for the just-stored uri");
         };
-        let lang = tree_sitter_kotlin::language();
+        let lang = tree_sitter_kotlin::LANGUAGE.into();
 
         let first = repair_candidates_for(&indexer, &uri, &doc, &lang);
         let second = repair_candidates_for(&indexer, &uri, &doc, &lang);
@@ -670,7 +689,7 @@ mod tests {
         let Some(doc) = indexer.live_doc_or_parse(&uri) else {
             panic!("expected a live doc for the just-stored uri");
         };
-        let lang = tree_sitter_kotlin::language();
+        let lang = tree_sitter_kotlin::LANGUAGE.into();
         let _ = repair_candidates_for(&indexer, &uri, &doc, &lang);
         assert!(indexer.repair_candidates.get(uri.as_str()).is_some());
 

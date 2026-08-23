@@ -368,10 +368,8 @@ fn cst_call_arg_type(pos: CursorPos, idx: &Indexer, uri: &Url) -> Option<String>
         row: pos.line,
         column: byte_col,
     };
-    let start_node = doc
-        .tree
-        .root_node()
-        .descendant_for_point_range(point, point)?;
+    let start_node =
+        crate::indexer::node_ext::descendant_for_point(doc.tree.root_node(), bytes, point)?;
 
     // Walk up: look for value_argument; bail out if we hit lambda_literal first.
     let mut cur = start_node;

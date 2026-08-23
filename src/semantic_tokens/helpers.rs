@@ -231,6 +231,38 @@ pub(super) fn push_token(
     });
 }
 
+/// Push a token for a byte range that has no backing CST node — see
+/// `Source::row_col_for_byte`.
+pub(super) fn push_token_at_byte_range(
+    byte_start: usize,
+    byte_len: usize,
+    token_type: u32,
+    token_modifiers_bitset: u32,
+    src: &Source<'_>,
+    out: &mut Vec<RawToken>,
+) {
+    if byte_len == 0 {
+        return;
+    }
+    let byte_end = byte_start.saturating_add(byte_len).min(src.bytes.len());
+    if byte_start >= byte_end {
+        return;
+    }
+    let (row, byte_col) = src.row_col_for_byte(byte_start);
+    let text = std::str::from_utf8(&src.bytes[byte_start..byte_end]).unwrap_or("");
+    let length = text.encode_utf16().count() as u32;
+    if length == 0 {
+        return;
+    }
+    out.push(RawToken {
+        line: row as u32,
+        col: src.col_utf16(row, byte_col),
+        length,
+        token_type,
+        token_modifiers_bitset,
+    });
+}
+
 pub(super) fn visit_tree(node: Node<'_>, f: &mut impl FnMut(Node<'_>)) {
     visit_tree_at(node, f, 0);
 }

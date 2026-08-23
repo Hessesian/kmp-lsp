@@ -17,9 +17,9 @@ pub(crate) fn lang_for_path(path: &str) -> Option<TsLanguage> {
         crate::Language::Swift if path.ends_with(".swift") => {
             Some(tree_sitter_swift_bundled::language())
         }
-        crate::Language::Java if path.ends_with(".java") => Some(tree_sitter_java::language()),
+        crate::Language::Java if path.ends_with(".java") => Some(tree_sitter_java::LANGUAGE.into()),
         crate::Language::Kotlin if path.ends_with(".kt") || path.ends_with(".kts") => {
-            Some(tree_sitter_kotlin::language())
+            Some(tree_sitter_kotlin::LANGUAGE.into())
         }
         _ => None,
     }

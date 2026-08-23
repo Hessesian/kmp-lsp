@@ -9,7 +9,7 @@ fn uri() -> Url {
 }
 
 fn run_diagnostics(source: &str) -> Vec<Diagnostic> {
-    let doc = parse_live(source, tree_sitter_kotlin::language()).unwrap();
+    let doc = parse_live(source, tree_sitter_kotlin::LANGUAGE.into()).unwrap();
     unused_import_diagnostics(&doc)
 }
 

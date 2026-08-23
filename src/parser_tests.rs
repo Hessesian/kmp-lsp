@@ -16,7 +16,7 @@ fn sym<'a>(data: &'a FileData, name: &str) -> Option<&'a SymbolEntry> {
 
 #[test]
 fn kotlin_definitions_query_compiles() {
-    let lang = tree_sitter_kotlin::language();
+    let lang = tree_sitter_kotlin::LANGUAGE.into();
     let result = tree_sitter::Query::new(&lang, crate::queries::KOTLIN_DEFINITIONS);
     if let Err(e) = &result {
         panic!("KOTLIN_DEFINITIONS query failed to compile: {e}");
@@ -581,7 +581,8 @@ fn no_false_positive_file_annotation_single() {
 
 #[test]
 fn no_false_positive_file_annotation_comma() {
-    // @file:[Ann1, Ann2] comma separator triggers a tree-sitter-kotlin 0.3 bug —
+    // @file:[Ann1, Ann2] comma separator triggers a tree-sitter-kotlin grammar bug,
+    // still present as of the ABI-15 migration (`brokk-tree-sitter-kotlin` 0.4.0) —
     // the lone `,` must be suppressed, not reported as a syntax error.
     let data =
         parse_kotlin("@file:[JvmName(\"Foo\"), Suppress(\"unused\")]\npackage com.example\n");
@@ -1977,7 +1978,7 @@ fn interface_misparsed_by_annotation_is_recovered() {
 // ── enclosing_extension_receiver_at ──────────────────────────────────────
 
 fn enclosing_receiver_at(src: &str, line: u32, character: u32) -> Option<String> {
-    let doc = crate::indexer::live_tree::parse_live(src, tree_sitter_kotlin::language())
+    let doc = crate::indexer::live_tree::parse_live(src, tree_sitter_kotlin::LANGUAGE.into())
         .expect("must parse");
     let position = tower_lsp::lsp_types::Range {
         start: tower_lsp::lsp_types::Position { line, character },

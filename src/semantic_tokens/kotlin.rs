@@ -8,14 +8,14 @@ use crate::queries::{
     KIND_COMPANION_OBJ, KIND_ENUM_ENTRY, KIND_FUN_DECL, KIND_IDENTIFIER, KIND_IMPORT_HEADER,
     KIND_KW_AS, KIND_KW_AS_SAFE, KIND_KW_BY, KIND_KW_ENUM, KIND_KW_IN, KIND_KW_INTERFACE,
     KIND_KW_IN_NOT, KIND_KW_IS, KIND_KW_IS_NOT, KIND_KW_VAL, KIND_MULTI_ANNOTATION,
-    KIND_MULTI_VAR_DECL, KIND_OBJECT_DECL, KIND_PARAMETER, KIND_PROP_DECL, KIND_SIMPLE_IDENT,
-    KIND_TYPE_IDENT, KIND_TYPE_PARAM, KIND_VALUE_ARG, KIND_VAR_DECL,
+    KIND_MULTI_VAR_DECL, KIND_OBJECT_DECL, KIND_PARAMETER, KIND_PRIMARY_CTOR, KIND_PROP_DECL,
+    KIND_SIMPLE_IDENT, KIND_TYPE_IDENT, KIND_TYPE_PARAM, KIND_VALUE_ARG, KIND_VAR_DECL,
 };
 
 use super::helpers::{
     child_ident, find_annotation_ident, first_child_of_kind, has_deprecated_annotation,
     has_keyword_child, has_modifier, is_in_companion_body, is_inside_class_body, is_top_level,
-    push_token, value_arg_label,
+    push_token, push_token_at_byte_range, value_arg_label,
 };
 use super::{modifier_bit, type_index, RawToken, Source};
 
@@ -35,6 +35,7 @@ fn classify_kotlin(node: Node<'_>, src: &Source<'_>, out: &mut Vec<RawToken>) {
         k if k == KIND_PROP_DECL => kotlin_prop_token(node, src, out),
         k if k == KIND_TYPE_PARAM => kotlin_type_param_token(node, src, out),
         k if k == KIND_CLASS_PARAM => kotlin_class_param_token(node, src, out),
+        k if k == KIND_PRIMARY_CTOR => kotlin_primary_constructor_keyword_token(node, src, out),
         KIND_PARAMETER => {
             let mods = modifier_bit(&SemanticTokenModifier::DECLARATION);
             if let Some(name) = child_ident(node) {
@@ -233,6 +234,76 @@ fn kotlin_type_param_token(node: Node<'_>, src: &Source<'_>, out: &mut Vec<RawTo
             out,
         );
     }
+}
+
+/// Emits a KEYWORD token for the literal `constructor` keyword of an
+/// annotated/modified primary constructor (`class Foo @Inject constructor(...)`).
+///
+/// The ABI-15 tree-sitter-kotlin grammar (`fwcd/tree-sitter-kotlin` main as
+/// of 2026-02) no longer represents `constructor` as its own node at all —
+/// confirmed empirically, not just renamed — so there's nothing to dispatch
+/// on directly. `constructor` is only written out when the primary
+/// constructor has modifiers/annotations before it (an implicit primary
+/// constructor, e.g. `class Foo(val x: Int)`, never writes the word at all),
+/// so this scans only the gap between the last modifier and the parameter
+/// list's `(` for the literal text, and does nothing if it isn't there.
+fn kotlin_primary_constructor_keyword_token(
+    node: Node<'_>,
+    src: &Source<'_>,
+    out: &mut Vec<RawToken>,
+) {
+    let gap_start =
+        first_child_of_kind(node, "modifiers").map_or(node.start_byte(), |m| m.end_byte());
+    let Some(lparen) = first_child_of_kind(node, "(") else {
+        return;
+    };
+    let gap_end = lparen.start_byte();
+    if gap_end <= gap_start {
+        return;
+    }
+    let Ok(gap_text) = std::str::from_utf8(&src.bytes[gap_start..gap_end]) else {
+        return;
+    };
+    let Some(offset_in_gap) = trivia_skipped_offset(gap_text) else {
+        return;
+    };
+    if !gap_text[offset_in_gap..].starts_with("constructor") {
+        return;
+    }
+    push_token_at_byte_range(
+        gap_start + offset_in_gap,
+        "constructor".len(),
+        type_index(&SemanticTokenType::KEYWORD),
+        0,
+        src,
+        out,
+    );
+}
+
+/// Byte offset of the first non-trivia (non-whitespace, non-comment) content
+/// in `text`, or `None` if it's all trivia. Only `//` line comments and
+/// `/* */` block comments can appear in the constructor-keyword gap — no
+/// identifier can legally precede `constructor` there — so skipping them
+/// (rather than a raw substring search) keeps a `// mentions constructor`
+/// comment from being highlighted as the keyword.
+fn trivia_skipped_offset(text: &str) -> Option<usize> {
+    let bytes = text.as_bytes();
+    let mut i = 0;
+    loop {
+        while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+            i += 1;
+        }
+        if bytes[i..].starts_with(b"//") {
+            i += text[i..].find('\n').unwrap_or(bytes.len() - i);
+            continue;
+        }
+        if bytes[i..].starts_with(b"/*") {
+            i += text[i..].find("*/").map_or(bytes.len() - i, |end| end + 2);
+            continue;
+        }
+        break;
+    }
+    (i < bytes.len()).then_some(i)
 }
 
 fn kotlin_class_param_token(node: Node<'_>, src: &Source<'_>, out: &mut Vec<RawToken>) {

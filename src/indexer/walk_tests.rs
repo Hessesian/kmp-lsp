@@ -4,7 +4,7 @@ use tree_sitter::Node;
 fn parse(source: &str) -> tree_sitter::Tree {
     let mut parser = tree_sitter::Parser::new();
     parser
-        .set_language(&tree_sitter_kotlin::language())
+        .set_language(&tree_sitter_kotlin::LANGUAGE.into())
         .expect("kotlin grammar loads");
     parser.parse(source, None).expect("source parses")
 }

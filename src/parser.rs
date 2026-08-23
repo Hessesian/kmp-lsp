@@ -3,7 +3,7 @@ use std::sync::OnceLock;
 use std::thread::LocalKey;
 
 use tower_lsp::lsp_types::{Position, Range, SymbolKind};
-use tree_sitter::{Node, Parser, Query, QueryCursor};
+use tree_sitter::{Node, Parser, Query, QueryCursor, StreamingIterator};
 
 use crate::indexer::NodeExt;
 use crate::queries::{
@@ -11,14 +11,14 @@ use crate::queries::{
     KIND_CLASS_BODY, KIND_CLASS_DECL, KIND_CLASS_PARAM, KIND_COMPANION_OBJ, KIND_COMPUTED_PROPERTY,
     KIND_CTOR_DECL, KIND_DELEGATION_SPEC, KIND_ENUM_CONSTANT, KIND_ENUM_DECL, KIND_EQ,
     KIND_EXTENDS_INTERFACES, KIND_EXTENSION_KW, KIND_FIELD_DECL, KIND_FORMAL_PARAM,
-    KIND_FORMAL_PARAMS, KIND_FUN, KIND_FUNCTION_TYPE, KIND_FUN_BODY, KIND_FUN_DECL,
-    KIND_FUN_VALUE_PARAMS, KIND_IDENTIFIER, KIND_IMPORT_ALIAS, KIND_IMPORT_DECL,
-    KIND_IMPORT_HEADER, KIND_IMPORT_LIST, KIND_INFIX_EXPR, KIND_INHERITANCE_SPEC,
-    KIND_INHERITANCE_SPECS, KIND_INIT_DECL, KIND_INTERFACE_DECL, KIND_LAMBDA_LIT, KIND_LPAREN,
-    KIND_METHOD_DECL, KIND_MODIFIERS, KIND_MOD_FINAL, KIND_MOD_STATIC, KIND_NAV_EXPR,
-    KIND_NULLABLE_TYPE, KIND_OBJECT_DECL, KIND_PACKAGE_DECL, KIND_PACKAGE_HEADER, KIND_PARAMETER,
-    KIND_PREFIX_EXPR, KIND_PRIMARY_CTOR, KIND_PROP_DECL, KIND_PROP_DELEGATE, KIND_PROTOCOL_DECL,
-    KIND_PROTOCOL_FUNC_DECL, KIND_RECORD_DECL, KIND_SCOPED_IDENT, KIND_SECONDARY_CTOR,
+    KIND_FORMAL_PARAMS, KIND_FUNCTION_TYPE, KIND_FUN_BODY, KIND_FUN_DECL, KIND_FUN_VALUE_PARAMS,
+    KIND_IDENTIFIER, KIND_IMPORT_ALIAS, KIND_IMPORT_DECL, KIND_IMPORT_HEADER, KIND_IMPORT_LIST,
+    KIND_INFIX_EXPR, KIND_INHERITANCE_SPEC, KIND_INHERITANCE_SPECS, KIND_INIT_DECL,
+    KIND_INTERFACE_DECL, KIND_LAMBDA_LIT, KIND_LPAREN, KIND_METHOD_DECL, KIND_MODIFIERS,
+    KIND_MOD_FINAL, KIND_MOD_STATIC, KIND_NAV_EXPR, KIND_NULLABLE_TYPE, KIND_OBJECT_DECL,
+    KIND_PACKAGE_DECL, KIND_PACKAGE_HEADER, KIND_PARAMETER, KIND_PREFIX_EXPR, KIND_PRIMARY_CTOR,
+    KIND_PROP_DECL, KIND_PROP_DELEGATE, KIND_PROTOCOL_DECL, KIND_PROTOCOL_FUNC_DECL,
+    KIND_RECEIVER_TYPE, KIND_RECORD_DECL, KIND_SCOPED_IDENT, KIND_SECONDARY_CTOR,
     KIND_SIMPLE_IDENT, KIND_SOURCE_FILE, KIND_STATEMENTS, KIND_SUPERCLASS, KIND_SUPER_INTERFACES,
     KIND_TYPE_IDENT, KIND_USER_TYPE, KIND_VALUE_ARG, KIND_VALUE_ARGS, KIND_VAR_DECL,
     KIND_VAR_DECLARATOR, KIND_WILDCARD_IMPORT, KOTLIN_DEFINITIONS, SWIFT_DEFINITIONS,
@@ -49,8 +49,8 @@ static SWIFT_DEF_QUERY_CACHE: OnceLock<Option<DefQueryCache>> = OnceLock::new();
 
 fn kotlin_def_query() -> Option<&'static DefQueryCache> {
     KOTLIN_DEF_QUERY_CACHE
-        .get_or_init(
-            || match Query::new(&tree_sitter_kotlin::language(), KOTLIN_DEFINITIONS) {
+        .get_or_init(|| {
+            match Query::new(&tree_sitter_kotlin::LANGUAGE.into(), KOTLIN_DEFINITIONS) {
                 Ok(query) => {
                     let def_idx = query.capture_index_for_name("def").unwrap_or(0);
                     let name_idx = query.capture_index_for_name("name").unwrap_or(1);
@@ -64,8 +64,8 @@ fn kotlin_def_query() -> Option<&'static DefQueryCache> {
                     log::error!("Kotlin definitions query compile error: {e}");
                     None
                 }
-            },
-        )
+            }
+        })
         .as_ref()
 }
 
@@ -101,7 +101,7 @@ fn swift_def_query() -> Option<&'static DefQueryCache> {
 thread_local! {
     static KOTLIN_PARSER: RefCell<Parser> = RefCell::new({
         let mut p = Parser::new();
-        let _ = p.set_language(&tree_sitter_kotlin::language());
+        let _ = p.set_language(&tree_sitter_kotlin::LANGUAGE.into());
         p
     });
     static SWIFT_PARSER: RefCell<Parser> = RefCell::new({
@@ -111,7 +111,7 @@ thread_local! {
     });
     static JAVA_PARSER: RefCell<Parser> = RefCell::new({
         let mut p = Parser::new();
-        let _ = p.set_language(&tree_sitter_java::language());
+        let _ = p.set_language(&tree_sitter_java::LANGUAGE.into());
         p
     });
 }
@@ -152,10 +152,11 @@ pub(crate) fn parse_kotlin(content: &str) -> FileData {
             return;
         };
         let mut cur = QueryCursor::new();
-        let matches: Vec<MatchEntry> = cur
-            .matches(&qc.query, root, bytes)
-            .map(|m| map_def_captures(&m, qc.def_idx, qc.name_idx, bytes))
-            .collect();
+        let mut match_iter = cur.matches(&qc.query, root, bytes);
+        let mut matches: Vec<MatchEntry> = Vec::new();
+        while let Some(m) = match_iter.next() {
+            matches.push(map_def_captures(m, qc.def_idx, qc.name_idx, bytes));
+        }
 
         // Deduplicate: multiple patterns can fire on the same node
         // (e.g. enum class matches both pattern 0 "enum" AND pattern 2 "class").
@@ -172,9 +173,6 @@ pub(crate) fn parse_kotlin(content: &str) -> FileData {
 
         // ── package + imports (manual tree walk — avoids query overlap issues) ──
         data.extract_package_and_imports(root, bytes);
-
-        // ── fun interface (tree-sitter parses these as ERROR + lambda_literal) ─
-        data.extract_fun_interfaces(root, bytes);
 
         // ── interfaces mis-parsed because of a qualified / array-arg annotation ─
         extract_misparsed_annotated_interfaces(root, bytes, data);
@@ -229,35 +227,38 @@ pub(crate) fn parse_swift(content: &str) -> FileData {
         let def_idx = qc.def_idx;
         let name_idx = qc.name_idx;
         let mut cur = QueryCursor::new();
-        let matches: Vec<MatchEntry> = cur
-            .matches(&qc.query, root, bytes)
-            .map(|m| {
-                let (pidx, slot) = map_def_captures(&m, def_idx, name_idx, bytes);
-                if pidx == queries::SWIFT_INIT_PATTERN_IDX && slot[0].is_none() {
-                    // init_declaration — no @name, synthesize "init"; type_params from @def node.
-                    let def_cap = m.captures.iter().find(|cap| cap.index == def_idx);
-                    if let Some(cap) = def_cap {
-                        let dr = ts_to_lsp(cap.node.range());
-                        let sel = Range::new(
-                            Position::new(dr.start.line, dr.start.character),
-                            Position::new(
-                                dr.start.line,
-                                dr.start.character + queries::SWIFT_INIT_NAME.len() as u32,
-                            ),
-                        );
-                        let type_params = cap.node.extract_type_params(bytes);
-                        return (
-                            pidx,
-                            [
-                                Some((queries::SWIFT_INIT_NAME.to_owned(), dr, sel, type_params)),
-                                None,
-                            ],
-                        );
-                    }
+        let mut match_iter = cur.matches(&qc.query, root, bytes);
+        let mut matches: Vec<MatchEntry> = Vec::new();
+        while let Some(m) = match_iter.next() {
+            let (pidx, slot) = map_def_captures(m, def_idx, name_idx, bytes);
+            let entry = if pidx == queries::SWIFT_INIT_PATTERN_IDX && slot[0].is_none() {
+                // init_declaration — no @name, synthesize "init"; type_params from @def node.
+                let def_cap = m.captures.iter().find(|cap| cap.index == def_idx);
+                if let Some(cap) = def_cap {
+                    let dr = ts_to_lsp(cap.node.range());
+                    let sel = Range::new(
+                        Position::new(dr.start.line, dr.start.character),
+                        Position::new(
+                            dr.start.line,
+                            dr.start.character + queries::SWIFT_INIT_NAME.len() as u32,
+                        ),
+                    );
+                    let type_params = cap.node.extract_type_params(bytes);
+                    (
+                        pidx,
+                        [
+                            Some((queries::SWIFT_INIT_NAME.to_owned(), dr, sel, type_params)),
+                            None,
+                        ],
+                    )
+                } else {
+                    (pidx, slot)
                 }
+            } else {
                 (pidx, slot)
-            })
-            .collect();
+            };
+            matches.push(entry);
+        }
 
         // Deduplicate: use same BTreeMap strategy as Kotlin parser.
         let best = dedup_matches(&matches);
@@ -477,7 +478,7 @@ fn primary_ctor_class_params(root: Node, bytes: &[u8], cls: &SymbolEntry) -> Vec
         row: cls.selection_range.start.line as usize,
         column: cls.selection_range.start.character as usize,
     };
-    let Some(name_node) = root.descendant_for_point_range(start, start) else {
+    let Some(name_node) = crate::indexer::node_ext::descendant_for_point(root, bytes, start) else {
         return vec![];
     };
     // Walk up to the enclosing class_declaration.
@@ -548,7 +549,7 @@ fn synthesize_swift_implicit_init(root: Node, bytes: &[u8], symbols: &mut Vec<Sy
     let types: Vec<SymbolEntry> = symbols
         .iter()
         .filter(|s| matches!(s.kind, SymbolKind::STRUCT | SymbolKind::CLASS))
-        .filter(|s| !swift_class_decl_is_extension(root, &s.range))
+        .filter(|s| !swift_class_decl_is_extension(root, bytes, &s.range))
         .cloned()
         .collect();
 
@@ -616,12 +617,13 @@ fn range_contains_lines(outer: &Range, inner: &Range) -> bool {
 /// starting at `range` is actually an `extension` — the Swift grammar
 /// reuses the same `class_declaration` node kind for all four, distinguished
 /// only by an anonymous keyword child (see `SWIFT_DEFINITIONS`).
-fn swift_class_decl_is_extension(root: Node, range: &Range) -> bool {
+fn swift_class_decl_is_extension(root: Node, bytes: &[u8], range: &Range) -> bool {
     let start_point = tree_sitter::Point {
         row: range.start.line as usize,
         column: range.start.character as usize,
     };
-    let Some(node) = root.descendant_for_point_range(start_point, start_point) else {
+    let Some(node) = crate::indexer::node_ext::descendant_for_point(root, bytes, start_point)
+    else {
         return false;
     };
     let decl = find_ancestor_decl(node);
@@ -655,7 +657,7 @@ fn swift_stored_property_signature(
         row: range.start.line as usize,
         column: range.start.character as usize,
     };
-    let node = root.descendant_for_point_range(start_point, start_point)?;
+    let node = crate::indexer::node_ext::descendant_for_point(root, bytes, start_point)?;
     let decl = find_ancestor_decl(node);
     if decl.kind() != KIND_PROP_DECL {
         return None;
@@ -793,100 +795,10 @@ fn ts_to_lsp(r: tree_sitter::Range) -> Range {
 /// but deduplicates by `(start_line, start_col)` and caps at `MAX_ERRORS`.
 const MAX_SYNTAX_ERRORS: usize = 20;
 
-/// Returns true if this ERROR node is actually a valid `fun interface` declaration
-/// that tree-sitter-kotlin just doesn't parse correctly.
-/// Structure: ERROR { "fun", user_type("interface"), simple_identifier }
-fn is_fun_interface_error(node: &Node, bytes: &[u8]) -> bool {
-    if !node.is_error() {
-        return false;
-    }
-    let mut has_fun = false;
-    let mut has_interface = false;
-    let mut has_name = false;
-    let mut cur = node.walk();
-    for child in node.children(&mut cur) {
-        match child.kind() {
-            KIND_FUN => has_fun = true,
-            KIND_USER_TYPE => {
-                if child.utf8_text(bytes).unwrap_or("") == "interface" {
-                    has_interface = true;
-                }
-            }
-            KIND_SIMPLE_IDENT => has_name = true,
-            _ => {
-                // Variance case: `fun interface Foo<in A, out B>` produces a nested
-                // ERROR child that swallows `fun`, `interface`, and the name together:
-                //   ERROR { ERROR(user_type("interface"), simple_identifier("Foo")),
-                //           type_parameters(...) }
-                if child.is_error() {
-                    let mut ec = child.walk();
-                    for gc in child.children(&mut ec) {
-                        match gc.kind() {
-                            KIND_FUN => has_fun = true,
-                            KIND_USER_TYPE if gc.utf8_text(bytes).unwrap_or("") == "interface" => {
-                                has_interface = true;
-                            }
-                            KIND_SIMPLE_IDENT => has_name = true,
-                            _ => {}
-                        }
-                    }
-                }
-            }
-        }
-    }
-    has_fun && has_interface && has_name
-}
-
-/// Returns true if this ERROR node is an orphaned assignment RHS from a chained-call setter.
-///
-/// Tree-sitter-kotlin 0.3 fails to parse `a.method().property = value` as an assignment:
-/// it parses `a.method().property` as an expression (inside `statements`), then leaves
-/// `= value` as a bare ERROR node. The code is valid Kotlin.
-///
-/// CST pattern:
-///   statements { navigation_expression { ... } }
-///   ERROR { "=" ... }    ← false positive
-fn is_chained_call_assignment_error(node: &Node, bytes: &[u8]) -> bool {
-    if !node.is_error() {
-        return false;
-    }
-    let text = node.utf8_text(bytes).unwrap_or("").trim_start();
-    // Must start with `=` but NOT `==` or `=>` (those are real syntax errors)
-    if !text.starts_with('=') {
-        return false;
-    }
-    // Exclude `==` (equality) and `=>` (arrow) — genuine syntax errors
-    let second = text.chars().nth(1);
-    if matches!(second, Some('=') | Some('>')) {
-        return false;
-    }
-    // Must have non-whitespace content after `=` (bare `=` with nothing is incomplete)
-    if text[1..].trim().is_empty() {
-        return false;
-    }
-    // Previous sibling must be the parsed LHS
-    let parent = match node.parent() {
-        Some(p) => p,
-        None => return false,
-    };
-    let mut cur = parent.walk();
-    let children: Vec<_> = parent.children(&mut cur).collect();
-    let pos = match children.iter().position(|c| c.id() == node.id()) {
-        Some(p) => p,
-        None => return false,
-    };
-    if pos == 0 {
-        return false;
-    }
-    matches!(
-        children[pos - 1].kind(),
-        k if k == KIND_STATEMENTS || k == KIND_NAV_EXPR || k == KIND_CALL_EXPR
-    )
-}
-
 /// Returns true if this ERROR node is a lone `,` inside a `@file:[...]` annotation.
-/// tree-sitter-kotlin 0.3 uses `repeat1` without comma separators inside the bracket
-/// syntax, so each comma becomes a spurious ERROR node.
+/// tree-sitter-kotlin's `repeat1` for the bracket syntax still has no comma
+/// separators, so each comma becomes a spurious ERROR node — confirmed still present
+/// under ABI-15 (`brokk-tree-sitter-kotlin` 0.4.0), not just the older 0.3.8 grammar.
 fn is_file_annotation_comma_error(node: &Node, bytes: &[u8]) -> bool {
     if !node.is_error() {
         return false;
@@ -909,92 +821,6 @@ fn is_file_annotation_comma_error(node: &Node, bytes: &[u8]) -> bool {
         }
     }
     false
-}
-
-/// Returns true if this ERROR node is a false positive caused by tree-sitter-kotlin
-/// not supporting nullable extension function types like `T?.() -> R`.
-/// The grammar mislabels the `.(` and `-> R)` fragments as errors.
-fn is_nullable_function_type_error(node: &Node, bytes: &[u8]) -> bool {
-    if !node.is_error() {
-        return false;
-    }
-    let text = node.utf8_text(bytes).unwrap_or("");
-    let trimmed = text.trim();
-    // Pattern 1: `.(` or `.() -> R` — the receiver invocation part
-    // Pattern 2: `-> T)` or `-> SomeType)` — the return type trailing from misparse
-    let looks_like_nullable_fn =
-        trimmed.starts_with(".(") || (trimmed.starts_with("->") && trimmed.ends_with(')'));
-    if !looks_like_nullable_fn {
-        return false;
-    }
-    // Verify context: should be inside a parameter/function context
-    let mut ancestor = node.parent();
-    for _ in 0..5 {
-        match ancestor {
-            Some(a) => {
-                let k = a.kind();
-                if k == KIND_PARAMETER
-                    || k == KIND_FUN_VALUE_PARAMS
-                    || k == KIND_FUN_DECL
-                    || k == KIND_USER_TYPE
-                {
-                    return true;
-                }
-                ancestor = a.parent();
-            }
-            None => break,
-        }
-    }
-    false
-}
-
-/// Returns the interface name if this `function_declaration` is actually a misparse
-/// of `[modifiers] fun interface Foo { ... }`.
-///
-/// When a visibility/annotation modifier precedes `fun interface`, tree-sitter
-/// misinterprets it as an extension function on the `interface` type:
-///   `function_declaration { modifiers, "fun", user_type("interface"), simple_identifier("Foo"), ERROR }`
-/// A real extension function would have a `.` between receiver type and name; the
-/// mis-parsed one does not. We detect it by: user_type child = "interface" AND
-/// simple_identifier present after it (directly or as first child of ERROR).
-/// Returns (name_start_byte, name_end_byte, node_range) or None.
-fn fun_interface_name_from_fn_decl(
-    node: &Node,
-    bytes: &[u8],
-) -> Option<(usize, usize, tree_sitter::Range)> {
-    if node.kind() != KIND_FUN_DECL {
-        return None;
-    }
-    if !node.has_error() {
-        return None;
-    }
-    let mut after_interface = false;
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        if after_interface {
-            // Direct simple_identifier child (@annotation case: "simple_identifier Factory")
-            if child.kind() == KIND_SIMPLE_IDENT {
-                return Some((child.start_byte(), child.end_byte(), child.range()));
-            }
-            // ERROR child containing simple_identifier as first meaningful child
-            // (internal case: ERROR { simple_identifier("IPairCodeParser"), "{", "fun", ... })
-            if child.is_error() {
-                let mut ec = child.walk();
-                let info = child
-                    .children(&mut ec)
-                    .next()
-                    .filter(|c| c.kind() == KIND_SIMPLE_IDENT)
-                    .map(|c| (c.start_byte(), c.end_byte(), c.range()));
-                if let Some(loc) = info {
-                    return Some(loc);
-                }
-            }
-        }
-        if child.kind() == KIND_USER_TYPE && child.utf8_text(bytes).unwrap_or("") == "interface" {
-            after_interface = true;
-        }
-    }
-    None
 }
 
 fn push_interface_symbol(
@@ -1024,64 +850,6 @@ fn push_interface_symbol(
         trailing_lambda: false,
         deprecated,
     });
-}
-
-/// Walk the parse tree and emit INTERFACE symbols for every `fun interface Foo` declaration.
-///
-/// Tree-sitter produces two different misparsings depending on whether modifiers precede:
-/// - No modifiers: ERROR("fun", user_type("interface"), simple_identifier("Foo"))
-/// - With modifiers: function_declaration(modifiers, "fun", user_type("interface"),
-///   simple_identifier("Foo"), ERROR(...))
-fn extract_fun_interfaces(root: Node, bytes: &[u8], data: &mut FileData) {
-    if !root.has_error() {
-        return;
-    }
-    let mut stack = vec![root];
-    while let Some(node) = stack.pop() {
-        // Case 1: no-modifier `fun interface` → ERROR node
-        if node.is_error() && is_fun_interface_error(&node, bytes) {
-            // Simple case: simple_identifier is a direct child.
-            let name_node = node
-                .first_child_of_kind(KIND_SIMPLE_IDENT)
-                // Variance case: name is inside a nested ERROR child.
-                .or_else(|| {
-                    let mut cur = node.walk();
-                    let inner_error = node.children(&mut cur).find(|c| c.is_error());
-                    drop(cur);
-                    inner_error.and_then(|inner| inner.first_child_of_kind(KIND_SIMPLE_IDENT))
-                });
-            if let Some(child) = name_node {
-                if let Ok(name) = child.utf8_text(bytes) {
-                    push_interface_symbol(name, &node, child.range(), bytes, data);
-                }
-            }
-            // Don't recurse further into ERROR children.
-            continue;
-        }
-        // Case 2: modifier-prefixed `fun interface` → misparse as function_declaration
-        if let Some((name_start, name_end, name_ts_range)) =
-            fun_interface_name_from_fn_decl(&node, bytes)
-        {
-            if let Ok(name) = std::str::from_utf8(&bytes[name_start..name_end]) {
-                let sel = ts_to_lsp(name_ts_range);
-                // Remove the incorrectly-added function/method symbol (same name, same line).
-                data.symbols.retain(|s| {
-                    !(s.name == name
-                        && s.selection_start() == sel.start.line
-                        && matches!(s.kind, SymbolKind::FUNCTION | SymbolKind::METHOD))
-                });
-                push_interface_symbol(name, &node, name_ts_range, bytes, data);
-            }
-            // Still recurse into children to find nested fun interfaces.
-        }
-        // Recurse only into subtrees that contain errors.
-        if node.has_error() || node.is_error() {
-            let mut cur = node.walk();
-            for child in node.children(&mut cur) {
-                stack.push(child);
-            }
-        }
-    }
 }
 
 /// Recover an interface symbol that tree-sitter-kotlin mis-parsed because of its
@@ -1250,23 +1018,6 @@ fn extract_anonymous_companion_objects(root: Node, bytes: &[u8], data: &mut File
     }
 }
 
-fn has_fun_interface_descendant(root: &Node, bytes: &[u8]) -> bool {
-    let mut stack = vec![*root];
-    while let Some(node) = stack.pop() {
-        if fun_interface_name_from_fn_decl(&node, bytes).is_some()
-            || is_fun_interface_error(&node, bytes)
-        {
-            return true;
-        }
-        if !node.has_error() {
-            continue;
-        }
-        let mut cursor = node.walk();
-        stack.extend(node.children(&mut cursor));
-    }
-    false
-}
-
 fn collect_syntax_errors(root: Node, bytes: &[u8]) -> Vec<SyntaxError> {
     if !root.has_error() {
         return Vec::new();
@@ -1292,20 +1043,9 @@ fn collect_syntax_errors(root: Node, bytes: &[u8]) -> Vec<SyntaxError> {
                 });
             }
         } else if node.is_error() {
-            // Skip errors that are actually valid `fun interface` declarations.
-            if is_fun_interface_error(&node, bytes) {
-                continue;
-            }
-            // Skip errors that are chained-call property assignments: a.method().prop = value
-            if is_chained_call_assignment_error(&node, bytes) {
-                continue;
-            }
-            // Skip lone `,` inside @file:[...] bracket syntax (tree-sitter-kotlin 0.3 bug).
+            // Skip lone `,` inside @file:[...] bracket syntax (grammar still doesn't
+            // support comma-separated file annotations — see is_file_annotation_comma_error).
             if is_file_annotation_comma_error(&node, bytes) {
-                continue;
-            }
-            // Skip false positives from nullable extension function types: T?.() -> R
-            if is_nullable_function_type_error(&node, bytes) {
                 continue;
             }
             let range = ts_to_lsp(node.range());
@@ -1333,27 +1073,9 @@ fn collect_syntax_errors(root: Node, bytes: &[u8]) -> Vec<SyntaxError> {
                 stack.push(child);
             }
         } else if node.has_error() {
-            // Skip recursing into function_declarations that are misparse of `fun interface`.
-            if fun_interface_name_from_fn_decl(&node, bytes).is_some() {
-                continue;
-            }
             // Only recurse into subtrees that contain errors.
             let mut cursor = node.walk();
-            let children: Vec<_> = node.children(&mut cursor).collect();
-            // If any sibling contains a fun-interface misparse, lone `}` ERROR nodes are
-            // cascading false positives from that misparse — suppress them.
-            let has_fun_iface_sibling = children
-                .iter()
-                .any(|c| has_fun_interface_descendant(c, bytes));
-            for child in children {
-                if has_fun_iface_sibling && child.is_error() {
-                    let text = child.utf8_text(bytes).unwrap_or("").trim();
-                    if text == "}" {
-                        continue;
-                    }
-                }
-                stack.push(child);
-            }
+            stack.extend(node.children(&mut cursor));
         }
         // else: clean subtree — skip entirely.
     }
@@ -1492,27 +1214,49 @@ fn extract_extension_receiver_from_cst(
         row: range.start.line as usize,
         column: range.start.character as usize,
     };
-    let Some(node) = root.descendant_for_point_range(start_point, start_point) else {
+    let Some(node) = crate::indexer::node_ext::descendant_for_point(root, bytes, start_point)
+    else {
         return empty;
     };
     let decl = find_ancestor_decl(node);
     if !matches!(decl.kind(), KIND_FUN_DECL | KIND_PROP_DECL) {
         return empty;
     }
+    extension_receiver_from_decl(decl, bytes)
+}
 
+/// Extracts `(last_qualified_segment, full_type_with_generics)` from a
+/// `function_declaration`/`property_declaration` node's `receiver_type` child,
+/// e.g. `("Flow", "Flow<ReducedResult<E, S>>")` or `("Bar", "")` for
+/// `fun Foo.Bar.baz()`. Returns `("", "")` when `decl` has no receiver.
+///
+/// Single source of truth for this grammar shape — every caller needing an
+/// extension function/property's receiver type MUST go through this, not
+/// re-derive it, since `receiver_type` wrapping `user_type` (rather than
+/// `user_type` being a direct child of the declaration) is an ABI-15 grammar
+/// shape (`fwcd/tree-sitter-kotlin` main as of 2026-02) that a second,
+/// independent implementation previously missed, silently breaking every
+/// implicit-receiver call inside an extension function/property.
+pub(crate) fn extension_receiver_from_decl(decl: Node, bytes: &[u8]) -> (String, String) {
+    let empty = (String::new(), String::new());
     let mut cursor = decl.walk();
     for child in decl.children(&mut cursor) {
-        if child.kind() != KIND_USER_TYPE {
+        if child.kind() != KIND_RECEIVER_TYPE {
             continue;
         }
-        let Some(next) = child.next_sibling() else {
+        // `receiver_type` wraps `user_type` directly for a plain or
+        // qualified receiver (`Foo`, `Foo.Bar` — the dot is internal to the
+        // one `user_type` node), or wraps `nullable_type (user_type ...)`
+        // for a nullable receiver (`Foo?`).
+        let Some(user_type) = child.first_child_of_kind(KIND_USER_TYPE).or_else(|| {
+            child
+                .first_child_of_kind(KIND_NULLABLE_TYPE)?
+                .first_child_of_kind(KIND_USER_TYPE)
+        }) else {
             continue;
         };
-        if next.kind() != "." {
-            continue;
-        }
 
-        let full = child
+        let full = user_type
             .utf8_text(bytes)
             .unwrap_or("")
             .lines()
@@ -1568,7 +1312,8 @@ fn extract_params_and_counts(root: Node, bytes: &[u8], range: &Range) -> (String
         row: range.start.line as usize,
         column: range.start.character as usize,
     };
-    let Some(node) = root.descendant_for_point_range(start_point, start_point) else {
+    let Some(node) = crate::indexer::node_ext::descendant_for_point(root, bytes, start_point)
+    else {
         return (String::new(), (0, 0));
     };
     let decl = find_ancestor_decl(node);
@@ -1621,12 +1366,13 @@ fn params_container_node(decl: Node) -> Option<Node> {
 
 /// Returns `true` when the last value parameter of the function at `range` has a function
 /// type, indicating the function supports trailing-lambda call syntax (`foo { }`).
-fn last_value_param_is_function_type(root: Node, _bytes: &[u8], range: &Range) -> bool {
+fn last_value_param_is_function_type(root: Node, bytes: &[u8], range: &Range) -> bool {
     let start_point = tree_sitter::Point {
         row: range.start.line as usize,
         column: range.start.character as usize,
     };
-    let Some(node) = root.descendant_for_point_range(start_point, start_point) else {
+    let Some(node) = crate::indexer::node_ext::descendant_for_point(root, bytes, start_point)
+    else {
         return false;
     };
     let decl = find_ancestor_decl(node);
@@ -1783,7 +1529,7 @@ pub(crate) fn extract_detail_from_node(
     lines: &[String],
 ) -> String {
     // Find the body child — `function_body` or `class_body` — and take text before it.
-    let body_start = (0..node.child_count())
+    let body_start = (0..node.child_count() as u32)
         .filter_map(|i| node.child(i))
         .find(|c| c.kind() == KIND_FUN_BODY || c.kind() == KIND_CLASS_BODY)
         .map(|body| body.start_byte());
@@ -2304,7 +2050,7 @@ fn call_expr_receiver_method(call: Node, bytes: &[u8]) -> Option<(String, String
         return None;
     }
     let receiver_node = callee.named_child(0)?;
-    let suffix_node = callee.named_child(named_count - 1)?;
+    let suffix_node = callee.named_child(named_count as u32 - 1)?;
 
     // Reject multi-level chaining (e.g. `a.b.method()`)
     if receiver_node.kind() == KIND_NAV_EXPR {
@@ -2334,7 +2080,7 @@ fn nav_expr_receiver_field(nav: Node, bytes: &[u8]) -> Option<(String, String)> 
         return None;
     }
     let receiver_node = nav.named_child(0)?;
-    let suffix_node = nav.named_child(named_count - 1)?;
+    let suffix_node = nav.named_child(named_count as u32 - 1)?;
     // Reject multi-level chaining (e.g. `a.b.field`)
     if receiver_node.kind() == KIND_NAV_EXPR {
         return None;
@@ -2489,9 +2235,6 @@ fn find_lambda_literal(start: Node) -> Option<Node> {
 impl crate::types::FileData {
     fn extract_package_and_imports(&mut self, root: tree_sitter::Node, bytes: &[u8]) {
         extract_package_and_imports(root, bytes, self)
-    }
-    fn extract_fun_interfaces(&mut self, root: tree_sitter::Node, bytes: &[u8]) {
-        extract_fun_interfaces(root, bytes, self)
     }
     fn extract_secondary_constructors(&mut self, root: tree_sitter::Node, bytes: &[u8]) {
         extract_secondary_constructors(root, bytes, self)
@@ -2722,7 +2465,7 @@ impl crate::types::FileData {
         let kind = if node
             .first_child_of_kind(KIND_MODIFIERS)
             .is_some_and(|mods| {
-                let found_kinds: Vec<&str> = (0..mods.child_count())
+                let found_kinds: Vec<&str> = (0..mods.child_count() as u32)
                     .filter_map(|i| mods.child(i))
                     .map(|c| c.kind())
                     .collect();

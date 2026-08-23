@@ -23,10 +23,10 @@ use tree_sitter::Node;
 
 use crate::indexer::live_tree::LiveDoc;
 use crate::indexer::{all_lambda_receivers_at, Indexer};
+use crate::parser::extension_receiver_from_decl;
 use crate::queries::{
     KIND_CALL_EXPR, KIND_DOT, KIND_FUN_DECL, KIND_IMPORT_HEADER, KIND_NAV_EXPR,
     KIND_PACKAGE_HEADER, KIND_SIMPLE_IDENT, KIND_TYPE_IDENT, KIND_TYPE_PARAM, KIND_TYPE_PARAMS,
-    KIND_USER_TYPE,
 };
 use crate::resolver::{fqns_for_name, receiver_provides_member, resolve_in_scope_strict};
 use crate::types::CursorPos;
@@ -54,27 +54,18 @@ struct Candidate {
     receivers: Vec<String>,
 }
 
-/// The extension-receiver type of `fun Receiver.name(...)`, if any — the `user_type`
-/// immediately followed by `.` before the function name.
+/// The extension-receiver type of `fun Receiver.name(...)`, if any.
+///
+/// Delegates to `extension_receiver_from_decl` — the shared, grammar-correct
+/// extraction — rather than re-deriving it: a previous local copy of this
+/// logic still assumed `user_type` was a direct child of the declaration
+/// (pre-ABI-15 grammar shape) and silently stopped matching any extension
+/// receiver at all once the grammar wrapped it in `receiver_type`, which
+/// caused every implicit-receiver call inside an extension function/property
+/// to be flagged as a missing import.
 fn extension_receiver_of(fn_node: Node, src: &[u8]) -> Option<String> {
-    let mut cursor = fn_node.walk();
-    let children: Vec<Node> = fn_node.children(&mut cursor).collect();
-    for (index, child) in children.iter().enumerate() {
-        if child.kind() == KIND_USER_TYPE
-            && children
-                .get(index + 1)
-                .map(|next| next.kind() == KIND_DOT)
-                .unwrap_or(false)
-        {
-            let mut inner_cursor = child.walk();
-            for inner in child.children(&mut inner_cursor) {
-                if inner.kind() == KIND_TYPE_IDENT {
-                    return inner.utf8_text(src).ok().map(|text| text.to_owned());
-                }
-            }
-        }
-    }
-    None
+    let (base, _receiver_type) = extension_receiver_from_decl(fn_node, src);
+    (!base.is_empty()).then_some(base)
 }
 
 /// Names declared by a `type_parameters` node (`<State, Effect: Bound>` → State,

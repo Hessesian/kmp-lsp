@@ -921,7 +921,7 @@ fn infer_lambda_result_type(
     if count == 0 {
         return None;
     }
-    let last = statements.named_child(count - 1)?;
+    let last = statements.named_child(count as u32 - 1)?;
     resolve_root_node_type(last, bytes, deps, uri)
 }
 

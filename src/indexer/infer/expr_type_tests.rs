@@ -11,7 +11,8 @@ fn test_url() -> Url {
 
 fn fun_body_expr_node(src: &str) -> (tree_sitter::Tree, Vec<u8>) {
     let mut p = Parser::new();
-    p.set_language(&tree_sitter_kotlin::language()).unwrap();
+    p.set_language(&tree_sitter_kotlin::LANGUAGE.into())
+        .unwrap();
     let bytes = src.as_bytes().to_vec();
     let tree = p.parse(src, None).unwrap();
     (tree, bytes)
@@ -23,7 +24,7 @@ fn infer(src: &str) -> Option<String> {
     let (tree, bytes) = fun_body_expr_node(&full);
     let root = tree.root_node();
     let fun_decl = root.child(0)?;
-    let body = (0..fun_decl.child_count())
+    let body = (0..fun_decl.child_count() as u32)
         .map(|i| fun_decl.child(i).unwrap())
         .find(|n| n.kind() == KIND_FUN_BODY)?;
     let expr = body.child(1)?;
@@ -36,7 +37,7 @@ fn infer_with_deps(src: &str, deps: &TestDeps) -> Option<String> {
     let (tree, bytes) = fun_body_expr_node(&full);
     let root = tree.root_node();
     let fun_decl = root.child(0)?;
-    let body = (0..fun_decl.child_count())
+    let body = (0..fun_decl.child_count() as u32)
         .map(|i| fun_decl.child(i).unwrap())
         .find(|n| n.kind() == KIND_FUN_BODY)?;
     let expr = body.child(1)?;

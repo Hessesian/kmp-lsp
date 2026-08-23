@@ -379,9 +379,7 @@ pub(crate) fn cursor_node_at(
         row,
         column: byte_col,
     };
-    doc.tree
-        .root_node()
-        .descendant_for_point_range(point, point)
+    crate::indexer::node_ext::descendant_for_point(doc.tree.root_node(), &doc.bytes, point)
 }
 
 /// If `lambda` is part of an enclosing call (trailing or named-argument —

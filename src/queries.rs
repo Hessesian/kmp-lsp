@@ -271,8 +271,13 @@ pub(crate) const KIND_VALUE_ARG: &str = "value_argument";
 pub(crate) const KIND_VALUE_ARGS: &str = "value_arguments";
 pub(crate) const KIND_NULLABLE_TYPE: &str = "nullable_type";
 pub(crate) const KIND_USER_TYPE: &str = "user_type";
+/// Wraps the receiver in an extension `fun`/`val`/`var` declaration — a
+/// grammar-generation change (ABI 15, `fwcd/tree-sitter-kotlin` main as of
+/// 2026-02) versus the 0.3.8 crate's older shape, where the receiver's
+/// `user_type` was a direct child of the declaration itself. See
+/// `extract_extension_receiver_from_cst`.
+pub(crate) const KIND_RECEIVER_TYPE: &str = "receiver_type";
 pub(crate) const KIND_FUN_DECL: &str = "function_declaration";
-pub(crate) const KIND_FUN: &str = "fun";
 
 // ─── Declaration node kinds (shared or language-specific) ──────────────────
 pub(crate) const KIND_CLASS_DECL: &str = "class_declaration";
@@ -410,7 +415,9 @@ pub(crate) const KIND_STRING_LITERAL: &str = "string_literal";
 pub(crate) const KIND_MULTILINE_STRING_LITERAL: &str = "multiline_string_literal";
 pub(crate) const KIND_STRING_CONTENT: &str = "string_content";
 pub(crate) const KIND_BOOLEAN_LITERAL: &str = "boolean_literal";
-pub(crate) const KIND_NULL_LITERAL: &str = "null";
+/// Named node since the ABI-15 grammar generation (`fwcd/tree-sitter-kotlin`
+/// main as of 2026-02) — previously an anonymous `"null"` token.
+pub(crate) const KIND_NULL_LITERAL: &str = "null_literal";
 pub(crate) const KIND_CHARACTER_LITERAL: &str = "character_literal";
 
 // ─── Kotlin when expression ───────────────────────────────────────────────────
