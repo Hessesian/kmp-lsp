@@ -989,6 +989,144 @@ fun test(): String = when (pick()) {
     );
 }
 
+// Regression: a nested `when (event.event)` inside a smart-cast branch of an
+// outer `when (event)`. Mirrors the real Moneta bug (DashboardProductsReducer.kt):
+// `event`'s declared type is the outer sealed `Event`, but inside
+// `is Event.OverdraftInput -> when (event.event) { ... }` the subject is
+// smart-cast to `Event.OverdraftInput`, whose own `event` field is a narrower,
+// unrelated sealed type (`OverdraftEvent`). `infer_field_chain_type`'s root-type
+// resolution ignores smart-cast narrowing, so it uses the un-narrowed declared
+// type "Event". `find_field_type_in_class` then does an unscoped bare-name
+// search across every workspace class literally named "Event" for one with an
+// "event"-named field — an unrelated decoy class (elsewhere, also named
+// "Event", also happening to declare something called "event") can be picked
+// over the real nested field. Reproducing this needs that decoy: a single
+// self-contained file with only one workspace-wide "Event" doesn't trigger the
+// bug, since the bare-name lookup then has only the correct candidate to find.
+#[test]
+fn diagnostics_no_false_positive_for_nested_when_on_smart_cast_narrowed_field() {
+    // Member names are deliberately distinct across `RegularEvent` and
+    // `OverdraftEvent` (no shared "OnClick") — otherwise a wrong root-type
+    // resolution that lands on the *other* sibling sealed type could still
+    // accidentally report zero missing branches by name coincidence, giving
+    // false confidence in this test regardless of whether the real fix works.
+    let reducer_src = "\
+sealed interface Event {
+    data class RegularInput(val event: RegularEvent) : Event
+    data class OverdraftInput(val event: OverdraftEvent) : Event
+}
+sealed interface RegularEvent {
+    object RegularOnClick : RegularEvent
+}
+sealed interface OverdraftEvent {
+    object OverdraftOnClick : OverdraftEvent
+    object OverdraftOnCallUsClick : OverdraftEvent
+}
+class Reducer {
+    fun reduce(event: Event) {
+        when (event) {
+            is Event.RegularInput -> when (event.event) {
+                is RegularEvent.RegularOnClick -> println(\"r\")
+            }
+            is Event.OverdraftInput -> when (event.event) {
+                is OverdraftEvent.OverdraftOnClick -> println(\"1\")
+                is OverdraftEvent.OverdraftOnCallUsClick -> println(\"2\")
+            }
+        }
+    }
+}
+";
+    // Unrelated feature elsewhere in the workspace: a totally different
+    // sealed `Event` whose own reducer parameter is also named `event`, with
+    // many members — the decoy an unscoped bare-name lookup can land on.
+    let decoy_src = "\
+sealed interface Event {
+    object ToggleSbCore : Event
+    object ToggleMaintenance : Event
+    object OpenDetail : Event
+}
+class OtherReducer {
+    fun reduce(event: Event) {}
+}
+";
+    let idx = setup(&[
+        ("/reducer/Reducer.kt", reducer_src),
+        ("/other/OtherReducer.kt", decoy_src),
+    ]);
+    let diags = when_diagnostics(&idx, &uri("/reducer/Reducer.kt"));
+    assert!(
+        diags.is_empty(),
+        "both nested whens are exhaustive for their smart-cast-narrowed `event` \
+         field type and must not report an unrelated same-named Event's members \
+         as missing: {diags:?}"
+    );
+}
+
+// Regression: the chain's SECOND hop (the field's own type, not just the root)
+// is *also* a same-named class duplicated workspace-wide, and the file that
+// declares it is only reached transitively — never imported by name anywhere.
+// Mirrors the real Moneta bug (PersonalDetailViewModel.kt):
+// `a.info.OtherInfoContract.kt` and `a.info_extended.OtherInfoExtendedContract.kt`
+// each declare their own `Event`/`SelectionVariantsEvents`/`SelectionVariantsEvent`
+// trio with different `SelectionVariantsEvent` members. The ViewModel (a third,
+// unrelated package) imports only `Event` from the `info` package — never
+// `SelectionVariantsEvents` or `SelectionVariantsEvent` by name — so resolving
+// the chain's second segment can only succeed by anchoring reachability on
+// `SelectionVariantsEvents`'s OWN declaring file (same package as its sibling
+// `SelectionVariantsEvent`), not the caller's.
+#[test]
+fn diagnostics_no_false_positive_when_chained_field_type_is_reached_transitively() {
+    let info_contract_src = "\
+package a.info
+sealed interface Event {
+    data class SelectionVariantsEvents(val selectionEvent: SelectionVariantsEvent) : Event
+}
+sealed interface SelectionVariantsEvent {
+    object DocumentTypeEvents : SelectionVariantsEvent
+}
+";
+    // Decoy: same names, different (larger) membership, different package —
+    // an unscoped bare-name lookup for either "SelectionVariantsEvents" or
+    // "SelectionVariantsEvent" could land here instead.
+    let info_extended_contract_src = "\
+package a.info_extended
+sealed interface Event {
+    data class SelectionVariantsEvents(val selectionEvent: SelectionVariantsEvent) : Event
+}
+sealed interface SelectionVariantsEvent {
+    object DocumentTypeEvents : SelectionVariantsEvent
+    object HousingEvents : SelectionVariantsEvent
+}
+";
+    let view_model_src = "\
+package b
+import a.info.Event
+
+fun reduce(event: Event) {
+    when (event) {
+        is Event.SelectionVariantsEvents -> when (event.selectionEvent) {
+            is SelectionVariantsEvent.DocumentTypeEvents -> println(\"doc\")
+        }
+    }
+}
+";
+    let idx = setup(&[
+        (
+            "/a/info_extended/OtherInfoExtendedContract.kt",
+            info_extended_contract_src,
+        ),
+        ("/a/info/OtherInfoContract.kt", info_contract_src),
+        ("/b/ViewModel.kt", view_model_src),
+    ]);
+    let diags = when_diagnostics(&idx, &uri("/b/ViewModel.kt"));
+    assert!(
+        diags.is_empty(),
+        "the nested when is exhaustive for a.info's SelectionVariantsEvent \
+         (the one reachable via SelectionVariantsEvents' own declaring file) \
+         and must not report a.info_extended's HousingEvents as missing: {diags:?}"
+    );
+}
+
 /// Regression: `collect_navigation_segments` only descends through
 /// navigation-expression node kinds, so it bails immediately on anything
 /// else — but a long, entirely ordinary field-access chain (`a.b.c.d…`)

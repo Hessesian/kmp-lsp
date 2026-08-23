@@ -7,21 +7,22 @@ use tree_sitter::{Node, Parser, Query, QueryCursor, StreamingIterator};
 
 use crate::indexer::NodeExt;
 use crate::queries::{
-    self, KIND_ANNOTATION_TYPE_DECL, KIND_CALLABLE_REF, KIND_CALL_EXPR, KIND_CALL_SUFFIX,
-    KIND_CLASS_BODY, KIND_CLASS_DECL, KIND_CLASS_PARAM, KIND_COMPANION_OBJ, KIND_COMPUTED_PROPERTY,
-    KIND_CTOR_DECL, KIND_DELEGATION_SPEC, KIND_ENUM_CONSTANT, KIND_ENUM_DECL, KIND_EQ,
-    KIND_EXTENDS_INTERFACES, KIND_EXTENSION_KW, KIND_FIELD_DECL, KIND_FORMAL_PARAM,
-    KIND_FORMAL_PARAMS, KIND_FUNCTION_TYPE, KIND_FUN_BODY, KIND_FUN_DECL, KIND_FUN_VALUE_PARAMS,
-    KIND_IDENTIFIER, KIND_IMPORT_ALIAS, KIND_IMPORT_DECL, KIND_IMPORT_HEADER, KIND_IMPORT_LIST,
-    KIND_INFIX_EXPR, KIND_INHERITANCE_SPEC, KIND_INHERITANCE_SPECS, KIND_INIT_DECL,
-    KIND_INTERFACE_DECL, KIND_LAMBDA_LIT, KIND_LPAREN, KIND_METHOD_DECL, KIND_MODIFIERS,
-    KIND_MOD_FINAL, KIND_MOD_STATIC, KIND_NAV_EXPR, KIND_NULLABLE_TYPE, KIND_OBJECT_DECL,
-    KIND_PACKAGE_DECL, KIND_PACKAGE_HEADER, KIND_PARAMETER, KIND_PREFIX_EXPR, KIND_PRIMARY_CTOR,
-    KIND_PROP_DECL, KIND_PROP_DELEGATE, KIND_PROTOCOL_DECL, KIND_PROTOCOL_FUNC_DECL,
-    KIND_RECEIVER_TYPE, KIND_RECORD_DECL, KIND_SCOPED_IDENT, KIND_SECONDARY_CTOR,
-    KIND_SIMPLE_IDENT, KIND_SOURCE_FILE, KIND_STATEMENTS, KIND_SUPERCLASS, KIND_SUPER_INTERFACES,
-    KIND_TYPE_IDENT, KIND_USER_TYPE, KIND_VALUE_ARG, KIND_VALUE_ARGS, KIND_VAR_DECL,
-    KIND_VAR_DECLARATOR, KIND_WILDCARD_IMPORT, KOTLIN_DEFINITIONS, SWIFT_DEFINITIONS,
+    self, KIND_ANNOTATION_TYPE_DECL, KIND_BINDING_PATTERN_KIND, KIND_CALLABLE_REF, KIND_CALL_EXPR,
+    KIND_CALL_SUFFIX, KIND_CLASS_BODY, KIND_CLASS_DECL, KIND_CLASS_PARAM, KIND_COMPANION_OBJ,
+    KIND_COMPUTED_PROPERTY, KIND_CTOR_DECL, KIND_DELEGATION_SPEC, KIND_ENUM_CONSTANT,
+    KIND_ENUM_DECL, KIND_EQ, KIND_EXTENDS_INTERFACES, KIND_EXTENSION_KW, KIND_FIELD_DECL,
+    KIND_FORMAL_PARAM, KIND_FORMAL_PARAMS, KIND_FUNCTION_TYPE, KIND_FUN_BODY, KIND_FUN_DECL,
+    KIND_FUN_VALUE_PARAMS, KIND_IDENTIFIER, KIND_IMPORT_ALIAS, KIND_IMPORT_DECL,
+    KIND_IMPORT_HEADER, KIND_IMPORT_LIST, KIND_INFIX_EXPR, KIND_INHERITANCE_SPEC,
+    KIND_INHERITANCE_SPECS, KIND_INIT_DECL, KIND_INTERFACE_DECL, KIND_LAMBDA_LIT, KIND_LPAREN,
+    KIND_METHOD_DECL, KIND_MODIFIERS, KIND_MOD_FINAL, KIND_MOD_STATIC, KIND_NAV_EXPR,
+    KIND_NULLABLE_TYPE, KIND_OBJECT_DECL, KIND_PACKAGE_DECL, KIND_PACKAGE_HEADER, KIND_PARAMETER,
+    KIND_PREFIX_EXPR, KIND_PRIMARY_CTOR, KIND_PROP_DECL, KIND_PROP_DELEGATE, KIND_PROTOCOL_DECL,
+    KIND_PROTOCOL_FUNC_DECL, KIND_RECEIVER_TYPE, KIND_RECORD_DECL, KIND_SCOPED_IDENT,
+    KIND_SECONDARY_CTOR, KIND_SIMPLE_IDENT, KIND_SOURCE_FILE, KIND_STATEMENTS, KIND_SUPERCLASS,
+    KIND_SUPER_INTERFACES, KIND_TYPE_IDENT, KIND_USER_TYPE, KIND_VALUE_ARG, KIND_VALUE_ARGS,
+    KIND_VAR_DECL, KIND_VAR_DECLARATOR, KIND_WILDCARD_IMPORT, KOTLIN_DEFINITIONS,
+    SWIFT_DEFINITIONS,
 };
 use crate::StrExt;
 
@@ -2337,6 +2338,35 @@ impl crate::types::FileData {
     fn extract_rhs_types_kotlin(&mut self, root: Node, bytes: &[u8]) {
         let mut stack = vec![root];
         while let Some(node) = stack.pop() {
+            if node.kind() == KIND_CLASS_PARAM {
+                // A primary-constructor `val`/`var` param is a real field, same as a
+                // `property_declaration` — record it into `type_annotations` too, on
+                // its own line, so `find_field_type_in_class` can prefer the field
+                // declared on the specific class location it was asked about over an
+                // unrelated same-named field on some other class earlier in the file
+                // (data classes are typically one-liners, so a plain first-match scan
+                // over the whole file picks whichever sibling happens to come first —
+                // see `infer::infer_field_type_raw`'s `near_line` parameter).
+                if node
+                    .first_child_of_kind(KIND_BINDING_PATTERN_KIND)
+                    .is_some()
+                {
+                    if let Some(name) = node
+                        .first_child_of_kind(KIND_SIMPLE_IDENT)
+                        .and_then(|identifier| identifier.utf8_text_owned(bytes))
+                    {
+                        let type_node = node
+                            .first_child_of_kind(KIND_USER_TYPE)
+                            .or_else(|| node.first_child_of_kind(KIND_NULLABLE_TYPE));
+                        if let Some(type_node) = type_node {
+                            if let Some(type_text) = type_node.utf8_text_owned(bytes) {
+                                let line = node.start_position().row as u32;
+                                self.type_annotations.push((line, name, type_text));
+                            }
+                        }
+                    }
+                }
+            }
             if node.kind() == KIND_PROP_DECL {
                 if let Some(var_decl) = node.first_child_of_kind(KIND_VAR_DECL) {
                     if var_decl.named_child_count() == 1 {

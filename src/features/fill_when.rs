@@ -10,11 +10,9 @@ use tower_lsp::lsp_types::*;
 use crate::indexer::live_tree::utf16_col_to_byte;
 use crate::indexer::Indexer;
 use crate::queries::{
-    KIND_BOOLEAN_LITERAL, KIND_CLASS_DECL, KIND_CLASS_PARAM, KIND_ELSE, KIND_FUN_DECL,
-    KIND_FUN_VALUE_PARAMS, KIND_LBRACE, KIND_NAV_EXPR, KIND_NAV_SUFFIX, KIND_NULLABLE_TYPE,
-    KIND_PARAMETER, KIND_PRIMARY_CTOR, KIND_PROP_DECL, KIND_RBRACE, KIND_SIMPLE_IDENT,
-    KIND_STATEMENTS, KIND_TYPE_IDENT, KIND_TYPE_TEST, KIND_USER_TYPE, KIND_VAR_DECL,
-    KIND_WHEN_CONDITION, KIND_WHEN_ENTRY, KIND_WHEN_EXPR, KIND_WHEN_SUBJECT,
+    KIND_BOOLEAN_LITERAL, KIND_ELSE, KIND_LBRACE, KIND_NAV_EXPR, KIND_NAV_SUFFIX, KIND_RBRACE,
+    KIND_SIMPLE_IDENT, KIND_TYPE_IDENT, KIND_TYPE_TEST, KIND_USER_TYPE, KIND_WHEN_CONDITION,
+    KIND_WHEN_ENTRY, KIND_WHEN_EXPR, KIND_WHEN_SUBJECT,
 };
 use crate::StrExt;
 
@@ -24,8 +22,14 @@ type SealedMembersCache =
     std::collections::HashMap<(String, String, u32, u32, u32, u32), Vec<WhenMember>>;
 
 /// Memoizes `resolve_type_members` results within a single pass.
-/// Key: subject type name. Safe because the index doesn't change mid-pass.
-type TypeMembersCache = std::collections::HashMap<String, Option<(TypeKind, Vec<WhenMember>)>>;
+/// Key: `(subject type name, reachability uri)` — a bare type name alone
+/// isn't enough to key on: two `when`s in the same file can resolve the same
+/// name through different reachability anchors (a chained subject's leaf type
+/// is resolved from *its own* declaring file, not necessarily this file's —
+/// see `infer::infer_field_chain_type`), and a same-named-but-different type
+/// from the wrong anchor must not be served from the other's cache entry.
+type TypeMembersCache =
+    std::collections::HashMap<(String, String), Option<(TypeKind, Vec<WhenMember>)>>;
 
 /// Analysis result for incomplete when expressions — shared by code actions and diagnostics.
 struct WhenAnalysis<'a> {
@@ -48,7 +52,7 @@ fn analyze_when<'a>(
         .children(&mut when_node.walk())
         .find(|c| c.kind() == KIND_WHEN_SUBJECT)?;
 
-    let subject_segments = extract_subject_segments(&subject_node, source_bytes)?;
+    let subject_segments = crate::resolver::infer::subject_segments(subject_node, source_bytes)?;
 
     let existing = collect_existing_branches(&when_node, source_bytes);
 
@@ -56,19 +60,46 @@ fn analyze_when<'a>(
         return None;
     }
 
-    let subject_type = match subject_segments.as_slice() {
+    // The file whose imports/package should be used to resolve `subject_type`'s
+    // own members below. For a plain `when (var)` it's always the caller's own
+    // file. For a chained `when (var.field)` it must be the *leaf field's own
+    // declaring file* instead — the leaf type can be a class duplicated
+    // workspace-wide and reachable only through the chain, never imported by
+    // the caller directly (see `infer::infer_field_chain_type`'s doc comment).
+    let (subject_type, members_uri) = match subject_segments.as_slice() {
         // A local or parameter: prefer the declaration the CST can see over a
         // whole-file name scan.
-        [subject_var] => resolve_subject_type_from_cst(&when_node, subject_var, source_bytes)
+        [subject_var] => (
+            crate::resolver::infer::resolve_declared_type_from_cst(
+                when_node,
+                subject_var,
+                source_bytes,
+            )
             .or_else(|| crate::resolver::infer::infer_variable_type(indexer, subject_var, uri))?,
+            uri.clone(),
+        ),
         // `userData.themeBrand` — walk the field chain to its leaf type.
-        chain => crate::resolver::infer::infer_field_chain_type(indexer, chain, uri)?.qualified,
+        // `infer_field_chain_type` itself finds the longest smart-cast-narrowed
+        // prefix of the chain from the CST (Kotlin narrows whole stable
+        // paths, not just the root variable — see its own doc comment) and
+        // walks any remaining fields from there.
+        chain => {
+            let line = when_node.start_position().row as u32;
+            let (receiver_type, declaring_uri) = crate::resolver::infer::infer_field_chain_type(
+                indexer,
+                chain,
+                uri,
+                line,
+                Some((when_node, source_bytes)),
+            )?;
+            (receiver_type.qualified, declaring_uri)
+        }
     };
     let subject_type = subject_type.strip_nullable().to_string();
 
     let (type_kind, members) = resolve_type_members(
         indexer,
-        uri,
+        &members_uri,
         &subject_type,
         sealed_cache,
         type_members_cache,
@@ -307,240 +338,6 @@ fn find_enclosing_when<'a>(
     None
 }
 
-/// Resolve the when subject's type from the CST by searching:
-/// 1. Sibling property_declarations in the same statements block (local vals)
-/// 2. Enclosing function's parameters
-/// 3. Enclosing class constructor parameters
-fn resolve_subject_type_from_cst(
-    when_node: &tree_sitter::Node,
-    var_name: &str,
-    source: &[u8],
-) -> Option<String> {
-    // Walk up to find statements block or function_declaration
-    let mut current = when_node.parent();
-    while let Some(node) = current {
-        match node.kind() {
-            KIND_STATEMENTS => {
-                if let Some(ty) = find_type_in_sibling_declarations(&node, var_name, source) {
-                    return Some(ty);
-                }
-            }
-            KIND_FUN_DECL => {
-                if let Some(ty) = find_type_in_parameters(&node, var_name, source) {
-                    return Some(ty);
-                }
-            }
-            KIND_CLASS_DECL => {
-                if let Some(ty) = find_type_in_constructor(&node, var_name, source) {
-                    return Some(ty);
-                }
-            }
-            _ => {}
-        }
-        current = node.parent();
-    }
-    None
-}
-
-/// Search sibling property_declarations for `val <var_name> : Type`
-fn find_type_in_sibling_declarations(
-    statements: &tree_sitter::Node,
-    var_name: &str,
-    source: &[u8],
-) -> Option<String> {
-    for child in statements.children(&mut statements.walk()) {
-        if child.kind() != KIND_PROP_DECL {
-            continue;
-        }
-        if let Some(ty) = extract_var_type_from_declaration(&child, var_name, source) {
-            return Some(ty);
-        }
-    }
-    None
-}
-
-/// Search function parameters for `<var_name>: Type`
-fn find_type_in_parameters(
-    func_node: &tree_sitter::Node,
-    var_name: &str,
-    source: &[u8],
-) -> Option<String> {
-    for child in func_node.children(&mut func_node.walk()) {
-        if child.kind() != KIND_FUN_VALUE_PARAMS {
-            continue;
-        }
-        for param in child.children(&mut child.walk()) {
-            if param.kind() != KIND_PARAMETER {
-                continue;
-            }
-            if let Some(ty) = extract_param_type(&param, var_name, source) {
-                return Some(ty);
-            }
-        }
-    }
-    None
-}
-
-/// Search class constructor parameters
-fn find_type_in_constructor(
-    class_node: &tree_sitter::Node,
-    var_name: &str,
-    source: &[u8],
-) -> Option<String> {
-    for child in class_node.children(&mut class_node.walk()) {
-        if child.kind() != KIND_PRIMARY_CTOR {
-            continue;
-        }
-        for param in child.children(&mut child.walk()) {
-            if param.kind() != KIND_CLASS_PARAM {
-                continue;
-            }
-            if let Some(ty) = extract_param_type(&param, var_name, source) {
-                return Some(ty);
-            }
-        }
-    }
-    None
-}
-
-/// Extract type from `variable_declaration` inside a property_declaration.
-/// CST: property_declaration → variable_declaration → simple_identifier + ":" + user_type
-/// Also handles inferred Boolean from literal: `val x = false` → Boolean
-fn extract_var_type_from_declaration(
-    prop: &tree_sitter::Node,
-    var_name: &str,
-    source: &[u8],
-) -> Option<String> {
-    let mut name_matched = false;
-    for child in prop.children(&mut prop.walk()) {
-        if child.kind() == KIND_VAR_DECL {
-            for vc in child.children(&mut child.walk()) {
-                if vc.kind() == KIND_SIMPLE_IDENT && vc.utf8_text(source).ok() == Some(var_name) {
-                    name_matched = true;
-                }
-                if name_matched {
-                    if vc.kind() == KIND_USER_TYPE {
-                        return extract_full_type_name(&vc, source);
-                    }
-                    if vc.kind() == KIND_NULLABLE_TYPE {
-                        return extract_user_type_from_nullable(&vc, source);
-                    }
-                }
-            }
-        }
-        if name_matched && child.kind() == KIND_BOOLEAN_LITERAL {
-            return Some("Boolean".to_string());
-        }
-    }
-    None
-}
-
-/// Extract type from a `parameter` or `class_parameter` node.
-/// CST: parameter → simple_identifier + ":" + user_type | nullable_type
-fn extract_param_type(param: &tree_sitter::Node, var_name: &str, source: &[u8]) -> Option<String> {
-    let mut found_name = false;
-    for child in param.children(&mut param.walk()) {
-        if child.kind() == KIND_SIMPLE_IDENT && child.utf8_text(source).ok() == Some(var_name) {
-            found_name = true;
-        }
-        if found_name {
-            if child.kind() == KIND_USER_TYPE {
-                return extract_full_type_name(&child, source);
-            }
-            if child.kind() == KIND_NULLABLE_TYPE {
-                return extract_user_type_from_nullable(&child, source);
-            }
-        }
-    }
-    None
-}
-
-/// Extract user_type from a nullable_type node (nullable_type → user_type + "?").
-fn extract_user_type_from_nullable(nullable: &tree_sitter::Node, source: &[u8]) -> Option<String> {
-    for child in nullable.children(&mut nullable.walk()) {
-        if child.kind() == KIND_USER_TYPE {
-            return extract_full_type_name(&child, source);
-        }
-    }
-    None
-}
-
-/// Extract the full type name from a user_type node (e.g. "TipsResult", "Effect").
-/// For dotted types like `Outer.Inner`, concatenates with dots.
-fn extract_full_type_name(user_type: &tree_sitter::Node, source: &[u8]) -> Option<String> {
-    let mut parts = Vec::new();
-    for child in user_type.children(&mut user_type.walk()) {
-        if child.kind() == KIND_TYPE_IDENT {
-            if let Ok(text) = child.utf8_text(source) {
-                parts.push(text.to_string());
-            }
-        }
-    }
-    if parts.is_empty() {
-        None
-    } else {
-        Some(parts.join("."))
-    }
-}
-
-/// The subject expression's identifier chain: `state` → `["state"]`,
-/// `userData.themeBrand` → `["userData", "themeBrand"]`.
-///
-/// `None` for any subject that isn't a plain identifier or field access — a
-/// call, an index, a literal — since those need real expression inference
-/// rather than a name chain.
-fn extract_subject_segments(
-    subject_node: &tree_sitter::Node,
-    source: &[u8],
-) -> Option<Vec<String>> {
-    // when_subject → "(" <expression> ")"
-    for child in subject_node.children(&mut subject_node.walk()) {
-        match child.kind() {
-            KIND_SIMPLE_IDENT => {
-                return Some(vec![child.utf8_text(source).ok()?.to_owned()]);
-            }
-            KIND_NAV_EXPR => {
-                let mut segments = Vec::new();
-                collect_navigation_segments(&child, source, &mut segments, 0)?;
-                return Some(segments);
-            }
-            _ => {}
-        }
-    }
-    None
-}
-
-/// Flatten a `navigation_expression` into its identifier segments, failing on
-/// anything that isn't a plain field access (a call in the chain, say).
-///
-/// Kind-bounded (only descends through `KIND_NAV_EXPR`/`KIND_NAV_SUFFIX`), but
-/// an arbitrarily long `a.b.c.d…` chain is still an arbitrarily deep
-/// recursion — `depth` caps it. See `crate::util::MAX_CST_DESCENT_DEPTH`.
-fn collect_navigation_segments(
-    node: &tree_sitter::Node,
-    source: &[u8],
-    out: &mut Vec<String>,
-    depth: usize,
-) -> Option<()> {
-    if depth >= crate::util::MAX_CST_DESCENT_DEPTH {
-        crate::util::report_cst_depth_exceeded!("collect_navigation_segments", *node);
-        return None;
-    }
-    match node.kind() {
-        KIND_SIMPLE_IDENT => out.push(node.utf8_text(source).ok()?.to_owned()),
-        KIND_NAV_EXPR | KIND_NAV_SUFFIX => {
-            for child in node.children(&mut node.walk()) {
-                // The `.` separator carries no segment of its own.
-                if child.kind() != "." {
-                    collect_navigation_segments(&child, source, out, depth + 1)?;
-                }
-            }
-        }
-        _ => return None,
-    }
-    Some(())
-}
-
 /// Resolve whether the type is an enum, sealed class, or Boolean, and return its members.
 fn resolve_type_members(
     indexer: &Indexer,
@@ -549,16 +346,18 @@ fn resolve_type_members(
     sealed_cache: &mut SealedMembersCache,
     type_members_cache: &mut TypeMembersCache,
 ) -> Option<(TypeKind, Vec<WhenMember>)> {
-    // Fast path: same type was already resolved earlier in this pass.
-    // We cache with empty existing_branches so the result is independent of
-    // which `when` node queries first — branches_fit_members would otherwise
-    // select different homonymous types depending on call order.
-    // `analyze_when` applies its own missing-branch filter after this call.
-    if let Some(cached) = type_members_cache.get(type_name) {
+    // Fast path: same (type, reachability anchor) was already resolved
+    // earlier in this pass. We cache with empty existing_branches so the
+    // result is independent of which `when` node queries first —
+    // branches_fit_members would otherwise select different homonymous types
+    // depending on call order. `analyze_when` applies its own missing-branch
+    // filter after this call.
+    let cache_key = (type_name.to_string(), from_uri.to_string());
+    if let Some(cached) = type_members_cache.get(&cache_key) {
         return cached.clone();
     }
     let result = resolve_type_members_inner(indexer, from_uri, type_name, &[], sealed_cache);
-    type_members_cache.insert(type_name.to_string(), result.clone());
+    type_members_cache.insert(cache_key, result.clone());
     result
 }
 

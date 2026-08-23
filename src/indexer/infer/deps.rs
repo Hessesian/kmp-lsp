@@ -174,15 +174,18 @@ pub(crate) trait InferDeps {
     }
 
     /// Look up the raw declared type of `field_name` inside class `class_name`,
-    /// searching across indexed files.  Preserves generic parameters so that
-    /// `extract_collection_element_type` can extract the element type.
+    /// preferring the declaration reachable from `uri`'s own imports/package
+    /// over an arbitrary same-named class elsewhere in the workspace (same
+    /// reachability rule as `find_fun_return_type`). Preserves generic
+    /// parameters so that `extract_collection_element_type` can extract the
+    /// element type.
     ///
     /// Example: `class_name = "ResponseBody"`, `field_name = "availableBanks"` →
     /// `Some("MutableList<MultibankingBank>")`.
     ///
     /// Returns `None` when the class or field is not found.
     /// Default implementation returns `None`; overridden by `Indexer`.
-    fn find_field_type(&self, _class_name: &str, _field_name: &str) -> Option<String> {
+    fn find_field_type(&self, _class_name: &str, _field_name: &str, _uri: &Url) -> Option<String> {
         None
     }
 
@@ -445,7 +448,7 @@ impl InferDeps for TestDeps {
             .get(&(uri.to_string(), var_name.to_string()))
             .cloned()
     }
-    fn find_field_type(&self, class_name: &str, field_name: &str) -> Option<String> {
+    fn find_field_type(&self, class_name: &str, field_name: &str, _uri: &Url) -> Option<String> {
         self.field_types
             .get(&(class_name.to_string(), field_name.to_string()))
             .cloned()

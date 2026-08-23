@@ -193,11 +193,14 @@ fn find_field_type_in_class_resolves_unannotated_field_access() {
     );
 
     // find_field_type_in_class should resolve through field_access_rhs fallback.
-    assert_eq!(
-        find_field_type_in_class(&idx, "RefreshDashboardInteractor", "triggers"),
-        Some("Flow<DashboardTrigger>".into()),
-        "find_field_type_in_class should resolve unannotated val with field_access_rhs"
-    );
+    let (field_type, _declaring_uri) = find_field_type_in_class(
+        &idx,
+        "RefreshDashboardInteractor",
+        "triggers",
+        &interactor_uri,
+    )
+    .expect("find_field_type_in_class should resolve unannotated val with field_access_rhs");
+    assert_eq!(field_type, "Flow<DashboardTrigger>");
 }
 
 #[test]

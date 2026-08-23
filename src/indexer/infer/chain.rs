@@ -444,7 +444,7 @@ pub(super) fn resolve_member_type_on(
     } else {
         return None;
     };
-    if let Some(field_ty) = deps.find_field_type(&effective_type, member) {
+    if let Some(field_ty) = deps.find_field_type(&effective_type, member, uri) {
         let subst = build_type_arg_subst(deps, &effective_type, current_type);
         let applied = crate::indexer::apply_type_subst(&field_ty, &subst);
         if is_generic_param(applied.strip_nullable()) {

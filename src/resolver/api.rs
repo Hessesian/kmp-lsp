@@ -103,9 +103,24 @@ pub(crate) trait Resolver {
     /// each declared field type. The leaf field's trailing `?` is preserved in
     /// [`ReceiverType::nullable`].
     ///
+    /// `line` is a fallback used only when `cst_point` is `None` or no prefix
+    /// of `chain` is smart-cast-narrowed. `cst_point`, when given, is the
+    /// chain expression's own CST node plus source bytes, used to find
+    /// smart-cast narrowing over the *whole stable path* (not just the root
+    /// variable) — see `infer::infer_field_chain_type`.
+    ///
     /// Returns `None` if the chain has fewer than two segments or any segment's
-    /// type cannot be resolved.
-    fn infer_field_chain_type(&self, chain: &[String], uri: &Url) -> Option<ReceiverType>;
+    /// type cannot be resolved. The returned `Url` is the file that declares
+    /// the leaf type — see `infer::infer_field_chain_type` for why a caller
+    /// resolving anything further about the returned type must use it instead
+    /// of its own `uri`.
+    fn infer_field_chain_type<'tree>(
+        &self,
+        chain: &[String],
+        uri: &Url,
+        line: u32,
+        cst_point: Option<(tree_sitter::Node<'tree>, &'tree [u8])>,
+    ) -> Option<(ReceiverType, Url)>;
 
     /// Resolve `member` accessed through `qualifier` — a variable name
     /// (`"repo"`) or a pure field chain (`"arg.texts"`) — to its declaration
@@ -172,8 +187,14 @@ impl Resolver for Indexer {
         infer_receiver_type(self, receiver, uri)
     }
 
-    fn infer_field_chain_type(&self, chain: &[String], uri: &Url) -> Option<ReceiverType> {
-        infer_field_chain_type(self, chain, uri)
+    fn infer_field_chain_type<'tree>(
+        &self,
+        chain: &[String],
+        uri: &Url,
+        line: u32,
+        cst_point: Option<(tree_sitter::Node<'tree>, &'tree [u8])>,
+    ) -> Option<(ReceiverType, Url)> {
+        infer_field_chain_type(self, chain, uri, line, cst_point)
     }
 
     fn resolve_member(&self, member: &str, qualifier: &str, uri: &Url) -> Definitions {
