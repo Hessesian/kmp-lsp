@@ -437,10 +437,17 @@ pub(crate) fn subject_segments(node: tree_sitter::Node, source: &[u8]) -> Option
         Some(())
     }
 
-    // `when_subject` wraps its expression in `"(" <expression> ")"`; a bare
-    // identifier/nav-expression node (as passed by other callers) has no such
-    // wrapper, so just try every child plus the node itself.
-    for candidate in node.children(&mut node.walk()).chain(std::iter::once(node)) {
+    // A bare identifier/nav-expression node (as passed by a caller that
+    // already resolved down to the expression itself) needs no unwrapping —
+    // check it before its children. Only `when_subject` wraps its expression
+    // in `"(" <expression> ")"`, so its own kind never matches here and the
+    // loop below finds the wrapped expression among its children instead.
+    // Checking the node first (not last) matters: a `navigation_expression`
+    // node's *own* children include its receiver sub-expression, which can
+    // itself be `KIND_SIMPLE_IDENT`/`KIND_NAV_EXPR` — finding that child
+    // first would silently return just the receiver's segments, a prefix of
+    // the real chain, instead of the whole thing.
+    for candidate in std::iter::once(node).chain(node.children(&mut node.walk())) {
         if matches!(candidate.kind(), KIND_SIMPLE_IDENT | KIND_NAV_EXPR) {
             let mut segments = Vec::new();
             collect(candidate, source, &mut segments, 0)?;

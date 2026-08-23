@@ -2,6 +2,43 @@ use super::super::infer_lines::{
     extract_property_type_from_detail, extract_return_type_from_detail, has_dot_after_first_call,
 };
 
+// Regression (Copilot review on PR #268): `subject_segments` checked a bare
+// node's *children* before the node itself, so a caller passing a
+// `navigation_expression` node directly (not wrapped in a `when_subject`)
+// would match on the receiver child found while iterating — returning just
+// the receiver's own segments, a truncated prefix of the real chain, instead
+// of the whole thing. Neither current caller triggers this (both always pass
+// a `when_subject`-wrapped node), but the function's own doc comment claims
+// to support a bare identifier/nav-expression node directly, so it must
+// actually work when called that way.
+#[test]
+fn subject_segments_returns_the_full_chain_for_a_bare_navigation_expression_node() {
+    use crate::indexer::Indexer;
+    use crate::queries::KIND_NAV_EXPR;
+    use tower_lsp::lsp_types::Url;
+
+    let uri = Url::parse("file:///Test.kt").unwrap();
+    let src = "fun test(event: Event) {\n    event.events\n}\n";
+    let idx = Indexer::new();
+    idx.index_content(&uri, src);
+    idx.store_live_tree(&uri, src);
+    let doc = idx.live_doc(&uri).expect("live doc should be stored");
+
+    // Find the (only) navigation_expression node — `event.events` — and pass
+    // it to `subject_segments` directly, bypassing any `when_subject` wrapper.
+    let nav_expr_node = crate::indexer::walk::descendants(doc.tree.root_node())
+        .find(|node| node.kind() == KIND_NAV_EXPR)
+        .expect("expected a navigation_expression node in the parsed source");
+
+    let segments = super::subject_segments(nav_expr_node, &doc.bytes)
+        .expect("a plain field-access chain should resolve to its segments");
+    assert_eq!(
+        segments,
+        vec!["event".to_string(), "events".to_string()],
+        "must return the full chain, not just the receiver's own segments"
+    );
+}
+
 #[test]
 fn return_type_simple() {
     assert_eq!(
