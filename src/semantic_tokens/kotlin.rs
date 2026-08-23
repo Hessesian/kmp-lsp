@@ -294,7 +294,7 @@ fn trivia_skipped_offset(text: &str) -> Option<usize> {
             i += 1;
         }
         if bytes[i..].starts_with(b"//") {
-            i += text[i..].find('\n').map_or(bytes.len() - i, |nl| nl);
+            i += text[i..].find('\n').unwrap_or(bytes.len() - i);
             continue;
         }
         if bytes[i..].starts_with(b"/*") {
