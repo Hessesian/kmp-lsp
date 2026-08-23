@@ -1,0 +1,52 @@
+name: Test Windows sidecar build
+
+# Throwaway/discovery workflow — NOT part of the release pipeline.
+#
+# Validates whether kmp-jar-indexer can be built as a GraalVM native-image
+# binary on windows-latest. No Windows sidecar is currently published
+# (release.yml's build-sidecar matrix has no Windows entry), which is why
+# install.ps1's sidecar download 404s. See
+# https://github.com/Hessesian/kmp-lsp/issues/267.
+#
+# Builds are uploaded as a workflow artifact only (no GitHub release created).
+# Delete this file once the Windows build is proven and folded into release.yml.
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/test-windows-sidecar.yml"
+      - "java-sidecar/**"
+  workflow_dispatch:
+
+jobs:
+  build-windows-sidecar:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: java-sidecar
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: graalvm/setup-graalvm@v1
+        with:
+          java-version: "21"
+          distribution: "graalvm-community"
+          native-image-job-reports: "true"
+
+      # native-image on Windows needs cl.exe/link.exe from the MSVC toolchain
+      # on PATH — GraalVM shells out to it under the hood.
+      - uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Build native sidecar
+        run: .\gradlew.bat nativeCompile
+
+      - name: Package sidecar
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Copy-Item build\native\nativeCompile\kmp-jar-indexer.exe dist\kmp-jar-indexer-windows-x86_64.exe
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kmp-jar-indexer-windows-x86_64
+          path: java-sidecar/dist/kmp-jar-indexer-windows-x86_64.exe
+          if-no-files-found: error
