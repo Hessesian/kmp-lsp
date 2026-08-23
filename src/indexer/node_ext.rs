@@ -72,7 +72,7 @@ pub(crate) fn descendant_for_point<'a>(
         .iter()
         .position(|&b| b == b'\n')
         .map_or(bytes.len(), |nl| offset + nl);
-    let byte = (offset + point.column).min(line_end);
+    let byte = offset.saturating_add(point.column).min(line_end);
     let mut current = root.descendant_for_byte_range(byte, byte)?;
     for _ in 0..crate::util::MAX_CST_DESCENT_DEPTH {
         let mut cursor = current.walk();

@@ -264,9 +264,12 @@ fn kotlin_primary_constructor_keyword_token(
     let Ok(gap_text) = std::str::from_utf8(&src.bytes[gap_start..gap_end]) else {
         return;
     };
-    let Some(offset_in_gap) = gap_text.find("constructor") else {
+    let Some(offset_in_gap) = trivia_skipped_offset(gap_text) else {
         return;
     };
+    if !gap_text[offset_in_gap..].starts_with("constructor") {
+        return;
+    }
     push_token_at_byte_range(
         gap_start + offset_in_gap,
         "constructor".len(),
@@ -275,6 +278,32 @@ fn kotlin_primary_constructor_keyword_token(
         src,
         out,
     );
+}
+
+/// Byte offset of the first non-trivia (non-whitespace, non-comment) content
+/// in `text`, or `None` if it's all trivia. Only `//` line comments and
+/// `/* */` block comments can appear in the constructor-keyword gap — no
+/// identifier can legally precede `constructor` there — so skipping them
+/// (rather than a raw substring search) keeps a `// mentions constructor`
+/// comment from being highlighted as the keyword.
+fn trivia_skipped_offset(text: &str) -> Option<usize> {
+    let bytes = text.as_bytes();
+    let mut i = 0;
+    loop {
+        while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+            i += 1;
+        }
+        if bytes[i..].starts_with(b"//") {
+            i += text[i..].find('\n').map_or(bytes.len() - i, |nl| nl);
+            continue;
+        }
+        if bytes[i..].starts_with(b"/*") {
+            i += text[i..].find("*/").map_or(bytes.len() - i, |end| end + 2);
+            continue;
+        }
+        break;
+    }
+    (i < bytes.len()).then_some(i)
 }
 
 fn kotlin_class_param_token(node: Node<'_>, src: &Source<'_>, out: &mut Vec<RawToken>) {

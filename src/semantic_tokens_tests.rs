@@ -1141,6 +1141,30 @@ fn keyword_constructor() {
     );
 }
 
+/// Regression: a comment mentioning "constructor" between the modifiers and
+/// the real keyword must not be highlighted instead of it — a raw substring
+/// search over the gap text (rather than skipping comments/whitespace to the
+/// next real token) would match the word inside the comment first, at the
+/// wrong column.
+#[test]
+fn keyword_constructor_not_matched_inside_a_comment() {
+    let src = "class Foo @Inject /* fix constructor visibility */ constructor(val x: Int)\n";
+    let uri = Url::parse("file:///kw_ctor_comment.kt").unwrap();
+    let indexer = Indexer::new();
+    indexer.index_content(&uri, src);
+    let doc = parse_kotlin(src);
+    let tokens = decode_all_indexed(&indexer, &uri, &doc, Language::Kotlin);
+    let kw_type = type_id(&SemanticTokenType::KEYWORD);
+    let real_col = src.rfind("constructor").unwrap() as u32;
+    assert_token_at(&tokens, 0, real_col, kw_type, "KEYWORD 'constructor'");
+    assert!(
+        !tokens
+            .iter()
+            .any(|&(line, col, _, kind, _)| kind == kw_type && line == 0 && col != real_col),
+        "no KEYWORD token should be emitted at any other column (e.g. inside the comment), got: {tokens:?}"
+    );
+}
+
 // --- Named argument labels ---
 
 #[test]
