@@ -1283,9 +1283,59 @@ fn resolve_member_type_on_fallback_when_class_params_unindexed() {
         &tower_lsp::lsp_types::Url::parse("file:///test/T.kt").unwrap(),
     );
     assert_eq!(
-        result.as_deref(),
+        result.map(|(ty, _)| ty).as_deref(),
         Some("Optional<FamilyAccount>"),
         "unindexed class params: field 'T' with empty subst must fall back to first type arg"
+    );
+}
+
+#[test]
+fn forward_resolve_segments_second_hop_uses_first_hops_declaring_file() {
+    // `holder.other.value` walked as a CST navigation chain: `.value` must
+    // resolve through `Other`'s own declaring file (reached from `Holder`,
+    // package `lib`), not the caller's — otherwise an unrelated same-named
+    // `Other`, reachable only from the caller's own file, wins instead. Real
+    // `Indexer` (not `TestDeps`) because this depends on
+    // `resolve_type_index_only`'s package-reachability rules.
+    use super::super::chain::{collect_nav_segments, resolve_segments_type, SuffixStrictness};
+    use crate::indexer::Indexer;
+    use crate::queries::KIND_NAV_EXPR;
+
+    let idx = Indexer::new();
+    idx.index_content(
+        &Url::parse("file:///unrelated/Other.kt").unwrap(),
+        "package unrelated\nclass Other { val value: String = \"wrong\" }\n",
+    );
+    idx.index_content(
+        &Url::parse("file:///lib/Other.kt").unwrap(),
+        "package lib\nclass Other { val value: Int = 1 }\n",
+    );
+    idx.index_content(
+        &Url::parse("file:///lib/Holder.kt").unwrap(),
+        "package lib\nclass Holder { val other: Other = Other() }\n",
+    );
+    let caller_uri = Url::parse("file:///app/Caller.kt").unwrap();
+    idx.index_content(&caller_uri, "package app\nimport lib.Holder\n");
+
+    let src = "fun use(holder: Holder) = holder.other.value";
+    let bytes = src.as_bytes();
+    let tree = parse_kotlin(src);
+    let nav_expr =
+        find_node_kind(tree.root_node(), KIND_NAV_EXPR).expect("holder.other.value not parsed");
+    let segments = collect_nav_segments(nav_expr, bytes);
+
+    let result = resolve_segments_type(
+        &segments,
+        bytes,
+        &idx,
+        &caller_uri,
+        SuffixStrictness::LeakReceiver,
+    );
+    assert_eq!(
+        result.as_deref(),
+        Some("Int"),
+        "must resolve .value through Holder's own file (lib.Other.value: Int), \
+         not an unrelated same-named Other reachable from the caller"
     );
 }
 
@@ -1307,7 +1357,7 @@ fn resolve_member_type_on_fallback_method_return_unindexed() {
         &tower_lsp::lsp_types::Url::parse("file:///test/T.kt").unwrap(),
     );
     assert_eq!(
-        result.as_deref(),
+        result.map(|(ty, _)| ty).as_deref(),
         Some("FamilyAccount"),
         "unindexed Optional params: getOrNull returning T? must fall back to FamilyAccount"
     );
