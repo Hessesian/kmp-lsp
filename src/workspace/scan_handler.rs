@@ -409,106 +409,12 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
                 abandon_stale_jar_scan(&indexer, &in_progress, &jar_done_tx);
                 return;
             }
-            // ── Compiled-JAR first (sidecar path, populates jar_files / jar_definitions) ──
-            // The Gradle-cache pipeline only matters for a workspace with
-            // JVM sources — a Swift-only project cannot reference anything
-            // in it, and unconditionally running the pipeline there cost a
-            // 1.28M-name Tier-1 manifest over 755 JARs plus a 1.66M-symbol
-            // sources-JAR pass (observed live on an iOS repo). Gated on the
-            // INDEX, not on build-file markers — see
-            // `workspace_has_jvm_sources` for why. This task races the
-            // workspace scan that populates that index (every caller
-            // enqueues the scan first, so the queue is already non-idle
-            // here), so the gate WAITS: it opens the moment the scan
-            // indexes the first JVM source, and returns a negative verdict
-            // only once the queue drains. Explicitly configured `jarPaths`
-            // below stay unaffected.
-            let generation_ok = || {
-                indexer
-                    .workspace_root
-                    .generation_atomic()
-                    .load(Ordering::Acquire)
-                    == expected_gen
-            };
-            // Recover from a poisoned queue lock rather than panicking: a
-            // panic here would strand `jar_indexing_in_progress` as true and
-            // wedge the jar pipeline for the rest of the process. Reading
-            // `is_in_progress` off a poisoned queue is harmless.
-            let workspace_uses_gradle_cache = match crate::indexer::jar::wait_for_jvm_sources_gate(
-                &indexer,
-                || {
-                    scan_queue
-                        .lock()
-                        .unwrap_or_else(|poisoned| poisoned.into_inner())
-                        .is_in_progress()
-                },
-                generation_ok,
-                std::time::Duration::from_millis(100),
-            ) {
-                Some(verdict) => verdict,
-                None => {
-                    abandon_stale_jar_scan(&indexer, &in_progress, &jar_done_tx);
-                    return;
-                }
-            };
-            let gradle_paths = if workspace_uses_gradle_cache {
-                crate::indexer::jar::scan_gradle_jars(None)
-            } else {
-                log::info!(
-                    "jar: no Kotlin/Java sources in the workspace — skipping the \
-                     Gradle-cache JAR pipeline (configured jarPaths still honored)"
-                );
-                Vec::new()
-            };
-            let gradle_count = gradle_paths.len();
-            let mut paths = gradle_paths;
-
-            // Explicitly-configured jars (workspace.json `jarPaths` + init-options
-            // `jarPaths`), so non-Gradle projects (Make/Bazel/manual) get symbols too.
-            // Filesystem I/O (read workspace.json, walk dirs) runs here off-thread.
-            if let Some(root) = indexer.workspace_root.get() {
-                let mut configured = crate::workspace_json::load_configured_jar_paths(&root);
-                configured.extend(crate::workspace_json::resolve_jar_path_specs(
-                    &init_jar_specs,
-                    &root,
-                ));
-                for jar in configured {
-                    if !paths.contains(&jar) {
-                        paths.push(jar);
-                    }
-                }
-            }
-
-            // Check generation before doing any JAR indexing work.
-            let current_gen = indexer
-                .workspace_root
-                .generation_atomic()
-                .load(Ordering::Acquire);
-            if current_gen != expected_gen {
+            let Some(compiled) =
+                index_compiled_jars_phase(&indexer, &scan_queue, expected_gen, &init_jar_specs)
+            else {
                 abandon_stale_jar_scan(&indexer, &in_progress, &jar_done_tx);
                 return;
-            }
-
-            crate::indexer::jar::clear_jar_maps(&indexer);
-            let (compiled_total, sidecar_alive) = {
-                let mut sidecar = indexer
-                    .jar_sidecar
-                    .lock()
-                    .unwrap_or_else(|e| e.into_inner());
-                let compiled_total =
-                    crate::indexer::jar::build_jar_manifest(&indexer, &paths, &mut sidecar);
-                (compiled_total, sidecar.is_some())
-                // `sidecar` MutexGuard drops here, at the end of this block —
-                // released before index_sources_jars runs, so an on-demand
-                // materialization request only ever contends with the
-                // compiled-JAR phase, never the (much longer) sources-JAR
-                // phase that follows it.
             };
-            log::info!(
-                "jar: manifested {compiled_total} names from {} compiled JARs (Tier 1 only — \
-                 full materialization deferred to first real use)",
-                paths.len()
-            );
 
             // Check generation again before continuing to sources-JAR work.
             let current_gen = indexer
@@ -520,19 +426,18 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
                 return;
             }
 
-            // ── Sources-JAR second (auto-mount, populates main files / definitions) ──
-            // Runs LAST so that when both pipelines contribute the same FQN to
-            // `qualified` / `extension_by_receiver`, the sources-JAR entry (real
-            // line numbers from tree-sitter) wins over the compiled-JAR entry
-            // (synthetic line indices from the sidecar). Same Gradle gate as
-            // the compiled pipeline — sources JARs come from the same cache.
-            let sources_total = if workspace_uses_gradle_cache {
+            // Sources JARs run LAST so that when both pipelines contribute the same
+            // FQN to `qualified` / `extension_by_receiver`, the sources-JAR entry
+            // (real line numbers from tree-sitter) wins over the compiled-JAR entry
+            // (synthetic line indices from the sidecar). Same Gradle gate as the
+            // compiled pipeline — sources JARs come from the same cache.
+            let sources_total = if compiled.workspace_uses_gradle_cache {
                 crate::indexer::jar::index_sources_jars(&indexer, None, None)
             } else {
                 0
             };
 
-            if paths.is_empty() && sources_total == 0 {
+            if compiled.paths.is_empty() && sources_total == 0 {
                 if let Ok(mut phase) = indexer.jar_phase.lock() {
                     *phase = JarPhase::Ready { count: 0 };
                 } else {
@@ -547,9 +452,9 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
 
             log::info!(
                 "jar: indexing {} compiled JARs/AARs ({} from Gradle cache, {} configured)",
-                paths.len(),
-                gradle_count,
-                paths.len() - gradle_count
+                compiled.paths.len(),
+                compiled.gradle_count,
+                compiled.paths.len() - compiled.gradle_count
             );
 
             // Check generation once more before recording terminal phase.
@@ -562,9 +467,10 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
                 return;
             }
 
-            let total = sources_total + compiled_total;
-            let final_phase = if !sidecar_alive && compiled_total > 0 {
+            let total = sources_total + compiled.compiled_total;
+            let final_phase = if !compiled.sidecar_alive && compiled.compiled_total > 0 {
                 // Sidecar died mid-index; sources may still be available.
+                let compiled_total = compiled.compiled_total;
                 JarPhase::Failed(format!(
                     "sidecar died mid-index; {total} symbols partially loaded ({sources_total} from sources, {compiled_total} from compiled)"
                 ))
@@ -586,6 +492,121 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
             let _ = jar_done_tx.send(());
         });
     }
+}
+
+struct CompiledJarsOutcome {
+    paths: Vec<PathBuf>,
+    gradle_count: usize,
+    compiled_total: usize,
+    sidecar_alive: bool,
+    workspace_uses_gradle_cache: bool,
+}
+
+/// Crawl the Gradle cache (sidecar path, populates `jar_files`/`jar_definitions`)
+/// and merge in explicitly-configured jar paths, then Tier-1-manifest all of them
+/// through the sidecar.
+///
+/// The Gradle-cache pipeline only matters for a workspace with JVM sources — a
+/// Swift-only project cannot reference anything in it, and unconditionally
+/// running the pipeline there cost a 1.28M-name Tier-1 manifest over 755 JARs
+/// plus a 1.66M-symbol sources-JAR pass (observed live on an iOS repo). Gated
+/// on the INDEX, not on build-file markers — see `workspace_has_jvm_sources`
+/// for why. This task races the workspace scan that populates that index
+/// (every caller enqueues the scan first, so the queue is already non-idle
+/// here), so the gate WAITS: it opens the moment the scan indexes the first
+/// JVM source, and returns a negative verdict only once the queue drains.
+/// Explicitly configured `jarPaths` stay unaffected by the gate.
+///
+/// Returns `None` if a newer scan superseded this one (generation changed, or
+/// the gate itself detected staleness) — the caller must abandon rather than
+/// use a stale result.
+fn index_compiled_jars_phase(
+    indexer: &Indexer,
+    scan_queue: &Mutex<ScanQueue>,
+    expected_gen: u64,
+    init_jar_specs: &[String],
+) -> Option<CompiledJarsOutcome> {
+    let generation_ok = || {
+        indexer
+            .workspace_root
+            .generation_atomic()
+            .load(Ordering::Acquire)
+            == expected_gen
+    };
+    // Recover from a poisoned queue lock rather than panicking: a panic here
+    // would strand `jar_indexing_in_progress` as true and wedge the jar
+    // pipeline for the rest of the process. Reading `is_in_progress` off a
+    // poisoned queue is harmless.
+    let workspace_uses_gradle_cache = crate::indexer::jar::wait_for_jvm_sources_gate(
+        indexer,
+        || {
+            scan_queue
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .is_in_progress()
+        },
+        generation_ok,
+        std::time::Duration::from_millis(100),
+    )?;
+
+    let gradle_paths = if workspace_uses_gradle_cache {
+        crate::indexer::jar::scan_gradle_jars(None)
+    } else {
+        log::info!(
+            "jar: no Kotlin/Java sources in the workspace — skipping the \
+             Gradle-cache JAR pipeline (configured jarPaths still honored)"
+        );
+        Vec::new()
+    };
+    let gradle_count = gradle_paths.len();
+    let mut paths = gradle_paths;
+
+    // Explicitly-configured jars (workspace.json `jarPaths` + init-options
+    // `jarPaths`), so non-Gradle projects (Make/Bazel/manual) get symbols too.
+    // Filesystem I/O (read workspace.json, walk dirs) runs here off-thread.
+    if let Some(root) = indexer.workspace_root.get() {
+        let mut configured = crate::workspace_json::load_configured_jar_paths(&root);
+        configured.extend(crate::workspace_json::resolve_jar_path_specs(
+            init_jar_specs,
+            &root,
+        ));
+        for jar in configured {
+            if !paths.contains(&jar) {
+                paths.push(jar);
+            }
+        }
+    }
+
+    if !generation_ok() {
+        return None;
+    }
+
+    crate::indexer::jar::clear_jar_maps(indexer);
+    let (compiled_total, sidecar_alive) = {
+        let mut sidecar = indexer
+            .jar_sidecar
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let compiled_total = crate::indexer::jar::build_jar_manifest(indexer, &paths, &mut sidecar);
+        (compiled_total, sidecar.is_some())
+        // `sidecar` MutexGuard drops here, at the end of this block —
+        // released before index_sources_jars runs, so an on-demand
+        // materialization request only ever contends with the compiled-JAR
+        // phase, never the (much longer) sources-JAR phase that follows it.
+    };
+    log::info!(
+        "jar: manifested {compiled_total} names from {} compiled JARs (Tier 1 only — \
+         full materialization deferred to first real use)",
+        paths.len()
+    );
+
+    Some(CompiledJarsOutcome {
+        paths,
+        gradle_count,
+        compiled_total,
+        sidecar_alive,
+        workspace_uses_gradle_cache,
+    })
 }
 
 /// Clean up after a background JAR scan abandons because the workspace generation
