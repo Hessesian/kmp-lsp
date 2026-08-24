@@ -28,7 +28,8 @@ use tower_lsp::lsp_types::{Location, Url};
 use crate::indexer::Indexer;
 
 use super::infer::{
-    find_fun_return_type_by_name, find_fun_return_type_reachable, find_method_return_type,
+    find_field_type_in_class, find_field_type_via_supertypes, find_fun_return_type_by_name,
+    find_fun_return_type_reachable, find_method_return_type,
     find_method_return_type_via_supertypes, infer_field_chain_type, infer_receiver_type,
 };
 use super::ReceiverTypeAgreement;
@@ -165,6 +166,26 @@ pub(crate) trait Resolver {
         from_uri: Option<&Url>,
     ) -> Option<ReturnType>;
 
+    /// Resolve the declared type of `field_name` on a receiver whose type's
+    /// base name is `type_name`, together with the `Url` of the file where
+    /// that field is actually declared (the reachability anchor for the
+    /// *next* hop in a dotted chain — see `find_field_type_in_class`'s own
+    /// doc comment for why this differs from `method_return_type`, which
+    /// does not yet carry one).
+    ///
+    /// The single composite for field resolution: checks `type_name`'s own
+    /// body first, then walks its declared supertypes (with type-argument
+    /// substitution) — the field-typed sibling of `method_return_type`.
+    ///
+    /// Returns `None` when no field (own or inherited) with a declared type
+    /// is found.
+    fn field_type(
+        &self,
+        type_name: &str,
+        field_name: &str,
+        from_uri: &Url,
+    ) -> Option<(String, Url)>;
+
     /// Does `candidate_type`'s receiver relate to `target_type` — exact
     /// match, a proven supertype/subtype relationship (in either direction a
     /// caller separately checks), a proven exclusion, or "the index can't
@@ -234,5 +255,15 @@ impl Resolver for Indexer {
             target_type,
             sidecar_budget,
         )
+    }
+
+    fn field_type(
+        &self,
+        type_name: &str,
+        field_name: &str,
+        from_uri: &Url,
+    ) -> Option<(String, Url)> {
+        find_field_type_in_class(self, type_name, field_name, from_uri)
+            .or_else(|| find_field_type_via_supertypes(self, type_name, field_name, from_uri))
     }
 }

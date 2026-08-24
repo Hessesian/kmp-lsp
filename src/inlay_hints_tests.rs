@@ -252,6 +252,62 @@ fun make() {
     );
 }
 
+/// CST-domain regression for `Resolver::field_type`'s supertype walk
+/// (`src/resolver/infer.rs`): `uiState` is declared only on the generic
+/// superclass `MviViewModel<S, E>`, not on `ContactAddressViewModel` itself.
+/// This never touches `chain.rs`/`expr_type.rs` directly -- it proves the fix
+/// landed once in `resolver/` reaches inlay hints automatically through the
+/// `InferDeps` seam (`Indexer::find_field_type` -> `Resolver::field_type`),
+/// exactly the "fixed once, propagates automatically" point of routing
+/// through the trait instead of patching each CST consumer separately.
+///
+/// The base and derived classes live in separate files deliberately: in one
+/// file, `find_field_type_in_class`'s own-body check would accidentally
+/// "find" the base's `uiState` by whole-file line-proximity (see
+/// `infer_field_type_raw`'s `near_line` doc comment) and return the raw,
+/// unsubstituted `S` -- a separate, pre-existing quirk this test avoids
+/// conflating with the supertype-walk substitution under test here.
+#[test]
+fn untyped_val_navigation_through_inherited_generic_field_gets_hint() {
+    let base_uri = uri("/MviViewModel.kt");
+    let idx = Arc::new(Indexer::new());
+    idx.index_content(
+        &base_uri,
+        "package test\n\
+         abstract class MviViewModel<S, E> {\n\
+         \x20   val uiState: S = TODO()\n\
+         \x20   val effect: E = TODO()\n\
+         }\n",
+    );
+
+    let derived_uri = uri("/ContactAddressViewModel.kt");
+    let derived_src = "package test\n\
+         class ContactState\n\
+         class ContactEffect\n\
+         class ContactAddressViewModel : MviViewModel<ContactState, ContactEffect>()\n\
+         fun make(viewModel: ContactAddressViewModel) {\n\
+         \x20   val state = viewModel.uiState\n\
+         }\n";
+    idx.index_content(&derived_uri, derived_src);
+
+    let lines = derived_src.lines().count() as u32;
+    let hints = compute_inlay_hints(
+        &idx,
+        &derived_uri,
+        Range {
+            start: Position::new(0, 0),
+            end: Position::new(lines, 0),
+        },
+    );
+    assert!(
+        hints
+            .iter()
+            .any(|h| matches!(&h.label, InlayHintLabel::String(s) if s == ": ContactState")),
+        "expected ': ContactState' hint for a val initialized from a field \
+         declared only on the generic superclass, got: {hints:?}",
+    );
+}
+
 #[test]
 fn untyped_val_unindexed_di_factory_call_gets_hint() {
     // `val repo = get<UserRepository>()` where `get` is a Koin-style DI factory
