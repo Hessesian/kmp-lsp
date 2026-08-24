@@ -75,6 +75,7 @@ pub(crate) fn infer_expr_type(
 /// `infer_variable_type_from_cst` (the CST fallback `InferDeps::find_var_type`
 /// uses). Bail out (not error) past the cap, same trade-off every other
 /// capped walker makes.
+///
 /// Returns the inferred type together with the `Url` that should anchor
 /// reachability for a member access on that type — the receiver's own
 /// declaring file when known (currently only `infer_navigation_expr_type`'s
