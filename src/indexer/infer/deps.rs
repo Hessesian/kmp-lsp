@@ -387,7 +387,11 @@ impl TestDeps {
     ) -> Self {
         self.field_types.insert(
             (class_name.to_string(), field_name.to_string()),
-            (type_name.to_string(), Url::parse(declaring_uri).unwrap()),
+            (
+                type_name.to_string(),
+                // unwrap: test-only helper, always called with a literal `file://` uri.
+                Url::parse(declaring_uri).unwrap(),
+            ),
         );
         self
     }
