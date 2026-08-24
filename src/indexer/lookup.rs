@@ -13,6 +13,7 @@
 
 use tower_lsp::lsp_types::*;
 
+use super::infer::lambda::SCOPE_FUNCTIONS;
 use super::Indexer;
 use crate::types::SymbolEntry;
 use crate::StrExt;
@@ -40,13 +41,28 @@ impl Indexer {
         self.resolve_symbol(name, None, from_uri)
     }
 
+    /// Resolve `name` as accessed through `qualifier`. When the receiver-scoped
+    /// search finds nothing and `name` is a universal scope function
+    /// (`SCOPE_FUNCTIONS`, e.g. `apply`/`let`) — a receiver-generic stdlib
+    /// extension that can never be a member of any specific type — fall back
+    /// to the same bare-name resolution a plain reference to that stdlib
+    /// function would use. A receiver type that declares its own member by
+    /// that name still wins, since the fallback only runs once the normal
+    /// search has already failed.
     pub(crate) fn find_definition_qualified(
         &self,
         name: &str,
         qualifier: Option<&str>,
         from_uri: &Url,
     ) -> Vec<Location> {
-        self.resolve_symbol(name, qualifier, from_uri)
+        let locations = self.resolve_symbol(name, qualifier, from_uri);
+        if !locations.is_empty() {
+            return locations;
+        }
+        if qualifier.is_some() && SCOPE_FUNCTIONS.contains(&name) {
+            return self.resolve_symbol(name, None, from_uri);
+        }
+        locations
     }
 
     /// Like `find_definition_qualified` but never spawns `rg`/`fd` — see
