@@ -259,6 +259,46 @@ fun collect(scope: Int, block: Int) {\n\
     );
 }
 
+/// `resolve_symbol_index_only` must never reach `resolve_chain`'s rg/fd
+/// steps: a symbol reachable only via the project-wide rg tail fallback
+/// (not indexed, not imported, not same-package) resolves under the `Full`
+/// policy but must resolve to nothing under `IndexOnly`.
+#[test]
+fn resolve_symbol_index_only_never_spawns_rg_or_fd() {
+    if !rg_available() {
+        return;
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+
+    let caller_src = "package com.example.caller\nfun use() { OnlyFindableByRg() }\n";
+    let caller_path = root.join("Caller.kt");
+    std::fs::write(&caller_path, caller_src).unwrap();
+    let caller_uri = Url::from_file_path(&caller_path).unwrap();
+
+    // Deliberately never indexed via `index_content` — only reachable via
+    // rg's project-wide filesystem search (resolve_chain's step 5).
+    let target_src = "package com.other\nclass OnlyFindableByRg\n";
+    std::fs::write(root.join("Target.kt"), target_src).unwrap();
+
+    let idx = Indexer::new();
+    idx.workspace_root.set(root.to_path_buf());
+    idx.index_content(&caller_uri, caller_src);
+
+    let full = resolve_symbol(&idx, "OnlyFindableByRg", None, &caller_uri);
+    assert!(
+        !full.is_empty(),
+        "sanity check: the Full policy's rg tail fallback must find it"
+    );
+
+    let index_only = resolve_symbol_index_only(&idx, "OnlyFindableByRg", None, &caller_uri);
+    assert!(
+        index_only.is_empty(),
+        "IndexOnly must never spawn rg, so it can't find a target only \
+         reachable via the filesystem tail fallback, got: {index_only:?}"
+    );
+}
+
 // ── resolve_implicit_receiver_callee ───────────────────────────────────────
 
 /// The reported bug: `collect(block)` inside `fun <T> Flow<T>.collect(scope,

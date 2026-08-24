@@ -16,7 +16,8 @@ use tree_sitter::Node;
 
 use crate::indexer::live_tree::LiveDoc;
 use crate::indexer::{
-    classify_cursor, resolve_identity, Indexer, NavigationSource, SymbolAtCursor, SymbolRole,
+    classify_cursor, resolve_identity_with_io, Indexer, NavigationSource, SymbolAtCursor,
+    SymbolRole,
 };
 use crate::queries::{KIND_IMPORT_HEADER, KIND_PACKAGE_HEADER, KIND_SIMPLE_IDENT, KIND_TYPE_IDENT};
 
@@ -141,7 +142,7 @@ fn classify_reference(
     symbol: &SymbolAtCursor,
     receiver_type: Option<String>,
 ) -> ResolutionOutcome {
-    let success = match resolve_identity(symbol, indexer, uri) {
+    let success = match resolve_identity_with_io(symbol, indexer, uri, true) {
         NavigationSource::CstResolved(defs) if !defs.is_empty() => {
             Some((SuccessTier::CstResolved, defs.0))
         }
@@ -153,7 +154,7 @@ fn classify_reference(
     match success {
         Some((tier, locations)) => ResolutionOutcome::Success { tier, locations },
         None if receiver_type.is_some() => {
-            let probe = indexer.find_definition_qualified(&symbol.name, None, uri);
+            let probe = indexer.find_definition_qualified_index_only(&symbol.name, None, uri);
             if probe.is_empty() {
                 ResolutionOutcome::Gap
             } else {

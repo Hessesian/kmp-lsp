@@ -40,8 +40,8 @@ pub(crate) use self::infer::{
     cst_symbol::{
         classify_cursor, classify_symbol_at, enclosing_nav_expr_if_member, is_call_callee,
         is_declaration_site, local_scope_occurrences, navigation_member_ident,
-        navigation_receiver_node, resolve_identity, shape_filter_locations, NavigationSource,
-        SymbolAtCursor, SymbolRole,
+        navigation_receiver_node, resolve_identity, resolve_identity_with_io,
+        shape_filter_locations, NavigationSource, SymbolAtCursor, SymbolRole,
     },
     deps::{CallShape, CallableInfo, InferDeps, OuterScopedParams, ShapeFiltered},
     expr_type::infer_expr_type,
