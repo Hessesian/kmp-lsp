@@ -172,7 +172,12 @@ fn resolve_member_access(
                     .resolved()
             })
             .and_then(|receiver_type| {
-                member_token_type_for_receiver(indexer, receiver_type.as_type_str(), &member_name)
+                member_token_type_for_receiver(
+                    indexer,
+                    receiver_type.as_type_str(),
+                    &member_name,
+                    uri,
+                )
             });
         let method_type = type_index(&SemanticTokenType::METHOD);
         let property_type = type_index(&SemanticTokenType::PROPERTY);
@@ -393,11 +398,12 @@ fn member_token_type_for_receiver(
     indexer: &Indexer,
     receiver_type: &str,
     member_name: &str,
+    uri: &Url,
 ) -> Option<u32> {
     owner_member_token_type(indexer, receiver_type, member_name)
         .or_else(|| extension_member_token_type(indexer, receiver_type, member_name))
         .or_else(|| {
-            find_field_type_in_class(indexer, receiver_type, member_name)
+            find_field_type_in_class(indexer, receiver_type, member_name, uri)
                 .map(|_| type_index(&SemanticTokenType::PROPERTY))
         })
 }

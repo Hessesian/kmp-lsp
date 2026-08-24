@@ -224,7 +224,7 @@ fn infer_navigation_expr_type(
             .or_else(|| deps.find_fun_return_type(&member, uri));
     }
 
-    deps.find_field_type(&receiver_type, &member)
+    deps.find_field_type(&receiver_type, &member, uri)
 }
 
 // ─── navigation tree-walking helpers ─────────────────────────────────────────

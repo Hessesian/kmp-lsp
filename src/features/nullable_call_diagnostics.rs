@@ -186,7 +186,20 @@ fn resolve_receiver(
             if chain.len() < 2 || chain[0] == "this" || chain[0] == "super" {
                 return None;
             }
-            let receiver_type = indexer.infer_field_chain_type(&chain, uri)?;
+            // No CST point: unlike `fill_when` (one call per `when` node),
+            // this runs once per `navigation_expression` in the whole file —
+            // for a long field-access chain that's one call per segment, and
+            // `enclosing_smart_cast_type`'s ancestor walk is only safe to
+            // call this often because it bounds *segment count*, which does
+            // NOT bound tree depth for the receiver nodes closest to the
+            // chain's root (see `MAX_SMART_CAST_CHAIN_LEN`'s doc comment).
+            // Falls back to the line-scanning `smart_cast_narrowed_type`
+            // (root-only) inside `infer_field_chain_type` instead — no
+            // regression from before this file started passing a CST point,
+            // since it never did.
+            let line = receiver_node.start_position().row as u32;
+            let (receiver_type, _declaring_uri) =
+                indexer.infer_field_chain_type(&chain, uri, line, None)?;
             Some((chain.join("."), receiver_type))
         }
         _ => None,

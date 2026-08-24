@@ -417,11 +417,12 @@ impl InferDeps for Indexer {
         infer_variable_type_raw(self, var_name, uri)
             .or_else(|| infer_variable_type_from_cst(self, var_name, uri))
     }
-    fn find_field_type(&self, class_name: &str, field_name: &str) -> Option<String> {
+    fn find_field_type(&self, class_name: &str, field_name: &str, uri: &Url) -> Option<String> {
         if let Some(type_name) = synthetic_enum_field(self, class_name, field_name) {
             return Some(type_name);
         }
-        crate::resolver::infer::find_field_type_in_class(self, class_name, field_name)
+        crate::resolver::infer::find_field_type_in_class(self, class_name, field_name, uri)
+            .map(|(field_type, _declaring_uri)| field_type)
     }
     fn find_fun_return_type(&self, fn_name: &str, uri: &Url) -> Option<String> {
         crate::resolver::infer::find_fun_return_type_by_name(self, fn_name, uri)

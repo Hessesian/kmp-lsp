@@ -2230,8 +2230,15 @@ fn lambda_param_dotted_nested_class_chain() {
     );
 
     // Step 2: find_field_type_in_class("Success", "value") should return "T"
-    let field_type = crate::resolver::infer::find_field_type_in_class(&idx, "Success", "value");
-    assert_eq!(field_type.as_deref(), Some("T"), "step2: raw field type");
+    let field_type =
+        crate::resolver::infer::find_field_type_in_class(&idx, "Success", "value", &vm_uri);
+    assert_eq!(
+        field_type
+            .map(|(field_type, _declaring_uri)| field_type)
+            .as_deref(),
+        Some("T"),
+        "step2: raw field type"
+    );
 
     // Step 3: find_method_return_type("Optional", "getOrNull") returns "T" (? stripped by extract_type_with_generics)
     let method_ret =
@@ -2574,21 +2581,21 @@ fn cst_named_lambda_param_scope_fun_substitutes_receiver() {
 #[test]
 fn synthetic_enum_entries_field_type() {
     let (_, idx) = indexed("/Color.kt", "enum class Color { RED, GREEN, BLUE }");
-    let ty = idx.find_field_type("Color", "entries");
+    let ty = idx.find_field_type("Color", "entries", &uri("/Color.kt"));
     assert_eq!(ty.as_deref(), Some("List<Color>"));
 }
 
 #[test]
 fn synthetic_enum_name_field_type() {
     let (_, idx) = indexed("/Color.kt", "enum class Color { RED, GREEN, BLUE }");
-    let ty = idx.find_field_type("Color", "name");
+    let ty = idx.find_field_type("Color", "name", &uri("/Color.kt"));
     assert_eq!(ty.as_deref(), Some("String"));
 }
 
 #[test]
 fn synthetic_enum_ordinal_field_type() {
     let (_, idx) = indexed("/Color.kt", "enum class Color { RED, GREEN, BLUE }");
-    let ty = idx.find_field_type("Color", "ordinal");
+    let ty = idx.find_field_type("Color", "ordinal", &uri("/Color.kt"));
     assert_eq!(ty.as_deref(), Some("Int"));
 }
 
@@ -2609,7 +2616,7 @@ fn synthetic_enum_valueof_method() {
 #[test]
 fn synthetic_not_applied_to_non_enum() {
     let (_, idx) = indexed("/Foo.kt", "class Foo { val entries: String = \"\" }");
-    let ty = idx.find_field_type("Foo", "entries");
+    let ty = idx.find_field_type("Foo", "entries", &uri("/Foo.kt"));
     // Should resolve from actual source, not synthetic
     assert_ne!(ty.as_deref(), Some("List<Foo>"));
 }

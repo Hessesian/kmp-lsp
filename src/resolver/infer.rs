@@ -1,6 +1,6 @@
 use tower_lsp::lsp_types::{Location, Position, SymbolKind, Url};
 
-use crate::indexer::{Indexer, InferDeps};
+use crate::indexer::{Indexer, InferDeps, NodeExt};
 use crate::types::FileData;
 use crate::LinesExt;
 use crate::StrExt;
@@ -134,20 +134,79 @@ pub(crate) fn infer_receiver_type(
 ///
 /// Returns `None` if the chain has no field segment (`segments.len() < 2`) or
 /// any segment's type can't be resolved. Used by the nullable-dot-call
-/// diagnostic to flag `holder.repo.load()` where `repo` is a nullable field.
+/// diagnostic to flag `holder.repo.load()` where `repo` is a nullable field,
+/// and by the `when`-exhaustiveness diagnostic for a chained subject like
+/// `event.event`.
+///
+/// `line` is the 0-based line of the chain expression itself, used only as a
+/// fallback (see below). `cst_point`, when given, is the chain expression's
+/// own CST node plus source bytes — Kotlin smart-casts a whole *stable path*,
+/// not just a simple variable (`when (event.events) { is X -> when
+/// (event.events) { ... } }` narrows the entire path `event.events`, not just
+/// `event`), so with a CST node this finds whatever prefix of `segments` an
+/// enclosing `when` narrows via [`enclosing_smart_cast_type`] and starts the
+/// field walk from there (an exact whole-chain match walks zero further
+/// fields). Without a CST node — or when no prefix matches — falls back to
+/// the much narrower line-scanning `smart_cast_narrowed_type` (root only) and
+/// then the plain declared type.
+///
+/// The returned `Url` is the file that declares the *leaf* type — the correct
+/// reachability context for resolving anything about that type further (e.g.
+/// its own members via `resolve::resolve_type_index_only`). A caller that
+/// keeps using its own `uri` for that instead reintroduces exactly the bug
+/// this function exists to avoid: the leaf type can be a class duplicated
+/// workspace-wide, reachable only through the chain (never imported by the
+/// original caller directly), so only the leaf's own declaring file's
+/// imports/package can disambiguate it.
 pub(crate) fn infer_field_chain_type(
     indexer: &Indexer,
     segments: &[String],
     uri: &Url,
-) -> Option<ReceiverType> {
+    line: u32,
+    cst_point: Option<(tree_sitter::Node, &[u8])>,
+) -> Option<(ReceiverType, Url)> {
     if segments.len() < 2 {
         return None;
     }
-    let root = segments.first()?;
-    // Root variable's base type (generics + `?` already stripped), e.g. "Holder".
-    let mut current = infer_variable_type(indexer, root, uri)?;
+    // Find the prefix of `segments` that's smart-cast-narrowed (if any), and
+    // the type it narrows to — the un-narrowed declared type would send the
+    // field lookup below down the wrong, far more collision-prone bare-name
+    // class (see `smart_cast_narrowed_type` doc comment).
+    let (narrowed_prefix_len, mut current) = 'narrowed: {
+        if let Some((point, source)) = cst_point {
+            if let Some((narrowed_type, prefix_len)) =
+                enclosing_smart_cast_type(point, segments, source)
+            {
+                break 'narrowed (prefix_len, narrowed_type);
+            }
+        }
+        // No prefix is smart-cast-narrowed — fall back to the root's plain
+        // declared type. With a CST node, prefer the scope-correct
+        // `resolve_declared_type_from_cst` (a whole-file scan can find an
+        // unrelated same-named parameter/local in a *different* function —
+        // see its own doc comment) before the line-scanning smart-cast check
+        // and the unscoped whole-file scan.
+        let root = segments.first()?;
+        let declared_type = match cst_point {
+            Some((point, source)) => resolve_declared_type_from_cst(point, root, source)
+                .or_else(|| smart_cast_narrowed_type(indexer, root, uri, line))
+                .or_else(|| infer_variable_type(indexer, root, uri))?,
+            None => smart_cast_narrowed_type(indexer, root, uri, line)
+                .or_else(|| infer_variable_type(indexer, root, uri))?,
+        };
+        (1, declared_type)
+    };
+    // The file whose imports/package govern the *next* lookup's reachability.
+    // Starts as the caller's own file (correct for the root: its declared type
+    // is reachable from wherever it's declared/used) and is updated to each
+    // resolved class's own declaring file as the chain descends — a field's
+    // type must resolve through the *declaring class's* imports, not the
+    // original caller's (see `find_field_type_in_class`). A *qualified*
+    // narrowed type (`Event.OverdraftInput`) carries its own reachability
+    // signal, resolved here up front.
+    let mut reachability_uri = declaring_uri_for_type(indexer, &current, uri);
     let mut leaf_raw = current.clone();
-    for field in &segments[1..] {
+    for field in &segments[narrowed_prefix_len..] {
         // Reduce the running type to a bare class name for the field lookup:
         // drop generics, any package/outer qualifier, and a trailing `?`.
         let class_base = current
@@ -158,11 +217,13 @@ pub(crate) fn infer_field_chain_type(
             .next()
             .unwrap_or(&current)
             .strip_nullable();
-        let field_raw = find_field_type_in_class(indexer, class_base, field)?;
+        let (field_raw, declaring_uri) =
+            find_field_type_in_class(indexer, class_base, field, &reachability_uri)?;
         current = field_raw.clone();
         leaf_raw = field_raw;
+        reachability_uri = declaring_uri;
     }
-    Some(ReceiverType::from_raw(leaf_raw))
+    Some((ReceiverType::from_raw(leaf_raw), reachability_uri))
 }
 
 /// Like [`infer_receiver_type`] but checks smart-cast narrowing at the given
@@ -174,31 +235,370 @@ pub(crate) fn infer_receiver_type_at(
     uri: &Url,
     position: Position,
 ) -> Option<ReceiverType> {
+    if let Some(narrowed) = smart_cast_narrowed_type(indexer, name, uri, position.line) {
+        return Some(ReceiverType::from_raw(narrowed));
+    }
+    // Fallback to normal inference
+    infer_receiver_type(indexer, ReceiverKind::Variable(name), uri)
+}
+
+/// If `name` is the subject of an enclosing `when (name) { is Type -> ... }`
+/// branch or `if (name is Type)` block at `line`, returns the narrowed type —
+/// the *static* declared type of `name` (e.g. a sealed interface) is wrong
+/// inside such a branch, and callers that skip this and use the declared type
+/// instead risk a far more collision-prone bare-name class lookup downstream
+/// (a common sealed-interface name like `Event` can match dozens of unrelated
+/// classes workspace-wide; the narrowed subtype name rarely does).
+fn smart_cast_narrowed_type(indexer: &Indexer, name: &str, uri: &Url, line: u32) -> Option<String> {
     use super::infer_lines::SmartCast;
 
-    // Try smart cast narrowing first when lines are available.
     let lines = indexer
         .live_lines
         .get(uri.as_str())
         .map(|ll| (*ll).clone())
-        .or_else(|| indexer.files.get(uri.as_str()).map(|d| d.lines.clone()));
-    if let Some(lines) = lines {
-        let narrowed =
-            match super::infer_lines::smart_cast_type_at_line(&lines, name, position.line) {
-                Some(SmartCast::TypeTest(type_name)) => Some(type_name),
-                // Only an object's own name is also a type; an enum entry or a
-                // constant matches by value and leaves the subject's type alone.
-                Some(SmartCast::ObjectEquality(label)) => {
-                    names_object_declaration(indexer, &label, uri).then_some(label)
-                }
-                None => None,
-            };
-        if let Some(narrowed) = narrowed {
-            return Some(ReceiverType::from_raw(narrowed));
+        .or_else(|| indexer.files.get(uri.as_str()).map(|d| d.lines.clone()))?;
+    match super::infer_lines::smart_cast_type_at_line(&lines, name, line)? {
+        SmartCast::TypeTest(type_name) => Some(type_name),
+        // Only an object's own name is also a type; an enum entry or a
+        // constant matches by value and leaves the subject's type alone.
+        SmartCast::ObjectEquality(label) => {
+            names_object_declaration(indexer, &label, uri).then_some(label)
         }
     }
-    // Fallback to normal inference
-    infer_receiver_type(indexer, ReceiverKind::Variable(name), uri)
+}
+
+/// Real Kotlin smart-cast subjects (`event`, `event.events`) are never more
+/// than a handful of segments, so bailing out for anything longer is free —
+/// a defensive bound on [`enclosing_smart_cast_type`]'s input, independent of
+/// the tree-depth cost documented on its own `Node::parent()` warning: a
+/// long segment count does *not* imply `point` is deeply nested (for a
+/// left-recursive chain `a.b0.b1…`, it's the *opposite* — the longest-chain
+/// node is the outermost, shallowest one), so this bound alone would not
+/// have protected the pathological-chain case that motivated it. That case
+/// was fixed at the call site instead (`nullable_call_diagnostics` stopped
+/// passing a CST point) — see `enclosing_smart_cast_type`'s doc comment.
+const MAX_SMART_CAST_CHAIN_LEN: usize = 16;
+
+/// CST-based counterpart to [`smart_cast_narrowed_type`]: if `point` sits
+/// inside an immediately-enclosing `when (subject) { is Type -> ... }` branch
+/// whose subject is exactly `target_segments` (a bare variable `["event"]` or
+/// a stable dotted path `["event", "events"]` — Kotlin smart-casts a whole
+/// property path, not just a simple variable), returns `Type` in full (e.g.
+/// `"Event.OverdraftInput"` from `is Event.OverdraftInput ->`) — the
+/// qualifier matters: it lets `resolve_type_index_only` resolve `Event`
+/// reachability-first, then find `OverdraftInput` scoped to *that* file,
+/// rather than a flat bare-name scan for `OverdraftInput` alone (which can't
+/// disambiguate if the enclosing `Event` itself is duplicated under two
+/// same-named outer types in different packages, e.g. two contracts each
+/// declaring their own `Event`).
+///
+/// Unlike the line-scanning heuristic in `infer_lines::smart_cast_type_at_line`
+/// — which recovers `when`-branch nesting from indented text and can be fooled
+/// by a *sibling* branch that also happens to contain its own nested
+/// `when (...)` sharing the same subject — this walks real tree-sitter parent
+/// pointers, which only ever reach `point`'s true ancestors. Callers with a
+/// CST node in hand should prefer this over `smart_cast_narrowed_type`.
+///
+/// Handles only a `when (subject) { is Type -> ... }` type test — not
+/// `if (subject is Type)` or object-equality branches — matching the shape
+/// every current caller needs; extend if a caller needs those too.
+///
+/// Walks *multiple* enclosing `when` levels outward, not just the immediate
+/// one: a `when`'s own subject can be a *different, unrelated* path than
+/// `target_segments` (e.g. an ancestor `when (foo)` while querying
+/// `["event", "events"]`), in which case that level doesn't narrow
+/// `target_segments` at all and the search must continue past it to whichever
+/// ancestor `when` actually has (a prefix of) `target_segments` as its
+/// subject (real shape this guards: `is Banner -> when (event.events) { is X
+/// -> when (event.events) { ... } }` — the innermost level's own subject
+/// `event.events` already matches the whole 2-segment target directly; a
+/// query for just `["event"]` from a *different* nested spot would instead
+/// need to see through an `event.events`-subject level in between to reach an
+/// outer `when (event)`'s narrowing).
+///
+/// Each ancestor level is checked exactly once — a level's subject is
+/// whatever length it naturally is, so it can only ever match the
+/// correspondingly-sized prefix of `target_segments`; there's no need to
+/// separately try shorter prefixes at the same level (an earlier version of
+/// this function did, making the walk `O(depth × segments.len())` per call).
+///
+/// **Costly per call from a deep node — `Node::parent()` is not a stored
+/// pointer.** Unlike a bounded-recursion walk (`pure_field_chain_at`,
+/// `collect_navigation_segments`), tree-sitter's `Node::parent()` is
+/// `O(depth from root)` internally, every call, regardless of how many hops
+/// the caller intends to make (see `Node::parent` in tree-sitter's
+/// `node.c`). One call from a node 5,000 levels deep already costs
+/// `O(5000)`; a caller that calls this once per node while walking a whole
+/// deep tree pays that cost once per node, making the *whole walk*
+/// quadratic. `MAX_SMART_CAST_CHAIN_LEN` bounds `target_segments.len()` as a
+/// cheap sanity check, but does **not** by itself bound `point`'s depth — a
+/// short segment count doesn't imply a shallow node (see that constant's own
+/// doc comment). **Only call this from a position that's known to be
+/// shallow** (e.g. `fill_when`'s one call per `when` node — a `when`
+/// expression itself is never deeply nested even when its subject chain is);
+/// a caller that might invoke this once per node of a deep chain must not
+/// pass a CST point at all (`nullable_call_diagnostics` doesn't, precisely
+/// for this reason) — see `nullable_diagnostics_survives_a_pathologically_deep_field_chain`,
+/// the regression test that caught this the first time it was tried.
+///
+/// Returns the narrowed type together with how many leading segments of
+/// `target_segments` it covers, so the caller knows how many (if any) remain
+/// to walk as plain fields.
+pub(crate) fn enclosing_smart_cast_type(
+    point: tree_sitter::Node,
+    target_segments: &[String],
+    source: &[u8],
+) -> Option<(String, usize)> {
+    use crate::queries::{
+        KIND_TYPE_IDENT, KIND_TYPE_TEST, KIND_USER_TYPE, KIND_WHEN_CONDITION, KIND_WHEN_ENTRY,
+        KIND_WHEN_EXPR, KIND_WHEN_SUBJECT,
+    };
+
+    if target_segments.len() > MAX_SMART_CAST_CHAIN_LEN {
+        return None;
+    }
+
+    let mut current = point;
+    for _ in 0..crate::util::MAX_CST_DESCENT_DEPTH {
+        let when_entry = ancestor_of_kind(current, KIND_WHEN_ENTRY)?;
+        let owning_when = ancestor_of_kind(when_entry, KIND_WHEN_EXPR)?;
+        let subject = owning_when
+            .children(&mut owning_when.walk())
+            .find(|child| child.kind() == KIND_WHEN_SUBJECT)?;
+
+        let consumed = subject_segments(subject, source).filter(|subject_segments| {
+            !subject_segments.is_empty()
+                && subject_segments.len() <= target_segments.len()
+                && subject_segments.as_slice() == &target_segments[..subject_segments.len()]
+        });
+        if let Some(consumed) = consumed {
+            let condition = when_entry
+                .children(&mut when_entry.walk())
+                .find(|child| child.kind() == KIND_WHEN_CONDITION)?;
+            let type_test = condition
+                .children(&mut condition.walk())
+                .find(|child| child.kind() == KIND_TYPE_TEST)?;
+            let user_type = type_test.first_child_of_kind(KIND_USER_TYPE)?;
+            let identifiers: Vec<&str> = user_type
+                .children(&mut user_type.walk())
+                .filter(|child| child.kind() == KIND_TYPE_IDENT)
+                .map(|child| child.utf8_text(source))
+                .collect::<Result<_, _>>()
+                .ok()?;
+            if identifiers.is_empty() {
+                return None;
+            }
+            return Some((identifiers.join("."), consumed.len()));
+        }
+
+        // This level's subject isn't a prefix of `target_segments` (a
+        // different variable, or a different path) — it doesn't narrow it;
+        // keep looking further out.
+        current = owning_when;
+    }
+    crate::util::report_cst_depth_exceeded!("enclosing_smart_cast_type", point);
+    None
+}
+
+/// The identifier chain of a `when_subject` (or any node wrapping a plain
+/// identifier / dotted navigation expression): `state` → `["state"]`,
+/// `event.events` → `["event", "events"]`. `None` for anything else (a call,
+/// an index, a literal) — those need real expression inference, not a name
+/// chain. Depth-bounded like [`enclosing_smart_cast_type`]'s own walk.
+///
+/// The one shared implementation — `fill_when::analyze_when` uses this
+/// directly for its own subject-segment extraction rather than re-deriving
+/// it, so there's a single CST chain-flattening walk instead of two.
+pub(crate) fn subject_segments(node: tree_sitter::Node, source: &[u8]) -> Option<Vec<String>> {
+    use crate::queries::{KIND_NAV_EXPR, KIND_NAV_SUFFIX, KIND_SIMPLE_IDENT};
+
+    fn collect(
+        node: tree_sitter::Node,
+        source: &[u8],
+        out: &mut Vec<String>,
+        depth: usize,
+    ) -> Option<()> {
+        if depth >= crate::util::MAX_CST_DESCENT_DEPTH {
+            crate::util::report_cst_depth_exceeded!("subject_segments", node);
+            return None;
+        }
+        match node.kind() {
+            KIND_SIMPLE_IDENT => out.push(node.utf8_text(source).ok()?.to_owned()),
+            KIND_NAV_EXPR | KIND_NAV_SUFFIX => {
+                for child in node.children(&mut node.walk()) {
+                    // The `.` separator carries no segment of its own.
+                    if child.kind() != "." {
+                        collect(child, source, out, depth + 1)?;
+                    }
+                }
+            }
+            _ => return None,
+        }
+        Some(())
+    }
+
+    // A bare identifier/nav-expression node (as passed by a caller that
+    // already resolved down to the expression itself) needs no unwrapping —
+    // check it before its children. Only `when_subject` wraps its expression
+    // in `"(" <expression> ")"`, so its own kind never matches here and the
+    // loop below finds the wrapped expression among its children instead.
+    // Checking the node first (not last) matters: a `navigation_expression`
+    // node's *own* children include its receiver sub-expression, which can
+    // itself be `KIND_SIMPLE_IDENT`/`KIND_NAV_EXPR` — finding that child
+    // first would silently return just the receiver's segments, a prefix of
+    // the real chain, instead of the whole thing.
+    for candidate in std::iter::once(node).chain(node.children(&mut node.walk())) {
+        if matches!(candidate.kind(), KIND_SIMPLE_IDENT | KIND_NAV_EXPR) {
+            let mut segments = Vec::new();
+            collect(candidate, source, &mut segments, 0)?;
+            return Some(segments);
+        }
+    }
+    None
+}
+
+/// Walk `node`'s ancestors (not itself) for the nearest one of `kind`.
+fn ancestor_of_kind<'tree>(
+    node: tree_sitter::Node<'tree>,
+    kind: &str,
+) -> Option<tree_sitter::Node<'tree>> {
+    let mut current = node.parent();
+    while let Some(candidate) = current {
+        if candidate.kind() == kind {
+            return Some(candidate);
+        }
+        current = candidate.parent();
+    }
+    None
+}
+
+/// Resolve `var_name`'s *declared* type by walking up from `point` through the
+/// CST — sibling `val`/`var` declarations in the same statement block, then
+/// the enclosing function's parameters, then the enclosing class's primary
+/// constructor parameters — stopping at the first match.
+///
+/// This is scope-correct where a whole-file text/line scan (`infer_variable_type`)
+/// is not: a file with many functions can have several unrelated parameters or
+/// locals named the same thing (`event`, `state`, …), and a whole-file scan has
+/// no way to prefer the one actually in scope at `point`. Callers with a CST
+/// node in hand should try this first and fall back to `infer_variable_type`
+/// only when it finds nothing (e.g. `var_name` comes from an outer/captured
+/// scope this walk doesn't reach).
+pub(crate) fn resolve_declared_type_from_cst(
+    point: tree_sitter::Node,
+    var_name: &str,
+    source: &[u8],
+) -> Option<String> {
+    use crate::queries::{
+        KIND_BOOLEAN_LITERAL, KIND_CLASS_DECL, KIND_CLASS_PARAM, KIND_FUN_DECL,
+        KIND_FUN_VALUE_PARAMS, KIND_NULLABLE_TYPE, KIND_PARAMETER, KIND_PRIMARY_CTOR,
+        KIND_PROP_DECL, KIND_SIMPLE_IDENT, KIND_STATEMENTS, KIND_TYPE_IDENT, KIND_USER_TYPE,
+        KIND_VAR_DECL,
+    };
+
+    fn full_type_name(user_type: tree_sitter::Node, source: &[u8]) -> Option<String> {
+        let parts: Vec<&str> = user_type
+            .children(&mut user_type.walk())
+            .filter(|child| child.kind() == KIND_TYPE_IDENT)
+            .map(|child| child.utf8_text(source))
+            .collect::<Result<_, _>>()
+            .ok()?;
+        (!parts.is_empty()).then(|| parts.join("."))
+    }
+
+    fn type_from_nullable(nullable: tree_sitter::Node, source: &[u8]) -> Option<String> {
+        nullable
+            .first_child_of_kind(KIND_USER_TYPE)
+            .and_then(|user_type| full_type_name(user_type, source))
+    }
+
+    // Shared by a `parameter`/`class_parameter` node (`name: Type`) and a
+    // `variable_declaration` node (same shape, plus an inferred-Boolean case
+    // for `val x = false`/`true` handled by the caller).
+    fn type_after_matching_name(
+        node: tree_sitter::Node,
+        var_name: &str,
+        source: &[u8],
+    ) -> Option<String> {
+        let mut name_matched = false;
+        for child in node.children(&mut node.walk()) {
+            if child.kind() == KIND_SIMPLE_IDENT && child.utf8_text(source).ok() == Some(var_name) {
+                name_matched = true;
+            }
+            if name_matched {
+                if child.kind() == KIND_USER_TYPE {
+                    return full_type_name(child, source);
+                }
+                if child.kind() == KIND_NULLABLE_TYPE {
+                    return type_from_nullable(child, source);
+                }
+            }
+        }
+        None
+    }
+
+    fn find_in_sibling_declarations(
+        statements: tree_sitter::Node,
+        var_name: &str,
+        source: &[u8],
+    ) -> Option<String> {
+        statements
+            .children(&mut statements.walk())
+            .filter(|child| child.kind() == KIND_PROP_DECL)
+            .find_map(|prop| {
+                let var_decl = prop.first_child_of_kind(KIND_VAR_DECL)?;
+                type_after_matching_name(var_decl, var_name, source).or_else(|| {
+                    // `val x = false`/`true` — no annotation, inferred Boolean.
+                    let name_matches = var_decl
+                        .first_child_of_kind(KIND_SIMPLE_IDENT)
+                        .and_then(|ident| ident.utf8_text(source).ok())
+                        == Some(var_name);
+                    let has_boolean_literal = prop
+                        .children(&mut prop.walk())
+                        .any(|child| child.kind() == KIND_BOOLEAN_LITERAL);
+                    (name_matches && has_boolean_literal).then(|| "Boolean".to_owned())
+                })
+            })
+    }
+
+    fn find_in_parameters(
+        function_declaration: tree_sitter::Node,
+        var_name: &str,
+        source: &[u8],
+    ) -> Option<String> {
+        let params = function_declaration.first_child_of_kind(KIND_FUN_VALUE_PARAMS)?;
+        params
+            .children(&mut params.walk())
+            .filter(|child| child.kind() == KIND_PARAMETER)
+            .find_map(|param| type_after_matching_name(param, var_name, source))
+    }
+
+    fn find_in_constructor(
+        class_declaration: tree_sitter::Node,
+        var_name: &str,
+        source: &[u8],
+    ) -> Option<String> {
+        let primary_constructor = class_declaration.first_child_of_kind(KIND_PRIMARY_CTOR)?;
+        primary_constructor
+            .children(&mut primary_constructor.walk())
+            .filter(|child| child.kind() == KIND_CLASS_PARAM)
+            .find_map(|param| type_after_matching_name(param, var_name, source))
+    }
+
+    let mut current = point.parent();
+    while let Some(node) = current {
+        let found = match node.kind() {
+            KIND_STATEMENTS => find_in_sibling_declarations(node, var_name, source),
+            KIND_FUN_DECL => find_in_parameters(node, var_name, source),
+            KIND_CLASS_DECL => find_in_constructor(node, var_name, source),
+            _ => None,
+        };
+        if found.is_some() {
+            return found;
+        }
+        current = node.parent();
+    }
+    None
 }
 
 /// Whether the qualified `label` (e.g. `Ui.Loading`) names an `object`
@@ -399,7 +799,9 @@ fn infer_var_from_rhs_data(
                 .next()
                 .unwrap_or(recv_stripped)
                 .strip_nullable();
-            if let Some(field_type) = find_field_type_in_class(indexer, recv_base, &field) {
+            if let Some((field_type, _declaring_uri)) =
+                find_field_type_in_class(indexer, recv_base, &field, uri)
+            {
                 return Some(field_type);
             }
         }
@@ -584,31 +986,50 @@ pub(crate) fn infer_field_type(
 ///
 /// Returns `"MutableList<MbAccount>"` rather than `"MutableList"`, which is
 /// needed for collection element type extraction via `extract_collection_element_type`.
-/// Checks live editor lines first (most up-to-date), then CST type annotations,
-/// then falls back to indexed lines and finally to a disk read for un-indexed files.
+/// Checks live editor lines first (most up-to-date), then CST type
+/// annotations, then falls back to indexed lines and finally to a disk read
+/// for un-indexed files.
+///
+/// `near_line` is the 0-based line of the class declaration whose field is
+/// being looked up. `type_annotations` and every line-scan fallback here
+/// cover every field/parameter in the *whole file*, not just the one class —
+/// a sibling sealed-type member declared elsewhere in the same file with a
+/// field of the same name (a common MVI pattern: many `data class
+/// Foo(val event: FooEvent) : Event` variants side by side) would otherwise
+/// shadow the real field via first-match. Every source here is disambiguated
+/// against `near_line`: `type_annotations` (precise, per-declaration lines)
+/// by picking the entry closest to it; the line-scan fallbacks by bounding
+/// the scan to a window around it. Freshness still governs the *order*
+/// (`live_lines` — updated synchronously on every keystroke — before the
+/// debounced-reindex `type_annotations`/`data.lines`), so an edit to a
+/// field's own declaration is visible immediately rather than only after the
+/// next reindex settles; near_line-scoping on both sides is what keeps that
+/// freshness-first order from reintroducing the sibling-shadowing bug this
+/// function exists to avoid.
 pub(crate) fn infer_field_type_raw(
     indexer: &Indexer,
     file_uri: &str,
     field_name: &str,
+    near_line: u32,
 ) -> Option<String> {
     if let Some(live) = indexer.live_lines.get(file_uri) {
-        if let Some(result) = live.infer_type_raw(field_name) {
+        if let Some(result) = windowed_infer_type_raw(&live, field_name, near_line) {
             return Some(result);
         }
-        // Fall through — live lines didn't have a type annotation;
-        // check the indexed snapshot (indexer.files) which may have declarations
-        // from a different source set (e.g. sig vs code in tests, or a file
-        // that was indexed before the editor opened it live).
     }
     if let Some(data) = indexer.files.get(file_uri) {
         if let Some(ann) = data
             .type_annotations
             .iter()
-            .find(|(_, n, _)| n == field_name)
+            .filter(|(_, n, _)| n == field_name)
+            .min_by_key(|(line, _, _)| line.abs_diff(near_line))
         {
             return Some(ann.2.clone());
         }
-        return data.lines.infer_type_raw(field_name);
+        if let Some(result) = windowed_infer_type_raw(&data.lines, field_name, near_line) {
+            return Some(result);
+        }
+        return None;
     }
     let path = tower_lsp::lsp_types::Url::parse(file_uri)
         .ok()?
@@ -616,27 +1037,110 @@ pub(crate) fn infer_field_type_raw(
         .ok()?;
     let content = std::fs::read_to_string(&path).ok()?;
     let lines: Vec<String> = content.lines().map(String::from).collect();
-    lines.infer_type_raw(field_name)
+    windowed_infer_type_raw(&lines, field_name, near_line)
 }
 
+/// How far (in lines) around a class's own declaration to search for a field
+/// via plain text scanning — generous enough for a multi-line constructor or
+/// class body, far tighter than a whole file (where an unrelated sibling
+/// class's same-named field would otherwise win by proximity too, just less
+/// often than by first-match).
+const FIELD_LOOKUP_WINDOW: u32 = 20;
+
+fn windowed_infer_type_raw(lines: &[String], field_name: &str, near_line: u32) -> Option<String> {
+    let start = near_line.saturating_sub(FIELD_LOOKUP_WINDOW) as usize;
+    let end = ((near_line + FIELD_LOOKUP_WINDOW + 1) as usize).min(lines.len());
+    if start >= end {
+        return None;
+    }
+    // `infer_type_raw` (a pure per-line scan — no cross-line state, verified
+    // by `infer_type_in_lines_raw`'s own implementation) returns the FIRST
+    // match in the slice's order, not the closest one to `near_line`. Order
+    // the window by distance first so the first match found is the closest
+    // one — otherwise a sibling declaration earlier in the window (but
+    // farther from `near_line` than the real field) wins by file order, the
+    // exact sibling-shadowing bug this windowing exists to prevent. Mirrors
+    // the `type_annotations` path's `min_by_key` disambiguation.
+    let mut window_lines: Vec<usize> = (start..end).collect();
+    window_lines.sort_by_key(|&line| (line as u32).abs_diff(near_line));
+    let ordered: Vec<String> = window_lines
+        .into_iter()
+        .map(|line| lines[line].clone())
+        .collect();
+    ordered.infer_type_raw(field_name)
+}
+
+/// The file that declares `type_name`, resolved reachability-first from
+/// `from_uri`'s own imports/package (see `resolve::resolve_type_index_only`;
+/// handles a qualified `Outer.Inner` name too). Falls back to `from_uri`
+/// itself when `type_name` isn't qualified (nothing to resolve) or
+/// reachability resolution finds no candidate — a type genuinely declared in
+/// `from_uri`'s own file, or one with no useful reachability signal at all,
+/// is no worse off treated as anchored on the caller.
+///
+/// Shared by [`infer_field_chain_type`]'s root-anchoring and by callers that
+/// resolve a *whole* smart-cast-narrowed chain directly (see
+/// `enclosing_smart_cast_type`) and need the same reachability anchor for the
+/// type they get back.
+pub(crate) fn declaring_uri_for_type(indexer: &Indexer, type_name: &str, from_uri: &Url) -> Url {
+    if !type_name.contains('.') {
+        return from_uri.clone();
+    }
+    super::resolve::resolve_type_index_only(indexer, type_name, from_uri)
+        .into_iter()
+        .next()
+        .map(|location| location.uri)
+        .unwrap_or_else(|| from_uri.clone())
+}
+
+/// Resolve `field_name`'s declared type within `class_name`.
+///
+/// Candidate classes are found by name, preferring the declaration reachable
+/// from `from_uri`'s own imports/package — the same reachability chain used
+/// throughout the resolver (see `resolve::resolve_type_index_only`) — over an
+/// arbitrary same-named class elsewhere in the workspace. A common pattern
+/// this guards against: an MVI-style codebase where many unrelated features
+/// each declare their own `sealed interface Event` — a bare by-name scan
+/// picks whichever one the index happens to return first. Falls back to the
+/// unscoped by-name search (`Indexer::workspace_def_candidates`, capped) only
+/// when reachability resolution finds nothing, e.g. a class reached only
+/// through a chain with no import anywhere naming it directly.
+///
+/// Returns the field's type together with the `Url` of the file where
+/// `class_name` itself was found: the correct reachability context for
+/// resolving *that field's own* type is the class's declaring file, not
+/// necessarily `from_uri` — `Event.OverdraftInput.event: OverdraftInputEvent`
+/// must resolve `OverdraftInputEvent` via `OverdraftInput`'s own file's
+/// imports, which is why `infer_field_chain_type` re-anchors on this for the
+/// next chain segment.
 pub(crate) fn find_field_type_in_class(
     indexer: &Indexer,
     class_name: &str,
     field_name: &str,
-) -> Option<String> {
-    // Per-loc field inference is expensive; the helper scopes to workspace defs and
-    // caps the scan so a common class name with many source-JAR defs can't stall.
-    indexer
-        .find_in_workspace_defs(class_name, |loc| {
-            infer_field_type_raw(indexer, loc.uri.as_str(), field_name)
-        })
-        // Fallback: full variable inference including CST-indexed field_access_rhs
-        // and method_call_rhs data (handles unannotated `val x = recv.field`).
-        .or_else(|| {
-            indexer.find_in_workspace_defs(class_name, |loc| {
-                infer_variable_type_raw(indexer, field_name, &loc.uri)
-            })
-        })
+    from_uri: &Url,
+) -> Option<(String, Url)> {
+    let mut candidates = super::resolve::resolve_type_index_only(indexer, class_name, from_uri);
+    if candidates.is_empty() {
+        candidates = indexer.workspace_def_candidates(class_name);
+    }
+    for location in &candidates {
+        if let Some(field_type) = infer_field_type_raw(
+            indexer,
+            location.uri.as_str(),
+            field_name,
+            location.range.start.line,
+        ) {
+            return Some((field_type, location.uri.clone()));
+        }
+    }
+    // Fallback: full variable inference including CST-indexed field_access_rhs
+    // and method_call_rhs data (handles unannotated `val x = recv.field`).
+    for location in &candidates {
+        if let Some(field_type) = infer_variable_type_raw(indexer, field_name, &location.uri) {
+            return Some((field_type, location.uri.clone()));
+        }
+    }
+    None
 }
 
 // ─── Extension property type inference ───────────────────────────────────────
