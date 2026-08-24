@@ -252,3 +252,67 @@ fn hover_shows_same_arity_self_recursion() {
         "same-arity self-recursion must still hover to itself, got: {text:?}"
     );
 }
+
+/// Regression: hovering a smart-cast-narrowed field access (`event.event`
+/// inside `is Event.OverdraftInput -> when (event.event) { ... }`) must show
+/// the *specific* nested variant's own field, not a same-named sibling's.
+///
+/// `CursorContext::build` correctly narrows the root to `Event.OverdraftInput`
+/// (confirmed via smart-cast inference), but the member lookup
+/// (`resolve_qualified`'s uppercase-qualifier branch, in `resolver/resolve.rs`)
+/// only anchored the search on the *outer* type's (`Event`'s) own declaration
+/// line, then took whichever same-named field was textually closest —
+/// `RegularInput`'s `event` field, declared before `OverdraftInput`'s in the
+/// same sealed interface, not the one actually being hovered. `RegularInput`
+/// is the decoy that makes this test fail without the fix; a single-variant
+/// fixture would pass by accident regardless.
+#[test]
+fn hover_on_smart_cast_narrowed_field_shows_the_specific_variant_not_a_sibling() {
+    let idx = Indexer::new();
+    let uri = Url::parse("file:///t/Reducer.kt").unwrap();
+    let src = "\
+sealed interface Event {
+    data class RegularInput(val event: RegularEvent) : Event
+    data class OverdraftInput(val event: OverdraftEvent) : Event
+}
+sealed interface RegularEvent {
+    object RegularOnClick : RegularEvent
+}
+sealed interface OverdraftEvent {
+    object OverdraftOnClick : OverdraftEvent
+}
+class Reducer {
+    fun reduce(event: Event) {
+        when (event) {
+            is Event.OverdraftInput -> when (event.event) {
+                is OverdraftEvent.OverdraftOnClick -> println(\"1\")
+            }
+            else -> {}
+        }
+    }
+}
+";
+    idx.index_content(&uri, src);
+    idx.store_live_tree(&uri, src);
+    let target_line = src
+        .lines()
+        .position(|line| line.contains("when (event.event)"))
+        .unwrap();
+    // The second `event` — the field access, not the smart-cast root.
+    let col = src
+        .lines()
+        .nth(target_line)
+        .unwrap()
+        .rfind("event")
+        .unwrap() as u32;
+    let position = Position::new(target_line as u32, col);
+    let ctx = CursorContext::build(&idx, &uri, position).unwrap();
+
+    let hover = compute_hover(&idx, &ctx, &uri, position).expect("expected a hover result");
+    let text = hover_text(&hover);
+    assert!(
+        text.contains("OverdraftInput") && !text.contains("RegularInput"),
+        "must show OverdraftInput's own `event` field, not RegularEvent's \
+         sibling field found by proximity to Event's own declaration, got: {text:?}"
+    );
+}

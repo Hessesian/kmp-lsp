@@ -968,9 +968,40 @@ fn resolve_qualified(
                 }
             }
 
-            let after_line = qual_loc.range.start.line;
-            let locs =
-                find_name_in_uri_after_line(indexer, name, qual_loc.uri.as_str(), after_line);
+            // Walk any remaining nested-type segments (`Event.OverdraftInput`
+            // has one: `OverdraftInput`) to that specific nested class's own
+            // location before searching for `name` — anchoring on `root`'s
+            // own line instead would just find whichever same-named sibling
+            // member happens to be textually closest to `root`'s declaration,
+            // not a member of the actually-requested nested type (see
+            // `find_name_in_uri_after_line`'s own doc comment: "we want the
+            // parameter/field of THAT class, not a same-named field in a
+            // different class that happens to appear earlier"). A real bug
+            // this fixes: an MVI sealed interface with many `data class Foo(val
+            // event: FooEvent) : Event`-shaped variants side by side — hovering
+            // `event.event` inside an `is Event.OverdraftInput ->` branch
+            // resolved to a *different* variant's `event` field, whichever one
+            // happened to sit closest to `Event`'s own declaration line.
+            let mut anchor = qual_loc.clone();
+            let mut nested_segments_resolved = true;
+            for &nested_segment in &segments[1..] {
+                match find_name_in_uri(indexer, nested_segment, anchor.uri.as_str())
+                    .into_iter()
+                    .next()
+                {
+                    Some(location) => anchor = location,
+                    None => {
+                        nested_segments_resolved = false;
+                        break;
+                    }
+                }
+            }
+            if !nested_segments_resolved {
+                continue;
+            }
+
+            let after_line = anchor.range.start.line;
+            let locs = find_name_in_uri_after_line(indexer, name, anchor.uri.as_str(), after_line);
             if !locs.is_empty() {
                 return locs;
             }
