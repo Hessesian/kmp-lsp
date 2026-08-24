@@ -401,12 +401,7 @@ fn parse_include_calls(content: &str) -> Vec<String> {
 /// contains the Android platform Java sources.  Returns an empty `Vec`
 /// when no SDK is found or the SDK has no `sources/` directory.
 pub(crate) fn detect_android_sdk_source_paths(workspace_root: &Path) -> Vec<PathBuf> {
-    let sdk_dir = sdk_dir_from_local_properties(workspace_root)
-        .or_else(|| std::env::var("ANDROID_HOME").ok().map(PathBuf::from))
-        .or_else(|| std::env::var("ANDROID_SDK_ROOT").ok().map(PathBuf::from))
-        .filter(|p| p.is_dir());
-
-    let Some(sdk) = sdk_dir else {
+    let Some(sdk) = resolve_android_sdk_root(workspace_root) else {
         return Vec::new();
     };
 
@@ -416,23 +411,7 @@ pub(crate) fn detect_android_sdk_source_paths(workspace_root: &Path) -> Vec<Path
     }
 
     // Find highest android-XX API level present under sdk/sources/.
-    let best = std::fs::read_dir(&sources_root)
-        .ok()
-        .into_iter()
-        .flatten()
-        .filter_map(|e| e.ok())
-        .filter(|e| e.file_type().ok().map(|t| t.is_dir()).unwrap_or(false))
-        .filter_map(|e| {
-            let name = e.file_name();
-            let api: u32 = name
-                .to_string_lossy()
-                .strip_prefix("android-")?
-                .parse()
-                .ok()?;
-            Some((api, e.path()))
-        })
-        .max_by_key(|(api, _)| *api)
-        .map(|(_, path)| path);
+    let best = highest_api_level_dir(&sources_root);
 
     match best {
         Some(path) => {
@@ -441,6 +420,66 @@ pub(crate) fn detect_android_sdk_source_paths(workspace_root: &Path) -> Vec<Path
         }
         None => Vec::new(),
     }
+}
+
+/// Auto-detect the Android platform's compiled `android.jar`.
+///
+/// Uses the same SDK-root discovery as `detect_android_sdk_source_paths`
+/// (`local.properties`' `sdk.dir`, then `$ANDROID_HOME`, then
+/// `$ANDROID_SDK_ROOT`), but returns the highest `platforms/android-XX/
+/// android.jar` present — a different subdirectory of the SDK than
+/// `sources/android-XX`, since a developer can have a platform installed
+/// without its optional sources component, or vice versa. Returns an empty
+/// `Vec` when no SDK, no `platforms/` directory, or no `android.jar` inside
+/// any `android-XX` platform directory is found.
+pub(crate) fn detect_android_sdk_jar_path(workspace_root: &Path) -> Vec<PathBuf> {
+    let Some(sdk) = resolve_android_sdk_root(workspace_root) else {
+        return Vec::new();
+    };
+
+    let platforms_root = sdk.join("platforms");
+    if !platforms_root.is_dir() {
+        return Vec::new();
+    }
+
+    // Find the highest android-XX API level whose android.jar actually
+    // exists on disk — a platform directory can exist without the JAR in a
+    // partial SDK install, so presence must be checked, not assumed.
+    let best = std::fs::read_dir(&platforms_root)
+        .ok()
+        .into_iter()
+        .flatten()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_type().ok().map(|t| t.is_dir()).unwrap_or(false))
+        .filter_map(|e| {
+            let api = parse_android_api_level(&e.file_name().to_string_lossy())?;
+            let jar = e.path().join("android.jar");
+            jar.is_file().then_some((api, jar))
+        })
+        .max_by_key(|(api, _)| *api)
+        .map(|(_, jar)| jar);
+
+    match best {
+        Some(path) => {
+            log::info!(
+                "android-sdk: auto-detected compiled JAR at {}",
+                path.display()
+            );
+            vec![path]
+        }
+        None => Vec::new(),
+    }
+}
+
+/// Resolve the local Android SDK root directory, checking (in order)
+/// `local.properties`' `sdk.dir`, then `$ANDROID_HOME`, then
+/// `$ANDROID_SDK_ROOT`. Shared by `detect_android_sdk_source_paths` and
+/// `detect_android_sdk_jar_path` so the lookup logic exists in one place.
+fn resolve_android_sdk_root(workspace_root: &Path) -> Option<PathBuf> {
+    sdk_dir_from_local_properties(workspace_root)
+        .or_else(|| std::env::var("ANDROID_HOME").ok().map(PathBuf::from))
+        .or_else(|| std::env::var("ANDROID_SDK_ROOT").ok().map(PathBuf::from))
+        .filter(|p| p.is_dir())
 }
 
 /// Read `sdk.dir` from `<workspace_root>/local.properties`.
@@ -454,6 +493,37 @@ fn sdk_dir_from_local_properties(workspace_root: &Path) -> Option<PathBuf> {
             None
         }
     })
+}
+
+/// Returns the subdirectory of `root` named `android-XX` (or `android-XX.Y`)
+/// with the highest API level, per `parse_android_api_level`.
+fn highest_api_level_dir(root: &Path) -> Option<PathBuf> {
+    std::fs::read_dir(root)
+        .ok()
+        .into_iter()
+        .flatten()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_type().ok().map(|t| t.is_dir()).unwrap_or(false))
+        .filter_map(|e| {
+            let api = parse_android_api_level(&e.file_name().to_string_lossy())?;
+            Some((api, e.path()))
+        })
+        .max_by_key(|(api, _)| *api)
+        .map(|(_, path)| path)
+}
+
+/// Parses an `android-XX` or `android-XX.Y` SDK directory name into a
+/// comparable `(major, minor)` API level. Modern Android SDK installs use a
+/// decimal extension-level suffix for some platforms (e.g. `android-36.1`,
+/// `android-37.0`, confirmed present on a real developer machine alongside
+/// plain `android-36`) — this must sort higher than a same-major plain
+/// directory, and plain directories are treated as minor level `0`.
+fn parse_android_api_level(dir_name: &str) -> Option<(u32, u32)> {
+    let level = dir_name.strip_prefix("android-")?;
+    match level.split_once('.') {
+        Some((major, minor)) => Some((major.parse().ok()?, minor.parse().ok()?)),
+        None => Some((level.parse().ok()?, 0)),
+    }
 }
 
 #[cfg(test)]

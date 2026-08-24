@@ -292,6 +292,157 @@ fn sdk_dir_from_local_properties_with_whitespace() {
     assert!(paths[0].ends_with("android-35"));
 }
 
+// ─── Android SDK compiled-JAR detection tests ────────────────────────────────
+
+#[test]
+fn jar_path_picks_highest_api_level_with_jar_present() {
+    let dir = TempDir::new().unwrap();
+    let fake_sdk = dir.path().join("sdk");
+    for api in ["android-33", "android-34"] {
+        let platform_dir = fake_sdk.join("platforms").join(api);
+        fs::create_dir_all(&platform_dir).unwrap();
+        fs::write(platform_dir.join("android.jar"), b"fake jar").unwrap();
+    }
+    fs::write(
+        dir.path().join("local.properties"),
+        format!("sdk.dir={}\n", fake_sdk.display()),
+    )
+    .unwrap();
+
+    let paths = detect_android_sdk_jar_path(dir.path());
+    assert_eq!(paths.len(), 1);
+    assert!(
+        paths[0].ends_with("android-34/android.jar")
+            || paths[0].ends_with("android-34\\android.jar")
+    );
+}
+
+#[test]
+fn jar_path_skips_platform_dir_missing_the_jar() {
+    let dir = TempDir::new().unwrap();
+    let fake_sdk = dir.path().join("sdk");
+    // android-34 is the higher API level but its android.jar is missing
+    // (partial install) — android-33 must win instead.
+    fs::create_dir_all(fake_sdk.join("platforms").join("android-34")).unwrap();
+    let platform_33 = fake_sdk.join("platforms").join("android-33");
+    fs::create_dir_all(&platform_33).unwrap();
+    fs::write(platform_33.join("android.jar"), b"fake jar").unwrap();
+    fs::write(
+        dir.path().join("local.properties"),
+        format!("sdk.dir={}\n", fake_sdk.display()),
+    )
+    .unwrap();
+
+    let paths = detect_android_sdk_jar_path(dir.path());
+    assert_eq!(paths.len(), 1);
+    assert!(
+        paths[0].ends_with("android-33/android.jar")
+            || paths[0].ends_with("android-33\\android.jar")
+    );
+}
+
+#[test]
+fn jar_path_independent_of_sources_only_install() {
+    let dir = TempDir::new().unwrap();
+    let fake_sdk = dir.path().join("sdk");
+    // Sources are present for android-35, but there is no matching
+    // platforms/android-35/android.jar — the two detectors must not
+    // cross-contaminate each other's result.
+    fs::create_dir_all(fake_sdk.join("sources").join("android-35")).unwrap();
+    fs::write(
+        dir.path().join("local.properties"),
+        format!("sdk.dir={}\n", fake_sdk.display()),
+    )
+    .unwrap();
+
+    let jar_paths = detect_android_sdk_jar_path(dir.path());
+    assert!(jar_paths.is_empty());
+    let source_paths = detect_android_sdk_source_paths(dir.path());
+    assert_eq!(source_paths.len(), 1);
+    assert!(source_paths[0].ends_with("android-35"));
+}
+
+#[test]
+fn jar_path_no_sdk_root_returns_empty() {
+    let dir = TempDir::new().unwrap();
+    let fake_sdk = dir.path().join("sdk");
+    // sdk.dir points at a directory with no platforms/ subdirectory at all.
+    fs::create_dir_all(&fake_sdk).unwrap();
+    fs::write(
+        dir.path().join("local.properties"),
+        format!("sdk.dir={}\n", fake_sdk.display()),
+    )
+    .unwrap();
+
+    let paths = detect_android_sdk_jar_path(dir.path());
+    assert!(paths.is_empty());
+}
+
+#[test]
+fn jar_path_platforms_dir_with_no_valid_jar_returns_empty() {
+    let dir = TempDir::new().unwrap();
+    let fake_sdk = dir.path().join("sdk");
+    // platforms/ exists, and even has an android-XX-named directory, but
+    // no android.jar inside it — a different empty shape than "no SDK at all".
+    fs::create_dir_all(fake_sdk.join("platforms").join("android-33")).unwrap();
+    fs::write(
+        dir.path().join("local.properties"),
+        format!("sdk.dir={}\n", fake_sdk.display()),
+    )
+    .unwrap();
+
+    let paths = detect_android_sdk_jar_path(dir.path());
+    assert!(paths.is_empty());
+}
+
+#[test]
+fn jar_path_handles_extension_level_directory_names() {
+    // Real Android SDK installs (confirmed on this machine) name newer
+    // platform directories with a decimal extension level, e.g.
+    // `android-37.0`/`android-36.1`, not just plain integers. The highest
+    // level must still be picked correctly across mixed naming styles.
+    let dir = TempDir::new().unwrap();
+    let fake_sdk = dir.path().join("sdk");
+    for api in ["android-36", "android-36.1", "android-37.0"] {
+        let platform_dir = fake_sdk.join("platforms").join(api);
+        fs::create_dir_all(&platform_dir).unwrap();
+        fs::write(platform_dir.join("android.jar"), b"fake jar").unwrap();
+    }
+    fs::write(
+        dir.path().join("local.properties"),
+        format!("sdk.dir={}\n", fake_sdk.display()),
+    )
+    .unwrap();
+
+    let paths = detect_android_sdk_jar_path(dir.path());
+    assert_eq!(paths.len(), 1);
+    assert!(
+        paths[0].ends_with("android-37.0/android.jar")
+            || paths[0].ends_with("android-37.0\\android.jar")
+    );
+}
+
+#[test]
+fn source_paths_handles_extension_level_directory_names() {
+    // Regression guard for the shared version-comparison helper: the
+    // pre-existing source-path detector must also correctly rank a decimal
+    // extension-level directory as higher than a plain-integer one.
+    let dir = TempDir::new().unwrap();
+    let fake_sdk = dir.path().join("sdk");
+    for api in ["android-36", "android-36.1"] {
+        fs::create_dir_all(fake_sdk.join("sources").join(api)).unwrap();
+    }
+    fs::write(
+        dir.path().join("local.properties"),
+        format!("sdk.dir={}\n", fake_sdk.display()),
+    )
+    .unwrap();
+
+    let paths = detect_android_sdk_source_paths(dir.path());
+    assert_eq!(paths.len(), 1);
+    assert!(paths[0].ends_with("android-36.1"));
+}
+
 // ─── jarPaths ─────────────────────────────────────────────────────────────────
 
 #[test]
