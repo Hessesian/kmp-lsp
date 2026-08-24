@@ -589,10 +589,15 @@ fn infer_expr_type_survives_a_pathologically_deep_parenthesization() {
     for _ in 0..n {
         src.push(')');
     }
-    // Past the cap the walk simply bails (returns `None`) — same trade-off
-    // every other capped walker makes — so no specific value is asserted,
-    // only that inference runs to completion without crashing.
-    let _ = infer(&src);
+    // Past the cap the walk simply bails (returns `None`) — no specific
+    // value is asserted, only that inference completes without crashing.
+    // Spawned on an 8 MiB-stack thread: the default test-thread stack is
+    // smaller than that (see `the_initializer_search_survives_a_pathologically_deep_file`).
+    let handle = std::thread::Builder::new()
+        .stack_size(8 * 1024 * 1024)
+        .spawn(move || infer(&src))
+        .unwrap();
+    let _ = handle.join().expect("must not overflow the stack");
 }
 
 /// Same regression, via a deeply nested navigation chain (`a.b.c.d…`)
@@ -605,5 +610,10 @@ fn infer_expr_type_survives_a_pathologically_deep_navigation_chain() {
     for _ in 0..n {
         src.push_str(".b");
     }
-    let _ = infer(&src);
+    // See the stack-size note on the parenthesization test above.
+    let handle = std::thread::Builder::new()
+        .stack_size(8 * 1024 * 1024)
+        .spawn(move || infer(&src))
+        .unwrap();
+    let _ = handle.join().expect("must not overflow the stack");
 }
