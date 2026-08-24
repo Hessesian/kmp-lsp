@@ -649,6 +649,145 @@ fn resolve_qualified_chain_scopes_a_colliding_middle_segment_to_its_own_outer_ty
 }
 
 #[test]
+fn resolve_qualified_uppercase_root_falls_back_to_class_hierarchy() {
+    // `Manager.requireComponent()` — `requireComponent` is declared only on
+    // `Manager`'s generic superclass (in a different file), never overridden
+    // by `Manager` itself. `resolve_qualified`'s uppercase branch must fall
+    // back to `resolve_from_class_hierarchy` after its own candidate loop
+    // comes up empty, the same way the `this`/`super` branches already do two
+    // cases up. Kept in a separate file from `Manager` so the per-candidate
+    // loop's own same-file fallback (`find_name_scoped_to_container` →
+    // `find_name_in_uri_after_line`'s any-symbol-with-this-name rescue) can't
+    // accidentally satisfy this test for an unrelated reason.
+    let abstract_manager_uri = uri("/AbstractManager.kt");
+    let manager_uri = uri("/Manager.kt");
+    let idx = Indexer::new();
+    idx.index_content(
+        &abstract_manager_uri,
+        concat!(
+            "package com.example\n",
+            "abstract class AbstractManager<T> {\n",
+            "  fun requireComponent(): T = TODO()\n",
+            "}\n",
+        ),
+    );
+    idx.index_content(
+        &manager_uri,
+        "package com.example\nobject Manager : AbstractManager<String>()\n",
+    );
+
+    let locs = resolve_symbol(&idx, "requireComponent", Some("Manager"), &manager_uri);
+    assert!(
+        !locs.is_empty(),
+        "requireComponent not found via Manager's superclass hierarchy"
+    );
+    assert_eq!(locs[0].uri, abstract_manager_uri);
+    assert_eq!(
+        locs[0].range.start.line, 2,
+        "must resolve to AbstractManager's requireComponent (line 2), got {}",
+        locs[0].range.start.line
+    );
+}
+
+#[test]
+fn resolve_qualified_uppercase_root_hierarchy_fallback_ignores_unrelated_sibling() {
+    // Same fixture as `resolve_qualified_uppercase_root_falls_back_to_class_hierarchy`,
+    // plus a same-named method on an unrelated class that is not one of
+    // `Manager`'s declared supertypes. The hierarchy fallback must stay scoped
+    // to `Manager`'s actual `: AbstractManager<...>` relationship, not perform
+    // a blanket by-name rescue across the rest of the indexed workspace.
+    let abstract_manager_uri = uri("/AbstractManager.kt");
+    let manager_uri = uri("/Manager.kt");
+    let unrelated_uri = uri("/UnrelatedThing.kt");
+    let idx = Indexer::new();
+    idx.index_content(
+        &abstract_manager_uri,
+        concat!(
+            "package com.example\n",
+            "abstract class AbstractManager<T> {\n",
+            "  fun requireComponent(): T = TODO()\n",
+            "}\n",
+        ),
+    );
+    idx.index_content(
+        &manager_uri,
+        "package com.example\nobject Manager : AbstractManager<String>()\n",
+    );
+    idx.index_content(
+        &unrelated_uri,
+        concat!(
+            "package com.example\n",
+            "class UnrelatedThing {\n",
+            "  fun requireComponent(): Int = 0\n",
+            "}\n",
+        ),
+    );
+
+    let locs = resolve_symbol(&idx, "requireComponent", Some("Manager"), &manager_uri);
+    assert!(
+        !locs.is_empty(),
+        "requireComponent not found via Manager's superclass hierarchy"
+    );
+    assert_eq!(
+        locs[0].uri, abstract_manager_uri,
+        "must resolve to AbstractManager's requireComponent, not UnrelatedThing's, got {:?}",
+        locs[0]
+    );
+}
+
+#[test]
+fn resolve_qualified_uppercase_root_hierarchy_fallback_reaches_jar_superclass() {
+    // The scout report's Risks warning: `resolve_from_class_hierarchy`'s
+    // `walk_hierarchy` is JAR-promotion-aware, so the fallback can walk into a
+    // JAR-derived (compiled dependency) superclass, not just workspace-source
+    // ones. JAR-derived stub symbols commonly have `.range == .selection_range`
+    // (no real body span) — confirm resolution still succeeds rather than
+    // silently failing or panicking on that degenerate range.
+    use crate::sidecar::SidecarSymbol;
+
+    let sym = |name: &str, container: &str| SidecarSymbol {
+        name: name.to_owned(),
+        kind: if container.is_empty() { "class" } else { "fun" }.to_owned(),
+        container: container.to_owned(),
+        detail: format!("{name}()"),
+        doc: String::new(),
+        type_params: vec![],
+        extension_receiver_type: String::new(),
+        trailing_lambda: false,
+        deprecated: false,
+        pkg: "com.lib".to_owned(),
+        top_level: container.is_empty(),
+        supers: vec![],
+    };
+    let idx = Indexer::new();
+    crate::indexer::jar::populate_from_symbols(
+        &idx,
+        std::path::Path::new("/fake/abstract-manager.jar"),
+        &[
+            sym("AbstractManager", ""),
+            sym("requireComponent", "AbstractManager"),
+        ],
+    );
+
+    let host_uri = uri("/Manager.kt");
+    idx.index_content(
+        &host_uri,
+        "package com.example\nobject Manager : AbstractManager()\n",
+    );
+
+    let locs = resolve_symbol(&idx, "requireComponent", Some("Manager"), &host_uri);
+    assert!(
+        !locs.is_empty(),
+        "requireComponent not found via Manager's JAR-derived superclass"
+    );
+    assert!(
+        locs[0].uri.as_str().contains("abstract-manager.jar"),
+        "expected the JAR-derived AbstractManager.requireComponent, got {:?}",
+        locs[0]
+    );
+}
+
+#[test]
 fn resolve_nested_type_via_variable_annotation() {
     // `val factory: DashboardProductsReducer.Factory` — goto-def of `factory.create(...)`
     // should navigate to the `create` fun inside the `Factory` interface.
