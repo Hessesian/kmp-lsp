@@ -345,9 +345,29 @@ pub(crate) fn resolve_identity(
     indexer: &Indexer,
     uri: &Url,
 ) -> NavigationSource<Definitions> {
+    resolve_identity_with_io(symbol, indexer, uri, false)
+}
+
+/// Like `resolve_identity` but, when `index_only` is set, never spawns
+/// `rg`/`fd` — see `resolve_symbol_index_only`'s own doc comment for why.
+/// Used by the resolution-accuracy benchmark, which calls this once per
+/// identifier in a whole corpus.
+pub(crate) fn resolve_identity_with_io(
+    symbol: &SymbolAtCursor,
+    indexer: &Indexer,
+    uri: &Url,
+    index_only: bool,
+) -> NavigationSource<Definitions> {
+    let find_definition_qualified = |name: &str, qualifier: Option<&str>, uri: &Url| {
+        if index_only {
+            indexer.find_definition_qualified_index_only(name, qualifier, uri)
+        } else {
+            indexer.find_definition_qualified(name, qualifier, uri)
+        }
+    };
     match &symbol.role {
         SymbolRole::Declaration { indexed } => {
-            let locations = Definitions(indexer.find_definition_qualified(&symbol.name, None, uri));
+            let locations = Definitions(find_definition_qualified(&symbol.name, None, uri));
             // Only declarations `KOTLIN_DEFINITIONS` actually indexes can be
             // trusted CST-resolved; an unindexed one (bare param, val/var-less
             // constructor param, type param) falls through to an unanchored
@@ -364,8 +384,7 @@ pub(crate) fn resolve_identity(
             shape,
             ..
         } => {
-            let locations =
-                indexer.find_definition_qualified(&symbol.name, Some(receiver_type), uri);
+            let locations = find_definition_qualified(&symbol.name, Some(receiver_type), uri);
             // A call's own shape rules out a same-named, wrong-arity member/
             // extension on the same receiver type — e.g. `triggers.collect {
             // trigger -> }` (1 arg via trailing lambda) must not resolve to a
@@ -391,7 +410,7 @@ pub(crate) fn resolve_identity(
             ..
         }
         | SymbolRole::ImportSegment => NavigationSource::NameScan(Definitions(
-            indexer.find_definition_qualified(&symbol.name, None, uri),
+            find_definition_qualified(&symbol.name, None, uri),
         )),
     }
 }

@@ -54,3 +54,5 @@ pub(crate) use infer_lines::{
 };
 #[cfg(test)]
 pub(crate) use resolve::resolve_symbol;
+#[cfg(test)]
+pub(crate) use resolve::resolve_symbol_index_only;

@@ -106,6 +106,31 @@ pub(crate) fn resolve_symbol(
     qualifier: Option<&str>,
     from_uri: &Url,
 ) -> Vec<Location> {
+    resolve_symbol_with_io(indexer, name, qualifier, from_uri, ResolveIo::Full)
+}
+
+/// Same dispatch as `resolve_symbol`, but every bare-name fallback step uses
+/// `ResolveIo::IndexOnly` instead of always spawning `rg`/`fd`. For a bulk
+/// scan that resolves every identifier in a whole corpus (the
+/// resolution-accuracy benchmark) and — by design — expects most bare/local
+/// references to miss, letting each of those exhaust the full rg/fd fallback
+/// chain turned a 13k-file scan into a roughly hour-long run.
+pub(crate) fn resolve_symbol_index_only(
+    indexer: &Indexer,
+    name: &str,
+    qualifier: Option<&str>,
+    from_uri: &Url,
+) -> Vec<Location> {
+    resolve_symbol_with_io(indexer, name, qualifier, from_uri, ResolveIo::IndexOnly)
+}
+
+fn resolve_symbol_with_io(
+    indexer: &Indexer,
+    name: &str,
+    qualifier: Option<&str>,
+    from_uri: &Url,
+    io: ResolveIo,
+) -> Vec<Location> {
     // 0. Qualified access: `AccountPickerMapper.Content` — cursor on `Content`.
     //    Resolve the qualifier to a file, then search that file for `name`.
     if let Some(qual) = qualifier {
@@ -140,7 +165,7 @@ pub(crate) fn resolve_symbol(
         let segments: Vec<&str> = name.split('.').collect();
         // Start at the first type (uppercase) segment, skipping package prefixes.
         if let Some(start) = segments.iter().position(|s| s.starts_with_uppercase()) {
-            let outer_locs = resolve_symbol_inner(indexer, segments[start], from_uri, true);
+            let outer_locs = resolve_chain(indexer, segments[start], from_uri, io, true, None);
             if let Some(outer_loc) = outer_locs.first() {
                 // A package-qualified plain type (`demo.Foo`) has no nested
                 // segments after the type — the resolved type itself is the target.
@@ -162,27 +187,7 @@ pub(crate) fn resolve_symbol(
         }
     }
 
-    resolve_symbol_inner(indexer, name, from_uri, true)
-}
-
-/// Internal resolver.  When `with_hierarchy` is false step 4.5 is skipped to
-/// avoid infinite recursion inside `resolve_from_class_hierarchy` (which calls
-/// this function to locate each superclass, and those files would in turn call
-/// the hierarchy walk again with a fresh visited-set, looping forever).
-pub(crate) fn resolve_symbol_inner(
-    indexer: &Indexer,
-    name: &str,
-    from_uri: &Url,
-    with_hierarchy: bool,
-) -> Vec<Location> {
-    resolve_chain(
-        indexer,
-        name,
-        from_uri,
-        ResolveIo::Full,
-        with_hierarchy,
-        None,
-    )
+    resolve_chain(indexer, name, from_uri, io, true, None)
 }
 
 /// Resolve a call's callee name, filtering same-file candidates by `shape`
@@ -201,9 +206,9 @@ pub(crate) fn resolve_callee_definition(
 
 /// The single prioritised resolution chain, parameterised by IO policy.
 ///
-/// `resolve_symbol_inner` (`Full`), `resolve_symbol_no_rg` (`NoRg`) and
-/// `resolve_type_index_only_simple` (`IndexOnly`) are all thin wrappers over this
-/// function. The `ResolveIo` policy selects which subprocess fallbacks (`fd`/`rg`),
+/// `resolve_symbol_with_io` (`Full`/`IndexOnly`), `resolve_symbol_no_rg` (`NoRg`)
+/// and `resolve_type_index_only_simple` (`IndexOnly`) are all thin wrappers over
+/// this function. The `ResolveIo` policy selects which subprocess fallbacks (`fd`/`rg`),
 /// the hierarchy walk, the cold-file on-demand index, and which global-defs tail
 /// fallback are permitted — see the `ResolveIo` doc-comment for the per-policy table.
 ///
@@ -395,7 +400,7 @@ fn find_in_star_imports(indexer: &Indexer, name: &str, star_pkgs: &[String]) -> 
 
 /// Index-only resolver for use in completion paths.
 ///
-/// Identical to `resolve_symbol_inner` but omits:
+/// Identical to `resolve_symbol`'s `Full` policy but omits:
 /// - Step 4's `rg_in_package_dir` fallback (inside `resolve_star_imports`)
 /// - Step 4.5 hierarchy walk
 /// - Step 5 `rg_find_definition`
@@ -1733,6 +1738,14 @@ impl crate::indexer::Indexer {
         from_uri: &Url,
     ) -> Vec<Location> {
         resolve_symbol(self, name, qualifier, from_uri)
+    }
+    pub(crate) fn resolve_symbol_index_only(
+        &self,
+        name: &str,
+        qualifier: Option<&str>,
+        from_uri: &Url,
+    ) -> Vec<Location> {
+        resolve_symbol_index_only(self, name, qualifier, from_uri)
     }
     pub(crate) fn resolve_symbol_no_rg(&self, name: &str, from_uri: &Url) -> Vec<Location> {
         resolve_symbol_no_rg(self, name, from_uri)
