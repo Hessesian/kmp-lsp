@@ -398,15 +398,9 @@ fn find_in_star_imports(indexer: &Indexer, name: &str, star_pkgs: &[String]) -> 
     None
 }
 
-/// Index-only resolver for use in completion paths.
-///
-/// Identical to `resolve_symbol`'s `Full` policy but omits:
-/// - Step 4's `rg_in_package_dir` fallback (inside `resolve_star_imports`)
-/// - Step 4.5 hierarchy walk
-/// - Step 5 `rg_find_definition`
-///
-/// Completion is triggered on every keystroke; spawning external `rg`/`fd`
-/// processes on each request would block the LSP thread and spike CPU.
+/// Index-only resolver for use in completion paths (`ResolveIo::NoRg` — see
+/// its own doc comment for the exact IO policy, since restating it here is
+/// how this comment drifted out of sync with it the first time).
 pub(crate) fn resolve_symbol_no_rg(indexer: &Indexer, name: &str, from_uri: &Url) -> Vec<Location> {
     resolve_chain(indexer, name, from_uri, ResolveIo::NoRg, false, None)
 }
