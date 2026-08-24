@@ -621,11 +621,20 @@ fn names_object_declaration(indexer: &Indexer, label: &str, from_uri: &Url) -> b
         })
 }
 
+/// Shared recursion budget for `infer_variable_type`/`infer_variable_type_raw`
+/// and `find_field_type_in_class`: `infer_var_from_rhs_data`'s `field_match`
+/// branch re-enters `find_field_type_in_class`, whose own fallback re-enters
+/// variable-type inference — each side resetting to a fresh budget on
+/// re-entry, rather than decrementing one shared counter, let a real
+/// unannotated-field-chain-heavy file overflow the stack (594 real
+/// mutually-recursive frames, no synthetic pathological input needed).
+const MAX_RAW_TYPE_INFER_DEPTH: u8 = 4;
+
 /// Scan the current file's lines for a type annotation on `var_name` and return
 /// the declared type name if found.  Delegates to [`infer_type_in_lines`] and
 /// falls back to method return-type inference for `val x = receiver.method(...)`.
 pub(crate) fn infer_variable_type(indexer: &Indexer, var_name: &str, uri: &Url) -> Option<String> {
-    infer_variable_type_impl(indexer, var_name, uri, 4)
+    infer_variable_type_impl(indexer, var_name, uri, MAX_RAW_TYPE_INFER_DEPTH)
 }
 
 /// Like [`infer_variable_type`] but preserves generic parameters in the returned
@@ -637,7 +646,7 @@ pub(crate) fn infer_variable_type_raw(
     var_name: &str,
     uri: &Url,
 ) -> Option<String> {
-    infer_variable_type_raw_impl(indexer, var_name, uri, 4)
+    infer_variable_type_raw_impl(indexer, var_name, uri, MAX_RAW_TYPE_INFER_DEPTH)
 }
 
 fn infer_variable_type_impl(
@@ -800,7 +809,7 @@ fn infer_var_from_rhs_data(
                 .unwrap_or(recv_stripped)
                 .strip_nullable();
             if let Some((field_type, _declaring_uri)) =
-                find_field_type_in_class(indexer, recv_base, &field, uri)
+                find_field_type_in_class_impl(indexer, recv_base, &field, uri, depth - 1)
             {
                 return Some(field_type);
             }
@@ -1119,6 +1128,28 @@ pub(crate) fn find_field_type_in_class(
     field_name: &str,
     from_uri: &Url,
 ) -> Option<(String, Url)> {
+    find_field_type_in_class_impl(
+        indexer,
+        class_name,
+        field_name,
+        from_uri,
+        MAX_RAW_TYPE_INFER_DEPTH,
+    )
+}
+
+/// Depth-guarded implementation of [`find_field_type_in_class`] — shares its
+/// budget with `infer_var_from_rhs_data`'s `field_match` branch, the one
+/// caller that re-enters this function (see `MAX_RAW_TYPE_INFER_DEPTH`).
+fn find_field_type_in_class_impl(
+    indexer: &Indexer,
+    class_name: &str,
+    field_name: &str,
+    from_uri: &Url,
+    depth: u8,
+) -> Option<(String, Url)> {
+    if depth == 0 {
+        return None;
+    }
     let mut candidates = super::resolve::resolve_type_index_only(indexer, class_name, from_uri);
     if candidates.is_empty() {
         candidates = indexer.workspace_def_candidates(class_name);
@@ -1136,7 +1167,9 @@ pub(crate) fn find_field_type_in_class(
     // Fallback: full variable inference including CST-indexed field_access_rhs
     // and method_call_rhs data (handles unannotated `val x = recv.field`).
     for location in &candidates {
-        if let Some(field_type) = infer_variable_type_raw(indexer, field_name, &location.uri) {
+        if let Some(field_type) =
+            infer_variable_type_raw_impl(indexer, field_name, &location.uri, depth - 1)
+        {
             return Some((field_type, location.uri.clone()));
         }
     }
