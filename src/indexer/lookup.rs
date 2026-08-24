@@ -76,17 +76,6 @@ impl Indexer {
         self.resolve_symbol_index_only(name, qualifier, from_uri)
     }
 
-    /// Like `find_definition_qualified` but never spawns `rg`/`fd` — see
-    /// `resolve_symbol_index_only`'s own doc comment for why.
-    pub(crate) fn find_definition_qualified_index_only(
-        &self,
-        name: &str,
-        qualifier: Option<&str>,
-        from_uri: &Url,
-    ) -> Vec<Location> {
-        self.resolve_symbol_index_only(name, qualifier, from_uri)
-    }
-
     /// Resolve an unqualified call's callee name, filtering same-file
     /// candidates whose arity can't satisfy `shape` — see
     /// [`crate::resolver::resolve_callee_definition`]. Not part of
