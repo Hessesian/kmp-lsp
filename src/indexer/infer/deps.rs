@@ -389,8 +389,7 @@ impl TestDeps {
             (class_name.to_string(), field_name.to_string()),
             (
                 type_name.to_string(),
-                // unwrap: test-only helper, always called with a literal `file://` uri.
-                Url::parse(declaring_uri).unwrap(),
+                Url::parse(declaring_uri).unwrap(), // unwrap: literal file:// uri, always valid
             ),
         );
         self
