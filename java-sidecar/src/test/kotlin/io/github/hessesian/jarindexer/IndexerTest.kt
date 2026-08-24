@@ -81,6 +81,45 @@ class IndexerTest {
     }
 
     @Test
+    @DisplayName("indexClassBytes extracts a public method via the Java fallback path (no Kotlin metadata, no sources JAR)")
+    fun testJavaPublicMethodExtraction() {
+        // Mirrors android.jar's own shape: plain Java bytecode, no @kotlin.Metadata,
+        // no sibling -sources.jar — exercises JavaClassVisitor.visitMethod, which no
+        // existing fixture reached (minimalClassBytes only emits a skipped <init>).
+        val cw = org.objectweb.asm.ClassWriter(0)
+        cw.visit(
+            org.objectweb.asm.Opcodes.V1_8,
+            org.objectweb.asm.Opcodes.ACC_PUBLIC,
+            "com/example/TestActivity",
+            null,
+            "java/lang/Object",
+            null
+        )
+        val ctor = cw.visitMethod(org.objectweb.asm.Opcodes.ACC_PUBLIC, "<init>", "()V", null, null)
+        ctor.visitCode()
+        ctor.visitVarInsn(org.objectweb.asm.Opcodes.ALOAD, 0)
+        ctor.visitMethodInsn(org.objectweb.asm.Opcodes.INVOKESPECIAL, "java/lang/Object", "<init>", "()V", false)
+        ctor.visitInsn(org.objectweb.asm.Opcodes.RETURN)
+        ctor.visitMaxs(1, 1)
+        ctor.visitEnd()
+        val finish = cw.visitMethod(org.objectweb.asm.Opcodes.ACC_PUBLIC, "finish", "()V", null, null)
+        finish.visitCode()
+        finish.visitInsn(org.objectweb.asm.Opcodes.RETURN)
+        finish.visitMaxs(0, 0)
+        finish.visitEnd()
+        cw.visitEnd()
+
+        val result = indexClassBytes(cw.toByteArray())
+
+        assertTrue(result.any { it.name == "TestActivity" && it.kind == "class" },
+            "should find the class entry; got: ${result.map { it.name }}")
+        assertTrue(
+            result.any { it.name == "finish" && it.kind == "fun" && it.container == "TestActivity" },
+            "should find the public method via the Java fallback path; got: ${result.map { "${it.name}:${it.kind}:${it.container}" }}"
+        )
+    }
+
+    @Test
     @DisplayName("indexClassBytes captures package and top-level flag")
     fun testPackageAndTopLevel() {
         val result = indexClassBytes(minimalClassBytes("androidx/compose/runtime/Composables"))

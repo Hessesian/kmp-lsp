@@ -463,6 +463,18 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
             let gradle_count = gradle_paths.len();
             let mut paths = gradle_paths;
 
+            // Android SDK's compiled `android.jar`, discovered independently of the
+            // Gradle-cache gate above — an Android SDK can be installed on a machine
+            // regardless of whether this particular workspace's JVM-sources gate is
+            // open, and `android.jar` never lives in the Gradle module cache anyway.
+            if let Some(root) = indexer.workspace_root.get() {
+                for jar in crate::workspace_json::detect_android_sdk_jar_path(&root) {
+                    if !paths.contains(&jar) {
+                        paths.push(jar);
+                    }
+                }
+            }
+
             // Explicitly-configured jars (workspace.json `jarPaths` + init-options
             // `jarPaths`), so non-Gradle projects (Make/Bazel/manual) get symbols too.
             // Filesystem I/O (read workspace.json, walk dirs) runs here off-thread.
