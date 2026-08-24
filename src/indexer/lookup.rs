@@ -55,14 +55,7 @@ impl Indexer {
         qualifier: Option<&str>,
         from_uri: &Url,
     ) -> Vec<Location> {
-        let locations = self.resolve_symbol(name, qualifier, from_uri);
-        if !locations.is_empty() {
-            return locations;
-        }
-        if qualifier.is_some() && SCOPE_FUNCTIONS.contains(&name) {
-            return self.resolve_symbol(name, None, from_uri);
-        }
-        locations
+        self.find_definition_qualified_with_io(name, qualifier, from_uri, false)
     }
 
     /// Like `find_definition_qualified` but never spawns `rg`/`fd` — see
@@ -73,7 +66,32 @@ impl Indexer {
         qualifier: Option<&str>,
         from_uri: &Url,
     ) -> Vec<Location> {
-        self.resolve_symbol_index_only(name, qualifier, from_uri)
+        self.find_definition_qualified_with_io(name, qualifier, from_uri, true)
+    }
+
+    fn find_definition_qualified_with_io(
+        &self,
+        name: &str,
+        qualifier: Option<&str>,
+        from_uri: &Url,
+        index_only: bool,
+    ) -> Vec<Location> {
+        let locations = if index_only {
+            self.resolve_symbol_index_only(name, qualifier, from_uri)
+        } else {
+            self.resolve_symbol(name, qualifier, from_uri)
+        };
+        if !locations.is_empty() {
+            return locations;
+        }
+        if qualifier.is_some() && SCOPE_FUNCTIONS.contains(&name) {
+            return if index_only {
+                self.resolve_symbol_index_only(name, None, from_uri)
+            } else {
+                self.resolve_symbol(name, None, from_uri)
+            };
+        }
+        locations
     }
 
     /// Resolve an unqualified call's callee name, filtering same-file

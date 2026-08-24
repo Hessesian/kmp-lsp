@@ -4688,6 +4688,56 @@ fn find_definition_qualified_falls_back_to_bare_lookup_for_scope_functions() {
     );
 }
 
+/// The resolution-accuracy benchmark's own `resolve_identity_with_io(..., true)`
+/// path calls `find_definition_qualified_index_only`, not `find_definition_qualified` —
+/// so the scope-function fallback must apply there too, or the benchmark this fix
+/// was built for never actually benefits from it (Copilot review on PR #277).
+#[test]
+fn find_definition_qualified_index_only_falls_back_to_bare_lookup_for_scope_functions() {
+    use crate::types::FileData;
+    use std::sync::Arc;
+
+    let idx = Indexer::new();
+    let jar_uri = "jar:file:///kotlin-stdlib.jar!/kotlin/StandardKt.class";
+    idx.jar_definitions
+        .entry("apply".to_string())
+        .or_default()
+        .push(tower_lsp::lsp_types::Location {
+            uri: Url::parse(jar_uri).unwrap(),
+            range: tower_lsp::lsp_types::Range::default(),
+        });
+    idx.jar_files.insert(
+        jar_uri.to_string(),
+        Arc::new(FileData {
+            package: Some("kotlin".to_string()),
+            ..Default::default()
+        }),
+    );
+
+    let use_uri = Url::parse("file:///app/Show.kt").unwrap();
+    idx.index_content(
+        &use_uri,
+        concat!(
+            "package app\n",
+            "import kotlin.apply\n",
+            "class SomeBuilderResult\n",
+            "class Builder { fun build(): SomeBuilderResult = SomeBuilderResult() }\n",
+            "fun show() {\n",
+            "    Builder().build().apply { show() }\n",
+            "}\n",
+        ),
+    );
+
+    let locs =
+        idx.find_definition_qualified_index_only("apply", Some("SomeBuilderResult"), &use_uri);
+    assert!(
+        locs.iter().any(|l| l.uri.as_str() == jar_uri),
+        "index-only receiver-typed `apply` must also fall back to the bare stdlib \
+         declaration; got {:?}",
+        locs.iter().map(|l| l.uri.as_str()).collect::<Vec<_>>()
+    );
+}
+
 /// Decoy: a receiver type that declares its OWN member named `apply` must still
 /// resolve to that member — the scope-function fallback may only fire after the
 /// ordinary receiver-scoped search has already failed, never unconditionally for
