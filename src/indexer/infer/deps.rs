@@ -181,11 +181,20 @@ pub(crate) trait InferDeps {
     /// element type.
     ///
     /// Example: `class_name = "ResponseBody"`, `field_name = "availableBanks"` →
-    /// `Some("MutableList<MultibankingBank>")`.
+    /// `Some(("MutableList<MultibankingBank>", <uri where ResponseBody is declared>))`.
+    ///
+    /// The `Url` is the field's own declaring file — callers walking a multi-hop
+    /// chain (`a.b.c`) need it to re-anchor reachability for the *next* hop,
+    /// the same way `resolve_qualified` and `find_field_type_in_class` already do.
     ///
     /// Returns `None` when the class or field is not found.
     /// Default implementation returns `None`; overridden by `Indexer`.
-    fn find_field_type(&self, _class_name: &str, _field_name: &str, _uri: &Url) -> Option<String> {
+    fn find_field_type(
+        &self,
+        _class_name: &str,
+        _field_name: &str,
+        _uri: &Url,
+    ) -> Option<(String, Url)> {
         None
     }
 
@@ -305,8 +314,8 @@ pub(crate) struct TestDeps {
     pub fun_sigs: std::collections::HashMap<(String, String), String>,
     /// `(uri_str, var_name)` → type name
     pub var_types: std::collections::HashMap<(String, String), String>,
-    /// `(class_name, field_name)` → raw type (with generics)
-    pub field_types: std::collections::HashMap<(String, String), String>,
+    /// `(class_name, field_name)` → (raw type with generics, declaring uri)
+    pub field_types: std::collections::HashMap<(String, String), (String, Url)>,
     /// `fn_name` → raw return type (with generics)
     pub return_types: std::collections::HashMap<String, String>,
     /// `class_name` → list of type parameter names, e.g. `"Result"` → `["T"]`
@@ -356,16 +365,32 @@ impl TestDeps {
         self
     }
 
-    /// Register `field_name` in `class_name` → raw type (with generics).
-    pub(crate) fn with_field(
+    /// Register `field_name` in `class_name` → raw type (with generics), with
+    /// a placeholder declaring uri. Use `with_field_at` when a test needs to
+    /// assert on the declaring uri itself.
+    pub(crate) fn with_field(self, class_name: &str, field_name: &str, type_name: &str) -> Self {
+        self.with_field_at(
+            class_name,
+            field_name,
+            type_name,
+            "file:///test-field-owner.kt",
+        )
+    }
+
+    /// Register `field_name` in `class_name` → (raw type, declaring uri).
+    pub(crate) fn with_field_at(
         mut self,
         class_name: &str,
         field_name: &str,
         type_name: &str,
+        declaring_uri: &str,
     ) -> Self {
         self.field_types.insert(
             (class_name.to_string(), field_name.to_string()),
-            type_name.to_string(),
+            (
+                type_name.to_string(),
+                Url::parse(declaring_uri).unwrap(), // unwrap: literal file:// uri, always valid
+            ),
         );
         self
     }
@@ -448,7 +473,12 @@ impl InferDeps for TestDeps {
             .get(&(uri.to_string(), var_name.to_string()))
             .cloned()
     }
-    fn find_field_type(&self, class_name: &str, field_name: &str, _uri: &Url) -> Option<String> {
+    fn find_field_type(
+        &self,
+        class_name: &str,
+        field_name: &str,
+        _uri: &Url,
+    ) -> Option<(String, Url)> {
         self.field_types
             .get(&(class_name.to_string(), field_name.to_string()))
             .cloned()

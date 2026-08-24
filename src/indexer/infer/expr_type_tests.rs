@@ -505,6 +505,55 @@ fn infer_expr_type_resolves_navigation_chain_receiver() {
 }
 
 #[test]
+fn infer_navigation_expr_type_reanchors_reachability_on_receiver_declaring_file() {
+    // `holder.other.value` where `holder: Holder` (declared in package `lib`,
+    // same package as the real `Other`) must resolve `.value` through
+    // `Holder`'s own declaring file, not the caller's — otherwise an
+    // unrelated same-named `Other`, reachable only from the caller's own
+    // file, wins instead. Real `Indexer` (not `TestDeps`) because this
+    // depends on `resolve_type_index_only`'s package-reachability rules.
+    use crate::indexer::Indexer;
+    use crate::queries::KIND_NAV_EXPR;
+
+    fn find_outermost_nav_expr(node: tree_sitter::Node) -> Option<tree_sitter::Node> {
+        if node.kind() == KIND_NAV_EXPR {
+            return Some(node);
+        }
+        let mut cursor = node.walk();
+        let found = node.children(&mut cursor).find_map(find_outermost_nav_expr);
+        found
+    }
+
+    let idx = Indexer::new();
+    idx.index_content(
+        &Url::parse("file:///unrelated/Other.kt").unwrap(),
+        "package unrelated\nclass Other { val value: String = \"wrong\" }\n",
+    );
+    idx.index_content(
+        &Url::parse("file:///lib/Other.kt").unwrap(),
+        "package lib\nclass Other { val value: Int = 1 }\n",
+    );
+    idx.index_content(
+        &Url::parse("file:///lib/Holder.kt").unwrap(),
+        "package lib\nclass Holder { val other: Other = Other() }\n",
+    );
+    let caller_uri = Url::parse("file:///app/Caller.kt").unwrap();
+    let caller_src =
+        "package app\nimport lib.Holder\nfun use(holder: Holder) = holder.other.value\n";
+    idx.index_content(&caller_uri, caller_src);
+
+    let (tree, bytes) = fun_body_expr_node(caller_src);
+    let expr = find_outermost_nav_expr(tree.root_node()).expect("holder.other.value not parsed");
+
+    assert_eq!(
+        infer_expr_type(expr, &bytes, &idx, &caller_uri).as_deref(),
+        Some("Int"),
+        "must resolve .value through Holder's own file (lib.Other.value: Int), \
+         not an unrelated same-named Other reachable from the caller"
+    );
+}
+
+#[test]
 fn unknown_identifier_returns_none() {
     // An unregistered variable → no type known
     assert_eq!(
@@ -540,10 +589,15 @@ fn infer_expr_type_survives_a_pathologically_deep_parenthesization() {
     for _ in 0..n {
         src.push(')');
     }
-    // Past the cap the walk simply bails (returns `None`) — same trade-off
-    // every other capped walker makes — so no specific value is asserted,
-    // only that inference runs to completion without crashing.
-    let _ = infer(&src);
+    // Past the cap the walk simply bails (returns `None`) — no specific
+    // value is asserted, only that inference completes without crashing.
+    // Spawned on an 8 MiB-stack thread: the default test-thread stack is
+    // smaller than that (see `the_initializer_search_survives_a_pathologically_deep_file`).
+    let handle = std::thread::Builder::new()
+        .stack_size(8 * 1024 * 1024)
+        .spawn(move || infer(&src))
+        .unwrap();
+    let _ = handle.join().expect("must not overflow the stack");
 }
 
 /// Same regression, via a deeply nested navigation chain (`a.b.c.d…`)
@@ -556,5 +610,10 @@ fn infer_expr_type_survives_a_pathologically_deep_navigation_chain() {
     for _ in 0..n {
         src.push_str(".b");
     }
-    let _ = infer(&src);
+    // See the stack-size note on the parenthesization test above.
+    let handle = std::thread::Builder::new()
+        .stack_size(8 * 1024 * 1024)
+        .spawn(move || infer(&src))
+        .unwrap();
+    let _ = handle.join().expect("must not overflow the stack");
 }

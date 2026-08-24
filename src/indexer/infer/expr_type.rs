@@ -57,7 +57,7 @@ pub(crate) fn infer_expr_type(
     deps: &impl InferDeps,
     uri: &Url,
 ) -> Option<String> {
-    infer_expr_type_at_depth(node, bytes, deps, uri, 0)
+    infer_expr_type_at_depth(node, bytes, deps, uri, 0).map(|(type_name, _)| type_name)
 }
 
 /// Depth-guarded implementation of [`infer_expr_type`].
@@ -75,46 +75,65 @@ pub(crate) fn infer_expr_type(
 /// `infer_variable_type_from_cst` (the CST fallback `InferDeps::find_var_type`
 /// uses). Bail out (not error) past the cap, same trade-off every other
 /// capped walker makes.
+///
+/// Returns the inferred type together with the `Url` that should anchor
+/// reachability for a member access on that type — the receiver's own
+/// declaring file when known (currently only `infer_navigation_expr_type`'s
+/// field case produces one), `uri` unchanged otherwise.
 fn infer_expr_type_at_depth(
     node: Node<'_>,
     bytes: &[u8],
     deps: &impl InferDeps,
     uri: &Url,
     depth: usize,
-) -> Option<String> {
+) -> Option<(String, Url)> {
     if depth >= crate::util::MAX_CST_DESCENT_DEPTH {
         crate::util::report_cst_depth_exceeded!("infer_expr_type_at_depth", node);
         return None;
     }
     match node.kind() {
-        KIND_INTEGER_LITERAL => Some("Int".to_owned()),
-        KIND_LONG_LITERAL => Some("Long".to_owned()),
-        KIND_REAL_LITERAL => infer_real_literal(node, bytes),
-        KIND_STRING_LITERAL | KIND_MULTILINE_STRING_LITERAL => Some("String".to_owned()),
-        KIND_BOOLEAN_LITERAL => Some("Boolean".to_owned()),
-        KIND_NULL_LITERAL => Some("Nothing?".to_owned()),
-        KIND_CHARACTER_LITERAL => Some("Char".to_owned()),
-        k if k == KIND_SIMPLE_IDENT || k == KIND_TYPE_IDENT => {
-            infer_ident_type(node, bytes, deps, uri)
+        KIND_INTEGER_LITERAL => Some(("Int".to_owned(), uri.clone())),
+        KIND_LONG_LITERAL => Some(("Long".to_owned(), uri.clone())),
+        KIND_REAL_LITERAL => {
+            infer_real_literal(node, bytes).map(|type_name| (type_name, uri.clone()))
         }
-        k if k == KIND_THIS_EXPR => infer_this_expr_type(node, bytes, deps, uri),
+        KIND_STRING_LITERAL | KIND_MULTILINE_STRING_LITERAL => {
+            Some(("String".to_owned(), uri.clone()))
+        }
+        KIND_BOOLEAN_LITERAL => Some(("Boolean".to_owned(), uri.clone())),
+        KIND_NULL_LITERAL => Some(("Nothing?".to_owned(), uri.clone())),
+        KIND_CHARACTER_LITERAL => Some(("Char".to_owned(), uri.clone())),
+        k if k == KIND_SIMPLE_IDENT || k == KIND_TYPE_IDENT => {
+            infer_ident_type(node, bytes, deps, uri).map(|type_name| (type_name, uri.clone()))
+        }
+        k if k == KIND_THIS_EXPR => {
+            infer_this_expr_type(node, bytes, deps, uri).map(|type_name| (type_name, uri.clone()))
+        }
         k if k == KIND_NAV_EXPR => infer_navigation_expr_type(node, bytes, deps, uri, depth),
-        k if k == KIND_CALL_EXPR => infer_call_expr_type(node, bytes, deps, uri),
+        k if k == KIND_CALL_EXPR => {
+            infer_call_expr_type(node, bytes, deps, uri).map(|type_name| (type_name, uri.clone()))
+        }
         k if k == KIND_CHECK_EXPR
             || k == KIND_COMPARISON_EXPR
             || k == KIND_DISJUNCTION_EXPR
             || k == KIND_CONJUNCTION_EXPR =>
         {
-            Some("Boolean".to_owned())
+            Some(("Boolean".to_owned(), uri.clone()))
         }
-        k if k == KIND_PREFIX_EXPR => infer_prefix_expr_type(node, bytes),
-        k if k == KIND_IF_EXPR => infer_if_expr_type(node, bytes, deps, uri, depth),
-        k if k == KIND_RANGE_EXPR => infer_range_expr_type(node, bytes, deps, uri, depth),
+        k if k == KIND_PREFIX_EXPR => {
+            infer_prefix_expr_type(node, bytes).map(|type_name| (type_name, uri.clone()))
+        }
+        k if k == KIND_IF_EXPR => infer_if_expr_type(node, bytes, deps, uri, depth)
+            .map(|type_name| (type_name, uri.clone())),
+        k if k == KIND_RANGE_EXPR => infer_range_expr_type(node, bytes, deps, uri, depth)
+            .map(|type_name| (type_name, uri.clone())),
         k if k == KIND_ADDITIVE_EXPR || k == KIND_MULTIPLICATIVE_EXPR => {
             infer_arithmetic_expr_type(node, bytes, deps, uri, depth)
+                .map(|type_name| (type_name, uri.clone()))
         }
         k if k == KIND_PARENTHESIZED_EXPR => {
             infer_parenthesized_expr_type(node, bytes, deps, uri, depth)
+                .map(|type_name| (type_name, uri.clone()))
         }
         _ => None,
     }
@@ -199,18 +218,21 @@ fn infer_this_expr_type(
 /// Resolve the type of a `navigation_expression` node (e.g. `obj.field`).
 ///
 /// Adapted from `semantic_tokens::resolve::navigation_expression_type`.
-/// Recursively resolves the receiver through `infer_expr_type`, then looks up
-/// the member as a field or (when the expression is a call callee) a method.
+/// Recursively resolves the receiver through `infer_expr_type`, re-anchoring
+/// reachability on the receiver's own declaring file (not the outermost
+/// caller's) so a multi-segment chain like `a.b.c` resolves `.c` through
+/// `a.b`'s file, not `a`'s — see `find_field_type`'s own doc comment.
 fn infer_navigation_expr_type(
     node: Node<'_>,
     bytes: &[u8],
     deps: &impl InferDeps,
     uri: &Url,
     depth: usize,
-) -> Option<String> {
+) -> Option<(String, Url)> {
     let receiver = nav_receiver_node(node)?;
     let member = nav_member_ident(node)?.utf8_text_owned(bytes)?;
-    let receiver_type = infer_expr_type_at_depth(receiver, bytes, deps, uri, depth + 1)?;
+    let (receiver_type, receiver_uri) =
+        infer_expr_type_at_depth(receiver, bytes, deps, uri, depth + 1)?;
 
     if nav_is_call_callee(node) {
         // The two-step `find_fun_return_type_reachable` → `find_fun_return_type` replicates
@@ -218,13 +240,15 @@ fn infer_navigation_expr_type(
         // `src/resolver/api.rs`) through the `InferDeps` seam rather than calling the
         // `Resolver` trait directly.  Together they are equivalent to the original
         // `indexer.function_return_type(&member, uri)` call in `navigation_expression_type`.
-        return deps
-            .find_method_return_type_for_type(&receiver_type, &member, uri)
+        // Neither is `Url`-aware yet, so the anchor doesn't advance past this hop.
+        let type_name = deps
+            .find_method_return_type_for_type(&receiver_type, &member, &receiver_uri)
             .or_else(|| deps.find_fun_return_type_reachable(&member, uri))
-            .or_else(|| deps.find_fun_return_type(&member, uri));
+            .or_else(|| deps.find_fun_return_type(&member, uri))?;
+        return Some((type_name, receiver_uri));
     }
 
-    deps.find_field_type(&receiver_type, &member, uri)
+    deps.find_field_type(&receiver_type, &member, &receiver_uri)
 }
 
 // ─── navigation tree-walking helpers ─────────────────────────────────────────
@@ -305,8 +329,8 @@ fn infer_if_expr_type<D: InferDeps>(
         .into_iter();
     let then_expr = bodies.next()?.child(0)?;
     let else_expr = bodies.next()?.child(0)?;
-    let then_type = infer_expr_type_at_depth(then_expr, bytes, deps, uri, depth + 1)?;
-    let else_type = infer_expr_type_at_depth(else_expr, bytes, deps, uri, depth + 1)?;
+    let then_type = infer_expr_type_at_depth(then_expr, bytes, deps, uri, depth + 1)?.0;
+    let else_type = infer_expr_type_at_depth(else_expr, bytes, deps, uri, depth + 1)?.0;
     (then_type == else_type).then_some(then_type)
 }
 
@@ -322,8 +346,8 @@ fn infer_range_expr_type<D: InferDeps>(
     let lhs = node.child(0)?;
     let rhs_idx = (node.child_count() as u32).checked_sub(1)?;
     let rhs = node.child(rhs_idx)?;
-    let lhs_ty = infer_expr_type_at_depth(lhs, bytes, deps, uri, depth + 1)?;
-    let rhs_ty = infer_expr_type_at_depth(rhs, bytes, deps, uri, depth + 1)?;
+    let lhs_ty = infer_expr_type_at_depth(lhs, bytes, deps, uri, depth + 1)?.0;
+    let rhs_ty = infer_expr_type_at_depth(rhs, bytes, deps, uri, depth + 1)?.0;
     match (lhs_ty.as_str(), rhs_ty.as_str()) {
         ("Int", "Int") => Some("IntRange".to_owned()),
         ("Long", "Long") | ("Int", "Long") | ("Long", "Int") => Some("LongRange".to_owned()),
@@ -343,7 +367,7 @@ fn infer_parenthesized_expr_type<D: InferDeps>(
     depth: usize,
 ) -> Option<String> {
     let inner = node.named_child(0)?;
-    infer_expr_type_at_depth(inner, bytes, deps, uri, depth + 1)
+    infer_expr_type_at_depth(inner, bytes, deps, uri, depth + 1).map(|(type_name, _)| type_name)
 }
 
 /// Numeric rank for Kotlin's arithmetic operand-promotion, highest wins
@@ -383,11 +407,11 @@ fn infer_arithmetic_expr_type<D: InferDeps>(
     let lhs = node.child(0)?;
     let op = node.child(1)?.utf8_text(bytes).ok()?;
     let rhs = node.child(2)?;
-    let lhs_ty = infer_expr_type_at_depth(lhs, bytes, deps, uri, depth + 1)?;
+    let lhs_ty = infer_expr_type_at_depth(lhs, bytes, deps, uri, depth + 1)?.0;
     if op == "+" && lhs_ty == "String" {
         return Some("String".to_owned());
     }
-    let rhs_ty = infer_expr_type_at_depth(rhs, bytes, deps, uri, depth + 1)?;
+    let rhs_ty = infer_expr_type_at_depth(rhs, bytes, deps, uri, depth + 1)?.0;
     let lhs_rank = numeric_rank(&lhs_ty)?;
     let rhs_rank = numeric_rank(&rhs_ty)?;
     // Kotlin has no same-rank arithmetic overload for `Byte`/`Short`: unlike

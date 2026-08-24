@@ -2582,21 +2582,21 @@ fn cst_named_lambda_param_scope_fun_substitutes_receiver() {
 fn synthetic_enum_entries_field_type() {
     let (_, idx) = indexed("/Color.kt", "enum class Color { RED, GREEN, BLUE }");
     let ty = idx.find_field_type("Color", "entries", &uri("/Color.kt"));
-    assert_eq!(ty.as_deref(), Some("List<Color>"));
+    assert_eq!(ty.map(|(t, _)| t).as_deref(), Some("List<Color>"));
 }
 
 #[test]
 fn synthetic_enum_name_field_type() {
     let (_, idx) = indexed("/Color.kt", "enum class Color { RED, GREEN, BLUE }");
     let ty = idx.find_field_type("Color", "name", &uri("/Color.kt"));
-    assert_eq!(ty.as_deref(), Some("String"));
+    assert_eq!(ty.map(|(t, _)| t).as_deref(), Some("String"));
 }
 
 #[test]
 fn synthetic_enum_ordinal_field_type() {
     let (_, idx) = indexed("/Color.kt", "enum class Color { RED, GREEN, BLUE }");
     let ty = idx.find_field_type("Color", "ordinal", &uri("/Color.kt"));
-    assert_eq!(ty.as_deref(), Some("Int"));
+    assert_eq!(ty.map(|(t, _)| t).as_deref(), Some("Int"));
 }
 
 #[test]
@@ -2618,7 +2618,7 @@ fn synthetic_not_applied_to_non_enum() {
     let (_, idx) = indexed("/Foo.kt", "class Foo { val entries: String = \"\" }");
     let ty = idx.find_field_type("Foo", "entries", &uri("/Foo.kt"));
     // Should resolve from actual source, not synthetic
-    assert_ne!(ty.as_deref(), Some("List<Foo>"));
+    assert_ne!(ty.map(|(t, _)| t).as_deref(), Some("List<Foo>"));
 }
 
 #[test]

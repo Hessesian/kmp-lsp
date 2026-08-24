@@ -133,6 +133,11 @@ pub(super) fn forward_resolve_segments(
     }
 
     let mut current_type: Option<String> = None;
+    // Reachability anchor for the *next* hop's lookups — starts at the
+    // caller's own file and re-anchors to each resolved field's declaring
+    // file as the chain descends, mirroring `infer_field_chain_type`'s
+    // `reachability_uri` in the string-domain resolver.
+    let mut current_uri = uri.clone();
     let mut last_suffix: Option<String> = None;
     // Track whether the last Suffix actually changed current_type.
     // Used by the CallExpr dedup check: only skip re-resolution when the Suffix
@@ -164,8 +169,11 @@ pub(super) fn forward_resolve_segments(
                 }
                 last_suffix_resolved = false;
                 if let Some(ref cur) = current_type {
-                    if let Some(resolved) = resolve_member_type_on(cur, name, deps, uri) {
+                    if let Some((resolved, declaring_uri)) =
+                        resolve_member_type_on(cur, name, deps, &current_uri)
+                    {
                         current_type = Some(resolved);
+                        current_uri = declaring_uri;
                         last_suffix_resolved = true;
                     } else if SCOPE_FUNCTIONS.contains(&name.as_str()) {
                         // Scope function: receiver type flows through.
@@ -189,8 +197,11 @@ pub(super) fn forward_resolve_segments(
                         continue;
                     }
                     if let Some(ref cur) = current_type {
-                        if let Some(resolved) = resolve_member_type_on(cur, name, deps, uri) {
+                        if let Some((resolved, declaring_uri)) =
+                            resolve_member_type_on(cur, name, deps, &current_uri)
+                        {
                             current_type = Some(resolved);
+                            current_uri = declaring_uri;
                             continue;
                         }
                     }
@@ -429,12 +440,17 @@ pub(super) fn cst_forward_resolve_receiver_type(
 /// argument from `current_type`.  This prevents `:T` from leaking through as a hover
 /// result for chains like `resultState.value.getOrNull()?.also { param -> }` when
 /// `ResultState.Success` type params are not indexed.
+/// Returns the resolved type together with the `Url` that should anchor
+/// reachability for the *next* hop — the field's declaring file when
+/// `deps.find_field_type` resolved it, or `uri` unchanged when the match came
+/// from a method return type (not yet `Url`-aware; see `find_field_type`'s
+/// own doc comment).
 pub(super) fn resolve_member_type_on(
     current_type: &str,
     member: &str,
     deps: &impl InferDeps,
     uri: &Url,
-) -> Option<String> {
+) -> Option<(String, Url)> {
     let type_name = current_type.dotted_ident_prefix();
     let type_base = type_name.last_segment();
     let effective_type = if !type_base.is_empty() && type_base.starts_with_uppercase() {
@@ -444,21 +460,21 @@ pub(super) fn resolve_member_type_on(
     } else {
         return None;
     };
-    if let Some(field_ty) = deps.find_field_type(&effective_type, member, uri) {
+    if let Some((field_ty, declaring_uri)) = deps.find_field_type(&effective_type, member, uri) {
         let subst = build_type_arg_subst(deps, &effective_type, current_type);
         let applied = crate::indexer::apply_type_subst(&field_ty, &subst);
         if is_generic_param(applied.strip_nullable()) {
-            return first_type_arg_raw(current_type);
+            return first_type_arg_raw(current_type).map(|t| (t, declaring_uri));
         }
-        return Some(applied);
+        return Some((applied, declaring_uri));
     }
     if let Some(ret_ty) = deps.find_method_return_type_for_type(&effective_type, member, uri) {
         let subst = build_type_arg_subst(deps, &effective_type, current_type);
         let applied = crate::indexer::apply_type_subst(&ret_ty, &subst);
         if is_generic_param(applied.strip_nullable()) {
-            return first_type_arg_raw(current_type);
+            return first_type_arg_raw(current_type).map(|t| (t, uri.clone()));
         }
-        return Some(applied);
+        return Some((applied, uri.clone()));
     }
     None
 }
