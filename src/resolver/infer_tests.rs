@@ -240,6 +240,39 @@ fn find_field_type_in_class_resolves_unannotated_field_access() {
     assert_eq!(field_type, "Flow<DashboardTrigger>");
 }
 
+/// Regression: found scanning a real 13k-file codebase, where a chain of
+/// unannotated field accesses across many files overflowed the stack —
+/// `find_field_type_in_class`'s fallback re-enters variable-type inference,
+/// which can itself call back into `find_field_type_in_class` for a
+/// receiver's own field type, each side resetting to a fresh depth budget on
+/// re-entry instead of sharing one. A genuine two-class mutual reference is
+/// the smallest reproduction of the same unbounded cycle.
+#[test]
+fn find_field_type_in_class_terminates_on_a_mutual_field_reference_cycle() {
+    use crate::indexer::Indexer;
+    use crate::resolver::infer::find_field_type_in_class;
+    use tower_lsp::lsp_types::Url;
+
+    fn uri(p: &str) -> Url {
+        Url::parse(&format!("file://{p}")).unwrap()
+    }
+
+    let idx = Indexer::new();
+    idx.index_content(
+        &uri("/A.kt"),
+        "package com.example\nclass A(val b: B) {\n    val value = b.value\n}\n",
+    );
+    idx.index_content(
+        &uri("/B.kt"),
+        "package com.example\nclass B(val a: A) {\n    val value = a.value\n}\n",
+    );
+
+    // Past the depth cap the walk bails at whatever partial (possibly
+    // approximate) answer it has — no specific value is asserted, only that
+    // this call returns at all instead of overflowing the stack.
+    let _ = find_field_type_in_class(&idx, "A", "value", &uri("/A.kt"));
+}
+
 #[test]
 fn supertype_subst_replaces_generic_params() {
     let raw = "Flow<ReducedResult<EffectType, StateType>>";
