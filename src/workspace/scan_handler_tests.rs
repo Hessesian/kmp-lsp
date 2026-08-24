@@ -247,3 +247,77 @@ fn crawl_no_longer_eagerly_materializes_every_jar() {
          cheap, always-eager"
     );
 }
+
+// ─── Android SDK jar-path gating (spawn_jar_indexing's compiled-JAR list) ────
+
+#[test]
+fn android_jar_is_included_when_workspace_uses_gradle_cache() {
+    let dir = tempfile::tempdir().unwrap();
+    let fake_sdk = dir.path().join("sdk");
+    let platform_dir = fake_sdk.join("platforms").join("android-34");
+    std::fs::create_dir_all(&platform_dir).unwrap();
+    std::fs::write(platform_dir.join("android.jar"), b"fake jar").unwrap();
+    std::fs::write(
+        dir.path().join("local.properties"),
+        format!("sdk.dir={}\n", fake_sdk.display()),
+    )
+    .unwrap();
+
+    let paths = super::compiled_jar_paths_with_android_sdk(
+        Some(dir.path().to_path_buf()),
+        true,
+        Vec::new(),
+    );
+
+    assert_eq!(
+        paths.len(),
+        1,
+        "android.jar must be added when the workspace uses the Gradle-cache pipeline"
+    );
+    assert!(
+        paths[0].ends_with("android-34/android.jar")
+            || paths[0].ends_with("android-34\\android.jar")
+    );
+}
+
+#[test]
+fn android_jar_is_skipped_when_workspace_does_not_use_gradle_cache() {
+    let dir = tempfile::tempdir().unwrap();
+    let fake_sdk = dir.path().join("sdk");
+    let platform_dir = fake_sdk.join("platforms").join("android-34");
+    std::fs::create_dir_all(&platform_dir).unwrap();
+    std::fs::write(platform_dir.join("android.jar"), b"fake jar").unwrap();
+    std::fs::write(
+        dir.path().join("local.properties"),
+        format!("sdk.dir={}\n", fake_sdk.display()),
+    )
+    .unwrap();
+
+    // A real Android SDK is present on disk, but this workspace has no JVM
+    // sources — the same condition that makes the Gradle-cache pipeline
+    // itself skip. The android.jar detection must not bypass that gate.
+    let paths = super::compiled_jar_paths_with_android_sdk(
+        Some(dir.path().to_path_buf()),
+        false,
+        Vec::new(),
+    );
+
+    assert!(
+        paths.is_empty(),
+        "a non-JVM (or not-yet-JVM) workspace must not pay android.jar's \
+         Tier-1 manifest cost, matching the same reason the Gradle-cache \
+         pipeline is gated; got {paths:?}"
+    );
+}
+
+#[test]
+fn android_jar_gate_preserves_existing_gradle_paths() {
+    let existing = vec![std::path::PathBuf::from("/fake/gradle-cache/some-lib.jar")];
+
+    let paths_when_gated_off =
+        super::compiled_jar_paths_with_android_sdk(None, false, existing.clone());
+    assert_eq!(
+        paths_when_gated_off, existing,
+        "gating android.jar off must not disturb the Gradle-cache paths already collected"
+    );
+}

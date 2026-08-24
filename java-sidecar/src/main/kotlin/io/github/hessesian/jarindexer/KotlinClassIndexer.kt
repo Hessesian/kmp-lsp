@@ -416,6 +416,21 @@ private class JavaClassVisitor(private val entries: MutableList<SymbolEntry>, pr
         entries += SymbolEntry(name, "fun", className, "fun $name(...)", pkg = pkg, topLevel = false)
         return null
     }
+
+    override fun visitField(access: Int, name: String, descriptor: String, signature: String?, value: Any?): FieldVisitor? {
+        if (!isPublicClass) return null
+        val isPublic = (access and Opcodes.ACC_PUBLIC) != 0
+        val isSynthetic = (access and Opcodes.ACC_SYNTHETIC) != 0
+        if (!isPublic || isSynthetic) return null
+        if (name.contains('$')) return null
+        // `val` for effectively-immutable (ACC_FINAL, the common case for
+        // constants like `Activity.RESULT_OK`), `var` otherwise — mirrors
+        // Kotlin's own val/var distinction closely enough for kind mapping.
+        val kind = if ((access and Opcodes.ACC_FINAL) != 0) "val" else "var"
+        val typeName = org.objectweb.asm.Type.getType(descriptor).className.substringAfterLast('.')
+        entries += SymbolEntry(name, kind, className, "$kind $name: $typeName", pkg = pkg, topLevel = false)
+        return null
+    }
 }
 
 // ── Public entry point ─────────────────────────────────────────────────────────

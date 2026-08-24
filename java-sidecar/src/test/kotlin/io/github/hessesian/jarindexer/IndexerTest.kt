@@ -120,6 +120,37 @@ class IndexerTest {
     }
 
     @Test
+    @DisplayName("indexClassBytes extracts a public static final field via the Java fallback path (no Kotlin metadata)")
+    fun testJavaPublicFieldExtraction() {
+        // Mirrors android.jar's own motivating example: Activity.RESULT_OK is a
+        // plain Java `public static final int` field with no Kotlin metadata.
+        val cw = org.objectweb.asm.ClassWriter(0)
+        cw.visit(
+            org.objectweb.asm.Opcodes.V1_8,
+            org.objectweb.asm.Opcodes.ACC_PUBLIC,
+            "com/example/TestActivity",
+            null,
+            "java/lang/Object",
+            null
+        )
+        cw.visitField(
+            org.objectweb.asm.Opcodes.ACC_PUBLIC or org.objectweb.asm.Opcodes.ACC_STATIC or org.objectweb.asm.Opcodes.ACC_FINAL,
+            "RESULT_OK",
+            "I",
+            null,
+            -1
+        ).visitEnd()
+        cw.visitEnd()
+
+        val result = indexClassBytes(cw.toByteArray())
+
+        assertTrue(
+            result.any { it.name == "RESULT_OK" && it.kind == "val" && it.container == "TestActivity" },
+            "should find the public static final field via the Java fallback path; got: ${result.map { "${it.name}:${it.kind}:${it.container}:${it.detail}" }}"
+        )
+    }
+
+    @Test
     @DisplayName("indexClassBytes captures package and top-level flag")
     fun testPackageAndTopLevel() {
         val result = indexClassBytes(minimalClassBytes("androidx/compose/runtime/Composables"))
