@@ -4636,6 +4636,108 @@ fn jar_symbol_resolves_despite_wrong_per_jar_package() {
     );
 }
 
+// ── SCOPE_FUNCTIONS fallback (Category C) ───────────────────────────────────
+
+/// `SCOPE_FUNCTIONS` (`let`/`also`/`run`/`apply`/`takeIf`/`takeUnless`) are
+/// receiver-generic stdlib extensions (`<T> T.apply { ... }`), never a member of
+/// any specific receiver type. A receiver-typed lookup for one of them must fall
+/// back to the same bare (unqualified) resolution a plain reference to that stdlib
+/// name would use, once the ordinary receiver-scoped search finds no member.
+#[test]
+fn find_definition_qualified_falls_back_to_bare_lookup_for_scope_functions() {
+    use crate::types::FileData;
+    use std::sync::Arc;
+
+    let idx = Indexer::new();
+    let jar_uri = "jar:file:///kotlin-stdlib.jar!/kotlin/StandardKt.class";
+    idx.jar_definitions
+        .entry("apply".to_string())
+        .or_default()
+        .push(tower_lsp::lsp_types::Location {
+            uri: Url::parse(jar_uri).unwrap(),
+            range: tower_lsp::lsp_types::Range::default(),
+        });
+    idx.jar_files.insert(
+        jar_uri.to_string(),
+        Arc::new(FileData {
+            package: Some("kotlin".to_string()),
+            ..Default::default()
+        }),
+    );
+
+    let use_uri = Url::parse("file:///app/Show.kt").unwrap();
+    idx.index_content(
+        &use_uri,
+        concat!(
+            "package app\n",
+            "import kotlin.apply\n",
+            "class SomeBuilderResult\n",
+            "class Builder { fun build(): SomeBuilderResult = SomeBuilderResult() }\n",
+            "fun show() {\n",
+            "    Builder().build().apply { show() }\n",
+            "}\n",
+        ),
+    );
+
+    let locs = idx.find_definition_qualified("apply", Some("SomeBuilderResult"), &use_uri);
+    assert!(
+        locs.iter().any(|l| l.uri.as_str() == jar_uri),
+        "receiver-typed `apply` must fall back to the bare stdlib declaration when \
+         the receiver type has no member named `apply`; got {:?}",
+        locs.iter().map(|l| l.uri.as_str()).collect::<Vec<_>>()
+    );
+}
+
+/// Decoy: a receiver type that declares its OWN member named `apply` must still
+/// resolve to that member — the scope-function fallback may only fire after the
+/// ordinary receiver-scoped search has already failed, never unconditionally for
+/// every name in `SCOPE_FUNCTIONS`.
+#[test]
+fn find_definition_qualified_prefers_own_member_over_scope_function_fallback() {
+    use crate::types::FileData;
+    use std::sync::Arc;
+
+    let idx = Indexer::new();
+    let jar_uri = "jar:file:///kotlin-stdlib.jar!/kotlin/StandardKt.class";
+    idx.jar_definitions
+        .entry("apply".to_string())
+        .or_default()
+        .push(tower_lsp::lsp_types::Location {
+            uri: Url::parse(jar_uri).unwrap(),
+            range: tower_lsp::lsp_types::Range::default(),
+        });
+    idx.jar_files.insert(
+        jar_uri.to_string(),
+        Arc::new(FileData {
+            package: Some("kotlin".to_string()),
+            ..Default::default()
+        }),
+    );
+
+    let use_uri = Url::parse("file:///app/Config.kt").unwrap();
+    idx.index_content(
+        &use_uri,
+        concat!(
+            "package app\n",
+            "import kotlin.apply\n",
+            "class ConfigBuilder {\n",
+            "    fun apply(): ConfigBuilder = this\n",
+            "}\n",
+            "fun show() {\n",
+            "    ConfigBuilder().apply()\n",
+            "}\n",
+        ),
+    );
+
+    let locs = idx.find_definition_qualified("apply", Some("ConfigBuilder"), &use_uri);
+    assert!(
+        !locs.is_empty() && locs.iter().all(|l| l.uri == use_uri),
+        "must resolve to ConfigBuilder's own `apply()`, not the stdlib scope-function \
+         fallback; got {:?}",
+        locs.iter().map(|l| l.uri.as_str()).collect::<Vec<_>>()
+    );
+}
+
 /// `import androidx.compose.runtime.remember` must resolve to the compose
 /// top-level `remember`, not a same-named symbol in an unrelated jar (the Kotlin
 /// compiler / gradle plugin / KSP all ship a `remember`). Driven by the sidecar's
