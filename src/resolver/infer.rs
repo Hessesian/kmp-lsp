@@ -1176,6 +1176,30 @@ fn find_field_type_in_class_impl(
     None
 }
 
+/// Candidates for a supertype walk's starting class: reachability-scoped
+/// first (`from_uri`'s own imports/package), falling back to an unscoped
+/// workspace search and finally `lookup_definitions` (the only one of the
+/// three that promotes a not-yet-materialized JAR) when nothing reachable is
+/// found. Shared by [`find_field_type_via_supertypes`] and
+/// [`find_method_return_type_via_supertypes`] so neither anchors its walk on
+/// an unrelated same-named class elsewhere in the workspace.
+fn reachable_class_candidates(
+    indexer: &Indexer,
+    class_base: &str,
+    from_uri: Option<&Url>,
+) -> Vec<Location> {
+    let mut candidates = from_uri
+        .map(|uri| super::resolve::resolve_type_index_only(indexer, class_base, uri))
+        .unwrap_or_default();
+    if candidates.is_empty() {
+        candidates = indexer.workspace_def_candidates(class_base);
+    }
+    if candidates.is_empty() {
+        candidates = indexer.lookup_definitions(class_base);
+    }
+    candidates
+}
+
 /// Resolve `field_name`'s declared type by walking `class_name`'s ancestors —
 /// the field-typed sibling of [`find_method_return_type_via_supertypes`].
 /// [`find_field_type_in_class`] only reads `class_name`'s own body, so a
@@ -1213,13 +1237,11 @@ fn find_field_type_via_supertypes_impl(
     if depth == 0 {
         return None;
     }
-    // Strip generics AND any qualifying package prefix, matching
-    // `find_method_return_type_via_supertypes`: `lookup_definitions` is keyed
-    // by the bare symbol name.
+    // Strip generics AND any qualifying package prefix — `class_base` is
+    // matched against bare symbol names below.
     let class_base = class_name.dotted_ident_prefix().last_segment().to_owned();
 
-    indexer
-        .lookup_definitions(&class_base)
+    reachable_class_candidates(indexer, &class_base, Some(from_uri))
         .into_iter()
         .take(crate::indexer::MAX_BY_NAME_DEFS)
         .find_map(|location| {
@@ -1863,17 +1885,11 @@ pub(crate) fn find_method_return_type_via_supertypes(
     method_name: &str,
     from_uri: Option<&Url>,
 ) -> Option<String> {
-    // Strip generics AND any qualifying package prefix: `lookup_definitions`
-    // is keyed by the bare symbol name, so a qualified `class_name` (e.g.
-    // `com.lib.MutableSharedFlow<Event>`) would otherwise silently miss it.
+    // Strip generics AND any qualifying package prefix — `class_base` is
+    // matched against bare symbol names below.
     let class_base = class_name.dotted_ident_prefix().last_segment().to_owned();
 
-    // `lookup_definitions` merges workspace + JAR locations (promoting a
-    // not-yet-materialized JAR as needed) into an owned `Vec<Location>` --
-    // the walk below promotes further JARs per-ancestor, and an owned Vec
-    // (unlike a DashMap `Ref`) can't deadlock against that.
-    indexer
-        .lookup_definitions(&class_base)
+    reachable_class_candidates(indexer, &class_base, from_uri)
         .into_iter()
         .take(crate::indexer::MAX_BY_NAME_DEFS)
         .find_map(|loc| {

@@ -1606,6 +1606,59 @@ fn catalog_field_type_supertype_walk_ignores_unrelated_same_named_sibling_field(
     );
 }
 
+/// Two unrelated classes both named `Derived` exist in the workspace; only
+/// one is reachable from the caller's own import. The supertype walk's own
+/// starting-class lookup must stay reachability-scoped like
+/// `find_field_type_in_class`'s already is, not fall back to an unscoped
+/// by-name pick that could land on the wrong `Derived` and its wrong
+/// ancestor (Copilot review, PR #281).
+#[test]
+fn catalog_field_type_supertype_walk_stays_reachability_scoped_on_a_colliding_class_name() {
+    use crate::indexer::Indexer;
+    use crate::resolver::Resolver;
+    use tower_lsp::lsp_types::Url;
+
+    let idx = Indexer::new();
+    // Indexed first, so an unscoped by-name lookup would find it first.
+    idx.index_content(
+        &Url::parse("file:///com/wrong/Derived.kt").unwrap(),
+        "package com.wrong\n\
+         abstract class WrongBase {\n\
+         \x20   val value: WrongType = TODO()\n\
+         }\n\
+         class WrongType\n\
+         class Derived : WrongBase()\n",
+    );
+    idx.index_content(
+        &Url::parse("file:///com/right/RightBase.kt").unwrap(),
+        "package com.right\n\
+         abstract class RightBase {\n\
+         \x20   val value: RightType = TODO()\n\
+         }\n\
+         class RightType\n",
+    );
+    let right_derived = Url::parse("file:///com/right/Derived.kt").unwrap();
+    idx.index_content(
+        &right_derived,
+        "package com.right\nclass Derived : RightBase()\n",
+    );
+    let caller = Url::parse("file:///com/caller/Caller.kt").unwrap();
+    idx.index_content(
+        &caller,
+        "package com.caller\nimport com.right.Derived\nfun use(d: Derived) { d.value }\n",
+    );
+
+    let (field_type, declaring_uri) = idx
+        .field_type("Derived", "value", &caller)
+        .expect("value must resolve via the reachable Derived's own supertype");
+    assert_eq!(
+        field_type, "RightType",
+        "must walk the reachable com.right.Derived's own supertype \
+         (RightBase), not the unrelated com.wrong.Derived indexed first"
+    );
+    assert_eq!(declaring_uri.as_str(), "file:///com/right/RightBase.kt");
+}
+
 /// Regression, exercised through the *supertype-walk* path specifically:
 /// mirrors `find_field_type_in_class_terminates_on_a_mutual_field_reference_cycle`,
 /// but the queried class doesn't declare the field itself -- it inherits it

@@ -158,7 +158,7 @@ pub(crate) trait Resolver {
     /// context.
     ///
     /// Returns `None` when no matching method (own, extension, or inherited) with
-    /// a declared return type is found.
+    /// a resolvable return type — declared or inferred — is found.
     fn method_return_type(
         &self,
         type_name: &str,
@@ -166,7 +166,8 @@ pub(crate) trait Resolver {
         from_uri: Option<&Url>,
     ) -> Option<ReturnType>;
 
-    /// Resolve the declared type of `field_name` on a receiver whose type's
+    /// Resolve `field_name`'s type (declared, or inferred from its
+    /// initializer for an unannotated `val`/`var`) on a receiver whose type's
     /// base name is `type_name`, together with the `Url` of the file where
     /// that field is actually declared (the reachability anchor for the
     /// *next* hop in a dotted chain — see `find_field_type_in_class`'s own
@@ -177,8 +178,8 @@ pub(crate) trait Resolver {
     /// body first, then walks its declared supertypes (with type-argument
     /// substitution) — the field-typed sibling of `method_return_type`.
     ///
-    /// Returns `None` when no field (own or inherited) with a declared type
-    /// is found.
+    /// Returns `None` when no field (own or inherited) with a resolvable
+    /// type is found.
     fn field_type(
         &self,
         type_name: &str,
