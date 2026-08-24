@@ -577,6 +577,38 @@ fn resolve_deep_qualifier_chain() {
 }
 
 #[test]
+fn resolve_qualified_chain_scopes_a_colliding_middle_segment_to_its_own_outer_type() {
+    // Two sibling top-level types each declare a nested `Sub` with its own
+    // `target`. Resolving `Other.Sub.target` must walk to Other's own Sub, not
+    // Event's Sub (declared first in the file) via an unscoped mid-chain lookup.
+    let host_uri = uri("/Events.kt");
+    let idx = Indexer::new();
+    idx.index_content(
+        &host_uri,
+        concat!(
+            "package com.pkg\n",
+            "sealed interface Event {\n",
+            "  sealed interface Sub {\n",
+            "    val target: Int\n",
+            "  }\n",
+            "}\n",
+            "sealed interface Other {\n",
+            "  sealed interface Sub {\n",
+            "    val target: Int\n",
+            "  }\n",
+            "}\n",
+        ),
+    );
+
+    let locs = resolve_symbol(&idx, "target", Some("Other.Sub"), &host_uri);
+    assert!(!locs.is_empty(), "Other.Sub.target not resolved");
+    assert_eq!(
+        locs[0].range.start.line, 8,
+        "must resolve to Other's own Sub.target (line 8), not Event's (line 3)"
+    );
+}
+
+#[test]
 fn resolve_nested_type_via_variable_annotation() {
     // `val factory: DashboardProductsReducer.Factory` — goto-def of `factory.create(...)`
     // should navigate to the `create` fun inside the `Factory` interface.

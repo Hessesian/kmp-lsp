@@ -32,10 +32,7 @@ use crate::types::{CallerContext, FileData};
 use crate::StrExt;
 
 use super::fd::{fd_find_and_parse, import_package_prefix};
-use super::find::{
-    find_local_declaration, find_name_in_uri, find_name_in_uri_after_line,
-    find_name_scoped_to_container,
-};
+use super::find::{find_local_declaration, find_name_in_uri, find_name_scoped_to_container};
 use super::hierarchy::{walk_hierarchy, MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK};
 use super::infer::{infer_field_type, infer_variable_type};
 
@@ -963,27 +960,14 @@ fn resolve_qualified(
                 }
             }
 
-            // Walk any remaining nested-type segments (`Event.OverdraftInput`
-            // has one: `OverdraftInput`) to that specific nested class's own
-            // location before searching for `name` — anchoring on `root`'s
-            // own line instead would just find whichever same-named sibling
-            // member happens to be textually closest to `root`'s declaration,
-            // not a member of the actually-requested nested type (see
-            // `find_name_in_uri_after_line`'s own doc comment: "we want the
-            // parameter/field of THAT class, not a same-named field in a
-            // different class that happens to appear earlier"). A real bug
-            // this fixes: an MVI sealed interface with many `data class Foo(val
-            // event: FooEvent) : Event`-shaped variants side by side — hovering
-            // `event.event` inside an `is Event.OverdraftInput ->` branch
-            // resolved to a *different* variant's `event` field, whichever one
-            // happened to sit closest to `Event`'s own declaration line.
+            // Walk any remaining nested-type segments (`Event.OverdraftInput` has
+            // one: `OverdraftInput`) to that specific nested class's own scope
+            // before searching for `name`, so a same-named sibling member never
+            // shadows the actually-requested nested type's own member.
             let mut anchor = qual_loc.clone();
             let mut nested_segments_resolved = true;
             for &nested_segment in &segments[1..] {
-                match find_name_in_uri(indexer, nested_segment, anchor.uri.as_str())
-                    .into_iter()
-                    .next()
-                {
+                match find_name_scoped_to_container(indexer, nested_segment, &anchor) {
                     Some(location) => anchor = location,
                     None => {
                         nested_segments_resolved = false;
@@ -995,10 +979,8 @@ fn resolve_qualified(
                 continue;
             }
 
-            let after_line = anchor.range.start.line;
-            let locs = find_name_in_uri_after_line(indexer, name, anchor.uri.as_str(), after_line);
-            if !locs.is_empty() {
-                return locs;
+            if let Some(loc) = find_name_scoped_to_container(indexer, name, &anchor) {
+                return vec![loc];
             }
         }
         // Extension functions may live in a different file than the receiver class.

@@ -104,25 +104,28 @@ pub(crate) fn find_name_scoped_to_container(
 ) -> Option<Location> {
     let file_data = ensure_file_data(idx, &container.uri)?;
 
-    if let Some(container_symbol) = file_data
+    let contained = file_data
         .symbols
         .iter()
         .find(|symbol| symbol.selection_range == container.range)
-    {
-        return file_data
-            .symbols
-            .iter()
-            .find(|symbol| {
+        .and_then(|container_symbol| {
+            file_data.symbols.iter().find(|symbol| {
                 symbol.name == name
                     && symbol.range != container_symbol.range
                     && range_encloses(container_symbol.range, symbol.range)
             })
-            .map(|found| Location {
-                uri: container.uri.clone(),
-                range: found.selection_range,
-            });
+        })
+        .map(|found| Location {
+            uri: container.uri.clone(),
+            range: found.selection_range,
+        });
+    if contained.is_some() {
+        return contained;
     }
 
+    // Range-containment misses degenerate containers whose declaration range
+    // doesn't actually span their members — e.g. JAR-derived stub symbols,
+    // which record only a name's line, not a real body range.
     find_name_in_uri_after_line(
         idx,
         name,
