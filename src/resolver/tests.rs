@@ -628,6 +628,26 @@ fn resolve_dotted_name_traverses_deep_nesting() {
 }
 
 #[test]
+fn resolve_dotted_name_scopes_a_nested_member_to_its_own_outer_type() {
+    // Two sibling sealed types in one file each declare a `Loading` member.
+    // `Event` is declared first, so a whole-file first-match lookup for
+    // `UiEvent.Loading` would wrongly return `Event`'s `Loading`.
+    let file_uri = uri("/Events.kt");
+    let idx = Indexer::new();
+    idx.index_content(
+        &file_uri,
+        "sealed interface Event {\n  object Loading : Event\n}\nsealed interface UiEvent {\n  object Loading : UiEvent\n}\n",
+    );
+
+    let locs = resolve_symbol(&idx, "UiEvent.Loading", None, &file_uri);
+    assert!(!locs.is_empty(), "UiEvent.Loading not resolved");
+    assert_eq!(
+        locs[0].range.start.line, 4,
+        "must resolve to UiEvent's own Loading (line 4), not Event's (line 1)"
+    );
+}
+
+#[test]
 fn resolve_dotted_name_skips_leading_package_segments() {
     // `demo.Foo` — the leading lowercase package segment must be skipped so the
     // type `Foo` resolves.

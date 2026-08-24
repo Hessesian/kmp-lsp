@@ -32,7 +32,10 @@ use crate::types::{CallerContext, FileData};
 use crate::StrExt;
 
 use super::fd::{fd_find_and_parse, import_package_prefix};
-use super::find::{find_local_declaration, find_name_in_uri, find_name_in_uri_after_line};
+use super::find::{
+    find_local_declaration, find_name_in_uri, find_name_in_uri_after_line,
+    find_name_scoped_to_container,
+};
 use super::hierarchy::{walk_hierarchy, MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK};
 use super::infer::{infer_field_type, infer_variable_type};
 
@@ -147,25 +150,17 @@ pub(crate) fn resolve_symbol(
                 if start + 1 == segments.len() {
                     return outer_locs;
                 }
-                // Walk each remaining nested segment within the current file.
-                let mut current_file = outer_loc.uri.to_string();
-                let mut resolved: Option<Vec<Location>> = None;
+                // Walk each remaining nested segment, re-anchoring on its own
+                // location so a same-named sibling elsewhere in the file
+                // can't shadow it (see `find_name_scoped_to_container`).
+                let mut container = outer_loc.clone();
                 for seg in &segments[start + 1..] {
-                    let locs = find_name_in_uri(indexer, seg, &current_file);
-                    match locs.first() {
-                        Some(loc) => {
-                            current_file = loc.uri.to_string();
-                            resolved = Some(locs);
-                        }
-                        None => {
-                            resolved = None;
-                            break;
-                        }
+                    match find_name_scoped_to_container(indexer, seg, &container) {
+                        Some(loc) => container = loc,
+                        None => return vec![],
                     }
                 }
-                if let Some(locs) = resolved {
-                    return locs;
-                }
+                return vec![container];
             }
         }
     }

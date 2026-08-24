@@ -5,6 +5,7 @@ use crate::indexer::Indexer;
 use crate::LinesExt;
 
 use super::ensure_file_data;
+use super::resolve::range_encloses;
 
 /// Search for `name` in a specific file identified by its URI string.
 ///
@@ -93,6 +94,45 @@ pub(crate) fn find_name_in_uri_after_line(
     vec![]
 }
 
+/// Find `name` declared within `container`'s own body via exact
+/// range-containment, falling back to `find_name_in_uri_after_line` only
+/// when `container`'s own symbol entry can't be located.
+pub(crate) fn find_name_scoped_to_container(
+    idx: &Indexer,
+    name: &str,
+    container: &Location,
+) -> Option<Location> {
+    let file_data = ensure_file_data(idx, &container.uri)?;
+
+    if let Some(container_symbol) = file_data
+        .symbols
+        .iter()
+        .find(|symbol| symbol.selection_range == container.range)
+    {
+        return file_data
+            .symbols
+            .iter()
+            .find(|symbol| {
+                symbol.name == name
+                    && symbol.range != container_symbol.range
+                    && range_encloses(container_symbol.range, symbol.range)
+            })
+            .map(|found| Location {
+                uri: container.uri.clone(),
+                range: found.selection_range,
+            });
+    }
+
+    find_name_in_uri_after_line(
+        idx,
+        name,
+        container.uri.as_str(),
+        container.range.start.line,
+    )
+    .into_iter()
+    .next()
+}
+
 /// Like `find_declaration_range_in_lines` but only searches from `start_line`.
 pub(crate) fn find_declaration_range_after_line(
     lines: &[String],
@@ -144,3 +184,7 @@ impl crate::indexer::Indexer {
         find_name_in_uri(self, name, file_uri)
     }
 }
+
+#[cfg(test)]
+#[path = "find_tests.rs"]
+mod tests;
