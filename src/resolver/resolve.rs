@@ -988,6 +988,14 @@ fn resolve_qualified(
                 return vec![loc];
             }
         }
+        // No candidate's own body (or companion/nested scope) declared `name` —
+        // it may live on a superclass instead (e.g. `object Manager :
+        // AbstractManager<T>()` inheriting `requireComponent`), the same
+        // situation the `this`/`super` branches above already handle.
+        let hierarchy_locs = resolve_from_class_hierarchy(indexer, name, from_uri);
+        if !hierarchy_locs.is_empty() {
+            return hierarchy_locs;
+        }
         // Extension functions may live in a different file than the receiver class.
         // Atomic promote+read (zero budget): `resolve_qualified` is on both the
         // goto-definition and the per-call-site diagnostics path.
