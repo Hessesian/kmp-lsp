@@ -138,7 +138,7 @@ fn resolve_symbol_with_io(
         // `super.method` must only look in the parent hierarchy, never via rg/index
         // of the current file (which would return the override).
         let is_keyword_qual = qual == "super" || qual == "this";
-        let locs = resolve_qualified(indexer, name, qual, from_uri);
+        let locs = resolve_qualified(indexer, name, qual, from_uri, io);
         if !locs.is_empty() {
             return locs;
         }
@@ -910,6 +910,7 @@ fn resolve_qualified(
     name: &str,
     qualifier: &str,
     from_uri: &Url,
+    io: ResolveIo,
 ) -> Vec<Location> {
     let segments: Vec<&str> = qualifier.split('.').collect();
     let root = segments[0];
@@ -938,8 +939,15 @@ fn resolve_qualified(
             return ext_locs;
         }
 
-        // Then check member functions (same-file).
-        let qual_locs = resolve_symbol(indexer, root, None, from_uri);
+        // Then check member functions (same-file). Honors the caller's IO
+        // policy — an IndexOnly caller (the resolution-accuracy benchmark's
+        // own index-only path) must not spawn rg/fd resolving the qualifier
+        // root any more than it may for a bare reference.
+        let qual_locs = if matches!(io, ResolveIo::IndexOnly) {
+            resolve_symbol_index_only(indexer, root, None, from_uri)
+        } else {
+            resolve_symbol(indexer, root, None, from_uri)
+        };
         for qual_loc in &qual_locs {
             // `Foo.member` with `Foo` a class name (not a variable) can only reach a
             // companion-object member in Kotlin — never an instance member of `Foo`,
@@ -964,10 +972,14 @@ fn resolve_qualified(
             // before searching for `name`, so a same-named sibling member never
             // shadows the actually-requested nested type's own member.
             let mut anchor = qual_loc.clone();
+            let mut anchor_class_name = root_base;
             let mut nested_segments_resolved = true;
             for &nested_segment in &segments[1..] {
                 match find_name_scoped_to_container(indexer, nested_segment, &anchor) {
-                    Some(location) => anchor = location,
+                    Some(location) => {
+                        anchor = location;
+                        anchor_class_name = nested_segment;
+                    }
                     None => {
                         nested_segments_resolved = false;
                         break;
@@ -981,14 +993,18 @@ fn resolve_qualified(
             if let Some(loc) = find_name_scoped_to_container(indexer, name, &anchor) {
                 return vec![loc];
             }
-        }
-        // No candidate's own body (or companion/nested scope) declared `name` —
-        // it may live on a superclass instead (e.g. `object Manager :
-        // AbstractManager<T>()` inheriting `requireComponent`), the same
-        // situation the `this`/`super` branches above already handle.
-        let hierarchy_locs = resolve_from_class_hierarchy(indexer, name, from_uri);
-        if !hierarchy_locs.is_empty() {
-            return hierarchy_locs;
+
+            // `anchor`'s own body doesn't declare `name` — it may live on a
+            // superclass instead (e.g. `object Manager : AbstractManager<T>()`
+            // inheriting `requireComponent`), the same situation the `this`/
+            // `super` branches above already handle. Scoped to `anchor`'s own
+            // class and declaring file, not `from_uri` — the qualifier and the
+            // call site are commonly different files.
+            let hierarchy_locs =
+                resolve_from_class_hierarchy_scoped(indexer, name, anchor_class_name, &anchor.uri);
+            if !hierarchy_locs.is_empty() {
+                return hierarchy_locs;
+            }
         }
         // Extension functions may live in a different file than the receiver class.
         // Atomic promote+read (zero budget): `resolve_qualified` is on both the
@@ -1565,13 +1581,28 @@ fn resolve_star_imports(indexer: &Indexer, name: &str, uri: &Url) -> Vec<Locatio
 /// 3. Search the resolved file's symbol table for `name`.
 /// 4. Recurse into that file's own supertypes (depth-limited, cycle-safe).
 fn resolve_from_class_hierarchy(indexer: &Indexer, name: &str, from_uri: &Url) -> Vec<Location> {
+    resolve_from_class_hierarchy_scoped(indexer, name, "", from_uri)
+}
+
+/// Like [`resolve_from_class_hierarchy`] but scoped to one specific class's
+/// own declared supertypes (`start_class`) instead of every class declared in
+/// `from_uri`'s file. Needed when the class and the caller can be different
+/// files — `Foo.member()` where `Foo` is a type/object name, not `this`/`super`
+/// (which are always resolved from inside the class they refer to, so the
+/// unscoped whole-file walk was never wrong for those callers).
+fn resolve_from_class_hierarchy_scoped(
+    indexer: &Indexer,
+    name: &str,
+    start_class: &str,
+    from_uri: &Url,
+) -> Vec<Location> {
     // Deep enough for real Android/Kotlin hierarchies: app base classes often stack
     // several levels (`…Fragment → BaseFragment → … → androidx Fragment`) before the
     // library super that declares an inherited member like `requireActivity`. The
     // visited-set bounds total work regardless of depth.
     let results = walk_hierarchy(
         indexer,
-        "",
+        start_class,
         from_uri.as_str(),
         CallerContext::default(),
         12,
@@ -1769,6 +1800,6 @@ impl crate::indexer::Indexer {
         qualifier: &str,
         from_uri: &Url,
     ) -> Vec<Location> {
-        resolve_qualified(self, name, qualifier, from_uri)
+        resolve_qualified(self, name, qualifier, from_uri, ResolveIo::Full)
     }
 }

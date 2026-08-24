@@ -299,6 +299,47 @@ fn resolve_symbol_index_only_never_spawns_rg_or_fd() {
     );
 }
 
+/// Same guarantee as `resolve_symbol_index_only_never_spawns_rg_or_fd`, but
+/// for a qualified lookup (`resolve_qualified`'s uppercase branch) — Copilot
+/// review on PR #274: `resolve_qualified` resolved its qualifier root via the
+/// always-`Full` `resolve_symbol`, regardless of the caller's own IO policy.
+#[test]
+fn resolve_symbol_index_only_never_spawns_rg_or_fd_for_a_qualified_root() {
+    if !rg_available() {
+        return;
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+
+    let caller_src = "package com.example.caller\nfun use() { OnlyFindableByRg().member() }\n";
+    let caller_path = root.join("Caller.kt");
+    std::fs::write(&caller_path, caller_src).unwrap();
+    let caller_uri = Url::from_file_path(&caller_path).unwrap();
+
+    // Deliberately never indexed via `index_content` — the qualifier root
+    // (`OnlyFindableByRg`) is only reachable via rg's project-wide filesystem
+    // search (resolve_chain's step 5).
+    let target_src = "package com.other\nclass OnlyFindableByRg { fun member() = Unit }\n";
+    std::fs::write(root.join("Target.kt"), target_src).unwrap();
+
+    let idx = Indexer::new();
+    idx.workspace_root.set(root.to_path_buf());
+    idx.index_content(&caller_uri, caller_src);
+
+    let full = resolve_symbol(&idx, "member", Some("OnlyFindableByRg"), &caller_uri);
+    assert!(
+        !full.is_empty(),
+        "sanity check: the Full policy's rg tail fallback must find the qualifier root"
+    );
+
+    let index_only =
+        resolve_symbol_index_only(&idx, "member", Some("OnlyFindableByRg"), &caller_uri);
+    assert!(
+        index_only.is_empty(),
+        "IndexOnly must never spawn rg resolving the qualifier root either, got: {index_only:?}"
+    );
+}
+
 // ── resolve_implicit_receiver_callee ───────────────────────────────────────
 
 /// The reported bug: `collect(block)` inside `fun <T> Flow<T>.collect(scope,
@@ -785,6 +826,43 @@ fn resolve_qualified_uppercase_root_hierarchy_fallback_reaches_jar_superclass() 
         "expected the JAR-derived AbstractManager.requireComponent, got {:?}",
         locs[0]
     );
+}
+
+#[test]
+fn resolve_qualified_uppercase_root_hierarchy_fallback_works_from_a_different_call_site_file() {
+    // Same fixture as `resolve_qualified_uppercase_root_falls_back_to_class_hierarchy`,
+    // but resolved `from` a third file that neither declares `Manager` nor
+    // `AbstractManager` — the realistic shape (`Manager.requireComponent()`
+    // called from many files, declared in exactly one). The hierarchy fallback
+    // must walk from `Manager`'s own declaring file, not the call site.
+    let abstract_manager_uri = uri("/AbstractManager.kt");
+    let manager_uri = uri("/Manager.kt");
+    let caller_uri = uri("/Caller.kt");
+    let idx = Indexer::new();
+    idx.index_content(
+        &abstract_manager_uri,
+        concat!(
+            "package com.example\n",
+            "abstract class AbstractManager<T> {\n",
+            "  fun requireComponent(): T = TODO()\n",
+            "}\n",
+        ),
+    );
+    idx.index_content(
+        &manager_uri,
+        "package com.example\nobject Manager : AbstractManager<String>()\n",
+    );
+    idx.index_content(
+        &caller_uri,
+        "package com.example\nfun use() { Manager.requireComponent() }\n",
+    );
+
+    let locs = resolve_symbol(&idx, "requireComponent", Some("Manager"), &caller_uri);
+    assert!(
+        !locs.is_empty(),
+        "requireComponent not found via Manager's superclass hierarchy from a different call-site file"
+    );
+    assert_eq!(locs[0].uri, abstract_manager_uri);
 }
 
 #[test]
