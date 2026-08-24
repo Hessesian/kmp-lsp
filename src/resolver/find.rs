@@ -95,8 +95,10 @@ pub(crate) fn find_name_in_uri_after_line(
 }
 
 /// Find `name` declared within `container`'s own body via exact
-/// range-containment, falling back to `find_name_in_uri_after_line` only
-/// when `container`'s own symbol entry can't be located.
+/// range-containment, falling back to `find_name_in_uri_after_line` when
+/// `container`'s own symbol entry can't be located, or when it's located but
+/// its recorded range doesn't enclose any matching member (e.g. degenerate
+/// JAR stub ranges — see the fallback call site below).
 pub(crate) fn find_name_scoped_to_container(
     idx: &Indexer,
     name: &str,
