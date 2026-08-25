@@ -402,7 +402,11 @@ fn push_def_symbols(
             } else {
                 (String::new(), (0, 0))
             };
-            let trailing_lambda = matches!(kind, SymbolKind::FUNCTION)
+            // `METHOD` covers a member extension (see the comment above on
+            // `extension_receiver`'s own kind match) — without it here, a
+            // `ColumnScope`-style member extension's trailing-lambda call
+            // form would never be offered in completion.
+            let trailing_lambda = matches!(kind, SymbolKind::FUNCTION | SymbolKind::METHOD)
                 && last_value_param_is_function_type(root, bytes, &range);
             let deprecated = deprecated_at_line(lines, sel.start.line as usize);
             symbols.push(SymbolEntry {
