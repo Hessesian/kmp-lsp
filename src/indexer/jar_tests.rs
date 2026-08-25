@@ -2780,3 +2780,33 @@ fn lookup_definitions_promotes_a_tier1_only_cache_backed_name() {
         );
     });
 }
+
+/// Regression guard: `Url::from_file_path` requires a path that is
+/// "absolute" per the CURRENT OS's own convention (e.g. a Unix-style
+/// `/home/...` string is not absolute on Windows — it has no drive letter).
+/// Many existing fixtures in this file use such OS-agnostic-looking strings
+/// purely as opaque map keys (the JAR never actually needs to exist on
+/// disk), which broke on Windows CI once `populate_from_symbols` started
+/// requiring `Url::from_file_path` to succeed for the (real) space-escaping
+/// fix. `populate_from_symbols` must fall back to the previous naive URI
+/// construction rather than dropping the JAR's symbols entirely — real
+/// production paths always come from this OS's own filesystem and never
+/// hit the fallback branch.
+#[test]
+fn populate_from_symbols_falls_back_for_a_non_absolute_path() {
+    let indexer = idx();
+    // Not absolute on ANY OS — deterministically exercises the fallback
+    // branch everywhere, unlike a Unix-style string (only non-absolute on
+    // Windows) or Windows-style string (only non-absolute on Unix).
+    let jar_path = "relative/path/to/some.jar";
+    let symbols = vec![make_sidecar_symbol("Probe", "class", "class Probe", "")];
+
+    let count = populate_from_symbols(&indexer, jar_path.as_ref(), &symbols);
+
+    assert_eq!(
+        count, 1,
+        "a non-absolute path must fall back to indexing the JAR's symbols, not drop them"
+    );
+    let probe_locs = indexer.lookup_definitions("Probe");
+    assert_eq!(probe_locs.len(), 1, "Probe should still be found");
+}
