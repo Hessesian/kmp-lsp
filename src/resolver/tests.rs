@@ -3958,6 +3958,50 @@ fn jar_extension_appears_in_dot_completion() {
     );
 }
 
+#[test]
+fn member_extension_is_excluded_from_generic_dot_completion() {
+    // Regression guard: `container: Some(_)` (a Compose-style member extension
+    // such as `interface ColumnScope { fun Modifier.weight(...) }`) must not
+    // enter the generic receiver-type dot-completion path. Kotlin has no
+    // import syntax for an interface member, so offering it here would pair
+    // the completion with an auto-import edit `weight`'s real declaration can
+    // never satisfy.
+    let idx = Indexer::new();
+    idx.extension_by_receiver
+        .entry("Modifier".to_owned())
+        .or_default()
+        .push(crate::types::ExtensionEntry {
+            file_uri: "file:///sdk/ColumnScope.kt".to_owned(),
+            name: "weight".to_owned(),
+            kind: tower_lsp::lsp_types::SymbolKind::METHOD,
+            detail: "fun Modifier.weight(weight: Float): Modifier".to_owned(),
+            visibility: crate::types::Visibility::Public,
+            package: Some("androidx.compose.foundation.layout".to_owned()),
+            trailing_lambda: false,
+            deprecated: false,
+            container: Some("ColumnScope".to_owned()),
+        });
+
+    let caller_uri = Url::parse("file:///app/Screen.kt").unwrap();
+    idx.index_content(
+        &caller_uri,
+        concat!(
+            "package app\n",
+            "class Modifier\n",
+            "fun caller(m: Modifier) {\n",
+            "    m.weight\n",
+            "}\n",
+        ),
+    );
+
+    let items = complete_dot(&idx, "Modifier", &caller_uri, false, None);
+    let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
+    assert!(
+        !labels.contains(&"weight"),
+        "a member extension must not be offered through generic dot completion: {labels:?}"
+    );
+}
+
 /// Regression test for a real lazy-JAR-loading gap: `extension_by_receiver`
 /// is populated exclusively by Tier-2 materialization (`build_jar_file_data`)
 /// — Tier 1's `populate_tier1_from_manifest` never wrote to it, and neither

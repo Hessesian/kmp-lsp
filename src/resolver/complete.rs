@@ -395,6 +395,15 @@ impl<'a> ExtensionCompletionBuilder<'a> {
     }
 
     fn add_entry(&mut self, entry: &crate::types::ExtensionEntry, is_library: bool) {
+        // A member extension (`container: Some(_)`) has no import syntax in
+        // Kotlin at all, and this builder has no evidence its declaring
+        // container is actually an active receiver at the completion site —
+        // offering it here would be a completion outside its real scope,
+        // paired with an auto-import `build_item_from_entry` would compute
+        // for a package.name Kotlin cannot use for an interface member.
+        if entry.container.is_some() {
+            return;
+        }
         let is_same_file = entry.file_uri == self.context.from_uri;
         // Inaccessible from this file: private/protected from another file always;
         // `internal` when the symbol comes from a library (an external module's
@@ -2026,6 +2035,14 @@ impl<'a> BareCompletionWalk<'a> {
             };
             for entry in entries.iter() {
                 if crate::Language::from_path(&entry.file_uri) != crate::Language::Kotlin {
+                    continue;
+                }
+                // Same exclusion as `ExtensionCompletionBuilder::add_entry`:
+                // a member extension's declaring container being one of this
+                // call's ancestors doesn't prove the container is the actual
+                // implicit receiver here, and `build_item_from_entry` would
+                // still compute an auto-import Kotlin has no syntax for.
+                if entry.container.is_some() {
                     continue;
                 }
                 let is_same_file = entry.file_uri == ext_context.from_uri;
