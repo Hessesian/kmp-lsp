@@ -443,6 +443,37 @@ fn source_paths_handles_extension_level_directory_names() {
     assert!(paths[0].ends_with("android-36.1"));
 }
 
+#[test]
+fn jar_path_handles_extension_platform_directory_names() {
+    // Real Android SDK installs can also have Extension platform directories
+    // named `android-<major>-ext<N>` (e.g. `android-36-ext14`) alongside a
+    // plain `android-<major>` base directory — a different naming scheme
+    // from the decimal-minor one above. Both must be recognized, and the
+    // extension directory (additive to its base level) must outrank the
+    // plain base of the same major version.
+    let dir = TempDir::new().unwrap();
+    let fake_sdk = dir.path().join("sdk");
+    for api in ["android-36", "android-36-ext14"] {
+        let platform_dir = fake_sdk.join("platforms").join(api);
+        fs::create_dir_all(&platform_dir).unwrap();
+        fs::write(platform_dir.join("android.jar"), b"fake jar").unwrap();
+    }
+    fs::write(
+        dir.path().join("local.properties"),
+        format!("sdk.dir={}\n", fake_sdk.display()),
+    )
+    .unwrap();
+
+    let paths = detect_android_sdk_jar_path(dir.path());
+    assert_eq!(paths.len(), 1);
+    assert!(
+        paths[0].ends_with("android-36-ext14/android.jar")
+            || paths[0].ends_with("android-36-ext14\\android.jar"),
+        "expected the extension-level directory to outrank the plain base, got: {:?}",
+        paths[0]
+    );
+}
+
 // ─── jarPaths ─────────────────────────────────────────────────────────────────
 
 #[test]
