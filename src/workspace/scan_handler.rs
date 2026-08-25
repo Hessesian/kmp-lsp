@@ -633,7 +633,7 @@ fn abandon_stale_jar_scan(
 /// (rather than inlined in `spawn_jar_indexing`) so the gating behavior is
 /// directly unit-testable without the sidecar/tokio machinery that makes
 /// `spawn_jar_indexing` itself untestable in this crate's unit-test harness.
-fn compiled_jar_paths_with_android_sdk(
+pub(crate) fn compiled_jar_paths_with_android_sdk(
     workspace_root: Option<PathBuf>,
     workspace_uses_gradle_cache: bool,
     mut gradle_paths: Vec<PathBuf>,
