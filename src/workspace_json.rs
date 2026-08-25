@@ -512,17 +512,28 @@ fn highest_api_level_dir(root: &Path) -> Option<PathBuf> {
         .map(|(_, path)| path)
 }
 
-/// Parses an `android-XX` or `android-XX.Y` SDK directory name into a
-/// comparable `(major, minor)` API level. Modern Android SDK installs use a
-/// decimal extension-level suffix for some platforms (e.g. `android-36.1`,
-/// `android-37.0`, confirmed present on a real developer machine alongside
-/// plain `android-36`) — this must sort higher than a same-major plain
-/// directory, and plain directories are treated as minor level `0`.
-fn parse_android_api_level(dir_name: &str) -> Option<(u32, u32)> {
+/// Parses an `android-XX`, `android-XX.Y`, or `android-XX-extZZ` SDK
+/// directory name into a comparable `(major, minor, ext)` API level. Modern
+/// Android SDK installs use a decimal extension-level suffix for some
+/// platforms (e.g. `android-36.1`, `android-37.0`, confirmed present on a
+/// real developer machine alongside plain `android-36`) — this must sort
+/// higher than a same-major plain directory, and plain directories are
+/// treated as minor level `0`. SDK Extension APIs (a separate, additive
+/// versioning axis — see Android's own SDK Extensions documentation) install
+/// under a `-extZZ`-suffixed directory name instead (e.g. `android-36-ext14`
+/// alongside plain `android-36`); an extension level must outrank the plain
+/// base of the same major version, since its `android.jar` is additive to
+/// the base platform, not a replacement for a different major/minor axis —
+/// plain directories are treated as extension level `0`.
+fn parse_android_api_level(dir_name: &str) -> Option<(u32, u32, u32)> {
     let level = dir_name.strip_prefix("android-")?;
+    let (level, ext) = match level.split_once("-ext") {
+        Some((base, ext_level)) => (base, ext_level.parse().ok()?),
+        None => (level, 0),
+    };
     match level.split_once('.') {
-        Some((major, minor)) => Some((major.parse().ok()?, minor.parse().ok()?)),
-        None => Some((level.parse().ok()?, 0)),
+        Some((major, minor)) => Some((major.parse().ok()?, minor.parse().ok()?, ext)),
+        None => Some((level.parse().ok()?, 0, ext)),
     }
 }
 
