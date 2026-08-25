@@ -251,30 +251,33 @@ fn pure_field_chain_at(
 }
 
 /// Whether `entry` (a workspace-global extension) is actually visible from the
-/// file at `uri`: declared in the *same file*, or in scope per
-/// `extension_is_in_scope` (same package — including two default-package
-/// files — or covered by an import).
+/// file at `uri`: declared in the *same file*, or — for an ORDINARY top-level
+/// extension only — in scope per `extension_is_in_scope` (same package,
+/// including two default-package files, or covered by an import).
 fn extension_in_scope_here(
     entry: &crate::types::ExtensionEntry,
     uri: &Url,
     caller_file_data: Option<&crate::types::FileData>,
 ) -> bool {
-    // Deliberately does not pass `entry.container` through: this diagnostic
-    // has no evidence a member extension's dispatch receiver (e.g.
-    // `ColumnScope`) is actually active at the call site, so treating every
-    // matching member extension as in scope — as `extension_is_in_scope`
-    // does for goto-def-shaped callers — would let an unrelated `m.weight()`
-    // wrongly emit or suppress a `?.` warning. Falling back to the ordinary
-    // package/import rule (which a Kotlin member extension can only ever
-    // satisfy via same-package, never an import) restores this diagnostic's
-    // pre-existing, more conservative behavior.
+    // A member extension (`entry.container.is_some()`) is excluded from the
+    // package/import check entirely, not just passed `None` for its own
+    // `container` field: this diagnostic has no evidence a member
+    // extension's dispatch receiver (e.g. `ColumnScope`) is actually active
+    // at the call site, so letting the ordinary package-match rule below
+    // independently succeed whenever the caller happens to share the member
+    // extension's package — as it would for a plain `Some(&caller_file_data)`
+    // in the same package — would let an unrelated `m.weight()` wrongly emit
+    // or suppress a `?.` warning just as surely as the member-extension
+    // short-circuit itself would. Only the *declaring file* remains a valid
+    // positive match for a member extension here.
     entry.file_uri == uri.as_str()
-        || crate::resolver::infer::extension_is_in_scope(
-            entry.package.as_ref(),
-            &entry.name,
-            None,
-            caller_file_data,
-        )
+        || (entry.container.is_none()
+            && crate::resolver::infer::extension_is_in_scope(
+                entry.package.as_ref(),
+                &entry.name,
+                None,
+                caller_file_data,
+            ))
 }
 
 /// Whether the symbol declared at `location` is nested inside a container
