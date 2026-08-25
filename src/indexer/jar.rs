@@ -39,6 +39,79 @@ fn gradle_cache_root(gradle_home: Option<&Path>) -> PathBuf {
         .join("files-2.1")
 }
 
+/// Maven `groupId`s that host build-tooling, compiler, or IDE-platform
+/// artifacts exclusively. Gradle's shared module cache holds every artifact
+/// resolved anywhere in the build graph (buildscript classpath, plugin
+/// classpath, lint/KSP tooling classpath), not just application runtime
+/// dependencies, so these end up walked alongside real ones even though
+/// application Kotlin/Java source never legitimately imports from them.
+/// Verified against a real multi-module Android corpus: zero imports from
+/// any package these groups ship.
+const KNOWN_BUILD_TOOLING_GROUP_IDS: &[&str] = &[
+    // Old `org.jetbrains.annotations`-shaded jar pulled in transitively by
+    // IntelliJ-platform tooling; the real `org.jetbrains:annotations`
+    // dependency covers any legitimate `@NotNull`/`@Nullable` usage.
+    "com.intellij",
+    // Android Gradle Plugin's embedded IntelliJ platform and Kotlin compiler,
+    // used internally by AGP's lint/desugaring passes. `intellij-core` here
+    // is a confirmed decoy source for both `Activity` and `CoroutineScope`.
+    "com.android.tools.external.com-intellij",
+    "com.android.tools.external.org-jetbrains",
+    // AGP/Lint's own layout-rendering, static-analysis, device-bridge,
+    // test-platform, telemetry, and Jetifier implementation packages.
+    "com.android.tools.layoutlib",
+    "com.android.tools.lint",
+    "com.android.tools.ddms",
+    "com.android.tools.utp",
+    "com.android.tools.analytics-library",
+    "com.android.tools.build.jetifier",
+    // Deprecated pre-AndroidX Data Binding compiler internals; app runtime
+    // uses `androidx.databinding` instead.
+    "com.android.databinding",
+    // IntelliJ platform's own collections library (`gnu.trove`).
+    "org.jetbrains.intellij.deps",
+];
+
+/// Specific `groupId`/`artifactId` pairs to exclude from groups that also
+/// host genuine runtime or build-logic dependencies, so the whole group
+/// cannot be dropped. `kotlin-compiler-embeddable` and
+/// `symbol-processing-aa-embeddable` are confirmed decoy sources for
+/// `Activity` (both ship a shaded `com.intellij.diagnostic.Activity`); the
+/// rest are confirmed-unused siblings from the same compiler/AGP-internals
+/// families.
+const KNOWN_BUILD_TOOLING_ARTIFACTS: &[(&str, &str)] = &[
+    ("org.jetbrains.kotlin", "kotlin-compiler-embeddable"),
+    ("org.jetbrains.kotlin", "kotlin-daemon-embeddable"),
+    (
+        "org.jetbrains.kotlin",
+        "kotlin-scripting-compiler-embeddable",
+    ),
+    (
+        "org.jetbrains.kotlin",
+        "kotlin-scripting-compiler-impl-embeddable",
+    ),
+    ("com.google.devtools.ksp", "symbol-processing-aa-embeddable"),
+    ("com.android.tools.build", "bundletool"),
+    ("com.android.tools.build", "aapt2-proto"),
+    ("com.android.tools.build", "aaptcompiler"),
+    ("com.android.tools.build", "apksig"),
+    ("com.android.tools.build", "apkzlib"),
+    ("com.android.tools.build", "builder"),
+    ("com.android.tools.build", "builder-model"),
+    ("com.android.tools.build", "builder-test-api"),
+    ("com.android.tools.build", "manifest-merger"),
+];
+
+/// True when a Gradle-cache JAR belongs to a known build-tooling/compiler/
+/// IDE-platform artifact rather than an application dependency — see
+/// [`KNOWN_BUILD_TOOLING_GROUP_IDS`] and [`KNOWN_BUILD_TOOLING_ARTIFACTS`].
+fn is_known_build_tooling_jar(meta: &crate::cli::extract_sources::GradleMeta) -> bool {
+    KNOWN_BUILD_TOOLING_GROUP_IDS.contains(&meta.group.as_str())
+        || KNOWN_BUILD_TOOLING_ARTIFACTS
+            .iter()
+            .any(|(group, artifact)| *group == meta.group && *artifact == meta.artifact)
+}
+
 /// Walk the Gradle module cache and collect all JAR/AAR paths, separated by
 /// kind.  Deduplication: for each `(group, artifact)` pair keep only the
 /// highest-version directory.
@@ -71,6 +144,9 @@ pub(crate) fn scan_gradle_jars_split(
         let Some(meta) = parse_jar_meta(&jar) else {
             continue;
         };
+        if is_known_build_tooling_jar(&meta) {
+            continue;
+        }
         let vk = version_key(&meta.version);
         let key = (meta.group, meta.artifact);
         let is_sources = jar
