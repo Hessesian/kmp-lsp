@@ -371,10 +371,16 @@ pub(crate) fn write_versioned_cache_for_test(
     let path = super::cache::xdg_cache_base()
         .join("kmp-lsp")
         .join(format!("jar-symbols-v{version}.bin"));
-    std::fs::create_dir_all(path.parent().expect("cache path has a parent")).unwrap();
+    let parent = path
+        .parent()
+        .unwrap_or_else(|| panic!("cache path {} has a parent", path.display()));
+    std::fs::create_dir_all(parent)
+        .unwrap_or_else(|e| panic!("create stale cache dir {}: {e}", parent.display()));
     let cache = JarCacheRef { version, entries };
-    let bytes = bincode::serialize(&cache).expect("serialize stale cache for test");
-    std::fs::write(&path, bytes).expect("write stale cache for test");
+    let bytes = bincode::serialize(&cache)
+        .unwrap_or_else(|e| panic!("serialize stale cache for test: {e}"));
+    std::fs::write(&path, bytes)
+        .unwrap_or_else(|e| panic!("write stale cache for test to {}: {e}", path.display()));
 }
 
 /// Check whether the cache entry for `jar` is still valid.

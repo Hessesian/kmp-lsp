@@ -82,7 +82,7 @@ fn diagnose_only(root: &Path, rel_path: &str, only: &str) -> std::process::Outpu
 /// environment, exactly like `GRADLE_USER_HOME`/`XDG_CACHE_HOME` are
 /// overridden — otherwise a real host SDK leaks into every `diagnose` test.
 #[test]
-fn build_diagnose_command_isolates_the_host_android_sdk() {
+fn diagnose_cli_process_isolates_the_host_android_sdk() {
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path();
     let file = root.join("src/Foo.kt");
