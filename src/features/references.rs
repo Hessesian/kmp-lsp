@@ -456,43 +456,65 @@ fn declaration_files_for(
     declared_pkg: Option<&str>,
     source_uri: &Url,
 ) -> Vec<String> {
-    // When `declared_pkg` is available (i.e., we resolved the declaring package
-    // from imports or declaration site), use it to filter: only keep definitions
-    // that live in that specific package.  This prevents same-named types in
-    // different packages (e.g. `com.a.IntroContract.Event` vs
-    // `com.b.IntroContract.Event`) from merging their declaration files into the
-    // candidate set and producing false positives.
-    //
-    // Crucially, we use `declared_pkg` (the *declaration* package), NOT the
-    // source file's package.  Using the source package would incorrectly drop the
-    // declaration file when `findReferences` is invoked from a call site in a
-    // *different* package — the common cross-package usage scenario.
-    //
-    // When `declared_pkg` is None (unscoped lowercase off-decl-site search), fall
-    // back to the source package so that same-named top-level symbols from
-    // unrelated packages are not merged into candidates.
-    // JAR/library-defined symbol: no workspace file lives in its package, so the
-    // same-package definition-file scan below would find nothing. Instead, discover
-    // the workspace files that *import* the JAR symbol and use those as candidates.
-    // This drives the import-scoped reference search (reusing the existing
-    // qualifier-precision machinery) and keeps unrelated same-named workspace
-    // symbols out of the result set.
     if let Some(jar_pkg) = declared_pkg {
-        let no_workspace_decl = index
-            .definition_locations(name)
-            .iter()
-            .all(|loc| index.is_library_uri(&loc.uri));
-        if no_workspace_decl && index.jar_declaration_scope(name).is_some() {
-            let fqn = format!("{jar_pkg}.{name}");
-            return index
-                .workspace_importers_of(&fqn)
-                .into_iter()
-                .filter_map(|url| url.to_file_path().ok())
-                .filter_map(|path| path.to_str().map(|s| s.to_owned()))
-                .collect();
+        if let Some(files) = jar_import_scoped_declaration_files(index, name, jar_pkg) {
+            return files;
         }
     }
+    same_package_declaration_files(index, name, parent_class, declared_pkg, source_uri)
+}
 
+/// A JAR/library-defined symbol has no workspace file in its own package, so
+/// [`same_package_declaration_files`] would find nothing. Discovers the
+/// workspace files that *import* the JAR symbol instead, driving the
+/// import-scoped reference search (reusing the existing qualifier-precision
+/// machinery) and keeping unrelated same-named workspace symbols out of the
+/// result set.
+///
+/// Returns `None` when `name` isn't actually JAR-only (a workspace
+/// declaration exists, or `name` isn't a recognized JAR declaration at all),
+/// telling the caller to fall through to the normal same-package scan.
+fn jar_import_scoped_declaration_files(
+    index: &(impl SymbolIndex + ScopeQuery),
+    name: &str,
+    jar_pkg: &str,
+) -> Option<Vec<String>> {
+    let no_workspace_decl = index
+        .definition_locations(name)
+        .iter()
+        .all(|loc| index.is_library_uri(&loc.uri));
+    if !no_workspace_decl || index.jar_declaration_scope(name).is_none() {
+        return None;
+    }
+    let fqn = format!("{jar_pkg}.{name}");
+    Some(
+        index
+            .workspace_importers_of(&fqn)
+            .into_iter()
+            .filter_map(|url| url.to_file_path().ok())
+            .filter_map(|path| path.to_str().map(|s| s.to_owned()))
+            .collect(),
+    )
+}
+
+/// Filters `definition_locations` by parent class and by package, using
+/// `declared_pkg` (the *declaration* package) rather than the source file's
+/// package — the common cross-package usage scenario would otherwise
+/// incorrectly drop the declaration file when `findReferences` is invoked
+/// from a call site in a different package. Same-named types in different
+/// packages (e.g. `com.a.IntroContract.Event` vs `com.b.IntroContract.Event`)
+/// stay separate rather than merging into one candidate set.
+///
+/// Falls back to the source package when `declared_pkg` is `None` (unscoped
+/// lowercase off-declaration-site search), so unrelated same-named top-level
+/// symbols from other packages still don't merge into the candidates.
+fn same_package_declaration_files(
+    index: &(impl SymbolIndex + ScopeQuery),
+    name: &str,
+    parent_class: Option<&str>,
+    declared_pkg: Option<&str>,
+    source_uri: &Url,
+) -> Vec<String> {
     let source_pkg = index.package_of(source_uri);
     let pkg_filter = declared_pkg.or(source_pkg.as_deref());
     index

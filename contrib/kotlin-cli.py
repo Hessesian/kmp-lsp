@@ -322,6 +322,61 @@ def _infer_base_package(pkg: str) -> str:
     return ".".join(parts)
 
 
+def _sentinel_package_and_feature_names(
+    content: str, base_package: str, feature_pascal: str, feature_camel: str, feature_snake: str
+) -> str:
+    """Replace the base package and feature-name variants with bare __WORD__ sentinels.
+
+    Package first (most specific — must run before the individual word-part
+    substitutions below could partially match inside it); Pascal case before
+    camel/snake to avoid partial matches between variants.
+    """
+    result = content
+    if base_package:
+        result = result.replace(base_package, "__PACKAGE_NAME__")
+    result = result.replace(feature_pascal, "__FEATURE_NAME__")
+    result = result.replace(feature_camel, "__featureName__")
+    result = result.replace(feature_snake, "__feature_name__")
+    return result
+
+
+def _escape_kotlin_and_velocity_dollars(content: str) -> str:
+    """Escape `${...}` and bare `$ident` so Velocity doesn't interpret them as its own syntax.
+
+    Must run after sentinel substitution. A sentinel can still end up as the
+    identifier part of a `$ident` match — e.g. a source `$FeatureName`
+    becomes `$__FEATURE_NAME__` once "FeatureName" is replaced — so the
+    `startswith("__")` check below skips escaping those: they're placeholders
+    we just introduced, not real Velocity references.
+    """
+    result = re.sub(r'\$\{(\w+)\}', r'\\${\1}', content)
+    result = re.sub(
+        r'\$([A-Za-z_]\w*)',
+        lambda m: m.group(0) if m.group(1).startswith("__") else f'\\${m.group(1)}',
+        result,
+    )
+    return result
+
+
+def _restore_sentinels_as_template_vars(content: str) -> str:
+    """Turn __WORD__ sentinels back into ${VAR} template placeholders."""
+    result = content.replace("__PACKAGE_NAME__", "${PACKAGE_NAME}")
+    result = result.replace("__FEATURE_NAME__", "${FEATURE_NAME}")
+    result = result.replace("__featureName__", "${featureName}")
+    result = result.replace("__feature_name__", "${feature_name}")
+    return result
+
+
+def _unescape_scaffold_vars(content: str) -> str:
+    """Undo dollar-escaping that _escape_kotlin_and_velocity_dollars applied to our
+    own restored template vars before it ran (a real ${FEATURE_NAME} etc. in the
+    source, as opposed to one we just introduced, would otherwise stay escaped)."""
+    result = content
+    for var in _SCAFFOLD_VARS:
+        result = result.replace(f"\\${{{var}}}", f"${{{var}}}")
+    return result
+
+
 def _parameterize(content: str, feature_pascal: str, base_package: str) -> str:
     """Replace feature-identifier variants with ${VAR} placeholders.
 
@@ -331,39 +386,12 @@ def _parameterize(content: str, feature_pascal: str, base_package: str) -> str:
     feature_camel = feature_pascal[0].lower() + feature_pascal[1:]
     feature_snake = _pascal_to_snake(feature_pascal)
 
-    result = content
-
-    # 1. Package path (most specific — replace before individual word parts)
-    if base_package:
-        result = result.replace(base_package, "__PACKAGE_NAME__")
-
-    # 2. Class-name variants → sentinels (Pascal first to avoid partial matches)
-    result = result.replace(feature_pascal, "__FEATURE_NAME__")
-    result = result.replace(feature_camel,  "__featureName__")
-    result = result.replace(feature_snake,  "__feature_name__")
-
-    # 3. Escape remaining ${...} (Kotlin string templates that Velocity would interpret)
-    #    At this point sentinels are bare __WORD__ — not inside ${}, so no sentinel
-    #    can match here; every match is a Kotlin ${ } that needs escaping.
-    result = re.sub(r'\$\{(\w+)\}', r'\\${\1}', result)
-
-    # 4. Escape bare $ident (Velocity reference syntax) — skip our sentinels
-    result = re.sub(
-        r'\$([A-Za-z_]\w*)',
-        lambda m: m.group(0) if m.group(1).startswith("__") else f'\\${m.group(1)}',
-        result,
+    result = _sentinel_package_and_feature_names(
+        content, base_package, feature_pascal, feature_camel, feature_snake
     )
-
-    # 5. Restore sentinels → ${VAR} placeholders
-    result = result.replace("__PACKAGE_NAME__", "${PACKAGE_NAME}")
-    result = result.replace("__FEATURE_NAME__", "${FEATURE_NAME}")
-    result = result.replace("__featureName__",  "${featureName}")
-    result = result.replace("__feature_name__", "${feature_name}")
-
-    # 6. Un-escape any of our vars that step 3 may have caught before sentinels were set
-    for var in _SCAFFOLD_VARS:
-        result = result.replace(f"\\${{{var}}}", f"${{{var}}}")
-
+    result = _escape_kotlin_and_velocity_dollars(result)
+    result = _restore_sentinels_as_template_vars(result)
+    result = _unescape_scaffold_vars(result)
     return result
 
 
@@ -564,35 +592,17 @@ def cmd_scaffold_feature(
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 
-def cmd_generate_template(
-    client: LspClient,
-    source_class: str,
-    family_name: str,
-    workspace: str,
-    dry_run: bool,
-    as_json: bool,
-) -> None:
-    """Generate IDEA file templates from an existing class and its feature siblings.
+def _discover_feature_files(
+    client: LspClient, feature_id: str, source_file: pathlib.Path
+) -> list[tuple[str, str]]:
+    """Every workspace file whose top-level class name starts with `feature_id`,
+    paired with its package (read from the file's own `package` declaration).
 
-    Finds all workspace symbols that share the feature identifier prefix (e.g.
-    all GoldConversion* classes), parameterizes their source files by replacing
-    every case-variant of the feature identifier with ${FEATURE_NAME} /
-    ${featureName} / ${feature_name} / ${PACKAGE_NAME}, and writes the results
-    as a reusable IDEA file template family.
-
-    The generated templates are immediately usable with scaffold-feature:
-        scaffold-feature NewFeature --template 'My Family' --package com.example
+    Uses workspace/symbol rather than a directory walk since it's reliable
+    across subdirectories (contract/, screen/, viewmodel/, etc.). Falls back to
+    just the source file when nothing else matches. Returns them sorted with
+    the source class's own file first, then alphabetically by basename.
     """
-    # 1. Resolve the source class to a file
-    sym = _resolve_unique_symbol(client, source_class, kind_filter=_KOTLIN_CLASS_KINDS)
-    source_file = pathlib.Path(sym["location"]["uri"].removeprefix("file://"))
-
-    # 2. Derive feature identifier (strip known role suffix: GoldConversionInteractor → GoldConversion)
-    feature_id = _extract_feature_id(source_class)
-    print(f"Feature identifier: {feature_id!r}", file=sys.stderr)
-
-    # 3. Discover all files that belong to this feature via workspaceSymbol
-    #    (reliable across subdirectories — contract/, screen/, viewmodel/, etc.)
     resp = client.request("workspace/symbol", {"query": feature_id})
     all_syms = resp.get("result") or []
     feature_files: dict[str, str] = {}  # filepath → package
@@ -603,7 +613,6 @@ def cmd_generate_template(
             continue
         fpath = s["location"]["uri"].removeprefix("file://")
         if fpath not in feature_files:
-            # Read the package declaration from the file
             try:
                 for line in pathlib.Path(fpath).read_text(encoding="utf-8").splitlines()[:8]:
                     if line.startswith("package "):
@@ -615,25 +624,18 @@ def cmd_generate_template(
                 feature_files[fpath] = ""
 
     if not feature_files:
-        # Fallback: just the source file
         feature_files[str(source_file)] = ""
 
-    # Sort: source class file first, rest alphabetically by basename
-    sorted_files = sorted(
+    return sorted(
         feature_files.items(),
         key=lambda kv: (0 if kv[0] == str(source_file) else 1, pathlib.Path(kv[0]).name),
     )
 
-    # 4. Infer base package from source file (strips role sub-packages)
-    src_package = feature_files.get(str(source_file), "")
-    base_package = _infer_base_package(src_package) if src_package else ""
 
-    print(f"Base package:       {base_package!r}", file=sys.stderr)
-    print(f"Files ({len(sorted_files)}):", file=sys.stderr)
-    for fp, _ in sorted_files:
-        print(f"  {fp}", file=sys.stderr)
-
-    # 5. Parameterize each file and derive file_name_pattern
+def _build_template_entries(
+    sorted_files: list[tuple[str, str]], feature_id: str, base_package: str
+) -> list[dict]:
+    """Parameterize each feature file's content and derive its file_name_pattern."""
     entries = []
     for filepath, pkg in sorted_files:
         try:
@@ -666,42 +668,34 @@ def cmd_generate_template(
             "file_name_pattern": file_name_pattern,
             "content":           parameterized,
         })
+    return entries
 
-    if not entries:
-        print("No files to templatize.", file=sys.stderr)
-        sys.exit(1)
 
-    if as_json:
-        print(json.dumps(
-            [{"suffix": e["file_suffix"], "source": e["filepath"],
-              "file_name": e["file_name_pattern"]} for e in entries],
-            indent=2,
-        ))
-        return
-
-    if dry_run:
+def _print_dry_run_preview(entries: list[dict]) -> None:
+    """Print, per entry, up to 6 changed lines relative to the original file
+    (in-memory original — no disk re-read needed)."""
+    print()
+    for e in entries:
+        print(f"── {pathlib.Path(e['filepath']).name}  [{e['file_suffix']}]")
+        print(f"   file-name: {e['file_name_pattern'] or '(auto-derived by scaffold-feature)'}")
+        orig = e["orig_content"].splitlines()
+        new  = e["content"].splitlines()
+        shown = 0
+        for i, (o, n) in enumerate(zip(orig, new)):
+            if o != n:
+                print(f"   L{i+1:3d}  - {o.strip()[:80]}")
+                print(f"        + {n.strip()[:80]}")
+                shown += 1
+                if shown >= 6:
+                    remaining = sum(1 for a, b in zip(orig[i+1:], new[i+1:]) if a != b)
+                    if remaining:
+                        print(f"        … ({remaining} more changes)")
+                    break
         print()
-        for e in entries:
-            print(f"── {pathlib.Path(e['filepath']).name}  [{e['file_suffix']}]")
-            print(f"   file-name: {e['file_name_pattern'] or '(auto-derived by scaffold-feature)'}")
-            # Show changed lines (use in-memory original — no disk re-read needed)
-            orig = e["orig_content"].splitlines()
-            new  = e["content"].splitlines()
-            shown = 0
-            for i, (o, n) in enumerate(zip(orig, new)):
-                if o != n:
-                    print(f"   L{i+1:3d}  - {o.strip()[:80]}")
-                    print(f"        + {n.strip()[:80]}")
-                    shown += 1
-                    if shown >= 6:
-                        remaining = sum(1 for a, b in zip(orig[i+1:], new[i+1:]) if a != b)
-                        if remaining:
-                            print(f"        … ({remaining} more changes)")
-                        break
-            print()
-        return
 
-    # 6. Write template files
+
+def _write_template_files(workspace: str, family_name: str, entries: list[dict]) -> None:
+    """Write `entries` as an IDEA file template family and update its settings.xml."""
     templates_dir = _find_templates_dir(workspace)
     if templates_dir is None:
         templates_dir = pathlib.Path(workspace) / ".idea" / "fileTemplates"
@@ -727,6 +721,63 @@ def cmd_generate_template(
     print(f"\nGenerated {len(entries)} template(s) for family '{family_name}'")
     print(f"Use: scaffold-feature NewFeature --template '{family_name}' --package <base-pkg>")
 
+
+def cmd_generate_template(
+    client: LspClient,
+    source_class: str,
+    family_name: str,
+    workspace: str,
+    dry_run: bool,
+    as_json: bool,
+) -> None:
+    """Generate IDEA file templates from an existing class and its feature siblings.
+
+    Finds all workspace symbols that share the feature identifier prefix (e.g.
+    all GoldConversion* classes), parameterizes their source files by replacing
+    every case-variant of the feature identifier with ${FEATURE_NAME} /
+    ${featureName} / ${feature_name} / ${PACKAGE_NAME}, and writes the results
+    as a reusable IDEA file template family.
+
+    The generated templates are immediately usable with scaffold-feature:
+        scaffold-feature NewFeature --template 'My Family' --package com.example
+    """
+    sym = _resolve_unique_symbol(client, source_class, kind_filter=_KOTLIN_CLASS_KINDS)
+    source_file = pathlib.Path(sym["location"]["uri"].removeprefix("file://"))
+
+    # Strip known role suffix: GoldConversionInteractor → GoldConversion
+    feature_id = _extract_feature_id(source_class)
+    print(f"Feature identifier: {feature_id!r}", file=sys.stderr)
+
+    sorted_files = _discover_feature_files(client, feature_id, source_file)
+
+    # Base package strips role sub-packages from the source file's own package.
+    src_package = dict(sorted_files).get(str(source_file), "")
+    base_package = _infer_base_package(src_package) if src_package else ""
+
+    print(f"Base package:       {base_package!r}", file=sys.stderr)
+    print(f"Files ({len(sorted_files)}):", file=sys.stderr)
+    for fp, _ in sorted_files:
+        print(f"  {fp}", file=sys.stderr)
+
+    entries = _build_template_entries(sorted_files, feature_id, base_package)
+
+    if not entries:
+        print("No files to templatize.", file=sys.stderr)
+        sys.exit(1)
+
+    if as_json:
+        print(json.dumps(
+            [{"suffix": e["file_suffix"], "source": e["filepath"],
+              "file_name": e["file_name_pattern"]} for e in entries],
+            indent=2,
+        ))
+        return
+
+    if dry_run:
+        _print_dry_run_preview(entries)
+        return
+
+    _write_template_files(workspace, family_name, entries)
 
 
 def _loc(loc: dict) -> str:
@@ -969,38 +1020,25 @@ def cmd_find_implementors(client: LspClient, name: str, as_json: bool):
             print(_loc(r))
 
 
-def cmd_extract_interface(client: LspClient, class_name: str, as_json: bool):
-    """Generate a Kotlin interface skeleton from a class's public members.
-
-    Signatures come from DocumentSymbol.detail (the truncated declaration stored
-    in the index).  Abstract/interface method bodies are excluded automatically.
-    Output is printed to stdout — pipe to a .kt file or paste into your editor.
-    """
-    # 1. Locate the class file
-    sym = _resolve_unique_symbol(client, class_name, kind_filter=_KOTLIN_CLASS_KINDS)
-    file_uri = sym["location"]["uri"]
-    filepath = file_uri.removeprefix("file://")
-
-    # 2. Get all symbols in that file
-    all_syms = _document_symbols(client, filepath)
-
-    # 3. Find the class symbol by name to get its range
-    class_sym = next(
+def _find_class_symbol(all_syms: list[dict], class_name: str) -> dict | None:
+    """The DocumentSymbol for `class_name` among a file's symbol list, or None."""
+    return next(
         (s for s in all_syms
          if s["name"] == class_name
          and _KIND_NAMES.get(s.get("kind", 0)) in _KOTLIN_CLASS_KINDS),
         None,
     )
-    if class_sym is None:
-        print(f"Could not locate '{class_name}' in documentSymbol results.",
-              file=sys.stderr)
-        sys.exit(1)
 
+
+def _collect_interface_members(all_syms: list[dict], class_sym: dict) -> list[dict]:
+    """Public members of `class_sym` suitable for an interface skeleton.
+
+    First records every function/method and nested-class range inside the
+    class, then keeps a candidate member only if it doesn't sit inside a
+    nested class or inside a function body (a local var/property), and isn't
+    visibly private/internal/protected by its `detail` prefix.
+    """
     class_range = class_sym["range"]
-
-    # 4. Collect members: first record all function/method ranges, then
-    #    include properties only if they lie outside any function body.
-    #    Also skip visibly-private/internal symbols by detail prefix.
     function_ranges: list[dict] = []
     nested_class_ranges: list[dict] = []
     candidate_members: list[dict] = []
@@ -1025,34 +1063,22 @@ def cmd_extract_interface(client: LspClient, class_name: str, as_json: bool):
     for s in candidate_members:
         kind = _KIND_NAMES.get(s.get("kind", 0))
         sym_range = s["range"]
-        # Skip symbols inside a nested class
         if any(_range_contains(nr, sym_range) for nr in nested_class_ranges):
             continue
-        # Skip local variables/properties that live inside a function body
         if kind not in ("method", "function") and any(
             _range_contains(fr, sym_range) for fr in function_ranges
         ):
             continue
-        # Skip private/internal members (they don't belong in a public interface)
         detail: str = s.get("detail") or ""
         if detail.startswith(("private ", "internal ", "protected ")):
             continue
         members.append(s)
 
-    if not members:
-        print(f"No members found inside '{class_name}'.", file=sys.stderr)
-        sys.exit(1)
+    return members
 
-    if as_json:
-        print(json.dumps(
-            [{"name": m["name"],
-              "kind": _KIND_NAMES.get(m.get("kind", 0), "?"),
-              "detail": m.get("detail", "")}
-             for m in members],
-            indent=2,
-        ))
-        return
 
+def _render_interface_skeleton(class_name: str, members: list[dict]) -> str:
+    """Render `members`' declarations as a Kotlin interface named `I{class_name}`."""
     iface_name = f"I{class_name}"
     lines = [f"interface {iface_name} {{"]
     for m in members:
@@ -1067,7 +1093,42 @@ def cmd_extract_interface(client: LspClient, class_name: str, as_json: bool):
             kind = _KIND_NAMES.get(m.get("kind", 0), "?")
             lines.append(f"    // {kind} {m['name']}")
     lines.append("}")
-    print("\n".join(lines))
+    return "\n".join(lines)
+
+
+def cmd_extract_interface(client: LspClient, class_name: str, as_json: bool):
+    """Generate a Kotlin interface skeleton from a class's public members.
+
+    Signatures come from DocumentSymbol.detail (the truncated declaration stored
+    in the index).  Abstract/interface method bodies are excluded automatically.
+    Output is printed to stdout — pipe to a .kt file or paste into your editor.
+    """
+    sym = _resolve_unique_symbol(client, class_name, kind_filter=_KOTLIN_CLASS_KINDS)
+    filepath = sym["location"]["uri"].removeprefix("file://")
+    all_syms = _document_symbols(client, filepath)
+
+    class_sym = _find_class_symbol(all_syms, class_name)
+    if class_sym is None:
+        print(f"Could not locate '{class_name}' in documentSymbol results.",
+              file=sys.stderr)
+        sys.exit(1)
+
+    members = _collect_interface_members(all_syms, class_sym)
+    if not members:
+        print(f"No members found inside '{class_name}'.", file=sys.stderr)
+        sys.exit(1)
+
+    if as_json:
+        print(json.dumps(
+            [{"name": m["name"],
+              "kind": _KIND_NAMES.get(m.get("kind", 0), "?"),
+              "detail": m.get("detail", "")}
+             for m in members],
+            indent=2,
+        ))
+        return
+
+    print(_render_interface_skeleton(class_name, members))
 
 
 def _apply_text_edits(path: str, edits: list[dict]) -> None:
