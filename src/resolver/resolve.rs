@@ -95,6 +95,16 @@ pub(crate) enum ResolveIo {
     /// match here beat a differently-named function's own, more precise
     /// resolution downstream — see the caller's doc comment).
     ScopedOnly,
+    /// Same IO profile as `NoRg`, but the global-defs tail fallback is
+    /// ambiguity-safe: a unique match wins outright; an ambiguous (N>1)
+    /// match gets one narrow tie-break (dropping any candidate whose
+    /// declared package starts with a denylisted prefix, e.g.
+    /// `com.android.internal.`) before still declining if more than one
+    /// candidate remains. Used only by the hierarchy walk's own recursion
+    /// beyond hop 1 (`supertype_targets`), where `from_uri` becomes a
+    /// `jar:` synthetic URI with no import list to disambiguate against —
+    /// see `docs/superpowers/specs/2026-08-25-hierarchy-walk-unscoped-name-collision-design.md`.
+    HierarchyAmbiguitySafe,
 }
 
 /// Resolve `name` as seen from `from_uri`, returning all known definition
@@ -368,6 +378,7 @@ fn resolve_chain(
     // Tail fallback — global definitions index (includes JAR symbols).
     //  - NoRg: first match.   - IndexOnly: unique match only (ambiguity-safe).
     //  - ScopedOnly: no tail at all (empty) -- see the variant's doc comment.
+    //  - HierarchyAmbiguitySafe: unique match, else a narrow denylist tie-break.
     //  - Full: never reached (returns inside the rg branch above).
     match io {
         ResolveIo::Full | ResolveIo::ScopedOnly => vec![],
@@ -385,7 +396,61 @@ fn resolve_chain(
                 vec![]
             }
         }
+        ResolveIo::HierarchyAmbiguitySafe => {
+            ambiguity_safe_tail_with_denylist(indexer, indexer.lookup_definitions(name))
+        }
     }
+}
+
+/// Package prefixes that can never be a legitimate app-facing supertype —
+/// checked only as a last-resort tie-break by
+/// [`ambiguity_safe_tail_with_denylist`] once a hierarchy-walk lookup has
+/// already found more than one same-named candidate. Deliberately narrow
+/// (currently a single entry, the one directly evidenced by the real
+/// repro): a denylist can only ever fail to help, never introduce a new
+/// wrong preference the way a broader "prefer this package family"
+/// heuristic could — see the design doc's self-critique. Do not grow this
+/// into a general preference-ranking system.
+const HIERARCHY_WALK_DENYLISTED_PACKAGE_PREFIXES: &[&str] = &["com.android.internal."];
+
+/// Tail fallback for [`ResolveIo::HierarchyAmbiguitySafe`]: a unique
+/// candidate wins outright; an ambiguous set gets one narrow tie-break
+/// (dropping [`HIERARCHY_WALK_DENYLISTED_PACKAGE_PREFIXES`] matches) before
+/// still declining unless that leaves exactly one candidate.
+fn ambiguity_safe_tail_with_denylist(indexer: &Indexer, locs: Vec<Location>) -> Vec<Location> {
+    if locs.len() == 1 {
+        return locs;
+    }
+    if locs.len() < 2 {
+        return vec![];
+    }
+    let filtered: Vec<Location> = locs
+        .into_iter()
+        .filter(|loc| !is_denylisted_supertype_package(indexer, loc))
+        .collect();
+    if filtered.len() == 1 {
+        filtered
+    } else {
+        vec![]
+    }
+}
+
+/// Whether `loc`'s declaring file has a package matching one of
+/// [`HIERARCHY_WALK_DENYLISTED_PACKAGE_PREFIXES`]. Locations with no known
+/// package (e.g. a not-yet-materialized compiled-JAR entry, absent from
+/// `indexer.files`) are never treated as denylisted — the tie-break must
+/// only ever remove a candidate it can positively prove is denylisted.
+fn is_denylisted_supertype_package(indexer: &Indexer, loc: &Location) -> bool {
+    let Some(package) = indexer
+        .files
+        .get(loc.uri.as_str())
+        .and_then(|f| f.package.clone())
+    else {
+        return false;
+    };
+    HIERARCHY_WALK_DENYLISTED_PACKAGE_PREFIXES
+        .iter()
+        .any(|prefix| package.starts_with(prefix))
 }
 
 /// Returns the first Location found by scanning star-import packages.
@@ -403,6 +468,26 @@ fn find_in_star_imports(indexer: &Indexer, name: &str, star_pkgs: &[String]) -> 
 /// how this comment drifted out of sync with it the first time).
 pub(crate) fn resolve_symbol_no_rg(indexer: &Indexer, name: &str, from_uri: &Url) -> Vec<Location> {
     resolve_chain(indexer, name, from_uri, ResolveIo::NoRg, false, None)
+}
+
+/// Ambiguity-safe sibling of [`resolve_symbol_no_rg`], scoped to the
+/// hierarchy walk's own recursion (`supertype_targets` in
+/// `resolver/hierarchy.rs`) — see [`ResolveIo::HierarchyAmbiguitySafe`].
+/// Does not alter `resolve_symbol_no_rg` itself or any of its other
+/// callers' behavior.
+pub(crate) fn resolve_symbol_hierarchy_ambiguity_safe(
+    indexer: &Indexer,
+    name: &str,
+    from_uri: &Url,
+) -> Vec<Location> {
+    resolve_chain(
+        indexer,
+        name,
+        from_uri,
+        ResolveIo::HierarchyAmbiguitySafe,
+        false,
+        None,
+    )
 }
 
 /// Like [`resolve_symbol_no_rg`] but without its global-defs tail fallback --

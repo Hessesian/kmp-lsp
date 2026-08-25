@@ -127,7 +127,13 @@ fn supertype_targets(
             // (`class X : com.lib.Base()`) — the accessor handles the
             // bare-leaf fallback.
             crate::indexer::jar::ensure_jar_definitions_for(idx, &super_name, sidecar_budget);
-            super::resolve_symbol_no_rg(idx, &super_name, &uri)
+            // Ambiguity-safe, not `resolve_symbol_no_rg`'s raw first-match tail: at
+            // hop 2+ `uri` is frequently a `jar:` synthetic URI with no import list
+            // to disambiguate a same-named collision against (compiled JARs carry
+            // no import statements) -- see the hierarchy-walk-unscoped-name-
+            // collision design doc. Scoped to this one call site; the other seven
+            // `resolve_symbol_no_rg` callers are unaffected.
+            super::resolve_symbol_hierarchy_ambiguity_safe(idx, &super_name, &uri)
                 .into_iter()
                 .map(move |loc| (super_name.clone(), loc.uri.to_string()))
         })
