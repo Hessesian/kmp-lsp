@@ -669,6 +669,46 @@ fn extension_property_type_promotes_a_cache_backed_tier1_only_receiver() {
     });
 }
 
+/// Regression guard: `find_extension_fn_return_type_scoped` filtered
+/// `ExtensionEntry` candidates to `SymbolKind::FUNCTION`, so a member
+/// extension (indexed as `METHOD` because it is nested inside an interface)
+/// was skipped entirely. The signature is made long enough that its `detail`
+/// is truncated past the return type (`MAX_DETAIL_CHARS`), forcing the
+/// source-signature fallback — which itself required `container.is_none()`
+/// and so, even after widening the kind filter, would still fail to find a
+/// member extension's own declaration.
+#[test]
+fn extension_fn_return_type_scoped_resolves_member_extension_via_truncated_detail() {
+    use super::find_extension_fn_return_type;
+    use crate::indexer::Indexer;
+    use tower_lsp::lsp_types::Url;
+
+    let idx = Indexer::new();
+    let scope_uri = Url::parse("file:///sdk/ColumnScope.kt").unwrap();
+    let long_param = "w".repeat(150);
+    idx.index_content(
+        &scope_uri,
+        &format!(
+            "package androidx.compose.foundation.layout\n\
+             class Modifier\n\
+             interface ColumnScope {{\n\
+             \x20   fun Modifier.weight({long_param}: Float): Modifier\n\
+             }}\n"
+        ),
+    );
+
+    let caller = Url::parse("file:///app/Screen.kt").unwrap();
+    idx.index_content(&caller, "package app\nfun s() {}\n");
+
+    assert_eq!(
+        find_extension_fn_return_type(&idx, "Modifier", "weight", Some(&caller)),
+        Some("Modifier".into()),
+        "a member extension's return type must resolve via the source-signature \
+         fallback once both the FUNCTION-only kind filter and the \
+         container.is_none() fallback requirement are widened"
+    );
+}
+
 /// `Resolver::function_return_type` is the import-aware catalog entry: it binds
 /// through the scope chain first, then falls back to a workspace-wide by-name
 /// lookup, returning a self-documenting [`ReturnType`]. This asserts the
@@ -835,7 +875,14 @@ fn extension_is_in_scope_treats_default_package_as_same_package() {
     };
 
     assert!(
-        extension_is_in_scope(None, "helper", Some(&caller_file_data)),
+        extension_is_in_scope(
+            None,
+            "helper",
+            None,
+            crate::types::Visibility::Public,
+            false,
+            Some(&caller_file_data),
+        ),
         "two default-package files (no `package` header on either side) must \
          be considered same-package, not unreachable"
     );
@@ -850,7 +897,14 @@ fn extension_is_in_scope_does_not_treat_unknown_caller_as_default_package() {
     use super::extension_is_in_scope;
 
     assert!(
-        !extension_is_in_scope(None, "helper", None),
+        !extension_is_in_scope(
+            None,
+            "helper",
+            None,
+            crate::types::Visibility::Public,
+            false,
+            None,
+        ),
         "an unloaded/unknown caller file must not be guessed as \"confirmed \
          default package\" just because its package is also unrepresentable \
          as `Some`"
@@ -1044,6 +1098,7 @@ fn catalog_method_return_type_folds_jar_supertype_inheritance() {
             package: Some("kotlinx.coroutines.flow".to_owned()),
             trailing_lambda: false,
             deprecated: false,
+            container: None,
         });
 
     let caller = Url::parse("file:///app/Repo.kt").unwrap();

@@ -3913,6 +3913,7 @@ fn jar_extension_appears_in_dot_completion() {
             package: Some("androidx.lifecycle".to_owned()),
             trailing_lambda: false,
             deprecated: false,
+            container: None,
         });
 
     // 2. fun CoroutineScope.launch(block: suspend CoroutineScope.() -> Unit): Job
@@ -3929,6 +3930,7 @@ fn jar_extension_appears_in_dot_completion() {
             package: Some("kotlinx.coroutines".to_owned()),
             trailing_lambda: true,
             deprecated: false,
+            container: None,
         });
 
     let vm_uri = Url::parse("file:///app/MyViewModel.kt").unwrap();
@@ -3953,6 +3955,50 @@ fn jar_extension_appears_in_dot_completion() {
     assert!(
         labels.contains(&"launch { }"),
         "expected trailing-lambda `launch {{ }}` item from JAR path, got: {labels:?}"
+    );
+}
+
+#[test]
+fn member_extension_is_excluded_from_generic_dot_completion() {
+    // Regression guard: `container: Some(_)` (a Compose-style member extension
+    // such as `interface ColumnScope { fun Modifier.weight(...) }`) must not
+    // enter the generic receiver-type dot-completion path. Kotlin has no
+    // import syntax for an interface member, so offering it here would pair
+    // the completion with an auto-import edit `weight`'s real declaration can
+    // never satisfy.
+    let idx = Indexer::new();
+    idx.extension_by_receiver
+        .entry("Modifier".to_owned())
+        .or_default()
+        .push(crate::types::ExtensionEntry {
+            file_uri: "file:///sdk/ColumnScope.kt".to_owned(),
+            name: "weight".to_owned(),
+            kind: tower_lsp::lsp_types::SymbolKind::METHOD,
+            detail: "fun Modifier.weight(weight: Float): Modifier".to_owned(),
+            visibility: crate::types::Visibility::Public,
+            package: Some("androidx.compose.foundation.layout".to_owned()),
+            trailing_lambda: false,
+            deprecated: false,
+            container: Some("ColumnScope".to_owned()),
+        });
+
+    let caller_uri = Url::parse("file:///app/Screen.kt").unwrap();
+    idx.index_content(
+        &caller_uri,
+        concat!(
+            "package app\n",
+            "class Modifier\n",
+            "fun caller(m: Modifier) {\n",
+            "    m.weight\n",
+            "}\n",
+        ),
+    );
+
+    let items = complete_dot(&idx, "Modifier", &caller_uri, false, None);
+    let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
+    assert!(
+        !labels.contains(&"weight"),
+        "a member extension must not be offered through generic dot completion: {labels:?}"
     );
 }
 
@@ -4283,6 +4329,7 @@ fn library_deprecated_internal_extensions_hidden() {
             package: Some("androidx.lifecycle".to_owned()),
             trailing_lambda: false,
             deprecated: false,
+            container: None,
         });
 
     let mk = |detail: &str, vis, deprecated| crate::types::ExtensionEntry {
@@ -4294,6 +4341,7 @@ fn library_deprecated_internal_extensions_hidden() {
         package: Some("kotlinx.coroutines".to_owned()),
         trailing_lambda: true,
         deprecated,
+        container: None,
     };
     {
         let mut slot = idx
@@ -4374,6 +4422,7 @@ fn extension_overloads_collapse_to_single_entry() {
             package: Some("androidx.lifecycle".to_owned()),
             trailing_lambda: false,
             deprecated: false,
+            container: None,
         });
     let mk = |first_param: &str, pkg: &str, defaults: bool| crate::types::ExtensionEntry {
         file_uri: "jar:file:///coroutines-core.jar/Builders.class".to_owned(),
@@ -4390,6 +4439,7 @@ fn extension_overloads_collapse_to_single_entry() {
         package: Some(pkg.to_owned()),
         trailing_lambda: true,
         deprecated: false,
+        container: None,
     };
     {
         let mut slot = idx
@@ -4451,6 +4501,7 @@ fn deprecated_workspace_extension_kept_tagged() {
             package: Some("androidx.lifecycle".to_owned()),
             trailing_lambda: false,
             deprecated: false,
+            container: None,
         });
     // A WORKSPACE-sourced deprecated extension on CoroutineScope (file:// URI).
     idx.index_content(
@@ -4917,6 +4968,270 @@ fn find_definition_qualified_prefers_own_member_over_scope_function_fallback() {
         !locs.is_empty() && locs.iter().all(|l| l.uri == use_uri),
         "must resolve to ConfigBuilder's own `apply()`, not the stdlib scope-function \
          fallback; got {:?}",
+        locs.iter().map(|l| l.uri.as_str()).collect::<Vec<_>>()
+    );
+}
+
+/// Primitive D (member-extension visibility): `fun Modifier.weight(...)`
+/// declared as a MEMBER of `interface ColumnScope` — the real Compose
+/// `ColumnScope`/`Modifier.weight` shape — must resolve via goto-definition
+/// even though the caller file imports nothing from `ColumnScope`'s package.
+/// Kotlin has no import syntax for a member of an interface, so real call
+/// sites never import `weight`; `extension_is_in_scope` must not reject it
+/// on the ordinary top-level-extension import rule.
+#[test]
+fn member_extension_function_resolves_without_import() {
+    let idx = Indexer::new();
+    let scope_uri = Url::parse("file:///compose/ColumnScope.kt").unwrap();
+    idx.index_content(
+        &scope_uri,
+        concat!(
+            "package androidx.compose.foundation.layout\n",
+            "interface ColumnScope {\n",
+            "    fun Modifier.weight(weight: Float): Modifier\n",
+            "}\n",
+        ),
+    );
+
+    // No `import androidx.compose.foundation.layout.ColumnScope` (and Kotlin has
+    // no per-member import syntax for it anyway) — a real Compose call site.
+    let use_uri = Url::parse("file:///app/Screen.kt").unwrap();
+    idx.index_content(
+        &use_uri,
+        concat!(
+            "package app\n",
+            "fun screen() {\n",
+            "    Column {\n",
+            "        Modifier.weight(1f)\n",
+            "    }\n",
+            "}\n",
+        ),
+    );
+
+    // The declaration's own `selection_range`, read directly off the index —
+    // the expected value the goto-definition `Location` below must match.
+    // Asserting only the URI (as this test originally did) let a
+    // `Range::default()` fallback — pointing at the right file but the wrong
+    // spot — slip through undetected.
+    let expected_range = idx
+        .files
+        .get(scope_uri.as_str())
+        .and_then(|fd| {
+            fd.symbols
+                .iter()
+                .find(|s| s.name == "weight")
+                .map(|s| s.selection_range)
+        })
+        .expect("weight must be indexed in ColumnScope.kt");
+
+    let locs = idx.find_definition_qualified("weight", Some("Modifier"), &use_uri);
+    let matched = locs.iter().find(|l| l.uri == scope_uri);
+    assert!(
+        matched.is_some(),
+        "Modifier.weight(...) must resolve to ColumnScope's member extension \\
+         declaration despite the caller file importing nothing from its package; \\
+         got {:?}",
+        locs.iter().map(|l| l.uri.as_str()).collect::<Vec<_>>()
+    );
+    assert_eq!(
+        matched.unwrap().range,
+        expected_range,
+        "goto-definition must point at weight's actual declaration range, not a \\
+         Range::default() fallback from a container.is_none() lookup mismatch"
+    );
+}
+
+/// Primitive D follow-up: the member-extension short-circuit in
+/// `extension_is_in_scope` unconditionally returns `true` whenever
+/// `entry_container.is_some()`, without ever consulting `ExtensionEntry::visibility`
+/// — so a `private fun Modifier.weight(...)` declared as a member of
+/// `ColumnScope` would be treated as in scope for a completely unrelated
+/// file/package that has no business seeing it. Kotlin's `private`/`protected`
+/// access rules are an axis entirely separate from the "no live dispatch-receiver
+/// tracking" trade-off Primitive D's own design intentionally accepted.
+///
+/// Tested directly against `extension_is_in_scope`, not through
+/// `find_definition_qualified`, for the same reason given on the decoy test
+/// below: `resolve_qualified` has its own separate, pre-existing, unrelated
+/// fallback for a receiver type with no indexed class declaration (matches the
+/// first same-named extension entry with no scope check of any kind) that
+/// would otherwise mask which mechanism actually rejected the call.
+#[test]
+fn private_member_extension_in_another_file_is_out_of_scope() {
+    use crate::resolver::infer::extension_is_in_scope;
+    use crate::types::{FileData, Visibility};
+
+    let caller_file_data = FileData {
+        package: Some("app".to_string()),
+        ..Default::default()
+    };
+    let extension_package = "androidx.compose.foundation.layout".to_string();
+    let container = "ColumnScope".to_string();
+
+    assert!(
+        !extension_is_in_scope(
+            Some(&extension_package),
+            "weight",
+            Some(&container),
+            Visibility::Private,
+            false, // caller is not the declaring file
+            Some(&caller_file_data),
+        ),
+        "a private member extension must not be in scope for an unrelated caller \\
+         in a different file"
+    );
+}
+
+/// The same-file counterpart to the test above: Kotlin's own visibility rules
+/// permit access to a `private` declaration from within its own file, so
+/// `is_same_file: true` must still return `true` here — the fix must not
+/// blanket-reject every private member extension regardless of caller.
+#[test]
+fn private_member_extension_in_same_file_is_in_scope() {
+    use crate::resolver::infer::extension_is_in_scope;
+    use crate::types::{FileData, Visibility};
+
+    let caller_file_data = FileData {
+        package: Some("androidx.compose.foundation.layout".to_string()),
+        ..Default::default()
+    };
+    let extension_package = "androidx.compose.foundation.layout".to_string();
+    let container = "ColumnScope".to_string();
+
+    assert!(
+        extension_is_in_scope(
+            Some(&extension_package),
+            "weight",
+            Some(&container),
+            Visibility::Private,
+            true, // caller is the declaring file
+            Some(&caller_file_data),
+        ),
+        "a private member extension must remain in scope from its own declaring file"
+    );
+}
+
+/// Decoy 1 (regression guard, highest-value test in this primitive):
+/// an ORDINARY top-level extension function (`container == None`) declared
+/// in an unimported package must still be rejected by `extension_is_in_scope`
+/// exactly as before this primitive — `extension_is_in_scope` is shared by
+/// every extension-function lookup in the codebase, not just member
+/// extensions, so this proves the new member-extension short-circuit does not
+/// accidentally widen visibility for the ordinary case.
+///
+/// Tests `extension_is_in_scope` directly rather than through
+/// `find_definition_qualified`: `resolve_qualified` (`resolver/resolve.rs`)
+/// has its own pre-existing, unrelated fallback for a receiver type with no
+/// indexed class declaration (matches the first same-named extension entry
+/// with no scope check at all) — a separate, already-existing gap this
+/// primitive does not touch. Routing this decoy through the full
+/// goto-definition pipeline would risk conflating that unrelated gap with
+/// the specific regression this decoy is meant to guard.
+#[test]
+fn top_level_extension_function_in_unimported_package_still_out_of_scope() {
+    use crate::resolver::infer::extension_is_in_scope;
+    use crate::types::FileData;
+
+    let caller_file_data = FileData {
+        package: Some("app".to_string()),
+        ..Default::default()
+    };
+    let extension_package = "com.example.lib".to_string();
+
+    assert!(
+        !extension_is_in_scope(
+            Some(&extension_package),
+            "myExtension",
+            None, // ordinary top-level extension: container == None
+            crate::types::Visibility::Public,
+            false,
+            Some(&caller_file_data),
+        ),
+        "an ordinary top-level extension in an unimported package must remain \\
+         out of scope"
+    );
+}
+
+/// The direct, pipeline-independent counterpart to the two tests above: a
+/// MEMBER extension (`entry_container` is `Some`) in a package the caller
+/// neither shares nor imports must still be in scope per the D2 rule. Tested
+/// directly against `extension_is_in_scope` (not through
+/// `find_definition_qualified`) for the same reason given on the decoy test
+/// above — this isolates the D2 short-circuit itself from the unrelated
+/// pipeline fallback.
+#[test]
+fn member_extension_in_unimported_package_is_in_scope_via_container_short_circuit() {
+    use crate::resolver::infer::extension_is_in_scope;
+    use crate::types::FileData;
+
+    let caller_file_data = FileData {
+        package: Some("app".to_string()),
+        ..Default::default()
+    };
+    let extension_package = "androidx.compose.foundation.layout".to_string();
+    let container = "ColumnScope".to_string();
+
+    assert!(
+        extension_is_in_scope(
+            Some(&extension_package),
+            "weight",
+            Some(&container),
+            crate::types::Visibility::Public,
+            false,
+            Some(&caller_file_data),
+        ),
+        "a member extension must be in scope regardless of package/import \\
+         coverage — Kotlin has no import syntax for a member of an interface"
+    );
+}
+
+/// Decoy 2 (documented pre-existing limitation, not a regression): two
+/// unrelated interfaces both declaring a member extension named `weight` on
+/// the same receiver type. This primitive inherits the same "first match
+/// wins, no overload-set semantics" limitation `resolve_extension_in_scope`
+/// already has for ordinary top-level extensions — not a new gap.
+#[test]
+fn ambiguous_member_extension_name_collision_first_match_wins() {
+    let idx = Indexer::new();
+    let first_uri = Url::parse("file:///compose/ColumnScope.kt").unwrap();
+    idx.index_content(
+        &first_uri,
+        concat!(
+            "package androidx.compose.foundation.layout\n",
+            "interface ColumnScope {\n",
+            "    fun Modifier.weight(weight: Float): Modifier\n",
+            "}\n",
+        ),
+    );
+    let second_uri = Url::parse("file:///lib/UnrelatedScope.kt").unwrap();
+    idx.index_content(
+        &second_uri,
+        concat!(
+            "package com.example.lib\n",
+            "interface UnrelatedScope {\n",
+            "    fun Modifier.weight(weight: Float): Modifier\n",
+            "}\n",
+        ),
+    );
+
+    let use_uri = Url::parse("file:///app/Screen.kt").unwrap();
+    idx.index_content(
+        &use_uri,
+        concat!(
+            "package app\n",
+            "fun screen() {\n",
+            "    Modifier.weight(1f)\n",
+            "}\n",
+        ),
+    );
+
+    let locs = idx.find_definition_qualified("weight", Some("Modifier"), &use_uri);
+    assert_eq!(
+        locs.len(),
+        1,
+        "colliding same-named member extensions resolve to a single first \\
+         match, not an overload set -- a pre-existing, unchanged limitation; \\
+         got {:?}",
         locs.iter().map(|l| l.uri.as_str()).collect::<Vec<_>>()
     );
 }

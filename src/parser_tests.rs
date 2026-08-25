@@ -1451,6 +1451,28 @@ fn extension_receiver_indexed_in_symbol_entry() {
 }
 
 #[test]
+fn member_extension_with_trailing_lambda_param_sets_trailing_lambda_flag() {
+    // Regression guard: a member extension (nested inside an interface, so
+    // its `kind` is `METHOD` rather than top-level `FUNCTION`) must still be
+    // recognized as trailing-lambda-callable when its last parameter is a
+    // function type — otherwise completion never offers the `weight { }`
+    // trailing-lambda call form for a Compose `ColumnScope`-shaped member
+    // extension.
+    let src = "interface ColumnScope {\n    fun Modifier.weight(fill: () -> Unit)\n}";
+    let data = super::parse_kotlin(src);
+    let sym = data
+        .symbols
+        .iter()
+        .find(|s| s.name == "weight")
+        .expect("weight should be indexed");
+    assert_eq!(sym.kind, SymbolKind::METHOD);
+    assert!(
+        sym.trailing_lambda,
+        "member extension with a trailing function-type parameter must set trailing_lambda"
+    );
+}
+
+#[test]
 fn non_extension_fun_has_empty_receiver() {
     let src = "fun greet(name: String): String = \"Hello $name\"";
     let data = super::parse_kotlin(src);

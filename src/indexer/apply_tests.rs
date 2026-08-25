@@ -673,6 +673,7 @@ fn reset_index_state_mixed_extension_receiver_no_deadlock() {
         package: None,
         trailing_lambda: false,
         deprecated: false,
+        container: None,
     };
     // Mixed receiver: reset keeps the library entry and drops the workspace one,
     // forcing the `entries.len() != before` insert branch — the deadlock trigger.

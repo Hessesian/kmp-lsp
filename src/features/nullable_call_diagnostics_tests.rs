@@ -171,6 +171,81 @@ fn extension_on_nullable_receiver_is_clean() {
 }
 
 #[test]
+fn member_extension_out_of_scope_does_not_drive_nullable_diagnostic() {
+    // Regression guard for the Compose member-extension short-circuit added to
+    // `extension_is_in_scope`: `weight` is a MEMBER extension of `ColumnScope`
+    // in an unrelated, unimported package, and this caller has no active
+    // `ColumnScope` receiver at all — `m.weight(1f)` is just an unrelated call
+    // on some other type that happens to share the name. Treating the member
+    // extension as unconditionally "in scope" here would wrongly emit a `?.`
+    // warning for a call this diagnostic cannot actually verify.
+    let (uri, idx, src) = setup(&[
+        (
+            "/scope.kt",
+            concat!(
+                "package androidx.compose.foundation.layout\n",
+                "class Modifier\n",
+                "interface ColumnScope {\n",
+                "    fun Modifier.weight(weight: Float): Modifier\n",
+                "}\n",
+            ),
+        ),
+        (
+            "/caller.kt",
+            concat!(
+                "package com.example.app\n",
+                "class Modifier\n",
+                "fun caller(m: Modifier?) {\n",
+                "    m.weight(1f)\n",
+                "}\n",
+            ),
+        ),
+    ]);
+    let diags = run_diagnostics(&idx, &uri, &src);
+    assert!(
+        diags.is_empty(),
+        "an out-of-scope member extension must not drive this diagnostic: {diags:?}"
+    );
+}
+
+#[test]
+fn member_extension_in_same_package_does_not_drive_nullable_diagnostic() {
+    // Regression guard for the narrower gap in the fix above: `extension_in_scope_here`
+    // passes `None` instead of `entry.container` to `extension_is_in_scope`, which
+    // blocks the member-extension short-circuit -- but the ordinary package-match
+    // branch underneath can still independently succeed when the caller happens to
+    // share `ColumnScope`'s package, with zero evidence `ColumnScope` is an active
+    // dispatch receiver at this call site. A same-package member extension must be
+    // just as unresolved here as the unimported one above.
+    let (uri, idx, src) = setup(&[
+        (
+            "/scope.kt",
+            concat!(
+                "package androidx.compose.foundation.layout\n",
+                "class Modifier\n",
+                "interface ColumnScope {\n",
+                "    fun Modifier.weight(weight: Float): Modifier\n",
+                "}\n",
+            ),
+        ),
+        (
+            "/caller.kt",
+            concat!(
+                "package androidx.compose.foundation.layout\n",
+                "fun caller(m: Modifier?) {\n",
+                "    m.weight(1f)\n",
+                "}\n",
+            ),
+        ),
+    ]);
+    let diags = run_diagnostics(&idx, &uri, &src);
+    assert!(
+        diags.is_empty(),
+        "a same-package member extension must not drive this diagnostic either: {diags:?}"
+    );
+}
+
+#[test]
 fn unresolved_member_on_nullable_receiver_is_skipped() {
     // Neither a member nor a known extension — avoid guessing.
     let (uri, idx, src) = setup(&[(

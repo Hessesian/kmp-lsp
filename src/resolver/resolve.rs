@@ -734,6 +734,9 @@ fn resolve_extension_in_scope(
         let in_scope = crate::resolver::infer::extension_is_in_scope(
             entry.package.as_ref(),
             &entry.name,
+            entry.container.as_ref(),
+            entry.visibility,
+            entry.file_uri == from_uri.as_str(),
             caller_file_data_ref,
         );
         if in_scope {
@@ -746,9 +749,12 @@ fn resolve_extension_in_scope(
                         fd.symbols
                             .iter()
                             .find(|s| {
-                                s.name == name
-                                    && s.extension_receiver() == receiver_base
-                                    && s.container.is_none()
+                                crate::resolver::infer::extension_declaration_matches(
+                                    s,
+                                    name,
+                                    receiver_base,
+                                    entry.container.as_ref(),
+                                )
                             })
                             .map(|s| s.selection_range)
                     })
@@ -817,6 +823,9 @@ fn implicit_receiver_extension_match(
         let in_scope = crate::resolver::infer::extension_is_in_scope(
             entry.package.as_ref(),
             &entry.name,
+            entry.container.as_ref(),
+            entry.visibility,
+            entry.file_uri == from_uri.as_str(),
             caller_file_data_ref,
         );
         if !in_scope {
@@ -833,9 +842,12 @@ fn implicit_receiver_extension_match(
                 fd.symbols
                     .iter()
                     .find(|s| {
-                        s.name == name
-                            && s.extension_receiver() == receiver_base
-                            && s.container.is_none()
+                        crate::resolver::infer::extension_declaration_matches(
+                            s,
+                            name,
+                            receiver_base,
+                            entry.container.as_ref(),
+                        )
                     })
                     .cloned()
             });

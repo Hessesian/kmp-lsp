@@ -1563,9 +1563,19 @@ fn candidate_declaration_is_reachable(
     let Some(candidate_file_data) = indexer.files.get(loc.uri.as_str()) else {
         return false;
     };
+    // This is a receiver-less by-name fallback over ALL workspace definitions
+    // sharing `fn_name`, not an `ExtensionEntry`-scoped lookup, so there is no
+    // per-symbol container available here to distinguish a member extension
+    // from an ordinary member/top-level function. Passing `None` preserves
+    // the existing package/import check unchanged for this path; the
+    // visibility/same-file arguments are inert whenever `entry_container` is
+    // `None`, since the member-extension branch that reads them never runs.
     extension_is_in_scope(
         candidate_file_data.package.as_ref(),
         fn_name,
+        None,
+        crate::types::Visibility::Public,
+        false,
         caller_file_data,
     )
 }
@@ -1719,12 +1729,47 @@ pub(crate) fn find_method_return_type(
 
 /// Returns true when an extension function declared in `entry_package` is
 /// accessible from the calling file, either via same-package visibility or
-/// an explicit import in `caller_file_data`.
+/// an explicit import in `caller_file_data`. `entry_container` distinguishes
+/// a MEMBER extension function (`Some("ColumnScope")`, declared inside a
+/// class/interface body) from an ordinary top-level one (`None`); when it is
+/// `Some`, `entry_visibility` and `is_same_file` gate `private`/`protected`
+/// member extensions, which — unlike the package/import checks below — are
+/// otherwise skipped entirely for a member extension (see the branch itself).
 pub(crate) fn extension_is_in_scope(
     entry_package: Option<&String>,
     entry_name: &str,
+    entry_container: Option<&String>,
+    entry_visibility: crate::types::Visibility,
+    is_same_file: bool,
     caller_file_data: Option<&FileData>,
 ) -> bool {
+    // A member extension function has no import syntax in Kotlin at all — its
+    // visibility is governed by whether its declaring container is an
+    // implicit or explicit receiver in scope, never by package/import
+    // coverage. This codebase does not track live implicit-receiver scope in
+    // the string domain (that lives in the CST domain's `ThisLambdaCtx`,
+    // deliberately not consulted here), so a member extension is treated as
+    // in scope whenever a receiver-type-matching candidate exists at all:
+    // the existing `entry.name == name` / `receiver_base` match upstream in
+    // `resolve_extension_in_scope` already filters for that; this rule only
+    // removes the wrong import-based rejection layered on top of it.
+    //
+    // That trade-off is about *dispatch-receiver* proof, not access control —
+    // `private`/`protected` are a separate axis this short-circuit must still
+    // respect. Mirrors the same-file exception `ExtensionCompletionBuilder::add_entry`
+    // (`resolver/complete.rs`) already uses for ordinary top-level extensions,
+    // since neither call site tracks the declaring type's own body scope.
+    if entry_container.is_some() {
+        if !is_same_file
+            && matches!(
+                entry_visibility,
+                crate::types::Visibility::Private | crate::types::Visibility::Protected
+            )
+        {
+            return false;
+        }
+        return true;
+    }
     // Kotlin's default package (no `package` header) is a real package like
     // any other, so two default-package files are same-package to each
     // other -- but only once the caller's `FileData` is actually known.
@@ -1749,6 +1794,22 @@ pub(crate) fn extension_is_in_scope(
                 || entry_package.is_none() && imp.local_name == entry_name
         })
     })
+}
+
+/// Whether `SymbolEntry` `symbol` is the actual declaration a matched extension
+/// candidate (`name` on `receiver_base`, with `entry_container` from its
+/// `ExtensionEntry`) refers to. Its own `container` must equal
+/// `entry_container` exactly, so a member extension's declaration lookup is
+/// not rejected by a check written only for top-level extensions.
+pub(crate) fn extension_declaration_matches(
+    symbol: &crate::types::SymbolEntry,
+    name: &str,
+    receiver_base: &str,
+    entry_container: Option<&String>,
+) -> bool {
+    symbol.name == name
+        && symbol.extension_receiver() == receiver_base
+        && symbol.container.as_deref() == entry_container.map(String::as_str)
 }
 
 /// Find the return type of an extension function `method_name` declared with receiver
@@ -1812,10 +1873,21 @@ fn find_extension_fn_return_type_scoped(
         if entry.name != method_name {
             continue;
         }
-        if !matches!(entry.kind, SymbolKind::FUNCTION) {
+        // `METHOD` covers a member extension (see `push_def_symbols`'s own
+        // comment in `parser.rs`) — a plain `FUNCTION`-only filter silently
+        // skips every Compose-style `interface ColumnScope { fun
+        // Modifier.weight(...) }` return-type lookup.
+        if !matches!(entry.kind, SymbolKind::FUNCTION | SymbolKind::METHOD) {
             continue;
         }
-        if !extension_is_in_scope(entry.package.as_ref(), &entry.name, caller_file_data_ref) {
+        if !extension_is_in_scope(
+            entry.package.as_ref(),
+            &entry.name,
+            entry.container.as_ref(),
+            entry.visibility,
+            entry.file_uri == from_uri.as_str(),
+            caller_file_data_ref,
+        ) {
             continue;
         }
         // Try detail first; fall back to source lines when detail is truncated.
@@ -1835,9 +1907,12 @@ fn find_extension_fn_return_type_scoped(
             .symbols
             .iter()
             .find(|s| {
-                s.name == method_name
-                    && s.extension_receiver() == receiver_base
-                    && s.container.is_none()
+                extension_declaration_matches(
+                    s,
+                    method_name,
+                    receiver_base,
+                    entry.container.as_ref(),
+                )
             })?
             .selection_start() as usize;
         let full_sig = file_data.lines.collect_signature(start_line);
@@ -1860,7 +1935,8 @@ fn find_extension_fn_return_type_global(
             if symbol.name != method_name {
                 continue;
             }
-            if !matches!(symbol.kind, SymbolKind::FUNCTION) {
+            // `METHOD` covers a member extension, same as the scoped lookup above.
+            if !matches!(symbol.kind, SymbolKind::FUNCTION | SymbolKind::METHOD) {
                 continue;
             }
             if symbol.extension_receiver() != receiver_base {

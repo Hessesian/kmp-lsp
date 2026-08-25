@@ -385,6 +385,13 @@ pub(crate) struct ExtensionEntry {
     pub trailing_lambda: bool,
     /// True when the declaring symbol carries an `@Deprecated` annotation.
     pub deprecated: bool,
+    /// The enclosing class/interface's simple name, when this extension is a
+    /// MEMBER extension function (declared inside a class/interface body) —
+    /// e.g. `Some("ColumnScope")` for `ColumnScope`'s `fun Modifier.weight(...)`.
+    /// `None` for an ordinary top-level extension function. Drives a
+    /// different visibility rule in `extension_is_in_scope` — see its own
+    /// doc comment for why a member extension is never import-scoped.
+    pub container: Option<String>,
 }
 
 /// One import statement parsed from a Kotlin file.

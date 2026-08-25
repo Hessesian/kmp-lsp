@@ -221,6 +221,7 @@ pub(crate) fn contributions_from_data(
                 package: file_data.package.clone(),
                 trailing_lambda: sym.trailing_lambda,
                 deprecated: sym.deprecated,
+                container: sym.container.clone(),
             });
     }
 
@@ -440,6 +441,7 @@ impl LibraryBatch {
                     package: file_data.package.clone(),
                     trailing_lambda: sym.trailing_lambda,
                     deprecated: sym.deprecated,
+                    container: sym.container.clone(),
                 });
         }
 

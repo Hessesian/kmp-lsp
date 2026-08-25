@@ -505,6 +505,7 @@ fn resolve_qualified_jar_extension_overloads_with_source_member() {
             package: Some("com.example".into()),
             trailing_lambda: false,
             deprecated: false,
+            container: None,
         });
 
     let call = CallSite {
@@ -624,6 +625,7 @@ fn resolve_qualified_bails_on_ubiquitous_name_even_with_receiver_extension() {
             package: Some("com.example".into()),
             trailing_lambda: false,
             deprecated: false,
+            container: None,
         });
 
     let call = CallSite {

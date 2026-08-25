@@ -372,9 +372,19 @@ fn push_def_symbols(
         if kind != SymbolKind::NULL {
             let visibility = vis_fn(lines, sel.start.line as usize);
             let detail = extract_detail(lines, range.start.line, range.end.line);
+            // `SymbolKind::METHOD` covers a member function (nested inside a
+            // class/interface/object body), including a MEMBER EXTENSION
+            // function such as `interface ColumnScope { fun Modifier.weight(...) }`
+            // — its `function_declaration` CST node carries a `receiver_type`
+            // child exactly like a top-level extension `fun`'s does, so it must
+            // not be excluded here just because nesting demoted its `kind` from
+            // `FUNCTION` to `METHOD` (see `queries.rs`'s pattern 9 vs 10).
             let (extension_receiver, extension_receiver_type) = if matches!(
                 kind,
-                SymbolKind::FUNCTION | SymbolKind::PROPERTY | SymbolKind::VARIABLE
+                SymbolKind::FUNCTION
+                    | SymbolKind::METHOD
+                    | SymbolKind::PROPERTY
+                    | SymbolKind::VARIABLE
             ) {
                 extract_extension_receiver_from_cst(root, bytes, &range)
             } else {
@@ -392,7 +402,11 @@ fn push_def_symbols(
             } else {
                 (String::new(), (0, 0))
             };
-            let trailing_lambda = matches!(kind, SymbolKind::FUNCTION)
+            // `METHOD` covers a member extension (see the comment above on
+            // `extension_receiver`'s own kind match) — without it here, a
+            // `ColumnScope`-style member extension's trailing-lambda call
+            // form would never be offered in completion.
+            let trailing_lambda = matches!(kind, SymbolKind::FUNCTION | SymbolKind::METHOD)
                 && last_value_param_is_function_type(root, bytes, &range);
             let deprecated = deprecated_at_line(lines, sel.start.line as usize);
             symbols.push(SymbolEntry {
