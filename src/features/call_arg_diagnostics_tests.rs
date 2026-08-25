@@ -857,6 +857,68 @@ fn extension_fn_wrong_arg_count_detected() {
     );
 }
 
+/// Primitive D risk-closure test (member-extension visibility fix's
+/// "shared-predicate blast radius" concern, design doc's own Risks section):
+/// a MEMBER extension function (declared inside an interface, like Compose's
+/// `ColumnScope.weight`) called with the WRONG argument count, from a file
+/// importing nothing from its declaring package.
+///
+/// Traced precisely: `check_call_args` resolves signatures via
+/// `resolve_call_signature` -> `resolve_qualified` (`indexer/infer/sig.rs`),
+/// whose own `collect_params_from_file`/`receiver_matches` closure is an
+/// ENTIRELY SEPARATE predicate from `extension_is_in_scope` (`resolver/infer.rs`)
+/// — it never calls it. `receiver_matches` only accepts a symbol whose
+/// `container` equals the receiver base (an ordinary member) or whose
+/// `container` is `None` and `extension_receiver` equals the receiver base
+/// (an ordinary top-level extension); a member extension's `container` is
+/// `Some(interface name)`, which satisfies neither arm, so `receiver_matches`
+/// rejects it unconditionally. Primitive D's `extension_is_in_scope` fix
+/// therefore cannot widen this diagnostic's arity check for a member
+/// extension in either direction — this path was already, and remains,
+/// blind to member extensions entirely (a separate, pre-existing gap, not
+/// touched by this primitive). The correct, unaffected behavior is: no
+/// diagnostic at all (no false positive from the new visibility rule, and no
+/// false negative introduced or removed by it either).
+#[test]
+fn member_extension_fn_wrong_arg_count_produces_no_call_arg_diagnostic() {
+    let (uri, idx, src) = setup(&[
+        (
+            "/scope.kt",
+            concat!(
+                "package some.pkg\n",
+                "class IMockProvider\n",
+                "interface SomeScope {\n",
+                "    fun IMockProvider.loadJSONFromAssets(path: String, force: Boolean): Any\n",
+                "}\n",
+            ),
+        ),
+        (
+            "/usage.kt",
+            concat!(
+                "package app\n",
+                "class Foo(private val context: IMockProvider) {\n",
+                // Wrong arg count: 0 provided, 2 required by the member extension above.
+                "  val result = context.loadJSONFromAssets()\n",
+                "}\n",
+            ),
+        ),
+    ]);
+    let doc = parse_live(
+        &src,
+        crate::indexer::live_tree::lang_for_path(uri.path()).unwrap(),
+    )
+    .unwrap();
+    let diagnostics = call_arg_diagnostics(&idx, &uri, &doc);
+    assert!(
+        diagnostics.is_empty(),
+        "a member-extension call is invisible to collect_params_from_file's \\
+         receiver_matches (a predicate wholly separate from \\
+         extension_is_in_scope) both before and after Primitive D, so no \\
+         diagnostic should fire regardless of the wrong arg count; got: \\
+         {diagnostics:?}"
+    );
+}
+
 #[test]
 fn extension_fn_cross_file_resolved() {
     // Extension function defined in a DIFFERENT file than the type.

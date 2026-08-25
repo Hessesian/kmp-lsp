@@ -1079,9 +1079,14 @@ impl Indexer {
         let Some(jar_file_data) = self.jar_files.get(loc.uri.as_str()) else {
             return false;
         };
+        // Receiver-less by-name fallback over ALL JAR definitions sharing
+        // `name`, not an `ExtensionEntry`-scoped lookup, so there is no
+        // per-symbol container available here. `None` preserves the existing
+        // package/import check unchanged for this path.
         crate::resolver::infer::extension_is_in_scope(
             jar_file_data.package.as_ref(),
             name,
+            None,
             caller_file_data,
         )
     }

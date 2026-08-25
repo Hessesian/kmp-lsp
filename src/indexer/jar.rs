@@ -1104,6 +1104,7 @@ fn build_jar_file_data(
                 package: symbol_package,
                 trailing_lambda: sym.trailing_lambda,
                 deprecated: sym.deprecated,
+                container: sym.container.clone(),
             });
     }
 

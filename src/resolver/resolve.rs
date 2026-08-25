@@ -734,6 +734,7 @@ fn resolve_extension_in_scope(
         let in_scope = crate::resolver::infer::extension_is_in_scope(
             entry.package.as_ref(),
             &entry.name,
+            entry.container.as_ref(),
             caller_file_data_ref,
         );
         if in_scope {
@@ -817,6 +818,7 @@ fn implicit_receiver_extension_match(
         let in_scope = crate::resolver::infer::extension_is_in_scope(
             entry.package.as_ref(),
             &entry.name,
+            entry.container.as_ref(),
             caller_file_data_ref,
         );
         if !in_scope {

@@ -263,6 +263,7 @@ fn extension_in_scope_here(
         || crate::resolver::infer::extension_is_in_scope(
             entry.package.as_ref(),
             &entry.name,
+            entry.container.as_ref(),
             caller_file_data,
         )
 }

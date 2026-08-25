@@ -1563,9 +1563,15 @@ fn candidate_declaration_is_reachable(
     let Some(candidate_file_data) = indexer.files.get(loc.uri.as_str()) else {
         return false;
     };
+    // This is a receiver-less by-name fallback over ALL workspace definitions
+    // sharing `fn_name`, not an `ExtensionEntry`-scoped lookup, so there is no
+    // per-symbol container available here to distinguish a member extension
+    // from an ordinary member/top-level function. Passing `None` preserves
+    // the existing package/import check unchanged for this path.
     extension_is_in_scope(
         candidate_file_data.package.as_ref(),
         fn_name,
+        None,
         caller_file_data,
     )
 }
@@ -1719,12 +1725,28 @@ pub(crate) fn find_method_return_type(
 
 /// Returns true when an extension function declared in `entry_package` is
 /// accessible from the calling file, either via same-package visibility or
-/// an explicit import in `caller_file_data`.
+/// an explicit import in `caller_file_data`. `entry_container` distinguishes
+/// a MEMBER extension function (`Some("ColumnScope")`, declared inside a
+/// class/interface body) from an ordinary top-level one (`None`).
 pub(crate) fn extension_is_in_scope(
     entry_package: Option<&String>,
     entry_name: &str,
+    entry_container: Option<&String>,
     caller_file_data: Option<&FileData>,
 ) -> bool {
+    // A member extension function has no import syntax in Kotlin at all — its
+    // visibility is governed by whether its declaring container is an
+    // implicit or explicit receiver in scope, never by package/import
+    // coverage. This codebase does not track live implicit-receiver scope in
+    // the string domain (that lives in the CST domain's `ThisLambdaCtx`,
+    // deliberately not consulted here), so a member extension is treated as
+    // in scope whenever a receiver-type-matching candidate exists at all:
+    // the existing `entry.name == name` / `receiver_base` match upstream in
+    // `resolve_extension_in_scope` already filters for that; this rule only
+    // removes the wrong import-based rejection layered on top of it.
+    if entry_container.is_some() {
+        return true;
+    }
     // Kotlin's default package (no `package` header) is a real package like
     // any other, so two default-package files are same-package to each
     // other -- but only once the caller's `FileData` is actually known.
@@ -1815,7 +1837,12 @@ fn find_extension_fn_return_type_scoped(
         if !matches!(entry.kind, SymbolKind::FUNCTION) {
             continue;
         }
-        if !extension_is_in_scope(entry.package.as_ref(), &entry.name, caller_file_data_ref) {
+        if !extension_is_in_scope(
+            entry.package.as_ref(),
+            &entry.name,
+            entry.container.as_ref(),
+            caller_file_data_ref,
+        ) {
             continue;
         }
         // Try detail first; fall back to source lines when detail is truncated.
