@@ -100,12 +100,22 @@ pub(crate) fn write_versioned_manifest_cache_for_test(
     let path = super::cache::xdg_cache_base()
         .join("kmp-lsp")
         .join(format!("jar-manifest-v{version}.bin"));
-    std::fs::create_dir_all(path.parent().expect("cache path has a parent")).unwrap();
+    let parent = path
+        .parent()
+        .unwrap_or_else(|| panic!("cache path {} has a parent", path.display()));
+    std::fs::create_dir_all(parent)
+        .unwrap_or_else(|e| panic!("create stale manifest cache dir {}: {e}", parent.display()));
     let cache = JarManifestCacheRef { version, entries };
-    let bytes = bincode::serialize(&cache).expect("serialize stale manifest cache for test");
-    let compressed =
-        zstd::encode_all(bytes.as_slice(), 3).expect("zstd-encode stale cache for test");
-    std::fs::write(&path, compressed).expect("write stale manifest cache for test");
+    let bytes = bincode::serialize(&cache)
+        .unwrap_or_else(|e| panic!("serialize stale manifest cache for test: {e}"));
+    let compressed = zstd::encode_all(bytes.as_slice(), 3)
+        .unwrap_or_else(|e| panic!("zstd-encode stale manifest cache for test: {e}"));
+    std::fs::write(&path, compressed).unwrap_or_else(|e| {
+        panic!(
+            "write stale manifest cache for test to {}: {e}",
+            path.display()
+        )
+    });
 }
 
 /// Load the global JAR manifest cache. Returns an empty map on any error
