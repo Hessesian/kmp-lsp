@@ -19,22 +19,38 @@ fn write_fixture(dir: &Path, rel_path: &str, content: &str) {
     std::fs::write(&full, content).unwrap();
 }
 
-/// Run `kmp-lsp diagnose --root <root> <file>` and return stdout lines.
+/// Build the `kmp-lsp diagnose --root <root> <file>` `Command`, isolated
+/// from the host's real Gradle cache AND real Android SDK.
 ///
 /// The spawned CLI is HERMETIC: `GRADLE_USER_HOME` and `XDG_CACHE_HOME` point
 /// into the fixture root, so `diagnose`'s Gradle-JAR pass (which resolves
 /// `jar_phase` to a terminal state — required for semantic diagnostics to run
 /// at all) never scans the developer's real multi-hundred-JAR cache. Without
 /// this, each test paid seconds of real-cache indexing on a dev machine and
-/// asserted against environment-dependent jar symbols.
-fn diagnose(root: &Path, rel_path: &str) -> Vec<String> {
-    let file = root.join(rel_path);
-    let out = Command::new(BIN)
-        .args(["diagnose", "--root"])
+/// asserted against environment-dependent jar symbols. `ANDROID_HOME`/
+/// `ANDROID_SDK_ROOT` are removed for the identical reason `lsp_smoke.rs`
+/// removes them from its spawned server: `diagnose` now also wires in
+/// `detect_android_sdk_jar_path` (CLI paths gained the same Android-SDK-jar
+/// detection the LSP server path already had), so a real host SDK would
+/// turn every parallel `diagnose` test process into a redundant,
+/// CPU-contended JAR-manifest pass — the same class of bug that caused a
+/// real CI timeout for `lsp_smoke.rs` before it gained this isolation.
+fn build_diagnose_command(root: &Path, file: &Path) -> Command {
+    let mut cmd = Command::new(BIN);
+    cmd.args(["diagnose", "--root"])
         .arg(root)
-        .arg(&file)
+        .arg(file)
         .env("GRADLE_USER_HOME", root.join(".isolated-gradle"))
         .env("XDG_CACHE_HOME", root.join(".isolated-cache"))
+        .env_remove("ANDROID_HOME")
+        .env_remove("ANDROID_SDK_ROOT");
+    cmd
+}
+
+/// Run `kmp-lsp diagnose --root <root> <file>` and return stdout lines.
+fn diagnose(root: &Path, rel_path: &str) -> Vec<String> {
+    let file = root.join(rel_path);
+    let out = build_diagnose_command(root, &file)
         .output()
         .expect("failed to spawn kmp-lsp");
     assert!(
@@ -55,15 +71,34 @@ fn diagnose(root: &Path, rel_path: &str) -> Vec<String> {
 /// also assert on exit status / stderr for the invalid-name error case.
 fn diagnose_only(root: &Path, rel_path: &str, only: &str) -> std::process::Output {
     let file = root.join(rel_path);
-    Command::new(BIN)
-        .args(["diagnose", "--root"])
-        .arg(root)
-        .arg(&file)
+    build_diagnose_command(root, &file)
         .args(["--only", only])
-        .env("GRADLE_USER_HOME", root.join(".isolated-gradle"))
-        .env("XDG_CACHE_HOME", root.join(".isolated-cache"))
         .output()
         .expect("failed to spawn kmp-lsp")
+}
+
+/// Regression test for the isolation gap itself: `build_diagnose_command`
+/// must remove `ANDROID_HOME`/`ANDROID_SDK_ROOT` from the spawned process's
+/// environment, exactly like `GRADLE_USER_HOME`/`XDG_CACHE_HOME` are
+/// overridden — otherwise a real host SDK leaks into every `diagnose` test.
+#[test]
+fn diagnose_cli_process_isolates_the_host_android_sdk() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    let file = root.join("src/Foo.kt");
+    let cmd = build_diagnose_command(root, &file);
+
+    let envs: std::collections::HashMap<_, _> = cmd.get_envs().collect();
+    assert_eq!(
+        envs.get(std::ffi::OsStr::new("ANDROID_HOME")),
+        Some(&None),
+        "ANDROID_HOME must be explicitly removed from the spawned process's environment"
+    );
+    assert_eq!(
+        envs.get(std::ffi::OsStr::new("ANDROID_SDK_ROOT")),
+        Some(&None),
+        "ANDROID_SDK_ROOT must be explicitly removed from the spawned process's environment"
+    );
 }
 
 // ── --only filtering ─────────────────────────────────────────────────────────
@@ -566,10 +601,7 @@ fn syntax_error_reported_by_diagnose() {
     write_fixture(root, "workspace.json", r#"{"sourcePaths":[]}"#);
     write_fixture(root, "src/Bad.kt", "class Foo {\n    fun bar() {\n");
     let file = root.join("src/Bad.kt");
-    let out = Command::new(BIN)
-        .args(["diagnose", "--root"])
-        .arg(root)
-        .arg(&file)
+    let out = build_diagnose_command(root, &file)
         .output()
         .expect("failed to spawn kmp-lsp");
     let stdout = String::from_utf8_lossy(&out.stdout);

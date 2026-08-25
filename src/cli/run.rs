@@ -465,13 +465,31 @@ async fn run_index(root: &Path, verbose: bool) {
     }
 }
 
+/// Extends a Gradle-cache JAR scan with the Android SDK's compiled
+/// `android.jar`, for CLI paths (`find`, `diagnose`) that call
+/// `scan_gradle_jars` directly and therefore bypass `ScanHandler`'s own
+/// wiring of `detect_android_sdk_jar_path`. Reuses
+/// `compiled_jar_paths_with_android_sdk` rather than duplicating the
+/// detection logic — passes `true` for its JVM-source gate unconditionally
+/// since the CLI's own Gradle-cache scan already runs unconditionally here
+/// (no JVM-source gate at these call sites to mirror).
+fn compiled_jar_paths_for_cli(root: &Path, gradle_paths: Vec<PathBuf>) -> Vec<PathBuf> {
+    crate::workspace::scan_handler::compiled_jar_paths_with_android_sdk(
+        Some(root.to_path_buf()),
+        true,
+        gradle_paths,
+    )
+}
+
 async fn run_find(root: &Path, mode: Mode, json: bool, verbose: bool, name: &str) {
     let results = match effective_mode(mode, root, "find", verbose) {
         Mode::Fast => fast_find(name, root),
         _ => {
             let index = build_index(root, false).await;
-            // Scan Gradle JARs so stdlib/library symbols resolve in find queries.
-            let jars = crate::indexer::jar::scan_gradle_jars(None);
+            // Scan Gradle JARs (+ the Android SDK jar, if detected) so
+            // stdlib/library/Android symbols resolve in find queries.
+            let jars =
+                compiled_jar_paths_for_cli(root, crate::indexer::jar::scan_gradle_jars(None));
             if !jars.is_empty() {
                 if let Ok(mut sidecar_guard) = index.jar_sidecar.lock() {
                     crate::indexer::jar::clear_jar_maps(&index);
@@ -735,7 +753,7 @@ async fn run_diagnose(root: &Path, file: &Path, _verbose: bool, only: Option<&[S
         // `Unavailable`, which is terminal — which is why the gap only showed up
         // once a sidecar became present, e.g. in CI after the sidecar artifact
         // was wired into the test jobs.)
-        let jars = crate::indexer::jar::scan_gradle_jars(None);
+        let jars = compiled_jar_paths_for_cli(root, crate::indexer::jar::scan_gradle_jars(None));
         if let Ok(mut sidecar_guard) = index.jar_sidecar.lock() {
             let total = if jars.is_empty() {
                 0
@@ -841,3 +859,7 @@ fn effective_mode(requested: Mode, root: &Path, subcommand: &str, verbose: bool)
         }
     }
 }
+
+#[cfg(test)]
+#[path = "run_tests.rs"]
+mod tests;

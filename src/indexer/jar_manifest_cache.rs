@@ -24,8 +24,13 @@ use std::time::SystemTime;
 
 use serde::{Deserialize, Serialize};
 
-/// Bump when `JarManifestEntry`/`JarManifestName` schema changes.
-const JAR_MANIFEST_CACHE_VERSION: u32 = 2;
+/// Bump when `JarManifestEntry`/`JarManifestName` schema changes, or when
+/// the sidecar's extraction logic changes what the manifest SHOULD contain
+/// for an unchanged JAR (the JAR's own (mtime, size) fingerprint can't
+/// detect that on its own).
+/// v2 → v3: sidecar's `JavaClassVisitor` now emits public field symbols
+///          (`val`/`var`) in addition to classes/methods.
+const JAR_MANIFEST_CACHE_VERSION: u32 = 3;
 
 #[derive(Serialize, Deserialize)]
 struct JarManifestCache {
@@ -81,6 +86,36 @@ fn cache_path() -> std::path::PathBuf {
 #[cfg(test)]
 pub(crate) fn manifest_cache_path_for_test() -> std::path::PathBuf {
     cache_path()
+}
+
+/// Test-only: write a JAR manifest cache file stamped with an arbitrary
+/// `version`, at the path that version's `cache_path()` would resolve to —
+/// simulating a manifest cache an older kmp-lsp build left on disk before a
+/// schema change bumped `JAR_MANIFEST_CACHE_VERSION`.
+#[cfg(test)]
+pub(crate) fn write_versioned_manifest_cache_for_test(
+    version: u32,
+    entries: &HashMap<String, JarManifestEntry>,
+) {
+    let path = super::cache::xdg_cache_base()
+        .join("kmp-lsp")
+        .join(format!("jar-manifest-v{version}.bin"));
+    let parent = path
+        .parent()
+        .unwrap_or_else(|| panic!("cache path {} has a parent", path.display()));
+    std::fs::create_dir_all(parent)
+        .unwrap_or_else(|e| panic!("create stale manifest cache dir {}: {e}", parent.display()));
+    let cache = JarManifestCacheRef { version, entries };
+    let bytes = bincode::serialize(&cache)
+        .unwrap_or_else(|e| panic!("serialize stale manifest cache for test: {e}"));
+    let compressed = zstd::encode_all(bytes.as_slice(), 3)
+        .unwrap_or_else(|e| panic!("zstd-encode stale manifest cache for test: {e}"));
+    std::fs::write(&path, compressed).unwrap_or_else(|e| {
+        panic!(
+            "write stale manifest cache for test to {}: {e}",
+            path.display()
+        )
+    });
 }
 
 /// Load the global JAR manifest cache. Returns an empty map on any error

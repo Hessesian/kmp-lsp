@@ -81,6 +81,110 @@ class IndexerTest {
     }
 
     @Test
+    @DisplayName("indexClassBytes extracts a public method via the Java fallback path (no Kotlin metadata, no sources JAR)")
+    fun testJavaPublicMethodExtraction() {
+        // Mirrors android.jar's own shape: plain Java bytecode, no @kotlin.Metadata,
+        // no sibling -sources.jar — exercises JavaClassVisitor.visitMethod, which no
+        // existing fixture reached (minimalClassBytes only emits a skipped <init>).
+        val cw = org.objectweb.asm.ClassWriter(0)
+        cw.visit(
+            org.objectweb.asm.Opcodes.V1_8,
+            org.objectweb.asm.Opcodes.ACC_PUBLIC,
+            "com/example/TestActivity",
+            null,
+            "java/lang/Object",
+            null
+        )
+        val ctor = cw.visitMethod(org.objectweb.asm.Opcodes.ACC_PUBLIC, "<init>", "()V", null, null)
+        ctor.visitCode()
+        ctor.visitVarInsn(org.objectweb.asm.Opcodes.ALOAD, 0)
+        ctor.visitMethodInsn(org.objectweb.asm.Opcodes.INVOKESPECIAL, "java/lang/Object", "<init>", "()V", false)
+        ctor.visitInsn(org.objectweb.asm.Opcodes.RETURN)
+        ctor.visitMaxs(1, 1)
+        ctor.visitEnd()
+        val finish = cw.visitMethod(org.objectweb.asm.Opcodes.ACC_PUBLIC, "finish", "()V", null, null)
+        finish.visitCode()
+        finish.visitInsn(org.objectweb.asm.Opcodes.RETURN)
+        finish.visitMaxs(0, 0)
+        finish.visitEnd()
+        cw.visitEnd()
+
+        val result = indexClassBytes(cw.toByteArray())
+
+        assertTrue(result.any { it.name == "TestActivity" && it.kind == "class" },
+            "should find the class entry; got: ${result.map { it.name }}")
+        assertTrue(
+            result.any { it.name == "finish" && it.kind == "fun" && it.container == "TestActivity" },
+            "should find the public method via the Java fallback path; got: ${result.map { "${it.name}:${it.kind}:${it.container}" }}"
+        )
+    }
+
+    @Test
+    @DisplayName("indexClassBytes extracts a public static final field via the Java fallback path (no Kotlin metadata)")
+    fun testJavaPublicFieldExtraction() {
+        // Mirrors android.jar's own motivating example: Activity.RESULT_OK is a
+        // plain Java `public static final int` field with no Kotlin metadata.
+        val cw = org.objectweb.asm.ClassWriter(0)
+        cw.visit(
+            org.objectweb.asm.Opcodes.V1_8,
+            org.objectweb.asm.Opcodes.ACC_PUBLIC,
+            "com/example/TestActivity",
+            null,
+            "java/lang/Object",
+            null
+        )
+        cw.visitField(
+            org.objectweb.asm.Opcodes.ACC_PUBLIC or org.objectweb.asm.Opcodes.ACC_STATIC or org.objectweb.asm.Opcodes.ACC_FINAL,
+            "RESULT_OK",
+            "I",
+            null,
+            -1
+        ).visitEnd()
+        cw.visitEnd()
+
+        val result = indexClassBytes(cw.toByteArray())
+
+        assertTrue(
+            result.any { it.name == "RESULT_OK" && it.kind == "val" && it.container == "TestActivity" },
+            "should find the public static final field via the Java fallback path; got: ${result.map { "${it.name}:${it.kind}:${it.container}:${it.detail}" }}"
+        )
+    }
+
+    @Test
+    @DisplayName("indexClassBytes does not orphan fields on a nested (\$-named) class")
+    fun testJavaFieldExtractionSkipsNestedClass() {
+        // The class-visiting entry point already skips emitting a class definition
+        // for `$`-named classes (see testInnerClass). Field extraction must apply
+        // the same exclusion — otherwise fields get indexed under a container
+        // qualifier ("Outer$Inner") that was never indexed as a class and that no
+        // Kotlin caller would ever reference (Kotlin spells it "Outer.Inner").
+        val cw = org.objectweb.asm.ClassWriter(0)
+        cw.visit(
+            org.objectweb.asm.Opcodes.V1_8,
+            org.objectweb.asm.Opcodes.ACC_PUBLIC,
+            "com/example/Outer\$Inner",
+            null,
+            "java/lang/Object",
+            null
+        )
+        cw.visitField(
+            org.objectweb.asm.Opcodes.ACC_PUBLIC or org.objectweb.asm.Opcodes.ACC_STATIC or org.objectweb.asm.Opcodes.ACC_FINAL,
+            "ORPHAN_FIELD",
+            "I",
+            null,
+            -1
+        ).visitEnd()
+        cw.visitEnd()
+
+        val result = indexClassBytes(cw.toByteArray())
+
+        assertTrue(
+            result.isEmpty(),
+            "fields on a \$-named class must be skipped, matching class-skipping behavior; got: ${result.map { "${it.name}:${it.kind}:${it.container}" }}"
+        )
+    }
+
+    @Test
     @DisplayName("indexClassBytes captures package and top-level flag")
     fun testPackageAndTopLevel() {
         val result = indexClassBytes(minimalClassBytes("androidx/compose/runtime/Composables"))

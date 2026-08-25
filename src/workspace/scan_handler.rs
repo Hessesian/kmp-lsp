@@ -559,7 +559,11 @@ fn index_compiled_jars_phase(
         Vec::new()
     };
     let gradle_count = gradle_paths.len();
-    let mut paths = gradle_paths;
+    let mut paths = compiled_jar_paths_with_android_sdk(
+        indexer.workspace_root.get(),
+        workspace_uses_gradle_cache,
+        gradle_paths,
+    );
 
     // Explicitly-configured jars (workspace.json `jarPaths` + init-options
     // `jarPaths`), so non-Gradle projects (Make/Bazel/manual) get symbols too.
@@ -637,6 +641,34 @@ fn abandon_stale_jar_scan(
         );
     }
     let _ = jar_done_tx.send(());
+}
+
+/// Appends the Android SDK's compiled `android.jar` to `gradle_paths`, gated
+/// on the same `workspace_uses_gradle_cache` verdict the Gradle-cache scan
+/// itself uses. `android.jar` never lives in the Gradle module cache, but its
+/// Tier-1 manifest cost is real (measured: 3.18s cold / 550ms warm for a
+/// single real `android.jar`) — a workspace with no JVM sources (the same
+/// condition `workspace_uses_gradle_cache` already gates the Gradle-cache
+/// pipeline on, see its own call site's comment) must not pay it, matching
+/// the precedent this gate exists to enforce. Extracted as its own function
+/// (rather than inlined in `spawn_jar_indexing`) so the gating behavior is
+/// directly unit-testable without the sidecar/tokio machinery that makes
+/// `spawn_jar_indexing` itself untestable in this crate's unit-test harness.
+pub(crate) fn compiled_jar_paths_with_android_sdk(
+    workspace_root: Option<PathBuf>,
+    workspace_uses_gradle_cache: bool,
+    mut gradle_paths: Vec<PathBuf>,
+) -> Vec<PathBuf> {
+    if workspace_uses_gradle_cache {
+        if let Some(root) = workspace_root {
+            for jar in crate::workspace_json::detect_android_sdk_jar_path(&root) {
+                if !gradle_paths.contains(&jar) {
+                    gradle_paths.push(jar);
+                }
+            }
+        }
+    }
+    gradle_paths
 }
 
 #[cfg(test)]

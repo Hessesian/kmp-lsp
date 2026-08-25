@@ -100,6 +100,57 @@ fn jar_symbol_resolves_via_lookup() {
     assert_eq!(job_locs.len(), 1, "Job should be found");
 }
 
+/// A JAR path containing a space (e.g. Windows' default
+/// `C:\Program Files\Android\Sdk\...`) must produce a well-formed URI: the
+/// fake `jar:file://` URI has to percent-escape the space via
+/// `Url::from_file_path` (the pattern the rest of this codebase already
+/// uses — see `jar_extract.rs`), not interpolate `path.display()` raw. A raw
+/// space makes the resulting `Location.uri` invalid per RFC 3986, breaking
+/// go-to-definition/hover for every symbol from a JAR under a spaced path —
+/// the overwhelming majority of real Windows Android SDK installs (default
+/// `C:\Program Files\Android\Sdk`).
+#[test]
+fn jar_path_with_space_still_materializes() {
+    let indexer = idx();
+    let tmp = tempfile::tempdir().unwrap();
+    let jar_dir = tmp.path().join("Program Files").join("Android").join("Sdk");
+    std::fs::create_dir_all(&jar_dir).unwrap();
+    let jar_path = jar_dir.join("android.jar");
+
+    let symbols = vec![make_sidecar_symbol(
+        "View",
+        "class",
+        "class android.view.View",
+        "",
+    )];
+
+    let count = populate_from_symbols(&indexer, &jar_path, &symbols);
+    assert_eq!(
+        count, 1,
+        "space in the JAR path must not silently drop all symbols"
+    );
+
+    let view_locs = indexer.lookup_definitions("View");
+    assert_eq!(
+        view_locs.len(),
+        1,
+        "View should be found despite the space in its JAR path"
+    );
+    let uri_str = view_locs[0].uri.as_str();
+    assert!(
+        uri_str.starts_with("jar:file://"),
+        "View location should be a JAR URI, got {uri_str}"
+    );
+    assert!(
+        !uri_str.contains(' '),
+        "the space in the JAR path must be percent-escaped, not embedded raw: {uri_str}"
+    );
+    assert!(
+        uri_str.contains("%20"),
+        "expected the space to round-trip as %20 like Url::from_file_path produces: {uri_str}"
+    );
+}
+
 /// The crawl guarantees "sources-JAR data wins over compiled-JAR synthetic
 /// data in `qualified`" by ORDER (compiled first, sources last — see the
 /// crawl comment in scan_handler.rs). On-demand materialization runs
@@ -651,6 +702,177 @@ fn scan_gradle_jars_split_dedups_to_latest_version() {
     assert!(
         compiled.is_empty(),
         "no compiled JARs were created in this test"
+    );
+}
+
+/// Create a compiled (non-sources) JAR on disk in the standard Gradle cache
+/// layout, mirroring [`write_sources_jar`] but without the `-sources` suffix
+/// so it lands in `scan_gradle_jars_split`'s compiled-JAR result instead of
+/// its sources-JAR result.
+fn write_compiled_jar(
+    gradle_home: &std::path::Path,
+    group: &str,
+    artifact: &str,
+    version: &str,
+    entries: &[(&str, &str)],
+) -> std::path::PathBuf {
+    let jar_dir = gradle_home
+        .join("caches")
+        .join("modules-2")
+        .join("files-2.1")
+        .join(group)
+        .join(artifact)
+        .join(version)
+        .join("abc123");
+    std::fs::create_dir_all(&jar_dir).unwrap();
+
+    let jar_path = jar_dir.join(format!("{artifact}-{version}.jar"));
+    let file = std::fs::File::create(&jar_path).unwrap();
+    let mut writer = zip::ZipWriter::new(file);
+    let options = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
+
+    for (path, content) in entries {
+        writer.start_file_from_path(*path, options).unwrap();
+        writer.write_all(content.as_bytes()).unwrap();
+    }
+    writer.finish().unwrap();
+    jar_path
+}
+
+#[test]
+fn scan_gradle_jars_split_excludes_known_build_tooling_jars() {
+    // A synthetic Gradle-cache-shaped tempdir holding: a real runtime jar, a
+    // build-tooling jar excluded by groupId (`com.intellij`), a build-tooling
+    // jar excluded by a specific groupId/artifactId pair
+    // (`org.jetbrains.kotlin:kotlin-compiler-embeddable`), and a REAL runtime
+    // jar from that same groupId (`kotlin-stdlib`) to prove the filter is
+    // artifact-scoped rather than dropping the whole group.
+    let tmpdir = tempfile::tempdir().unwrap();
+    write_compiled_jar(
+        tmpdir.path(),
+        "androidx.core",
+        "core-ktx",
+        "1.13.0",
+        &[("androidx/core/content/ContextCompat.class", "stub")],
+    );
+    write_compiled_jar(
+        tmpdir.path(),
+        "com.intellij",
+        "annotations",
+        "12.0",
+        &[("org/jetbrains/annotations/NotNull.class", "stub")],
+    );
+    write_compiled_jar(
+        tmpdir.path(),
+        "org.jetbrains.kotlin",
+        "kotlin-compiler-embeddable",
+        "2.2.21",
+        &[(
+            "org/jetbrains/kotlin/com/intellij/diagnostic/Activity.class",
+            "stub",
+        )],
+    );
+    write_compiled_jar(
+        tmpdir.path(),
+        "org.jetbrains.kotlin",
+        "kotlin-stdlib",
+        "2.2.21",
+        &[("kotlin/collections/CollectionsKt.class", "stub")],
+    );
+
+    let (compiled, _) = crate::indexer::jar::scan_gradle_jars_split(Some(tmpdir.path()));
+
+    let survivors: Vec<String> = compiled
+        .iter()
+        .map(|path| path.to_string_lossy().into_owned())
+        .collect();
+    assert!(
+        survivors.iter().any(|path| path.contains("core-ktx")),
+        "real runtime jar core-ktx must survive the scan, got: {survivors:?}"
+    );
+    assert!(
+        survivors.iter().any(|path| path.contains("kotlin-stdlib")),
+        "real runtime jar kotlin-stdlib must survive the scan even though its \
+         groupId also hosts an excluded artifact, got: {survivors:?}"
+    );
+    assert!(
+        !survivors
+            .iter()
+            .any(|path| path.contains("com.intellij") || path.contains("annotations-12.0")),
+        "com.intellij:annotations is a known build-tooling groupId and must be excluded, got: {survivors:?}"
+    );
+    assert!(
+        !survivors
+            .iter()
+            .any(|path| path.contains("kotlin-compiler-embeddable")),
+        "kotlin-compiler-embeddable is a known build-tooling artifact and must be excluded, got: {survivors:?}"
+    );
+    assert_eq!(
+        survivors.len(),
+        2,
+        "expected exactly the two real runtime jars to survive, got: {survivors:?}"
+    );
+}
+
+#[test]
+fn scan_gradle_jars_split_keeps_lint_api_but_excludes_lint_tooling() {
+    // `com.android.tools.lint` was excluded as a whole group, but `lint-api`
+    // (com.android.tools.lint.detector.api.Detector/Issue/...) is a genuine
+    // compile-time dependency for any project that writes custom Android
+    // Lint rules, and `lint-tests` (`checks.infrastructure.TestLintTask`)
+    // is the standard `testImplementation` harness for testing them —
+    // unlike `lint-checks` (AOSP's own bundled built-in check
+    // implementations), which really is tooling-only. Mirrors the
+    // artifact-scoped precedent `kotlin-compiler-embeddable` already sets:
+    // narrow the exclusion within the group instead of dropping it whole.
+    // All three artifact names are real, verified against a live Gradle
+    // cache (`com.android.tools.lint:{lint-api,lint-tests,lint-checks}`).
+    let tmpdir = tempfile::tempdir().unwrap();
+    write_compiled_jar(
+        tmpdir.path(),
+        "com.android.tools.lint",
+        "lint-api",
+        "31.0.0",
+        &[("com/android/tools/lint/detector/api/Detector.class", "stub")],
+    );
+    write_compiled_jar(
+        tmpdir.path(),
+        "com.android.tools.lint",
+        "lint-tests",
+        "31.0.0",
+        &[(
+            "com/android/tools/lint/checks/infrastructure/TestLintTask.class",
+            "stub",
+        )],
+    );
+    write_compiled_jar(
+        tmpdir.path(),
+        "com.android.tools.lint",
+        "lint-checks",
+        "31.0.0",
+        &[("com/android/tools/lint/checks/ApiDetector.class", "stub")],
+    );
+
+    let (compiled, _) = crate::indexer::jar::scan_gradle_jars_split(Some(tmpdir.path()));
+
+    let survivors: Vec<String> = compiled
+        .iter()
+        .map(|path| path.to_string_lossy().into_owned())
+        .collect();
+    assert!(
+        survivors.iter().any(|path| path.contains("lint-api")),
+        "lint-api is a real compile-time dependency for custom Lint rule authors \
+         and must survive the scan, got: {survivors:?}"
+    );
+    assert!(
+        survivors.iter().any(|path| path.contains("lint-tests")),
+        "lint-tests is the real testImplementation harness for custom Lint rule tests \
+         and must survive the scan, got: {survivors:?}"
+    );
+    assert!(
+        !survivors.iter().any(|path| path.contains("lint-checks")),
+        "lint-checks (AOSP's own bundled built-in check implementations) is \
+         tooling-only and must still be excluded, got: {survivors:?}"
     );
 }
 
@@ -2025,6 +2247,45 @@ fn save_jar_cache_skips_the_reload_when_the_file_is_unchanged() {
     });
 }
 
+#[test]
+fn jar_cache_ignores_a_stale_pre_field_extraction_version() {
+    // Sibling of `jar_manifest_cache_ignores_a_stale_pre_field_extraction_version`:
+    // pins the same fix for the FULL JAR-symbol cache. `13` is deliberately
+    // hardcoded (not `JAR_CACHE_VERSION - 1`) — it is the exact version this
+    // cache shipped with immediately before field-symbol extraction was
+    // added, i.e. what a real user's on-disk `jar-symbols-v13.bin` is
+    // actually stamped with today. If the constant were still 13, this
+    // stale, field-less cache entry would sit at the loader's own path and
+    // be served as fresh — the JAR's own (mtime, size) fingerprint alone
+    // never changes when the sidecar's extraction logic changes.
+    let tmp = tempfile::tempdir().expect("tempdir");
+    crate::indexer::test_helpers::with_xdg_cache(tmp.path(), || {
+        let mut stale_entries = std::collections::HashMap::new();
+        stale_entries.insert(
+            "/gradle/caches/android.jar".to_owned(),
+            crate::indexer::jar_cache::JarCacheEntry {
+                mtime_secs: 1_700_000_000,
+                mtime_nanos: 0,
+                file_size: 999,
+                symbols: vec![make_sidecar_symbol(
+                    "Activity",
+                    "class",
+                    "class android.app.Activity",
+                    "",
+                )],
+            },
+        );
+        crate::indexer::jar_cache::write_versioned_cache_for_test(13, &stale_entries);
+
+        let loaded = crate::indexer::jar_cache::load_jar_cache();
+        assert!(
+            loaded.is_empty(),
+            "a JAR-symbol cache written by the pre-field-extraction version must be ignored, \
+             not served stale — the version constant must have been bumped past 13"
+        );
+    });
+}
+
 /// Build a one-entry cache map backed by a real file under `dir`, for the
 /// save-throttle tests below.
 fn one_entry_cache_map(
@@ -2518,4 +2779,34 @@ fn lookup_definitions_promotes_a_tier1_only_cache_backed_name() {
             locations[0].uri
         );
     });
+}
+
+/// Regression guard: `Url::from_file_path` requires a path that is
+/// "absolute" per the CURRENT OS's own convention (e.g. a Unix-style
+/// `/home/...` string is not absolute on Windows — it has no drive letter).
+/// Many existing fixtures in this file use such OS-agnostic-looking strings
+/// purely as opaque map keys (the JAR never actually needs to exist on
+/// disk), which broke on Windows CI once `populate_from_symbols` started
+/// requiring `Url::from_file_path` to succeed for the (real) space-escaping
+/// fix. `populate_from_symbols` must fall back to the previous naive URI
+/// construction rather than dropping the JAR's symbols entirely — real
+/// production paths always come from this OS's own filesystem and never
+/// hit the fallback branch.
+#[test]
+fn populate_from_symbols_falls_back_for_a_non_absolute_path() {
+    let indexer = idx();
+    // Not absolute on ANY OS — deterministically exercises the fallback
+    // branch everywhere, unlike a Unix-style string (only non-absolute on
+    // Windows) or Windows-style string (only non-absolute on Unix).
+    let jar_path = "relative/path/to/some.jar";
+    let symbols = vec![make_sidecar_symbol("Probe", "class", "class Probe", "")];
+
+    let count = populate_from_symbols(&indexer, jar_path.as_ref(), &symbols);
+
+    assert_eq!(
+        count, 1,
+        "a non-absolute path must fall back to indexing the JAR's symbols, not drop them"
+    );
+    let probe_locs = indexer.lookup_definitions("Probe");
+    assert_eq!(probe_locs.len(), 1, "Probe should still be found");
 }
