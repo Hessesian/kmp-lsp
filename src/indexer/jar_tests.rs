@@ -654,6 +654,115 @@ fn scan_gradle_jars_split_dedups_to_latest_version() {
     );
 }
 
+/// Create a compiled (non-sources) JAR on disk in the standard Gradle cache
+/// layout, mirroring [`write_sources_jar`] but without the `-sources` suffix
+/// so it lands in `scan_gradle_jars_split`'s compiled-JAR result instead of
+/// its sources-JAR result.
+fn write_compiled_jar(
+    gradle_home: &std::path::Path,
+    group: &str,
+    artifact: &str,
+    version: &str,
+    entries: &[(&str, &str)],
+) -> std::path::PathBuf {
+    let jar_dir = gradle_home
+        .join("caches")
+        .join("modules-2")
+        .join("files-2.1")
+        .join(group)
+        .join(artifact)
+        .join(version)
+        .join("abc123");
+    std::fs::create_dir_all(&jar_dir).unwrap();
+
+    let jar_path = jar_dir.join(format!("{artifact}-{version}.jar"));
+    let file = std::fs::File::create(&jar_path).unwrap();
+    let mut writer = zip::ZipWriter::new(file);
+    let options = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
+
+    for (path, content) in entries {
+        writer.start_file_from_path(*path, options).unwrap();
+        writer.write_all(content.as_bytes()).unwrap();
+    }
+    writer.finish().unwrap();
+    jar_path
+}
+
+#[test]
+fn scan_gradle_jars_split_excludes_known_build_tooling_jars() {
+    // A synthetic Gradle-cache-shaped tempdir holding: a real runtime jar, a
+    // build-tooling jar excluded by groupId (`com.intellij`), a build-tooling
+    // jar excluded by a specific groupId/artifactId pair
+    // (`org.jetbrains.kotlin:kotlin-compiler-embeddable`), and a REAL runtime
+    // jar from that same groupId (`kotlin-stdlib`) to prove the filter is
+    // artifact-scoped rather than dropping the whole group.
+    let tmpdir = tempfile::tempdir().unwrap();
+    write_compiled_jar(
+        tmpdir.path(),
+        "androidx.core",
+        "core-ktx",
+        "1.13.0",
+        &[("androidx/core/content/ContextCompat.class", "stub")],
+    );
+    write_compiled_jar(
+        tmpdir.path(),
+        "com.intellij",
+        "annotations",
+        "12.0",
+        &[("org/jetbrains/annotations/NotNull.class", "stub")],
+    );
+    write_compiled_jar(
+        tmpdir.path(),
+        "org.jetbrains.kotlin",
+        "kotlin-compiler-embeddable",
+        "2.2.21",
+        &[(
+            "org/jetbrains/kotlin/com/intellij/diagnostic/Activity.class",
+            "stub",
+        )],
+    );
+    write_compiled_jar(
+        tmpdir.path(),
+        "org.jetbrains.kotlin",
+        "kotlin-stdlib",
+        "2.2.21",
+        &[("kotlin/collections/CollectionsKt.class", "stub")],
+    );
+
+    let (compiled, _) = crate::indexer::jar::scan_gradle_jars_split(Some(tmpdir.path()));
+
+    let survivors: Vec<String> = compiled
+        .iter()
+        .map(|path| path.to_string_lossy().into_owned())
+        .collect();
+    assert!(
+        survivors.iter().any(|path| path.contains("core-ktx")),
+        "real runtime jar core-ktx must survive the scan, got: {survivors:?}"
+    );
+    assert!(
+        survivors.iter().any(|path| path.contains("kotlin-stdlib")),
+        "real runtime jar kotlin-stdlib must survive the scan even though its \
+         groupId also hosts an excluded artifact, got: {survivors:?}"
+    );
+    assert!(
+        !survivors
+            .iter()
+            .any(|path| path.contains("com.intellij") || path.contains("annotations-12.0")),
+        "com.intellij:annotations is a known build-tooling groupId and must be excluded, got: {survivors:?}"
+    );
+    assert!(
+        !survivors
+            .iter()
+            .any(|path| path.contains("kotlin-compiler-embeddable")),
+        "kotlin-compiler-embeddable is a known build-tooling artifact and must be excluded, got: {survivors:?}"
+    );
+    assert_eq!(
+        survivors.len(),
+        2,
+        "expected exactly the two real runtime jars to survive, got: {survivors:?}"
+    );
+}
+
 #[test]
 fn index_sources_jars_end_to_end_with_real_jar() {
     // End-to-end smoke: walk the real Gradle cache + extract + parse + insert.
