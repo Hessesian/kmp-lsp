@@ -259,11 +259,20 @@ fn extension_in_scope_here(
     uri: &Url,
     caller_file_data: Option<&crate::types::FileData>,
 ) -> bool {
+    // Deliberately does not pass `entry.container` through: this diagnostic
+    // has no evidence a member extension's dispatch receiver (e.g.
+    // `ColumnScope`) is actually active at the call site, so treating every
+    // matching member extension as in scope — as `extension_is_in_scope`
+    // does for goto-def-shaped callers — would let an unrelated `m.weight()`
+    // wrongly emit or suppress a `?.` warning. Falling back to the ordinary
+    // package/import rule (which a Kotlin member extension can only ever
+    // satisfy via same-package, never an import) restores this diagnostic's
+    // pre-existing, more conservative behavior.
     entry.file_uri == uri.as_str()
         || crate::resolver::infer::extension_is_in_scope(
             entry.package.as_ref(),
             &entry.name,
-            entry.container.as_ref(),
+            None,
             caller_file_data,
         )
 }
