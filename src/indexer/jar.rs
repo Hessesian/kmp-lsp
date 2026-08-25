@@ -796,12 +796,17 @@ pub(crate) fn populate_from_symbols(
     // pattern `jar_extract.rs` uses. A raw space (e.g. Windows' default
     // `C:\Program Files\Android\Sdk\...`) makes the resulting `Location.uri`
     // invalid per RFC 3986 and breaks go-to-definition/hover for every
-    // symbol from that JAR.
-    let Ok(file_url) = Url::from_file_path(path) else {
-        log::warn!("jar: cannot build file:// URL for {}", path.display());
-        return 0;
+    // symbol from that JAR. `Url::from_file_path` requires `path` to be
+    // absolute per the CURRENT OS's own convention, which real production
+    // paths (always sourced from this OS's own filesystem) satisfy; fall
+    // back to the previous naive construction for the rare case where it
+    // doesn't (e.g. a caller-supplied path with a foreign-OS shape) rather
+    // than dropping the JAR's symbols entirely.
+    let fake_uri_string = match Url::from_file_path(path) {
+        Ok(file_url) => format!("jar:{file_url}"),
+        Err(()) => format!("jar:file://{}", path.display()),
     };
-    let fake_uri = match Url::parse(&format!("jar:{file_url}")) {
+    let fake_uri = match Url::parse(&fake_uri_string) {
         Ok(u) => u,
         Err(e) => {
             log::warn!("jar: cannot build URI for {}: {e}", path.display());
