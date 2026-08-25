@@ -71,6 +71,48 @@ fn jar_manifest_cache_missing_file_returns_empty_map() {
 }
 
 #[test]
+fn jar_manifest_cache_ignores_a_stale_pre_field_extraction_version() {
+    // Pins the fix for the cache-invalidation gap in the Android-SDK-jar PR:
+    // adding field-symbol extraction changed what a fully-materialized JAR's
+    // data SHOULD contain, but neither the JAR's own (mtime, size)
+    // fingerprint nor a bumped version constant would otherwise notice — a
+    // user upgrading kmp-lsp would silently keep serving pre-upgrade,
+    // field-less cached data forever. `2` is deliberately hardcoded (not
+    // `JAR_MANIFEST_CACHE_VERSION - 1`): it is the exact version number this
+    // manifest cache shipped with immediately before the fix, i.e. what a
+    // real user's on-disk cache is actually stamped with today. If the
+    // version constant were still 2, this stale file would sit at the exact
+    // path the loader reads and would be served as valid.
+    let tmp = tempfile::tempdir().expect("tempdir");
+    with_xdg_cache(tmp.path(), || {
+        let mut stale_entries: HashMap<String, JarManifestEntry> = HashMap::new();
+        stale_entries.insert(
+            "/gradle/caches/android.jar".to_owned(),
+            JarManifestEntry {
+                mtime_secs: 1_700_000_000,
+                mtime_nanos: 0,
+                file_size: 999,
+                names: vec![JarManifestName {
+                    name: "View".to_owned(),
+                    kind: "class".to_owned(),
+                    container: None,
+                    package: Some("android.view".to_owned()),
+                    extension_receiver: None,
+                }],
+            },
+        );
+        super::jar_manifest_cache::write_versioned_manifest_cache_for_test(2, &stale_entries);
+
+        let loaded = load_jar_manifest_cache();
+        assert!(
+            loaded.is_empty(),
+            "a manifest cache written by the pre-field-extraction version must be ignored, \
+             not served stale — the version constant must have been bumped past 2"
+        );
+    });
+}
+
+#[test]
 fn jar_manifest_cache_corrupt_file_returns_empty_map() {
     let tmp = tempfile::tempdir().expect("tempdir");
     with_xdg_cache(tmp.path(), || {
