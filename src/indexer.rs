@@ -1082,11 +1082,15 @@ impl Indexer {
         // Receiver-less by-name fallback over ALL JAR definitions sharing
         // `name`, not an `ExtensionEntry`-scoped lookup, so there is no
         // per-symbol container available here. `None` preserves the existing
-        // package/import check unchanged for this path.
+        // package/import check unchanged for this path; the visibility/
+        // same-file arguments are inert whenever `entry_container` is `None`,
+        // since the member-extension branch that reads them never runs.
         crate::resolver::infer::extension_is_in_scope(
             jar_file_data.package.as_ref(),
             name,
             None,
+            crate::types::Visibility::Public,
+            false,
             caller_file_data,
         )
     }

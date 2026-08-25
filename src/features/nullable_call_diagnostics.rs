@@ -276,6 +276,8 @@ fn extension_in_scope_here(
                 entry.package.as_ref(),
                 &entry.name,
                 None,
+                crate::types::Visibility::Public,
+                false,
                 caller_file_data,
             ))
 }

@@ -5041,6 +5041,76 @@ fn member_extension_function_resolves_without_import() {
     );
 }
 
+/// Primitive D follow-up: the member-extension short-circuit in
+/// `extension_is_in_scope` unconditionally returns `true` whenever
+/// `entry_container.is_some()`, without ever consulting `ExtensionEntry::visibility`
+/// — so a `private fun Modifier.weight(...)` declared as a member of
+/// `ColumnScope` would be treated as in scope for a completely unrelated
+/// file/package that has no business seeing it. Kotlin's `private`/`protected`
+/// access rules are an axis entirely separate from the "no live dispatch-receiver
+/// tracking" trade-off Primitive D's own design intentionally accepted.
+///
+/// Tested directly against `extension_is_in_scope`, not through
+/// `find_definition_qualified`, for the same reason given on the decoy test
+/// below: `resolve_qualified` has its own separate, pre-existing, unrelated
+/// fallback for a receiver type with no indexed class declaration (matches the
+/// first same-named extension entry with no scope check of any kind) that
+/// would otherwise mask which mechanism actually rejected the call.
+#[test]
+fn private_member_extension_in_another_file_is_out_of_scope() {
+    use crate::resolver::infer::extension_is_in_scope;
+    use crate::types::{FileData, Visibility};
+
+    let caller_file_data = FileData {
+        package: Some("app".to_string()),
+        ..Default::default()
+    };
+    let extension_package = "androidx.compose.foundation.layout".to_string();
+    let container = "ColumnScope".to_string();
+
+    assert!(
+        !extension_is_in_scope(
+            Some(&extension_package),
+            "weight",
+            Some(&container),
+            Visibility::Private,
+            false, // caller is not the declaring file
+            Some(&caller_file_data),
+        ),
+        "a private member extension must not be in scope for an unrelated caller \\
+         in a different file"
+    );
+}
+
+/// The same-file counterpart to the test above: Kotlin's own visibility rules
+/// permit access to a `private` declaration from within its own file, so
+/// `is_same_file: true` must still return `true` here — the fix must not
+/// blanket-reject every private member extension regardless of caller.
+#[test]
+fn private_member_extension_in_same_file_is_in_scope() {
+    use crate::resolver::infer::extension_is_in_scope;
+    use crate::types::{FileData, Visibility};
+
+    let caller_file_data = FileData {
+        package: Some("androidx.compose.foundation.layout".to_string()),
+        ..Default::default()
+    };
+    let extension_package = "androidx.compose.foundation.layout".to_string();
+    let container = "ColumnScope".to_string();
+
+    assert!(
+        extension_is_in_scope(
+            Some(&extension_package),
+            "weight",
+            Some(&container),
+            Visibility::Private,
+            true, // caller is the declaring file
+            Some(&caller_file_data),
+        ),
+        "a private member extension must remain in scope from its own declaring file"
+    );
+}
+
 /// Decoy 1 (regression guard, highest-value test in this primitive):
 /// an ORDINARY top-level extension function (`container == None`) declared
 /// in an unimported package must still be rejected by `extension_is_in_scope`
@@ -5073,6 +5143,8 @@ fn top_level_extension_function_in_unimported_package_still_out_of_scope() {
             Some(&extension_package),
             "myExtension",
             None, // ordinary top-level extension: container == None
+            crate::types::Visibility::Public,
+            false,
             Some(&caller_file_data),
         ),
         "an ordinary top-level extension in an unimported package must remain \\
@@ -5104,6 +5176,8 @@ fn member_extension_in_unimported_package_is_in_scope_via_container_short_circui
             Some(&extension_package),
             "weight",
             Some(&container),
+            crate::types::Visibility::Public,
+            false,
             Some(&caller_file_data),
         ),
         "a member extension must be in scope regardless of package/import \\

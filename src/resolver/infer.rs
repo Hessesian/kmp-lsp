@@ -1567,11 +1567,15 @@ fn candidate_declaration_is_reachable(
     // sharing `fn_name`, not an `ExtensionEntry`-scoped lookup, so there is no
     // per-symbol container available here to distinguish a member extension
     // from an ordinary member/top-level function. Passing `None` preserves
-    // the existing package/import check unchanged for this path.
+    // the existing package/import check unchanged for this path; the
+    // visibility/same-file arguments are inert whenever `entry_container` is
+    // `None`, since the member-extension branch that reads them never runs.
     extension_is_in_scope(
         candidate_file_data.package.as_ref(),
         fn_name,
         None,
+        crate::types::Visibility::Public,
+        false,
         caller_file_data,
     )
 }
@@ -1727,11 +1731,16 @@ pub(crate) fn find_method_return_type(
 /// accessible from the calling file, either via same-package visibility or
 /// an explicit import in `caller_file_data`. `entry_container` distinguishes
 /// a MEMBER extension function (`Some("ColumnScope")`, declared inside a
-/// class/interface body) from an ordinary top-level one (`None`).
+/// class/interface body) from an ordinary top-level one (`None`); when it is
+/// `Some`, `entry_visibility` and `is_same_file` gate `private`/`protected`
+/// member extensions, which — unlike the package/import checks below — are
+/// otherwise skipped entirely for a member extension (see the branch itself).
 pub(crate) fn extension_is_in_scope(
     entry_package: Option<&String>,
     entry_name: &str,
     entry_container: Option<&String>,
+    entry_visibility: crate::types::Visibility,
+    is_same_file: bool,
     caller_file_data: Option<&FileData>,
 ) -> bool {
     // A member extension function has no import syntax in Kotlin at all — its
@@ -1744,7 +1753,21 @@ pub(crate) fn extension_is_in_scope(
     // the existing `entry.name == name` / `receiver_base` match upstream in
     // `resolve_extension_in_scope` already filters for that; this rule only
     // removes the wrong import-based rejection layered on top of it.
+    //
+    // That trade-off is about *dispatch-receiver* proof, not access control —
+    // `private`/`protected` are a separate axis this short-circuit must still
+    // respect. Mirrors the same-file exception `ExtensionCompletionBuilder::add_entry`
+    // (`resolver/complete.rs`) already uses for ordinary top-level extensions,
+    // since neither call site tracks the declaring type's own body scope.
     if entry_container.is_some() {
+        if !is_same_file
+            && matches!(
+                entry_visibility,
+                crate::types::Visibility::Private | crate::types::Visibility::Protected
+            )
+        {
+            return false;
+        }
         return true;
     }
     // Kotlin's default package (no `package` header) is a real package like
@@ -1861,6 +1884,8 @@ fn find_extension_fn_return_type_scoped(
             entry.package.as_ref(),
             &entry.name,
             entry.container.as_ref(),
+            entry.visibility,
+            entry.file_uri == from_uri.as_str(),
             caller_file_data_ref,
         ) {
             continue;

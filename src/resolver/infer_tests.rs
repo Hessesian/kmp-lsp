@@ -875,7 +875,14 @@ fn extension_is_in_scope_treats_default_package_as_same_package() {
     };
 
     assert!(
-        extension_is_in_scope(None, "helper", None, Some(&caller_file_data)),
+        extension_is_in_scope(
+            None,
+            "helper",
+            None,
+            crate::types::Visibility::Public,
+            false,
+            Some(&caller_file_data),
+        ),
         "two default-package files (no `package` header on either side) must \
          be considered same-package, not unreachable"
     );
@@ -890,7 +897,14 @@ fn extension_is_in_scope_does_not_treat_unknown_caller_as_default_package() {
     use super::extension_is_in_scope;
 
     assert!(
-        !extension_is_in_scope(None, "helper", None, None),
+        !extension_is_in_scope(
+            None,
+            "helper",
+            None,
+            crate::types::Visibility::Public,
+            false,
+            None,
+        ),
         "an unloaded/unknown caller file must not be guessed as \"confirmed \
          default package\" just because its package is also unrepresentable \
          as `Some`"

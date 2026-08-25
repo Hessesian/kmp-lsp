@@ -735,6 +735,8 @@ fn resolve_extension_in_scope(
             entry.package.as_ref(),
             &entry.name,
             entry.container.as_ref(),
+            entry.visibility,
+            entry.file_uri == from_uri.as_str(),
             caller_file_data_ref,
         );
         if in_scope {
@@ -822,6 +824,8 @@ fn implicit_receiver_extension_match(
             entry.package.as_ref(),
             &entry.name,
             entry.container.as_ref(),
+            entry.visibility,
+            entry.file_uri == from_uri.as_str(),
             caller_file_data_ref,
         );
         if !in_scope {
