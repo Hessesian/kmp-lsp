@@ -921,6 +921,116 @@ fn scan_gradle_jars_split_keeps_lint_api_but_excludes_lint_tooling() {
 }
 
 #[test]
+fn scan_gradle_jars_split_excludes_internal_only_build_tooling_artifacts() {
+    // `kotlin-gradle-plugin` embeds internal compiler machinery under
+    // shaded common names (`Serializable`, `Comparable`, `Enum`, ...) that
+    // collide with real app hierarchy walks in 48% of measured ambiguous
+    // cases, but it is deliberately NOT excluded (it is genuinely imported
+    // by real build-logic convention-plugin source, see the comment above
+    // `KNOWN_BUILD_TOOLING_ARTIFACTS`). Its internal-only siblings
+    // (`kotlin-gradle-plugin-idea-proto`, `kotlin-build-tools-cri-impl`,
+    // `kotlin-build-tools-impl`) and the repackaged legacy Android dexer
+    // (`dalvik-dx`) have no such legitimate use and must still be excluded.
+    let tmpdir = tempfile::tempdir().unwrap();
+    write_compiled_jar(
+        tmpdir.path(),
+        "org.jetbrains.kotlin",
+        "kotlin-stdlib",
+        "2.2.21",
+        &[("kotlin/collections/CollectionsKt.class", "stub")],
+    );
+    write_compiled_jar(
+        tmpdir.path(),
+        "org.jetbrains.kotlin",
+        "kotlin-gradle-plugin",
+        "1.9.24",
+        &[(
+            "org/jetbrains/kotlin/gradle/tasks/KotlinCompile.class",
+            "stub",
+        )],
+    );
+    write_compiled_jar(
+        tmpdir.path(),
+        "org.jetbrains.kotlin",
+        "kotlin-gradle-plugin-idea-proto",
+        "2.4.10",
+        &[("org/jetbrains/kotlin/gradle/idea/proto/Enum.class", "stub")],
+    );
+    write_compiled_jar(
+        tmpdir.path(),
+        "org.jetbrains.kotlin",
+        "kotlin-build-tools-cri-impl",
+        "2.4.10",
+        &[(
+            "org/jetbrains/kotlin/buildtools/internal/cri/Serializable.class",
+            "stub",
+        )],
+    );
+    write_compiled_jar(
+        tmpdir.path(),
+        "org.jetbrains.kotlin",
+        "kotlin-build-tools-impl",
+        "2.4.10",
+        &[(
+            "org/jetbrains/kotlin/buildtools/internal/Type.class",
+            "stub",
+        )],
+    );
+    write_compiled_jar(
+        tmpdir.path(),
+        "com.jakewharton.android.repackaged",
+        "dalvik-dx",
+        "9.0.0_r3",
+        &[("com/android/dx/Type.class", "stub")],
+    );
+
+    let (compiled, _) = crate::indexer::jar::scan_gradle_jars_split(Some(tmpdir.path()));
+
+    let survivors: Vec<String> = compiled
+        .iter()
+        .map(|path| path.to_string_lossy().into_owned())
+        .collect();
+    assert!(
+        survivors.iter().any(|path| path.contains("kotlin-stdlib")),
+        "real runtime jar kotlin-stdlib must survive the scan, got: {survivors:?}"
+    );
+    assert!(
+        survivors
+            .iter()
+            .any(|path| path.contains("kotlin-gradle-plugin-1.9.24")),
+        "kotlin-gradle-plugin itself must survive the scan -- it is genuinely \
+         imported by real build-logic convention-plugin source, got: {survivors:?}"
+    );
+    assert!(
+        !survivors
+            .iter()
+            .any(|path| path.contains("kotlin-gradle-plugin-idea-proto")),
+        "kotlin-gradle-plugin-idea-proto is internal-only and must be excluded, got: {survivors:?}"
+    );
+    assert!(
+        !survivors
+            .iter()
+            .any(|path| path.contains("kotlin-build-tools-cri-impl")),
+        "kotlin-build-tools-cri-impl is internal-only and must be excluded, got: {survivors:?}"
+    );
+    assert!(
+        !survivors
+            .iter()
+            .any(|path| path.contains("kotlin-build-tools-impl")),
+        "kotlin-build-tools-impl is internal-only and must be excluded, got: {survivors:?}"
+    );
+    assert!(
+        !survivors.iter().any(|path| path.contains("dalvik-dx")),
+        "dalvik-dx is the repackaged legacy Android dexer and must be excluded, got: {survivors:?}"
+    );
+    assert_eq!(
+        survivors.len(),
+        2,
+        "expected exactly kotlin-stdlib and kotlin-gradle-plugin to survive, got: {survivors:?}"
+    );
+}
+
+#[test]
 fn index_sources_jars_end_to_end_with_real_jar() {
     // End-to-end smoke: walk the real Gradle cache + extract + parse + insert.
     // One small JAR, one .kt file.  Exercises the slow I/O path that

@@ -116,7 +116,38 @@ const KNOWN_BUILD_TOOLING_ARTIFACTS: &[(&str, &str)] = &[
     ("com.android.tools.lint", "lint-checks"),
     ("com.android.tools.lint", "lint-model"),
     ("com.android.tools.lint", "lint-typedef-remover"),
+    // Kotlin Gradle Plugin's internal IDE-sync and build-tools-API
+    // implementation artifacts. Confirmed zero imports from these
+    // internally namespaced packages on the real Moneta corpus, and each
+    // ships a decoy for a common name (`Enum`, `Serializable`, or
+    // `Type`/`Options`/`Context`/`Handler` in `kotlin-build-tools-impl`'s
+    // large shaded ASM/diff-utility bundle).
+    ("org.jetbrains.kotlin", "kotlin-gradle-plugin-idea-proto"),
+    ("org.jetbrains.kotlin", "kotlin-build-tools-cri-impl"),
+    ("org.jetbrains.kotlin", "kotlin-build-tools-impl"),
+    // `dalvik-dx`: the repackaged legacy Android dexer/AOSP `dx` tool.
+    // Confirmed zero corpus imports of `com.android.dx`/`com.android.dex`.
+    ("com.jakewharton.android.repackaged", "dalvik-dx"),
 ];
+
+// `("org.jetbrains.kotlin", "kotlin-gradle-plugin")` is deliberately NOT
+// listed above. It is a confirmed decoy source for `Serializable`,
+// `Comparable`, `Cloneable`, `CharSequence`, `Enum`, `Throwable`, and
+// `Function` (48% of hierarchy-walk ambiguous-collision hits on the real
+// Moneta corpus), but the artifact is also genuinely imported by that same
+// corpus's own `build-logic/convention/src/main/kotlin` module:
+// `KotlinAndroidProjectExtension` and `KotlinJvmProjectExtension` are
+// defined *only* in this artifact (no other cached jar, including
+// `kotlin-gradle-plugin-api`, ships either class) and are directly
+// referenced there. Excluding it would make those two classes permanently
+// unresolvable, not just disambiguated — see this commit's message for the
+// empirical before/after measurement of both effects.
+//
+// `net.java.dev.jna`, `org.codehaus.groovy:groovy`, and
+// `org.apache.logging.log4j:log4j-core` were also checked (zero corpus
+// imports found) but are deliberately not added: unlike Kotlin Gradle
+// Plugin's internally namespaced packages, these are general-purpose
+// libraries genuinely used as real dependencies by other real projects.
 
 /// True when a Gradle-cache JAR belongs to a known build-tooling/compiler/
 /// IDE-platform artifact rather than an application dependency — see
