@@ -36,7 +36,11 @@ use crate::sidecar::SidecarSymbol;
 ///            inside a multi-line annotation no longer hide the declaration (`@Composable`).
 /// v12 → v13: sidecar now emits each class's direct super types (`supers`), populating
 ///            jar `FileData.supers` so inheritance can be walked through library types.
-const JAR_CACHE_VERSION: u32 = 13;
+/// v13 → v14: sidecar's `JavaClassVisitor` now emits public field symbols (`val`/`var`)
+///            in addition to classes/methods — a cache built before this shipped has no
+///            field entries at all, and the JAR's own (mtime, size) fingerprint never
+///            changes to reveal that, so the version must be bumped to force a rescan.
+const JAR_CACHE_VERSION: u32 = 14;
 
 #[derive(Serialize, Deserialize)]
 struct JarCache {
@@ -349,6 +353,28 @@ pub(crate) fn forget_cache_file_fingerprint_for_test() {
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
         .retain(|(known, _)| known != &path);
+}
+
+/// Test-only: write a JAR-symbol cache file stamped with an arbitrary
+/// `version`, at the path that version's `cache_path()` would resolve to —
+/// simulating a cache an older kmp-lsp build left on disk before a schema
+/// change bumped `JAR_CACHE_VERSION`. Lets tests prove such a file is
+/// ignored (not just that a *current-version* file with a wrong `version`
+/// field would be, which the filename-embedded scheme makes unreachable in
+/// practice, but is still worth pinning as the mechanism's second line of
+/// defense).
+#[cfg(test)]
+pub(crate) fn write_versioned_cache_for_test(
+    version: u32,
+    entries: &HashMap<String, JarCacheEntry>,
+) {
+    let path = super::cache::xdg_cache_base()
+        .join("kmp-lsp")
+        .join(format!("jar-symbols-v{version}.bin"));
+    std::fs::create_dir_all(path.parent().expect("cache path has a parent")).unwrap();
+    let cache = JarCacheRef { version, entries };
+    let bytes = bincode::serialize(&cache).expect("serialize stale cache for test");
+    std::fs::write(&path, bytes).expect("write stale cache for test");
 }
 
 /// Check whether the cache entry for `jar` is still valid.

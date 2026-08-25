@@ -2185,6 +2185,45 @@ fn save_jar_cache_skips_the_reload_when_the_file_is_unchanged() {
     });
 }
 
+#[test]
+fn jar_cache_ignores_a_stale_pre_field_extraction_version() {
+    // Sibling of `jar_manifest_cache_ignores_a_stale_pre_field_extraction_version`:
+    // pins the same fix for the FULL JAR-symbol cache. `13` is deliberately
+    // hardcoded (not `JAR_CACHE_VERSION - 1`) — it is the exact version this
+    // cache shipped with immediately before field-symbol extraction was
+    // added, i.e. what a real user's on-disk `jar-symbols-v13.bin` is
+    // actually stamped with today. If the constant were still 13, this
+    // stale, field-less cache entry would sit at the loader's own path and
+    // be served as fresh — the JAR's own (mtime, size) fingerprint alone
+    // never changes when the sidecar's extraction logic changes.
+    let tmp = tempfile::tempdir().expect("tempdir");
+    crate::indexer::test_helpers::with_xdg_cache(tmp.path(), || {
+        let mut stale_entries = std::collections::HashMap::new();
+        stale_entries.insert(
+            "/gradle/caches/android.jar".to_owned(),
+            crate::indexer::jar_cache::JarCacheEntry {
+                mtime_secs: 1_700_000_000,
+                mtime_nanos: 0,
+                file_size: 999,
+                symbols: vec![make_sidecar_symbol(
+                    "Activity",
+                    "class",
+                    "class android.app.Activity",
+                    "",
+                )],
+            },
+        );
+        crate::indexer::jar_cache::write_versioned_cache_for_test(13, &stale_entries);
+
+        let loaded = crate::indexer::jar_cache::load_jar_cache();
+        assert!(
+            loaded.is_empty(),
+            "a JAR-symbol cache written by the pre-field-extraction version must be ignored, \
+             not served stale — the version constant must have been bumped past 13"
+        );
+    });
+}
+
 /// Build a one-entry cache map backed by a real file under `dir`, for the
 /// save-throttle tests below.
 fn one_entry_cache_map(
