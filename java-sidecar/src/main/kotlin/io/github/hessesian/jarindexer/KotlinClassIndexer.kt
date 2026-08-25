@@ -394,8 +394,13 @@ private class JavaClassVisitor(private val entries: MutableList<SymbolEntry>, pr
 
     override fun visit(version: Int, access: Int, name: String, signature: String?, superName: String?, interfaces: Array<out String>?) {
         className = name.substringAfterLast('/')
-        isPublicClass = (access and Opcodes.ACC_PUBLIC) != 0
-        if (isPublicClass && !className.contains('$')) {
+        // Excludes `$`-named (nested/inner) classes here, once, so every
+        // member-visiting callback below (`visitMethod`, `visitField`) that
+        // gates on `isPublicClass` automatically skips members of a class
+        // that was never itself emitted as a class definition — Kotlin
+        // callers reference `Outer.Inner`, never the JVM's `Outer$Inner`.
+        isPublicClass = (access and Opcodes.ACC_PUBLIC) != 0 && !className.contains('$')
+        if (isPublicClass) {
             // Direct super types (super class + interfaces) as simple names; `Object`
             // is implicit and dropped as noise.
             val supers = buildList {

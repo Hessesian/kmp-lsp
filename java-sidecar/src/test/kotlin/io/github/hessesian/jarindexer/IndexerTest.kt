@@ -151,6 +151,40 @@ class IndexerTest {
     }
 
     @Test
+    @DisplayName("indexClassBytes does not orphan fields on a nested (\$-named) class")
+    fun testJavaFieldExtractionSkipsNestedClass() {
+        // The class-visiting entry point already skips emitting a class definition
+        // for `$`-named classes (see testInnerClass). Field extraction must apply
+        // the same exclusion — otherwise fields get indexed under a container
+        // qualifier ("Outer$Inner") that was never indexed as a class and that no
+        // Kotlin caller would ever reference (Kotlin spells it "Outer.Inner").
+        val cw = org.objectweb.asm.ClassWriter(0)
+        cw.visit(
+            org.objectweb.asm.Opcodes.V1_8,
+            org.objectweb.asm.Opcodes.ACC_PUBLIC,
+            "com/example/Outer\$Inner",
+            null,
+            "java/lang/Object",
+            null
+        )
+        cw.visitField(
+            org.objectweb.asm.Opcodes.ACC_PUBLIC or org.objectweb.asm.Opcodes.ACC_STATIC or org.objectweb.asm.Opcodes.ACC_FINAL,
+            "ORPHAN_FIELD",
+            "I",
+            null,
+            -1
+        ).visitEnd()
+        cw.visitEnd()
+
+        val result = indexClassBytes(cw.toByteArray())
+
+        assertTrue(
+            result.isEmpty(),
+            "fields on a \$-named class must be skipped, matching class-skipping behavior; got: ${result.map { "${it.name}:${it.kind}:${it.container}" }}"
+        )
+    }
+
+    @Test
     @DisplayName("indexClassBytes captures package and top-level flag")
     fun testPackageAndTopLevel() {
         val result = indexClassBytes(minimalClassBytes("androidx/compose/runtime/Composables"))
