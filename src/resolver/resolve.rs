@@ -747,9 +747,12 @@ fn resolve_extension_in_scope(
                         fd.symbols
                             .iter()
                             .find(|s| {
-                                s.name == name
-                                    && s.extension_receiver() == receiver_base
-                                    && s.container.is_none()
+                                crate::resolver::infer::extension_declaration_matches(
+                                    s,
+                                    name,
+                                    receiver_base,
+                                    entry.container.as_ref(),
+                                )
                             })
                             .map(|s| s.selection_range)
                     })
@@ -835,9 +838,12 @@ fn implicit_receiver_extension_match(
                 fd.symbols
                     .iter()
                     .find(|s| {
-                        s.name == name
-                            && s.extension_receiver() == receiver_base
-                            && s.container.is_none()
+                        crate::resolver::infer::extension_declaration_matches(
+                            s,
+                            name,
+                            receiver_base,
+                            entry.container.as_ref(),
+                        )
                     })
                     .cloned()
             });

@@ -4964,13 +4964,36 @@ fn member_extension_function_resolves_without_import() {
         ),
     );
 
+    // The declaration's own `selection_range`, read directly off the index —
+    // the expected value the goto-definition `Location` below must match.
+    // Asserting only the URI (as this test originally did) let a
+    // `Range::default()` fallback — pointing at the right file but the wrong
+    // spot — slip through undetected.
+    let expected_range = idx
+        .files
+        .get(scope_uri.as_str())
+        .and_then(|fd| {
+            fd.symbols
+                .iter()
+                .find(|s| s.name == "weight")
+                .map(|s| s.selection_range)
+        })
+        .expect("weight must be indexed in ColumnScope.kt");
+
     let locs = idx.find_definition_qualified("weight", Some("Modifier"), &use_uri);
+    let matched = locs.iter().find(|l| l.uri == scope_uri);
     assert!(
-        locs.iter().any(|l| l.uri == scope_uri),
+        matched.is_some(),
         "Modifier.weight(...) must resolve to ColumnScope's member extension \\
          declaration despite the caller file importing nothing from its package; \\
          got {:?}",
         locs.iter().map(|l| l.uri.as_str()).collect::<Vec<_>>()
+    );
+    assert_eq!(
+        matched.unwrap().range,
+        expected_range,
+        "goto-definition must point at weight's actual declaration range, not a \\
+         Range::default() fallback from a container.is_none() lookup mismatch"
     );
 }
 
