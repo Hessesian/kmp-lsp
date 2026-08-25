@@ -343,9 +343,11 @@ def _sentinel_package_and_feature_names(
 def _escape_kotlin_and_velocity_dollars(content: str) -> str:
     """Escape `${...}` and bare `$ident` so Velocity doesn't interpret them as its own syntax.
 
-    Must run after sentinel substitution: sentinels are bare `__WORD__` at this
-    point, never `${...}` or `$ident`, so every match here is a real Kotlin/
-    Velocity dollar sign that needs escaping, not one of our placeholders.
+    Must run after sentinel substitution. A sentinel can still end up as the
+    identifier part of a `$ident` match — e.g. a source `$FeatureName`
+    becomes `$__FEATURE_NAME__` once "FeatureName" is replaced — so the
+    `startswith("__")` check below skips escaping those: they're placeholders
+    we just introduced, not real Velocity references.
     """
     result = re.sub(r'\$\{(\w+)\}', r'\\${\1}', content)
     result = re.sub(
