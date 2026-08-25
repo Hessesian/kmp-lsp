@@ -916,7 +916,16 @@ fn build_jar_file_data(
             range: synthetic_range,
             selection_range: synthetic_range,
             detail: sym.detail.clone(),
-            container: if sym.container.is_empty() {
+            // `sym.container` is the enclosing JVM class, not the enclosing
+            // Kotlin declaration — a top-level Kotlin function still compiles
+            // into a synthetic `FileNameKt` class, so `sym.container` is
+            // non-empty for it too. `sym.top_level` is what actually
+            // distinguishes "real member" from "top-level with an
+            // implementation-detail wrapper class" (same condition the `fqn`
+            // computation below already uses for the identical question);
+            // without it every compiled-JAR top-level extension would be
+            // mistaken for a member extension of its own synthetic file class.
+            container: if sym.top_level || sym.container.is_empty() {
                 None
             } else {
                 Some(sym.container.clone())

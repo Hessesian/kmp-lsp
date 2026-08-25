@@ -151,6 +151,50 @@ fn jar_path_with_space_still_materializes() {
     );
 }
 
+/// A top-level Kotlin extension function still compiles to a synthetic
+/// `PaddingKt`-style JVM wrapper class, so the sidecar reports a non-empty
+/// `container` for it even though it is not a real Kotlin member.
+/// `SymbolEntry.container` must stay `None` for it (matching
+/// `SidecarSymbol::top_level`), or every compiled-JAR top-level extension
+/// gets mistaken for a member extension of its own wrapper class.
+#[test]
+fn populate_from_symbols_treats_top_level_synthetic_container_as_no_container() {
+    let indexer = idx();
+    let padding = crate::sidecar::SidecarSymbol {
+        name: "padding".to_owned(),
+        kind: "fun".to_owned(),
+        container: "PaddingKt".to_owned(),
+        detail: "fun Modifier.padding(all: Dp): Modifier".to_owned(),
+        doc: String::new(),
+        type_params: Vec::new(),
+        extension_receiver_type: "Modifier".to_owned(),
+        trailing_lambda: false,
+        deprecated: false,
+        pkg: "lib".to_owned(),
+        top_level: true,
+        supers: vec![],
+    };
+    populate_from_symbols(
+        &indexer,
+        "/home/test/.gradle/caches/compose-foundation-1.0.jar".as_ref(),
+        &[padding],
+    );
+
+    let entries = indexer
+        .extension_by_receiver
+        .get("Modifier")
+        .expect("padding must be indexed as an extension of Modifier");
+    let entry = entries
+        .iter()
+        .find(|e| e.name == "padding")
+        .expect("padding entry must exist");
+    assert_eq!(
+        entry.container, None,
+        "a top-level extension's synthetic JVM wrapper class must not be \
+         mistaken for a real Kotlin member container"
+    );
+}
+
 /// The crawl guarantees "sources-JAR data wins over compiled-JAR synthetic
 /// data in `qualified`" by ORDER (compiled first, sources last — see the
 /// crawl comment in scan_handler.rs). On-demand materialization runs
