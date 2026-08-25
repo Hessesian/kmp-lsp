@@ -70,6 +70,13 @@ impl LspClient {
             .args(["--stdio"])
             .env("KMP_LSP_WORKSPACE_ROOT", &canonical)
             .env("GRADLE_USER_HOME", &empty_gradle_home)
+            // Remove the real Android SDK from view for the same reason
+            // GRADLE_USER_HOME is isolated above: a real android.jar on the
+            // host turned every parallel smoke-test process into a
+            // redundant, CPU-contended JAR-manifest pass, timing these tests
+            // out on CI runners that ship a pre-installed SDK.
+            .env_remove("ANDROID_HOME")
+            .env_remove("ANDROID_SDK_ROOT")
             .current_dir(&canonical)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
