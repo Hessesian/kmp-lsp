@@ -1773,6 +1773,22 @@ pub(crate) fn extension_is_in_scope(
     })
 }
 
+/// Whether `SymbolEntry` `s` is the actual declaration a matched extension
+/// candidate (`name` on `receiver_base`, with `entry_container` from its
+/// `ExtensionEntry`) refers to. Its own `container` must equal
+/// `entry_container` exactly, so a member extension's declaration lookup is
+/// not rejected by a check written only for top-level extensions.
+pub(crate) fn extension_declaration_matches(
+    s: &crate::types::SymbolEntry,
+    name: &str,
+    receiver_base: &str,
+    entry_container: Option<&String>,
+) -> bool {
+    s.name == name
+        && s.extension_receiver() == receiver_base
+        && s.container.as_deref() == entry_container.map(String::as_str)
+}
+
 /// Find the return type of an extension function `method_name` declared with receiver
 /// `ReceiverType` where `ReceiverType`'s base name == `receiver_base`.
 ///
@@ -1834,7 +1850,11 @@ fn find_extension_fn_return_type_scoped(
         if entry.name != method_name {
             continue;
         }
-        if !matches!(entry.kind, SymbolKind::FUNCTION) {
+        // `METHOD` covers a member extension (see `push_def_symbols`'s own
+        // comment in `parser.rs`) — a plain `FUNCTION`-only filter silently
+        // skips every Compose-style `interface ColumnScope { fun
+        // Modifier.weight(...) }` return-type lookup.
+        if !matches!(entry.kind, SymbolKind::FUNCTION | SymbolKind::METHOD) {
             continue;
         }
         if !extension_is_in_scope(
@@ -1862,9 +1882,12 @@ fn find_extension_fn_return_type_scoped(
             .symbols
             .iter()
             .find(|s| {
-                s.name == method_name
-                    && s.extension_receiver() == receiver_base
-                    && s.container.is_none()
+                extension_declaration_matches(
+                    s,
+                    method_name,
+                    receiver_base,
+                    entry.container.as_ref(),
+                )
             })?
             .selection_start() as usize;
         let full_sig = file_data.lines.collect_signature(start_line);
@@ -1887,7 +1910,8 @@ fn find_extension_fn_return_type_global(
             if symbol.name != method_name {
                 continue;
             }
-            if !matches!(symbol.kind, SymbolKind::FUNCTION) {
+            // `METHOD` covers a member extension, same as the scoped lookup above.
+            if !matches!(symbol.kind, SymbolKind::FUNCTION | SymbolKind::METHOD) {
                 continue;
             }
             if symbol.extension_receiver() != receiver_base {
