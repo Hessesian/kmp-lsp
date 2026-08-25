@@ -100,6 +100,57 @@ fn jar_symbol_resolves_via_lookup() {
     assert_eq!(job_locs.len(), 1, "Job should be found");
 }
 
+/// A JAR path containing a space (e.g. Windows' default
+/// `C:\Program Files\Android\Sdk\...`) must produce a well-formed URI: the
+/// fake `jar:file://` URI has to percent-escape the space via
+/// `Url::from_file_path` (the pattern the rest of this codebase already
+/// uses — see `jar_extract.rs`), not interpolate `path.display()` raw. A raw
+/// space makes the resulting `Location.uri` invalid per RFC 3986, breaking
+/// go-to-definition/hover for every symbol from a JAR under a spaced path —
+/// the overwhelming majority of real Windows Android SDK installs (default
+/// `C:\Program Files\Android\Sdk`).
+#[test]
+fn jar_path_with_space_still_materializes() {
+    let indexer = idx();
+    let tmp = tempfile::tempdir().unwrap();
+    let jar_dir = tmp.path().join("Program Files").join("Android").join("Sdk");
+    std::fs::create_dir_all(&jar_dir).unwrap();
+    let jar_path = jar_dir.join("android.jar");
+
+    let symbols = vec![make_sidecar_symbol(
+        "View",
+        "class",
+        "class android.view.View",
+        "",
+    )];
+
+    let count = populate_from_symbols(&indexer, &jar_path, &symbols);
+    assert_eq!(
+        count, 1,
+        "space in the JAR path must not silently drop all symbols"
+    );
+
+    let view_locs = indexer.lookup_definitions("View");
+    assert_eq!(
+        view_locs.len(),
+        1,
+        "View should be found despite the space in its JAR path"
+    );
+    let uri_str = view_locs[0].uri.as_str();
+    assert!(
+        uri_str.starts_with("jar:file://"),
+        "View location should be a JAR URI, got {uri_str}"
+    );
+    assert!(
+        !uri_str.contains(' '),
+        "the space in the JAR path must be percent-escaped, not embedded raw: {uri_str}"
+    );
+    assert!(
+        uri_str.contains("%20"),
+        "expected the space to round-trip as %20 like Url::from_file_path produces: {uri_str}"
+    );
+}
+
 /// The crawl guarantees "sources-JAR data wins over compiled-JAR synthetic
 /// data in `qualified`" by ORDER (compiled first, sources last — see the
 /// crawl comment in scan_handler.rs). On-demand materialization runs
