@@ -828,6 +828,61 @@ fn resolve_qualified_uppercase_root_hierarchy_fallback_reaches_jar_superclass() 
     );
 }
 
+/// `Resolver::field_type`'s supertype walk (`find_field_type_via_supertypes`)
+/// is JAR-promotion-aware the same way `resolve_from_class_hierarchy` is
+/// above, so it can walk into a JAR-derived superclass whose stub symbols
+/// carry the same degenerate `.range == .selection_range` (no real body
+/// span). Unlike a member *function* (found via the container-scoped
+/// `find_in_workspace_defs` check), a JAR class's own member *property* has
+/// no indexed-detail resolution path yet (`infer_field_type_raw` never reads
+/// `jar_files`, only workspace `files`) — the point of this test is that the
+/// walk still terminates with a clean `None` instead of panicking on the
+/// JAR stub's degenerate range, not that the property resolves.
+#[test]
+fn catalog_field_type_supertype_walk_reaches_jar_superclass_without_panicking() {
+    use crate::sidecar::SidecarSymbol;
+
+    let sym = |name: &str, kind: &str, container: &str| SidecarSymbol {
+        name: name.to_owned(),
+        kind: kind.to_owned(),
+        container: container.to_owned(),
+        detail: format!("val {name}: String"),
+        doc: String::new(),
+        type_params: vec![],
+        extension_receiver_type: String::new(),
+        trailing_lambda: false,
+        deprecated: false,
+        pkg: "com.lib".to_owned(),
+        top_level: container.is_empty(),
+        supers: vec![],
+    };
+    let idx = Indexer::new();
+    crate::indexer::jar::populate_from_symbols(
+        &idx,
+        std::path::Path::new("/fake/abstract-viewmodel.jar"),
+        &[
+            sym("AbstractViewModel", "class", ""),
+            sym("uiState", "val", "AbstractViewModel"),
+        ],
+    );
+
+    let host_uri = uri("/ConcreteViewModel.kt");
+    idx.index_content(
+        &host_uri,
+        "package com.example\nclass ConcreteViewModel : AbstractViewModel()\n",
+    );
+
+    let result =
+        crate::resolver::Resolver::field_type(&idx, "ConcreteViewModel", "uiState", &host_uri);
+    assert!(
+        result.is_none(),
+        "a JAR class's own member property has no indexed-detail resolution \
+         path today (unlike an extension property); the walk must return \
+         None gracefully instead of panicking on the JAR stub's degenerate \
+         range, got {result:?}"
+    );
+}
+
 #[test]
 fn resolve_qualified_uppercase_root_hierarchy_fallback_works_from_a_different_call_site_file() {
     // Same fixture as `resolve_qualified_uppercase_root_falls_back_to_class_hierarchy`,

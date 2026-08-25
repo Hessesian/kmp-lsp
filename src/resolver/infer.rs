@@ -218,7 +218,7 @@ pub(crate) fn infer_field_chain_type(
             .unwrap_or(&current)
             .strip_nullable();
         let (field_raw, declaring_uri) =
-            find_field_type_in_class(indexer, class_base, field, &reachability_uri)?;
+            super::Resolver::field_type(indexer, class_base, field, &reachability_uri)?;
         current = field_raw.clone();
         leaf_raw = field_raw;
         reachability_uri = declaring_uri;
@@ -1176,6 +1176,130 @@ fn find_field_type_in_class_impl(
     None
 }
 
+/// Candidates for a supertype walk's starting class: reachability-scoped
+/// first (`from_uri`'s own imports/package), falling back to an unscoped
+/// workspace search and finally `lookup_definitions` (the only one of the
+/// three that promotes a not-yet-materialized JAR) when nothing reachable is
+/// found. Shared by [`find_field_type_via_supertypes`] and
+/// [`find_method_return_type_via_supertypes`] so neither anchors its walk on
+/// an unrelated same-named class elsewhere in the workspace.
+fn reachable_class_candidates(
+    indexer: &Indexer,
+    class_base: &str,
+    from_uri: Option<&Url>,
+) -> Vec<Location> {
+    let mut candidates = from_uri
+        .map(|uri| super::resolve::resolve_type_index_only(indexer, class_base, uri))
+        .unwrap_or_default();
+    if candidates.is_empty() {
+        candidates = indexer.workspace_def_candidates(class_base);
+    }
+    if candidates.is_empty() {
+        candidates = indexer.lookup_definitions(class_base);
+    }
+    candidates
+}
+
+/// Resolve `field_name`'s declared type by walking `class_name`'s ancestors —
+/// the field-typed sibling of [`find_method_return_type_via_supertypes`].
+/// [`find_field_type_in_class`] only reads `class_name`'s own body, so a
+/// field declared only on a generic superclass (`viewModel.uiState` where
+/// `uiState` lives on `MviViewModel<State, Effect>`, not the specific
+/// subclass) never resolves through it alone.
+pub(crate) fn find_field_type_via_supertypes(
+    indexer: &Indexer,
+    class_name: &str,
+    field_name: &str,
+    from_uri: &Url,
+) -> Option<(String, Url)> {
+    find_field_type_via_supertypes_impl(
+        indexer,
+        class_name,
+        field_name,
+        from_uri,
+        MAX_RAW_TYPE_INFER_DEPTH,
+    )
+}
+
+/// Depth-guarded implementation of [`find_field_type_via_supertypes`] —
+/// shares [`find_field_type_in_class_impl`]'s recursion budget rather than
+/// starting a fresh one: an ancestor's own field lookup can fall back to
+/// variable-type inference, which can re-enter field-type lookup for yet
+/// another receiver (see `MAX_RAW_TYPE_INFER_DEPTH`), so this walk is a
+/// participant in that cycle, not a separately-bounded recursion of its own.
+fn find_field_type_via_supertypes_impl(
+    indexer: &Indexer,
+    class_name: &str,
+    field_name: &str,
+    from_uri: &Url,
+    depth: u8,
+) -> Option<(String, Url)> {
+    if depth == 0 {
+        return None;
+    }
+    // Strip generics AND any qualifying package prefix — `class_base` is
+    // matched against bare symbol names below.
+    let class_base = class_name.dotted_ident_prefix().last_segment().to_owned();
+
+    reachable_class_candidates(indexer, &class_base, Some(from_uri))
+        .into_iter()
+        .take(crate::indexer::MAX_BY_NAME_DEFS)
+        .find_map(|location| {
+            find_field_type_via_class_hierarchy(
+                indexer,
+                &class_base,
+                location.uri.as_str(),
+                field_name,
+                from_uri,
+                depth,
+            )
+        })
+}
+
+/// Walk every ancestor of `class_base` (declared at `class_uri`) via
+/// [`walk_hierarchy`] looking for `field_name`'s declared type — mirrors
+/// [`find_method_return_type_via_class_hierarchy`]'s structure exactly.
+/// The direct supertype's own generic type arguments are substituted into a
+/// hit found there via `substitute_direct_supertype_args`; a hit on a deeper
+/// ancestor is returned as-is (same documented limitation the method version
+/// already accepts).
+fn find_field_type_via_class_hierarchy(
+    indexer: &Indexer,
+    class_base: &str,
+    class_uri: &str,
+    field_name: &str,
+    from_uri: &Url,
+    depth: u8,
+) -> Option<(String, Url)> {
+    use crate::types::CallerContext;
+
+    let caller = CallerContext {
+        uri: Some(from_uri.as_str()),
+        cursor_line: None,
+    };
+    let hits: Vec<(String, String, Url)> = walk_hierarchy(
+        indexer,
+        class_base,
+        class_uri,
+        caller,
+        8,
+        MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK,
+        |idx, super_name, super_uri, _caller| {
+            let Ok(super_url) = Url::parse(super_uri) else {
+                return Vec::new();
+            };
+            find_field_type_in_class_impl(idx, super_name, field_name, &super_url, depth - 1)
+                .map(|(raw, declaring_uri)| (super_name.to_owned(), raw, declaring_uri))
+                .into_iter()
+                .collect()
+        },
+    );
+    let (super_name, raw, declaring_uri) = hits.into_iter().next()?;
+    let substituted =
+        substitute_direct_supertype_args(indexer, class_uri, class_base, &super_name, &raw);
+    Some((substituted, declaring_uri))
+}
+
 // ─── Extension property type inference ───────────────────────────────────────
 
 /// Look up the declared type of an extension property named `prop_name` that
@@ -1761,17 +1885,11 @@ pub(crate) fn find_method_return_type_via_supertypes(
     method_name: &str,
     from_uri: Option<&Url>,
 ) -> Option<String> {
-    // Strip generics AND any qualifying package prefix: `lookup_definitions`
-    // is keyed by the bare symbol name, so a qualified `class_name` (e.g.
-    // `com.lib.MutableSharedFlow<Event>`) would otherwise silently miss it.
+    // Strip generics AND any qualifying package prefix — `class_base` is
+    // matched against bare symbol names below.
     let class_base = class_name.dotted_ident_prefix().last_segment().to_owned();
 
-    // `lookup_definitions` merges workspace + JAR locations (promoting a
-    // not-yet-materialized JAR as needed) into an owned `Vec<Location>` --
-    // the walk below promotes further JARs per-ancestor, and an owned Vec
-    // (unlike a DashMap `Ref`) can't deadlock against that.
-    indexer
-        .lookup_definitions(&class_base)
+    reachable_class_candidates(indexer, &class_base, from_uri)
         .into_iter()
         .take(crate::indexer::MAX_BY_NAME_DEFS)
         .find_map(|loc| {

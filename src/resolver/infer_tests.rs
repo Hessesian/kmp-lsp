@@ -1469,3 +1469,233 @@ fn receiver_based_resolution_also_substitutes_call_site_type_argument() {
          real receiver type is star-projected Flow<*>)"
     );
 }
+
+/// Confirms the gap `Resolver::field_type` exists to close:
+/// `find_field_type_in_class` only reads a class's own body, so a field
+/// declared only on a generic superclass (`viewModel.uiState` where
+/// `uiState` lives on `MviViewModel<S, E>`, not the specific subclass) is
+/// invisible to it — the scout report's `ContactAddressViewModel` evidence.
+///
+/// The base class and its subclass live in separate files (the realistic
+/// MVI shape, and how the GREEN/decoy siblings below are also built): were
+/// they in one file, `find_field_type_in_class`'s own-body check would
+/// accidentally "find" the base's `uiState` by whole-file line-proximity
+/// (see `infer_field_type_raw`'s `near_line` doc comment) despite it not
+/// being scoped to the queried class's container at all -- a separate,
+/// pre-existing quirk this test deliberately avoids conflating with the
+/// actual supertype-walk gap under test here.
+#[test]
+fn find_field_type_in_class_alone_misses_a_generic_superclass_field() {
+    use super::find_field_type_in_class;
+    use crate::indexer::Indexer;
+    use tower_lsp::lsp_types::Url;
+
+    let idx = Indexer::new();
+    let base = Url::parse("file:///app/MviViewModel.kt").unwrap();
+    idx.index_content(
+        &base,
+        "package app\n\
+         abstract class MviViewModel<S, E> {\n\
+         \x20   val uiState: S = TODO()\n\
+         \x20   val effect: E = TODO()\n\
+         }\n",
+    );
+    let derived = Url::parse("file:///app/ContactAddressViewModel.kt").unwrap();
+    idx.index_content(
+        &derived,
+        "package app\n\
+         class ContactState\n\
+         class ContactEffect\n\
+         class ContactAddressViewModel : MviViewModel<ContactState, ContactEffect>()\n",
+    );
+
+    assert_eq!(
+        find_field_type_in_class(&idx, "ContactAddressViewModel", "uiState", &derived),
+        None,
+        "find_field_type_in_class must NOT find a field declared only on a \
+         superclass -- that is exactly the gap the supertype walk closes"
+    );
+}
+
+/// GREEN: `Resolver::field_type` folds the supertype walk in, so `uiState`
+/// (declared only on `MviViewModel<S, E>`) resolves for the derived class,
+/// substituting the direct supertype's own concrete type arguments
+/// (`ContactState`/`ContactEffect`) into the raw declared type `S`.
+#[test]
+fn catalog_field_type_folds_supertype_inheritance_with_generic_substitution() {
+    use crate::indexer::Indexer;
+    use crate::resolver::Resolver;
+    use tower_lsp::lsp_types::Url;
+
+    let idx = Indexer::new();
+    let base = Url::parse("file:///app/MviViewModel.kt").unwrap();
+    idx.index_content(
+        &base,
+        "package app\n\
+         abstract class MviViewModel<S, E> {\n\
+         \x20   val uiState: S = TODO()\n\
+         \x20   val effect: E = TODO()\n\
+         }\n",
+    );
+    let derived = Url::parse("file:///app/ContactAddressViewModel.kt").unwrap();
+    idx.index_content(
+        &derived,
+        "package app\n\
+         class ContactState\n\
+         class ContactEffect\n\
+         class ContactAddressViewModel : MviViewModel<ContactState, ContactEffect>()\n",
+    );
+
+    let (field_type, _declaring_uri) = idx
+        .field_type("ContactAddressViewModel", "uiState", &derived)
+        .expect("uiState must resolve via the supertype walk");
+    assert_eq!(
+        field_type, "ContactState",
+        "the direct supertype's own generic argument (ContactState for S) \
+         must be substituted into the raw declared type"
+    );
+}
+
+/// Decoy: an unrelated sibling class reachable from the same file as the
+/// real ancestor also declares a field named `uiState`, with a different
+/// type, but is itself NOT anywhere in `ContactAddressViewModel`'s
+/// hierarchy. `find_field_type_via_supertypes` resolves each ancestor by
+/// walking real CST-recorded `supers` edges (`walk_hierarchy`) and looks up
+/// `uiState` scoped to that specific resolved ancestor class -- not an
+/// unscoped by-name scan across the file -- so the decoy's field must never
+/// surface, matching the discipline `find_name_scoped_to_container`'s
+/// existence elsewhere in this codebase already enforces for other lookups.
+#[test]
+fn catalog_field_type_supertype_walk_ignores_unrelated_same_named_sibling_field() {
+    use crate::indexer::Indexer;
+    use crate::resolver::Resolver;
+    use tower_lsp::lsp_types::Url;
+
+    let idx = Indexer::new();
+    let base = Url::parse("file:///app/MviViewModel.kt").unwrap();
+    idx.index_content(
+        &base,
+        "package app\n\
+         // Unrelated: not a supertype of ContactAddressViewModel, but shares\n\
+         // the field name `uiState` with an incompatible type -- declared\n\
+         // well before the real ancestor so a proximity-based scan (rather\n\
+         // than genuine container scoping) could not accidentally pass.\n\
+         class UnrelatedSettingsHolder {\n\
+         \x20   val uiState: Boolean = TODO()\n\
+         }\n\
+         abstract class MviViewModel<S, E> {\n\
+         \x20   val uiState: S = TODO()\n\
+         }\n",
+    );
+    let derived = Url::parse("file:///app/ContactAddressViewModel.kt").unwrap();
+    idx.index_content(
+        &derived,
+        "package app\n\
+         class ContactState\n\
+         class ContactAddressViewModel : MviViewModel<ContactState, Unit>()\n",
+    );
+
+    let (field_type, _declaring_uri) = idx
+        .field_type("ContactAddressViewModel", "uiState", &derived)
+        .expect("uiState must resolve via the real supertype walk");
+    assert_eq!(
+        field_type, "ContactState",
+        "the real ancestor's uiState (substituted to ContactState) must win \
+         -- the unrelated sibling's same-named Boolean field must never be \
+         picked up by the supertype walk"
+    );
+}
+
+/// Two unrelated classes both named `Derived` exist in the workspace; only
+/// one is reachable from the caller's own import. The supertype walk's own
+/// starting-class lookup must stay reachability-scoped like
+/// `find_field_type_in_class`'s already is, not fall back to an unscoped
+/// by-name pick that could land on the wrong `Derived` and its wrong
+/// ancestor (Copilot review, PR #281).
+#[test]
+fn catalog_field_type_supertype_walk_stays_reachability_scoped_on_a_colliding_class_name() {
+    use crate::indexer::Indexer;
+    use crate::resolver::Resolver;
+    use tower_lsp::lsp_types::Url;
+
+    let idx = Indexer::new();
+    // Indexed first, so an unscoped by-name lookup would find it first.
+    idx.index_content(
+        &Url::parse("file:///com/wrong/Derived.kt").unwrap(),
+        "package com.wrong\n\
+         abstract class WrongBase {\n\
+         \x20   val value: WrongType = TODO()\n\
+         }\n\
+         class WrongType\n\
+         class Derived : WrongBase()\n",
+    );
+    idx.index_content(
+        &Url::parse("file:///com/right/RightBase.kt").unwrap(),
+        "package com.right\n\
+         abstract class RightBase {\n\
+         \x20   val value: RightType = TODO()\n\
+         }\n\
+         class RightType\n",
+    );
+    let right_derived = Url::parse("file:///com/right/Derived.kt").unwrap();
+    idx.index_content(
+        &right_derived,
+        "package com.right\nclass Derived : RightBase()\n",
+    );
+    let caller = Url::parse("file:///com/caller/Caller.kt").unwrap();
+    idx.index_content(
+        &caller,
+        "package com.caller\nimport com.right.Derived\nfun use(d: Derived) { d.value }\n",
+    );
+
+    let (field_type, declaring_uri) = idx
+        .field_type("Derived", "value", &caller)
+        .expect("value must resolve via the reachable Derived's own supertype");
+    assert_eq!(
+        field_type, "RightType",
+        "must walk the reachable com.right.Derived's own supertype \
+         (RightBase), not the unrelated com.wrong.Derived indexed first"
+    );
+    assert_eq!(declaring_uri.as_str(), "file:///com/right/RightBase.kt");
+}
+
+/// Regression, exercised through the *supertype-walk* path specifically:
+/// mirrors `find_field_type_in_class_terminates_on_a_mutual_field_reference_cycle`,
+/// but the queried class doesn't declare the field itself -- it inherits it
+/// from a superclass whose own inference re-enters the same
+/// field/variable-type mutual-recursion cycle PR #278 bounded
+/// (`find_field_type_in_class_impl` <-> `infer_variable_type_raw_impl`).
+/// `find_field_type_via_supertypes` must thread the *same* shared depth
+/// budget through, not add its own separate unguarded recursion, or this
+/// reopens the exact stack overflow that fix closed.
+#[test]
+fn find_field_type_via_supertypes_terminates_on_a_mutual_field_reference_cycle() {
+    use crate::indexer::Indexer;
+    use crate::resolver::Resolver;
+    use tower_lsp::lsp_types::Url;
+
+    fn uri(p: &str) -> Url {
+        Url::parse(&format!("file://{p}")).unwrap()
+    }
+
+    let idx = Indexer::new();
+    idx.index_content(
+        &uri("/A.kt"),
+        "package com.example\n\
+         open class A(val b: B) {\n\
+         \x20   val value = b.value\n\
+         }\n\
+         class DerivedA : A(TODO())\n",
+    );
+    idx.index_content(
+        &uri("/B.kt"),
+        "package com.example\nclass B(val a: A) {\n    val value = a.value\n}\n",
+    );
+
+    // Past the depth cap the walk bails at whatever partial (possibly
+    // approximate) answer it has -- no specific value is asserted, only that
+    // this call, reached via the supertype-walk fallback (DerivedA declares
+    // no `value` field itself), returns at all instead of overflowing the
+    // stack.
+    let _ = idx.field_type("DerivedA", "value", &uri("/A.kt"));
+}
