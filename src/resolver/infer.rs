@@ -1773,20 +1773,20 @@ pub(crate) fn extension_is_in_scope(
     })
 }
 
-/// Whether `SymbolEntry` `s` is the actual declaration a matched extension
+/// Whether `SymbolEntry` `symbol` is the actual declaration a matched extension
 /// candidate (`name` on `receiver_base`, with `entry_container` from its
 /// `ExtensionEntry`) refers to. Its own `container` must equal
 /// `entry_container` exactly, so a member extension's declaration lookup is
 /// not rejected by a check written only for top-level extensions.
 pub(crate) fn extension_declaration_matches(
-    s: &crate::types::SymbolEntry,
+    symbol: &crate::types::SymbolEntry,
     name: &str,
     receiver_base: &str,
     entry_container: Option<&String>,
 ) -> bool {
-    s.name == name
-        && s.extension_receiver() == receiver_base
-        && s.container.as_deref() == entry_container.map(String::as_str)
+    symbol.name == name
+        && symbol.extension_receiver() == receiver_base
+        && symbol.container.as_deref() == entry_container.map(String::as_str)
 }
 
 /// Find the return type of an extension function `method_name` declared with receiver
