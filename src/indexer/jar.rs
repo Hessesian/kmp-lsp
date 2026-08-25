@@ -59,8 +59,12 @@ const KNOWN_BUILD_TOOLING_GROUP_IDS: &[&str] = &[
     "com.android.tools.external.org-jetbrains",
     // AGP/Lint's own layout-rendering, static-analysis, device-bridge,
     // test-platform, telemetry, and Jetifier implementation packages.
+    // NOTE: `com.android.tools.lint` is deliberately NOT listed here — see
+    // `KNOWN_BUILD_TOOLING_ARTIFACTS` below, which excludes only that
+    // group's genuinely tooling-only artifacts. `lint-api` and `lint-tests`
+    // are real compile-time (respectively test-compile-time) dependencies
+    // for any project that writes custom Android Lint rules.
     "com.android.tools.layoutlib",
-    "com.android.tools.lint",
     "com.android.tools.ddms",
     "com.android.tools.utp",
     "com.android.tools.analytics-library",
@@ -100,6 +104,18 @@ const KNOWN_BUILD_TOOLING_ARTIFACTS: &[(&str, &str)] = &[
     ("com.android.tools.build", "builder-model"),
     ("com.android.tools.build", "builder-test-api"),
     ("com.android.tools.build", "manifest-merger"),
+    // `com.android.tools.lint` group: only the genuinely tooling-only
+    // artifacts, verified against a real Gradle cache. `lint` is the
+    // standalone CLI (bundles UAST + the Gradle-plugin integration);
+    // `lint-checks` is AOSP's own bundled built-in check implementations;
+    // `lint-model`/`lint-typedef-remover` are internal AGP/Lint data models.
+    // `lint-api` (the custom-Detector API) and `lint-tests` (the
+    // `testImplementation` harness for custom-check unit tests) are left
+    // out — both are real, documented compile-time dependencies.
+    ("com.android.tools.lint", "lint"),
+    ("com.android.tools.lint", "lint-checks"),
+    ("com.android.tools.lint", "lint-model"),
+    ("com.android.tools.lint", "lint-typedef-remover"),
 ];
 
 /// True when a Gradle-cache JAR belongs to a known build-tooling/compiler/

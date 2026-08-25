@@ -815,6 +815,68 @@ fn scan_gradle_jars_split_excludes_known_build_tooling_jars() {
 }
 
 #[test]
+fn scan_gradle_jars_split_keeps_lint_api_but_excludes_lint_tooling() {
+    // `com.android.tools.lint` was excluded as a whole group, but `lint-api`
+    // (com.android.tools.lint.detector.api.Detector/Issue/...) is a genuine
+    // compile-time dependency for any project that writes custom Android
+    // Lint rules, and `lint-tests` (`checks.infrastructure.TestLintTask`)
+    // is the standard `testImplementation` harness for testing them —
+    // unlike `lint-checks` (AOSP's own bundled built-in check
+    // implementations), which really is tooling-only. Mirrors the
+    // artifact-scoped precedent `kotlin-compiler-embeddable` already sets:
+    // narrow the exclusion within the group instead of dropping it whole.
+    // All three artifact names are real, verified against a live Gradle
+    // cache (`com.android.tools.lint:{lint-api,lint-tests,lint-checks}`).
+    let tmpdir = tempfile::tempdir().unwrap();
+    write_compiled_jar(
+        tmpdir.path(),
+        "com.android.tools.lint",
+        "lint-api",
+        "31.0.0",
+        &[("com/android/tools/lint/detector/api/Detector.class", "stub")],
+    );
+    write_compiled_jar(
+        tmpdir.path(),
+        "com.android.tools.lint",
+        "lint-tests",
+        "31.0.0",
+        &[(
+            "com/android/tools/lint/checks/infrastructure/TestLintTask.class",
+            "stub",
+        )],
+    );
+    write_compiled_jar(
+        tmpdir.path(),
+        "com.android.tools.lint",
+        "lint-checks",
+        "31.0.0",
+        &[("com/android/tools/lint/checks/ApiDetector.class", "stub")],
+    );
+
+    let (compiled, _) = crate::indexer::jar::scan_gradle_jars_split(Some(tmpdir.path()));
+
+    let survivors: Vec<String> = compiled
+        .iter()
+        .map(|path| path.to_string_lossy().into_owned())
+        .collect();
+    assert!(
+        survivors.iter().any(|path| path.contains("lint-api")),
+        "lint-api is a real compile-time dependency for custom Lint rule authors \
+         and must survive the scan, got: {survivors:?}"
+    );
+    assert!(
+        survivors.iter().any(|path| path.contains("lint-tests")),
+        "lint-tests is the real testImplementation harness for custom Lint rule tests \
+         and must survive the scan, got: {survivors:?}"
+    );
+    assert!(
+        !survivors.iter().any(|path| path.contains("lint-checks")),
+        "lint-checks (AOSP's own bundled built-in check implementations) is \
+         tooling-only and must still be excluded, got: {survivors:?}"
+    );
+}
+
+#[test]
 fn index_sources_jars_end_to_end_with_real_jar() {
     // End-to-end smoke: walk the real Gradle cache + extract + parse + insert.
     // One small JAR, one .kt file.  Exercises the slow I/O path that
