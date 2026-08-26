@@ -299,8 +299,8 @@ pub(crate) fn load_configured_jar_paths(workspace_root: &Path) -> Vec<PathBuf> {
 /// the common "no file present" case) on any I/O or parse failure — never
 /// panics, matching every other loader in this file.
 ///
-/// No production caller yet — shared by `load_module_dependencies` and its
-/// tests, pending resolver wiring (design doc §5, deferred).
+/// Used by `load_module_dependencies` (workspace scan and CLI indexing) and
+/// directly by tests.
 fn parse_workspace_data(workspace_root: &Path) -> Option<WorkspaceData> {
     let json_path = workspace_root.join("workspace.json");
     if !json_path.exists() {
@@ -328,8 +328,8 @@ fn parse_workspace_data(workspace_root: &Path) -> Option<WorkspaceData> {
 /// `None` (never a wrong guess) when neither shape matches — e.g. a
 /// hand-added local library.
 ///
-/// No production caller yet — exercised directly by tests, pending resolver
-/// wiring (design doc §5, deferred).
+/// Used by `module_gradle_dependencies` as part of `load_module_dependencies`,
+/// and directly by tests.
 pub(crate) fn library_gradle_meta(library: &LibraryData) -> Option<GradleMeta> {
     if let Some(gradle_meta) = library_gradle_meta_from_attributes(library) {
         return Some(gradle_meta);
@@ -379,8 +379,9 @@ fn library_gradle_meta_from_name(name: &str) -> Option<GradleMeta> {
 /// Returns an empty map (never panics) when `workspace.json` is missing,
 /// malformed, or carries no `libraries[]`/`dependencies[]` data.
 ///
-/// No production caller yet — built and tested standalone for the resolver's
-/// future JAR-collision-scoping use, per this slice's own scope boundary.
+/// Called from the workspace scan handler and the CLI index build path to
+/// populate `Indexer::module_dependencies` for the resolver's
+/// JAR-collision-scoping tie-break.
 pub(crate) fn load_module_dependencies(
     workspace_root: &Path,
 ) -> HashMap<PathBuf, HashSet<GradleMeta>> {

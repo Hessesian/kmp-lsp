@@ -97,13 +97,17 @@ pub(crate) enum ResolveIo {
     ScopedOnly,
     /// Same IO profile as `NoRg`, but the global-defs tail fallback is
     /// ambiguity-safe: a unique match wins outright; an ambiguous (N>1)
-    /// match gets one narrow tie-break (dropping any candidate whose
-    /// declared package starts with a denylisted prefix, e.g.
-    /// `com.android.internal.`) before still declining if more than one
-    /// candidate remains. Used only by the hierarchy walk's own recursion
-    /// beyond hop 1 (`supertype_targets`), where `from_uri` becomes a
-    /// `jar:` synthetic URI with no import list to disambiguate against —
-    /// see `docs/superpowers/specs/2026-08-25-hierarchy-walk-unscoped-name-collision-design.md`.
+    /// match gets two narrow tie-breaks in sequence — dropping any
+    /// candidate whose declared package starts with a denylisted prefix
+    /// (e.g. `com.android.internal.`), then narrowing to candidates whose
+    /// own JAR is a real dependency of the calling file's module (when
+    /// `workspace.json` module-dependency data is available) — before
+    /// still declining if more than one candidate remains. Used only by
+    /// the hierarchy walk's own recursion beyond hop 1 (`supertype_targets`),
+    /// where `from_uri` becomes a `jar:` synthetic URI with no import list
+    /// to disambiguate against — see
+    /// `docs/superpowers/specs/2026-08-25-hierarchy-walk-unscoped-name-collision-design.md`
+    /// and `docs/superpowers/specs/2026-08-25-real-workspace-json-schema-and-consumption-design.md`.
     HierarchyAmbiguitySafe,
 }
 
