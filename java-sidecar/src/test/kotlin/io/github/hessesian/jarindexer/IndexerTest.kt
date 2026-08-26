@@ -428,4 +428,40 @@ class IndexerTest {
                 "got: ${guidance.map { "${it.detail} -> deprecated=${it.deprecated}" }}",
         )
     }
+
+    @Test
+    @DisplayName("indexJarFile marks defaulted parameters in rendered function detail")
+    fun testDefaultedParametersAreMarkedInDetail() {
+        // The real `launch` overload's `context`/`start` parameters both carry
+        // Kotlin default values (`= EmptyCoroutineContext`, `= CoroutineStart.DEFAULT`);
+        // only `block` is truly required. Without a default-value marker in the
+        // rendered detail text, the Rust side's `params_from_detail` (which infers
+        // "required" purely from the ABSENCE of `=` in each parameter's own text)
+        // has no way to tell these apart from a fully-required 3-arg function --
+        // causing a real call like `scope.launch { ... }` (0 explicit args, only a
+        // trailing lambda) to fail arity/shape filtering against a wrongly-required
+        // `context`/`start`, and get treated as unresolved/ambiguous. This is a
+        // real, measured bug found via the resolution-accuracy benchmark on a real
+        // Kotlin/Android corpus (Moneta) -- see the 2026-08-26 investigation.
+        val jarPath = System.getProperty("coroutines.jar")
+        assertNotNull(jarPath, "coroutines.jar system property must be set by the build")
+
+        val real = indexJarFile(jarPath!!)
+            .filter { it.name == "launch" && it.extensionReceiverType == "CoroutineScope" }
+            .firstOrNull { it.detail.contains("context: CoroutineContext") && !it.deprecated }
+        assertNotNull(real, "real launch(context: CoroutineContext, ...) overload missing")
+
+        assertTrue(
+            real!!.detail.contains("context: CoroutineContext =") &&
+                real.detail.contains("start: CoroutineStart ="),
+            "context/start both declare Kotlin default values and must be marked " +
+                "with '=' in the rendered detail so params_from_detail counts them " +
+                "as optional, got: ${real.detail}",
+        )
+        assertFalse(
+            real.detail.substringAfter("block:").contains("="),
+            "block has no default value and must NOT be marked with '=', " +
+                "got: ${real.detail}",
+        )
+    }
 }

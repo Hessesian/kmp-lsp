@@ -245,7 +245,10 @@ private fun renderFunction(fn: KmFunction, receiver: KmType? = null, classTypePa
         if (receiver != null) { append(receiver.render(typeParams)); append('.') }
         append(fn.name)
         append('(')
-        fn.valueParameters.joinTo(this, ", ") { p -> "${p.name}: ${p.type?.render(typeParams) ?: "Any?"}" }
+        fn.valueParameters.joinTo(this, ", ") { p ->
+            val defaultMarker = if (p.declaresDefaultValue) " = ..." else ""
+            "${p.name}: ${p.type?.render(typeParams) ?: "Any?"}$defaultMarker"
+        }
         append(')')
         val ret = fn.returnType
         if (!ret.isUnit()) { append(": "); append(ret.render(typeParams)) }
