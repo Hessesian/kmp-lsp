@@ -539,3 +539,210 @@ fn jar_paths_absent_returns_empty() {
     make_workspace_json(&dir, r#"{"sourcePaths": []}"#);
     assert!(load_configured_jar_paths(dir.path()).is_empty());
 }
+
+// ─── real workspace.json schema: libraries[] + dependencies[] ─────────────────
+
+/// Mirrors the design doc's cited PetClinic excerpt: a module with a
+/// `library`-type dependency, and a matching `libraries[]` entry whose
+/// `properties.attributes` carries structured GAV coordinates.
+#[test]
+fn real_schema_deserialization_extracts_gav_from_properties() {
+    let dir = TempDir::new().unwrap();
+    make_workspace_json(
+        &dir,
+        r#"{
+            "modules": [{
+                "name": "PetClinic.main",
+                "contentRoots": [{"path": "<WORKSPACE>/app"}],
+                "dependencies": [
+                    {"type": "library", "name": "Gradle: ch.qos.logback:logback-classic:1.5.16", "scope": "compile"}
+                ]
+            }],
+            "libraries": [{
+                "name": "Gradle: ch.qos.logback:logback-classic:1.5.16",
+                "type": "COMPILE",
+                "roots": [{"path": "<GRADLE_REPO>/logback-classic-1.5.16.jar"}],
+                "properties": {"attributes": {
+                    "groupId": "ch.qos.logback",
+                    "artifactId": "logback-classic",
+                    "version": "1.5.16",
+                    "baseVersion": "1.5.16"
+                }}
+            }]
+        }"#,
+    );
+
+    let workspace_data = parse_workspace_data(dir.path()).expect("real schema fixture must parse");
+    assert_eq!(workspace_data.libraries.len(), 1);
+    let gradle_meta =
+        library_gradle_meta(&workspace_data.libraries[0]).expect("properties path must resolve");
+    assert_eq!(gradle_meta.group, "ch.qos.logback");
+    assert_eq!(gradle_meta.artifact, "logback-classic");
+    assert_eq!(gradle_meta.version, "1.5.16");
+}
+
+#[test]
+fn library_gradle_meta_falls_back_to_name_string_when_properties_absent() {
+    let library = LibraryData {
+        name: "Gradle: org.jetbrains.kotlin:kotlin-stdlib:2.0.0".to_owned(),
+        roots: Vec::new(),
+        properties: None,
+    };
+    let gradle_meta = library_gradle_meta(&library).expect("name-string fallback must resolve");
+    assert_eq!(gradle_meta.group, "org.jetbrains.kotlin");
+    assert_eq!(gradle_meta.artifact, "kotlin-stdlib");
+    assert_eq!(gradle_meta.version, "2.0.0");
+}
+
+/// The third-party plugin's synthetic Android SDK library is also
+/// `"Gradle: "`-prefixed — it must parse like any other 3-segment name.
+#[test]
+fn library_gradle_meta_parses_synthetic_android_sdk_name() {
+    let library = LibraryData {
+        name: "Gradle: android:android:36".to_owned(),
+        roots: Vec::new(),
+        properties: None,
+    };
+    let gradle_meta = library_gradle_meta(&library).expect("synthetic name must still parse");
+    assert_eq!(gradle_meta.group, "android");
+    assert_eq!(gradle_meta.artifact, "android");
+    assert_eq!(gradle_meta.version, "36");
+}
+
+#[test]
+fn library_gradle_meta_returns_none_for_malformed_library() {
+    let library = LibraryData {
+        name: "a hand-added local jar".to_owned(),
+        roots: Vec::new(),
+        properties: None,
+    };
+    assert!(library_gradle_meta(&library).is_none());
+}
+
+/// An unrecognized `type` value on a dependency entry (simulating a future
+/// schema addition) must be ignored, not fail the whole module's parse.
+#[test]
+fn unknown_dependency_type_is_ignored_not_a_parse_error() {
+    let dir = TempDir::new().unwrap();
+    make_workspace_json(
+        &dir,
+        r#"{
+            "modules": [{
+                "name": "app.main",
+                "contentRoots": [{"path": "<WORKSPACE>/app"}],
+                "dependencies": [
+                    {"type": "futureKind", "name": "something-unknown"},
+                    {"type": "library", "name": "Gradle: com.example:known:1.0"}
+                ]
+            }],
+            "libraries": [{
+                "name": "Gradle: com.example:known:1.0",
+                "roots": []
+            }]
+        }"#,
+    );
+
+    let workspace_data =
+        parse_workspace_data(dir.path()).expect("unknown dependency type must not fail parsing");
+    assert_eq!(workspace_data.modules.len(), 1);
+    assert_eq!(workspace_data.modules[0].dependencies.len(), 2);
+}
+
+/// Matches the third-party plugin's documented deviations: `type` is the
+/// non-standard `"java-imported"`, no `module`/`sdk`-type dependency entries
+/// ever appear, and `externalProjectId` is never emitted.
+#[test]
+fn third_party_plugin_shape_does_not_break_parsing() {
+    let dir = TempDir::new().unwrap();
+    make_workspace_json(
+        &dir,
+        r#"{
+            "modules": [{
+                "name": "app.main",
+                "contentRoots": [{"path": "<WORKSPACE>/app"}],
+                "dependencies": [
+                    {"type": "library", "name": "Gradle: com.example:known:1.0", "scope": "compile"},
+                    {"type": "moduleSource"},
+                    {"type": "inheritedSdk"}
+                ]
+            }],
+            "libraries": [{
+                "name": "Gradle: com.example:known:1.0",
+                "type": "java-imported",
+                "roots": [{"path": "<GRADLE_REPO>/known-1.0.jar"}]
+            }]
+        }"#,
+    );
+
+    let workspace_data =
+        parse_workspace_data(dir.path()).expect("third-party plugin shape must parse");
+    assert!(workspace_data.modules[0].external_project_id.is_none());
+    let gradle_meta = library_gradle_meta(&workspace_data.libraries[0])
+        .expect("name-string fallback must still resolve despite java-imported type");
+    assert_eq!(gradle_meta.artifact, "known");
+}
+
+#[test]
+fn load_module_dependencies_scopes_each_module_to_its_own_content_roots() {
+    let dir = TempDir::new().unwrap();
+    fs::create_dir_all(dir.path().join("app")).unwrap();
+    fs::create_dir_all(dir.path().join("core")).unwrap();
+    make_workspace_json(
+        &dir,
+        r#"{
+            "modules": [
+                {
+                    "name": "app.main",
+                    "contentRoots": [{"path": "<WORKSPACE>/app"}],
+                    "dependencies": [
+                        {"type": "library", "name": "Gradle: com.example:shared:1.0"},
+                        {"type": "library", "name": "Gradle: com.example:app-only:2.0"}
+                    ]
+                },
+                {
+                    "name": "core.main",
+                    "contentRoots": [{"path": "<WORKSPACE>/core"}],
+                    "dependencies": [
+                        {"type": "library", "name": "Gradle: com.example:shared:1.0"},
+                        {"type": "library", "name": "Gradle: com.example:core-only:3.0"}
+                    ]
+                }
+            ],
+            "libraries": [
+                {"name": "Gradle: com.example:shared:1.0", "roots": []},
+                {"name": "Gradle: com.example:app-only:2.0", "roots": []},
+                {"name": "Gradle: com.example:core-only:3.0", "roots": []}
+            ]
+        }"#,
+    );
+
+    let dependencies_by_content_root = load_module_dependencies(dir.path());
+
+    let app_dependencies = dependencies_by_content_root
+        .get(&dir.path().join("app"))
+        .expect("app content root must be present");
+    let artifacts: std::collections::HashSet<&str> = app_dependencies
+        .iter()
+        .map(|gradle_meta| gradle_meta.artifact.as_str())
+        .collect();
+    assert!(artifacts.contains("shared"));
+    assert!(artifacts.contains("app-only"));
+    assert!(
+        !artifacts.contains("core-only"),
+        "core-only dependency leaked into app's scope: {artifacts:?}"
+    );
+
+    let core_dependencies = dependencies_by_content_root
+        .get(&dir.path().join("core"))
+        .expect("core content root must be present");
+    let artifacts: std::collections::HashSet<&str> = core_dependencies
+        .iter()
+        .map(|gradle_meta| gradle_meta.artifact.as_str())
+        .collect();
+    assert!(artifacts.contains("shared"));
+    assert!(artifacts.contains("core-only"));
+    assert!(
+        !artifacts.contains("app-only"),
+        "app-only dependency leaked into core's scope: {artifacts:?}"
+    );
+}

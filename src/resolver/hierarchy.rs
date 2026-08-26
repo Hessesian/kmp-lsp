@@ -36,7 +36,7 @@ pub(crate) const MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK: usize = 3;
 pub(crate) fn walk_hierarchy<'a, T, F>(
     idx: &'a Indexer,
     start_class: &str,
-    start_uri: &str,
+    start_uri: &'a str,
     caller: CallerContext<'a>,
     max_depth: usize,
     sidecar_budget: usize,
@@ -45,6 +45,16 @@ pub(crate) fn walk_hierarchy<'a, T, F>(
 where
     F: Fn(&Indexer, &str, &str, CallerContext<'_>) -> Vec<T>,
 {
+    // The walk's own unchanging origin, for module-scoped ambiguity narrowing
+    // (`module_scoped_tie_break`) — prefer `caller.uri`, which most callers
+    // already populate with the real editing file for an unrelated purpose
+    // (see e.g. `find_field_type_via_class_hierarchy`), and fall back to
+    // `start_uri`, which equals the real editing file at every remaining
+    // call site that leaves `caller` at its default. Threaded unchanged
+    // through every recursive hop below — never updated to a hop's own
+    // resolved URI — because past hop 1 that per-hop URI is frequently a
+    // `jar:` synthetic URI with no owning module of its own.
+    let origin_uri = caller.uri.unwrap_or(start_uri);
     let mut walker = HierarchyWalker {
         idx,
         caller,
@@ -53,6 +63,7 @@ where
         visited: HashSet::from([(start_uri.to_owned(), start_class.to_owned())]),
         items: Vec::new(),
         sidecar_budget,
+        origin_uri,
     };
     walker.recurse(start_class, start_uri, 0);
     walker.items
@@ -71,6 +82,10 @@ where
     /// Remaining blocking-IPC promotion attempts for THIS walk (see
     /// [`MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK`]).
     sidecar_budget: usize,
+    /// The real file this walk started from — unchanging across every hop,
+    /// unlike the per-hop `class_uri` that `recurse` walks with. See
+    /// [`walk_hierarchy`]'s doc comment for how it's derived.
+    origin_uri: &'a str,
 }
 
 impl<'a, T, F> HierarchyWalker<'a, T, F>
@@ -82,9 +97,13 @@ where
             return;
         }
 
-        for (super_name, super_uri) in
-            supertype_targets(self.idx, class_name, class_uri, &mut self.sidecar_budget)
-        {
+        for (super_name, super_uri) in supertype_targets(
+            self.idx,
+            class_name,
+            class_uri,
+            &mut self.sidecar_budget,
+            self.origin_uri,
+        ) {
             if !self.visited.insert((super_uri.clone(), super_name.clone())) {
                 continue;
             }
@@ -104,6 +123,7 @@ fn supertype_targets(
     class_name: &str,
     class_uri: &str,
     sidecar_budget: &mut usize,
+    origin_uri: &str,
 ) -> Vec<(String, String)> {
     use tower_lsp::lsp_types::Url;
     let Ok(uri) = Url::parse(class_uri) else {
@@ -112,6 +132,9 @@ fn supertype_targets(
     let Some(file_data) = super::ensure_file_data(idx, &uri) else {
         return vec![];
     };
+    // Parsed once per hop, not required to succeed: a bad `origin_uri` only
+    // costs the module-scoped tie-break below, never the rest of this walk.
+    let origin_url = Url::parse(origin_uri).ok();
 
     super_names_for_class(&file_data, class_name)
         .into_iter()
@@ -127,9 +150,23 @@ fn supertype_targets(
             // (`class X : com.lib.Base()`) — the accessor handles the
             // bare-leaf fallback.
             crate::indexer::jar::ensure_jar_definitions_for(idx, &super_name, sidecar_budget);
-            super::resolve_symbol_no_rg(idx, &super_name, &uri)
-                .into_iter()
-                .map(move |loc| (super_name.clone(), loc.uri.to_string()))
+            // Ambiguity-safe, not `resolve_symbol_no_rg`'s raw first-match tail: at
+            // hop 2+ `uri` is frequently a `jar:` synthetic URI with no import list
+            // to disambiguate a same-named collision against (compiled JARs carry
+            // no import statements) -- see the hierarchy-walk-unscoped-name-
+            // collision design doc. Scoped to this one call site; the other seven
+            // `resolve_symbol_no_rg` callers are unaffected. `origin_url` (the
+            // walk's real starting file, not this hop's `uri`) is passed
+            // separately so the module-scoped tie-break can still find real
+            // Gradle dependency data past hop 1.
+            super::resolve_symbol_hierarchy_ambiguity_safe(
+                idx,
+                &super_name,
+                &uri,
+                origin_url.as_ref(),
+            )
+            .into_iter()
+            .map(move |loc| (super_name.clone(), loc.uri.to_string()))
         })
         .collect()
 }

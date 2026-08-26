@@ -77,3 +77,49 @@ fn stem_multiple_dots() {
     // `rfind('.')` so only the last extension is stripped.
     assert_eq!(file_stem_from_uri(&u).as_deref(), Some("Foo.bar"));
 }
+
+#[test]
+fn path_from_uri_drive_letter_uri_resolves_the_full_path() {
+    let uri = Url::parse("file:///C:/pkg/Foo.kt").unwrap();
+    let path = path_from_uri(&uri).unwrap();
+    assert_eq!(path.file_name().unwrap(), "Foo.kt");
+}
+
+#[test]
+fn path_from_uri_no_drive_letter_uri_still_resolves_a_matching_path() {
+    // No drive letter — `Url::to_file_path()` rejects this on Windows (see
+    // this module's own doc comment), so `path_from_uri` must fall back to
+    // building the `PathBuf` from the URL's raw path string instead.
+    let uri = Url::parse("file:///t/app/Bar.kt").unwrap();
+    let path = path_from_uri(&uri).unwrap();
+    let content_root = PathBuf::from("/t/app");
+    assert!(
+        path.starts_with(&content_root),
+        "expected {path:?} to start with {content_root:?}"
+    );
+}
+
+#[test]
+fn path_from_url_path_string_builds_a_path_that_starts_with_its_own_prefix() {
+    // Exercises the Windows-only fallback branch directly, since
+    // `Url::to_file_path()` never fails for an absolute-looking URI on Unix
+    // (there is no drive-letter requirement there), so `path_from_uri`
+    // itself can't reach this branch in a Linux test run.
+    let path = path_from_url_path_string("/t/app/Bar.kt").unwrap();
+    assert!(path.starts_with(PathBuf::from("/t/app")));
+    assert_eq!(path.file_name().unwrap(), "Bar.kt");
+}
+
+#[test]
+fn path_from_url_path_string_rejects_an_empty_path() {
+    assert_eq!(path_from_url_path_string(""), None);
+}
+
+#[test]
+fn path_from_uri_rejects_a_jar_scheme_uri() {
+    // A `jar:file://...` URI is opaque (cannot-be-a-base) and has no
+    // filesystem path of its own; the drive-letter fallback must not
+    // mistake its opaque data for a real path.
+    let uri = Url::parse("jar:file:///home/user/x.jar").unwrap();
+    assert_eq!(path_from_uri(&uri), None);
+}

@@ -277,6 +277,16 @@ pub(crate) struct Indexer {
     /// search-scope restriction. Auto-detected build-layout paths, Android SDK sources,
     /// and ~/.kmp-lsp/sources are also excluded.
     pub(crate) workspace_source_roots: RwLock<Vec<String>>,
+    /// Per-module real Gradle dependency sets, keyed by each module's own
+    /// content-root directory (see `workspace_json::load_module_dependencies`).
+    /// Used only to narrow an ambiguous hierarchy-walk candidate set to the
+    /// calling file's own module's actual dependencies — empty (no narrowing
+    /// available) whenever no real `workspace.json` is present. Written once
+    /// per workspace-scan by [`crate::workspace::Actor`]; read-paths elsewhere
+    /// (`resolver::resolve::ambiguity_safe_tail_with_denylist`) observe it.
+    pub(crate) module_dependencies: RwLock<
+        HashMap<PathBuf, std::collections::HashSet<crate::cli::extract_sources::GradleMeta>>,
+    >,
     /// URIs of files indexed from `sourcePaths` that lie outside the workspace root.
     /// These are treated as library sources: available for hover/definition/autocomplete
     /// but excluded from findReferences and rename.
@@ -747,6 +757,7 @@ impl Indexer {
             ignore_matcher: RwLock::new(None),
             source_paths_raw: RwLock::new(Vec::new()),
             workspace_source_roots: RwLock::new(Vec::new()),
+            module_dependencies: RwLock::new(HashMap::new()),
             library_uris: DashSet::new(),
             extracted_jar_sources: DashMap::new(),
             importable_fqns: std::sync::RwLock::new(std::collections::HashMap::new()),

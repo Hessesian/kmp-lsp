@@ -115,6 +115,42 @@ pub(crate) fn file_stem_from_uri(uri: &Url) -> Option<String> {
     }
 }
 
+/// Convert a `file://` URL to a `PathBuf`, robust to Windows's drive-letter
+/// requirement in `Url::to_file_path()` (see `file_stem_from_uri`'s doc
+/// comment above for the same requirement). Prefers `to_file_path()`, which
+/// percent-decodes correctly; falls back to building the path directly from
+/// the URL's raw path string when `to_file_path()` rejects the URI, which
+/// happens on Windows for any `file://` URI whose first path segment isn't
+/// a drive letter (a shape this codebase's own test fixtures use throughout).
+pub(crate) fn path_from_uri(uri: &Url) -> Option<PathBuf> {
+    if let Ok(path) = uri.to_file_path() {
+        return Some(path);
+    }
+    // The fallback only makes sense for a genuine `file://` URI whose path
+    // segments `to_file_path()` rejected over the drive-letter check; a
+    // `jar:`-scheme URI (or any other opaque, cannot-be-a-base URI) has no
+    // filesystem path at all, so it must still resolve to `None` here, not
+    // to a bogus `PathBuf` built from its opaque scheme-specific data.
+    if uri.scheme() != "file" || uri.cannot_be_a_base() {
+        return None;
+    }
+    path_from_url_path_string(uri.path())
+}
+
+/// Builds a `PathBuf` directly from a URL path string (e.g. `/t/app/Bar.kt`).
+/// `Path`'s component parser treats `/` as a separator on every platform,
+/// Windows included, so the result still compares correctly with
+/// `Path::starts_with` against a root built the same way. Does not
+/// percent-decode, the same limitation `file_stem_from_uri`'s fallback
+/// already accepts.
+fn path_from_url_path_string(path: &str) -> Option<PathBuf> {
+    if path.is_empty() {
+        None
+    } else {
+        Some(PathBuf::from(path))
+    }
+}
+
 #[cfg(test)]
 #[path = "path_util_tests.rs"]
 mod tests;
