@@ -172,7 +172,10 @@ async fn build_index_inner(root: &Path, source_paths: Vec<String>) -> Arc<Indexe
     }
     // Populate workspace source roots from workspace.json so resolver/infer rg fallbacks
     // are scoped when the CLI is run in a project with configured module sourceRoots.
-    let workspace_roots: Vec<String> = crate::workspace_json::load_source_paths(root)
+    // Uses `canonical`, not `root`: `<WORKSPACE>` substitution must produce absolute
+    // paths so later `starts_with` checks against absolute `file://` URIs actually match
+    // when the CLI is invoked with a relative root (e.g. `.`).
+    let workspace_roots: Vec<String> = crate::workspace_json::load_source_paths(&canonical)
         .into_iter()
         .map(|p| p.to_string_lossy().into_owned())
         .collect();
@@ -182,8 +185,9 @@ async fn build_index_inner(root: &Path, source_paths: Vec<String>) -> Arc<Indexe
     // Per-module real Gradle dependency data, for the hierarchy-walk
     // ambiguity-safe tail's module-scoped narrowing (see
     // `resolver::resolve::ambiguity_safe_tail_with_denylist`). Empty when no
-    // real `workspace.json` module data is present.
-    let module_dependencies = crate::workspace_json::load_module_dependencies(root);
+    // real `workspace.json` module data is present. Also uses `canonical` for
+    // the same reason as `load_source_paths` above.
+    let module_dependencies = crate::workspace_json::load_module_dependencies(&canonical);
     if !module_dependencies.is_empty() {
         *idx.module_dependencies
             .write()
