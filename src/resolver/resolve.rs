@@ -1232,6 +1232,32 @@ fn resolve_qualified(
             if !hierarchy_locs.is_empty() {
                 return hierarchy_locs;
             }
+
+            // `anchor`'s own class has no member, inherited member, or
+            // exact-key in-scope extension named `name` — it may still be
+            // reachable via an extension declared on one of `anchor`'s OWN
+            // ancestors (not `anchor` itself). `extension_by_receiver` /
+            // `resolve_extension_in_scope` are an exact-string-key lookup on
+            // the receiver's own leaf type name, so e.g. `receiver: String`
+            // never finds `fun CharSequence?.toViewText()` even though
+            // `String` implements `CharSequence` — the single largest
+            // measured component of the resolution-accuracy benchmark's
+            // ambiguous (FilteredCandidate) bucket on a real corpus. Placed
+            // after the real-member/hierarchy-member checks above so
+            // Kotlin's own "member always shadows extension" precedence
+            // still holds.
+            let supertype_ext_locs = walk_hierarchy(
+                indexer,
+                anchor_class_name,
+                anchor.uri.as_str(),
+                CallerContext::default(),
+                12,
+                MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK,
+                |idx, super_name, _, _| resolve_extension_in_scope(idx, super_name, name, from_uri),
+            );
+            if !supertype_ext_locs.is_empty() {
+                return supertype_ext_locs;
+            }
         }
         // Extension functions may live in a different file than the receiver class.
         // Atomic promote+read (zero budget): `resolve_qualified` is on both the

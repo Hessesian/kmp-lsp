@@ -954,6 +954,86 @@ fn resolve_nested_type_via_variable_annotation() {
 }
 
 #[test]
+fn resolve_qualified_extension_falls_back_to_supertype_when_receiver_type_has_no_own_match() {
+    // `receiver.toViewText()` where `receiver`'s static type is `Str`, which
+    // implements `Seq`, and `toViewText` is declared as an extension on
+    // `Seq`, not `Str` itself. `extension_by_receiver` is an exact-string-key
+    // lookup on the receiver's own leaf type name (see its own doc comment),
+    // so a plain `resolve_extension_in_scope(idx, "Str", ...)` finds nothing
+    // -- this must instead walk `Str`'s supertype hierarchy and find the
+    // extension declared on its ancestor `Seq`.
+    //
+    // This mirrors a real, measured Moneta bug: `fun CharSequence?.
+    // toViewText()` never resolved for a `String` receiver (`String`
+    // implements `CharSequence`) via this exact mechanism -- the single
+    // largest component (~23%) of the resolution-accuracy benchmark's
+    // ambiguous (FilteredCandidate) bucket on the real corpus.
+    //
+    // Critically, `toViewText` is declared in a THIRD file, separate from
+    // `Seq`'s own declaration -- the normal real-world shape (an extension
+    // almost never lives in the same file as the class it extends). Colocating
+    // them would let `resolve_from_class_hierarchy_scoped`'s existing
+    // `find_name_in_uri` (a blunt whole-file name scan with no
+    // extension-vs-member awareness) accidentally find it as a false
+    // positive, masking the actual bug this test targets.
+    let host_uri = uri("/Host.kt");
+    let str_uri = uri("/Str.kt");
+    let seq_uri = uri("/Seq.kt");
+    let ext_uri = uri("/SeqExtensions.kt");
+    let idx = Indexer::new();
+    idx.index_content(&seq_uri, "package com.pkg\ninterface Seq\n");
+    idx.index_content(&str_uri, "package com.pkg\nclass Str : Seq\n");
+    idx.index_content(
+        &ext_uri,
+        "package com.pkg\nfun Seq.toViewText(): String = TODO()\n",
+    );
+    idx.index_content(
+        &host_uri,
+        "package com.pkg\nfun foo(receiver: Str) { receiver.toViewText() }\n",
+    );
+
+    // `receiver_type: Some("Str")` mirrors exactly what `resolve_identity`
+    // passes in production -- an already-resolved, capitalized type name.
+    let locs = resolve_symbol(&idx, "toViewText", Some("Str"), &host_uri);
+    assert!(
+        !locs.is_empty(),
+        "toViewText declared on supertype Seq must be found via a Str receiver"
+    );
+    assert_eq!(locs[0].uri, ext_uri);
+}
+
+#[test]
+fn resolve_qualified_member_on_concrete_type_still_shadows_supertype_extension() {
+    // Kotlin's own precedence rule: a real member on the concrete receiver
+    // type always wins over a same-named extension declared on an ancestor
+    // type, even after the new supertype-extension fallback is added.
+    let host_uri = uri("/Host.kt");
+    let str_uri = uri("/Str.kt");
+    let seq_uri = uri("/Seq.kt");
+    let idx = Indexer::new();
+    idx.index_content(
+        &seq_uri,
+        "package com.pkg\ninterface Seq\nfun Seq.toViewText(): String = TODO()\n",
+    );
+    idx.index_content(
+        &str_uri,
+        "package com.pkg\nclass Str : Seq {\n  fun toViewText(): String = \"own\"\n}\n",
+    );
+    idx.index_content(
+        &host_uri,
+        "package com.pkg\nfun foo(receiver: Str) { receiver.toViewText() }\n",
+    );
+
+    let locs = resolve_symbol(&idx, "toViewText", Some("Str"), &host_uri);
+    assert!(!locs.is_empty(), "toViewText not found at all");
+    assert_eq!(
+        locs[0].uri, str_uri,
+        "Str's own member toViewText must shadow Seq's extension, got a location in {:?}",
+        locs[0].uri
+    );
+}
+
+#[test]
 fn resolve_variable_receiver_extension_disambiguates_by_receiver_type() {
     // `message.toViewText()` where `message: String` — `String` has no
     // indexed declaration file (a built-in type) and no matching member.
