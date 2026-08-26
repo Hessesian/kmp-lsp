@@ -1,4 +1,4 @@
-use super::super::test_support::gradle_cache_jar_uri;
+use super::super::shared_fixture_tests::gradle_cache_jar_uri;
 use super::{
     receiver_type_agreement, supertype_chain_contains, supertype_targets, walk_hierarchy,
     ReceiverTypeAgreement, MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK,

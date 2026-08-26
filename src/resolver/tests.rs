@@ -1,4 +1,4 @@
-use super::test_support::gradle_cache_jar_uri;
+use super::shared_fixture_tests::gradle_cache_jar_uri;
 use super::*;
 use crate::indexer::{CallShape, Indexer};
 use crate::parser::{parse_java, parse_kotlin};

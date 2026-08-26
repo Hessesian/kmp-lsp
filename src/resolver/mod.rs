@@ -12,7 +12,7 @@ pub(crate) mod infer;
 pub(crate) mod infer_lines;
 pub(crate) mod resolve;
 #[cfg(test)]
-mod test_support;
+mod shared_fixture_tests;
 #[cfg(test)]
 mod tests;
 
