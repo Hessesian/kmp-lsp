@@ -532,15 +532,25 @@ fn candidate_gradle_meta(location: &Location) -> Option<crate::cli::extract_sour
 }
 
 /// Whether `location`'s declaring file has a package matching one of
-/// [`HIERARCHY_WALK_DENYLISTED_PACKAGE_PREFIXES`]. Locations with no known
-/// package (e.g. a not-yet-materialized compiled-JAR entry, absent from
-/// `indexer.files`) are never treated as denylisted — the tie-break must
-/// only ever remove a candidate it can positively prove is denylisted.
+/// [`HIERARCHY_WALK_DENYLISTED_PACKAGE_PREFIXES`]. Checks `indexer.files`
+/// first, then `indexer.jar_files` — a compiled-only JAR entry (no
+/// `-sources.jar` companion) has its parsed data in `jar_files` only, never
+/// `files` (same two-map lookup order as
+/// [`crate::indexer::infer::sig::collect_params_from_file`]). Locations with
+/// no known package in either map are never treated as denylisted — the
+/// tie-break must only ever remove a candidate it can positively prove is
+/// denylisted.
 fn is_denylisted_supertype_package(indexer: &Indexer, location: &Location) -> bool {
     let Some(package) = indexer
         .files
         .get(location.uri.as_str())
         .and_then(|f| f.package.clone())
+        .or_else(|| {
+            indexer
+                .jar_files
+                .get(location.uri.as_str())
+                .and_then(|f| f.package.clone())
+        })
     else {
         return false;
     };

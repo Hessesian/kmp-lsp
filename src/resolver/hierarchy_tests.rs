@@ -233,6 +233,69 @@ fn unlisted_package_prefix_is_never_deprioritized() {
     );
 }
 
+/// Regression guard for the Copilot-flagged gap in PR #286:
+/// `is_denylisted_supertype_package` only ever looked up `indexer.files`, so
+/// a candidate declared in a compiled-only JAR entry (no `-sources.jar`
+/// companion — its parsed `FileData` lives in `indexer.jar_files` instead)
+/// was never recognized as denylisted even when its real package matched
+/// `com.android.internal.*`. Same two-candidate shape as
+/// `denylisted_package_candidate_is_deprioritized_in_favor_of_the_other`
+/// above, but both candidates are JAR-only (`jar_definitions` +
+/// `jar_files`, never `indexer.files`).
+#[test]
+fn denylisted_jar_only_package_candidate_is_deprioritized_in_favor_of_the_other() {
+    let indexer = Indexer::new();
+    let decoy_jar_uri = gradle_cache_jar_uri("com.android.internal", "telephony-stubs", "1.0.0");
+    let real_jar_uri = gradle_cache_jar_uri("android", "android-stubs", "34.0.0");
+    // The denylisted decoy is indexed first, matching this file's established
+    // convention of seeding the wrong candidate first.
+    indexer.jar_definitions.insert(
+        "Activity".to_owned(),
+        vec![
+            Location {
+                uri: decoy_jar_uri.clone(),
+                range: Default::default(),
+            },
+            Location {
+                uri: real_jar_uri.clone(),
+                range: Default::default(),
+            },
+        ],
+    );
+    indexer.jar_files.insert(
+        decoy_jar_uri.to_string(),
+        Arc::new(FileData {
+            package: Some("com.android.internal.telephony".to_owned()),
+            ..Default::default()
+        }),
+    );
+    indexer.jar_files.insert(
+        real_jar_uri.to_string(),
+        Arc::new(FileData {
+            package: Some("android.app".to_owned()),
+            ..Default::default()
+        }),
+    );
+
+    let bar_uri = uri("/app/Bar.kt");
+    indexer.index_content(&bar_uri, "class Bar : Activity()\n");
+
+    let mut budget = MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK;
+    let targets = supertype_targets(
+        &indexer,
+        "Bar",
+        bar_uri.as_str(),
+        &mut budget,
+        bar_uri.as_str(),
+    );
+    assert_eq!(
+        targets,
+        vec![("Activity".to_owned(), real_jar_uri.to_string())],
+        "expected the JAR-only com.android.internal.* candidate to be \
+         deprioritized in favor of the non-denylisted one, got {targets:?}"
+    );
+}
+
 // ─── Acceptance: combined 4-hop walk with a denylisted decoy at the tail ──
 
 /// Synthetic reproduction of the real Moneta corpus shape (`AppCompatActivity
