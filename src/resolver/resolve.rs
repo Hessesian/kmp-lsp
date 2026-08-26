@@ -1267,13 +1267,29 @@ fn resolve_qualified(
             // this whole branch implements Kotlin's full member-vs-extension
             // precedence (the exact-key extension check above, line ~1170,
             // still runs before any member lookup at all). `CallerContext.uri`
-            // is the real call-site
-            // `from_uri`, not `anchor.uri` (`start_uri` below) — `anchor` is
-            // commonly a JAR-backed receiver type (e.g. `String`), and
-            // `walk_hierarchy`'s own module-scoped ambiguity tie-break needs
-            // a real `file://` origin to map back to an owning module; a
-            // `jar:` origin can never resolve one, silently disabling that
-            // tie-break for every ancestor lookup in this walk.
+            // is the real call-site `from_uri`, not `anchor.uri` (`start_uri`
+            // below) — `anchor` is commonly a JAR-backed receiver type (e.g.
+            // `String`), and `walk_hierarchy`'s own module-scoped ambiguity
+            // tie-break needs a real `file://` origin to map back to an
+            // owning module; a `jar:` origin can never resolve one, silently
+            // disabling that tie-break for every ancestor lookup in this walk.
+            //
+            // This is a SECOND full hierarchy walk over the same chain
+            // `resolve_from_class_hierarchy_scoped` just walked above (only
+            // reached when that one found nothing) — worth noting since it's
+            // on a keystroke-sensitive path, but it does not double the real
+            // blocking-IPC cost: `promote_candidates_bounded`'s
+            // `materialized`/`materialization_failed` sets are memoized per
+            // JAR, independent of any one walk's own budget, so re-visiting
+            // an ancestor the first walk already attempted (successfully or
+            // not) costs this walk nothing — a plain in-memory set lookup,
+            // no new sidecar IPC. The only genuinely new cost this budget can
+            // spend is on ancestors BEYOND wherever the first walk's own
+            // budget ran out before it finished the chain — exactly the deep
+            // multi-hop case this fallback exists to reach (see the real
+            // 4-hop `AppCompatActivity → … → Activity` shape PR #286 fixed
+            // for member lookup); zeroing it here would silently reintroduce
+            // that same miss for extensions instead.
             let supertype_ext_locs = walk_hierarchy(
                 indexer,
                 anchor_class_name,
