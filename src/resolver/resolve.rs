@@ -422,15 +422,26 @@ fn resolve_chain(
     }
 }
 
-/// Package prefixes that can never be a legitimate app-facing supertype —
-/// checked only as a last-resort tie-break by
-/// [`ambiguity_safe_tail_with_denylist`] once a hierarchy-walk lookup has
-/// already found more than one same-named candidate. Deliberately narrow
-/// (currently a single entry, the one directly evidenced by the real
-/// repro): a denylist can only ever fail to help, never introduce a new
-/// wrong preference the way a broader "prefer this package family"
-/// heuristic could — see the design doc's self-critique. Do not grow this
-/// into a general preference-ranking system.
+/// Package prefixes that can never be a legitimate app-facing reference of
+/// ANY kind — not just a supertype. `com.android.internal.*` is Android's
+/// hidden, non-public platform-internal API surface: it never ships in the
+/// public SDK a real app compiles against, so no ordinary app source can
+/// reference it as a supertype, an import, a variable's type, or anything
+/// else. That's a property of the package itself, not of which resolution
+/// step happens to be looking a name up — the same invariant is what makes
+/// this denylist safe to share across every caller of
+/// [`ambiguity_safe_tail_with_denylist`] (originally only
+/// [`ResolveIo::HierarchyAmbiguitySafe`]'s supertype walk, now also
+/// [`ResolveIo::IndexOnly`]'s general bare-name tail), not just the one it
+/// was first evidenced against.
+///
+/// Checked only as a last-resort tie-break once a lookup has already found
+/// more than one same-named candidate. Deliberately narrow (currently a
+/// single entry, the one directly evidenced by the real repro): a denylist
+/// can only ever fail to help, never introduce a new wrong preference the
+/// way a broader "prefer this package family" heuristic could — see the
+/// design doc's self-critique. Do not grow this into a general
+/// preference-ranking system.
 const HIERARCHY_WALK_DENYLISTED_PACKAGE_PREFIXES: &[&str] = &["com.android.internal."];
 
 /// Tail fallback for [`ResolveIo::HierarchyAmbiguitySafe`]: a unique
@@ -1249,9 +1260,14 @@ fn resolve_qualified(
             // `String` implements `CharSequence` — the single largest
             // measured component of the resolution-accuracy benchmark's
             // ambiguous (FilteredCandidate) bucket on a real corpus. Placed
-            // after the real-member/hierarchy-member checks above so
-            // Kotlin's own "member always shadows extension" precedence
-            // still holds. `CallerContext.uri` is the real call-site
+            // after the real-member/hierarchy-member checks above so a real
+            // member on the CONCRETE receiver type still shadows a same-named
+            // extension declared on one of its ancestors — this only orders
+            // this one fallback relative to those checks, not a claim that
+            // this whole branch implements Kotlin's full member-vs-extension
+            // precedence (the exact-key extension check above, line ~1170,
+            // still runs before any member lookup at all). `CallerContext.uri`
+            // is the real call-site
             // `from_uri`, not `anchor.uri` (`start_uri` below) — `anchor` is
             // commonly a JAR-backed receiver type (e.g. `String`), and
             // `walk_hierarchy`'s own module-scoped ambiguity tie-break needs

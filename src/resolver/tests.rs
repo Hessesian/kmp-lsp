@@ -1,3 +1,4 @@
+use super::test_support::gradle_cache_jar_uri;
 use super::*;
 use crate::indexer::{CallShape, Indexer};
 use crate::parser::{parse_java, parse_kotlin};
@@ -1091,17 +1092,6 @@ fn resolve_qualified_member_on_concrete_type_still_shadows_supertype_extension()
         "Str's own member toViewText must shadow Seq's extension, got a location in {:?}",
         locs[0].uri
     );
-}
-
-/// A Gradle-cache-shaped `jar:` URI for `(group, artifact, version)`, mirroring
-/// the real layout `parse_jar_meta` parses (duplicated from
-/// `hierarchy_tests.rs`'s own identical helper — a private fn in a sibling
-/// test module, not reachable from here).
-fn gradle_cache_jar_uri(group: &str, artifact: &str, version: &str) -> Url {
-    Url::parse(&format!(
-        "jar:file:///home/user/.gradle/caches/modules-2/files-2.1/{group}/{artifact}/{version}/deadbeef/{artifact}-{version}.jar"
-    ))
-    .unwrap()
 }
 
 #[test]

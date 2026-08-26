@@ -1,3 +1,4 @@
+use super::super::test_support::gradle_cache_jar_uri;
 use super::{
     receiver_type_agreement, supertype_chain_contains, supertype_targets, walk_hierarchy,
     ReceiverTypeAgreement, MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK,
@@ -369,16 +370,6 @@ fn four_hop_walk_reaches_the_real_ancestor_past_a_denylisted_decoy() {
 // package known to `indexer.files` (both are JAR-only `Location`s, never
 // indexed as real files), so the denylist tie-break is a no-op in both
 // tests below and the module-scoped tie-break is what's actually exercised.
-
-/// A Gradle-cache-shaped `jar:` URI for `(group, artifact, version)`, mirroring
-/// the real layout `parse_jar_meta` parses:
-/// `.../modules-2/files-2.1/<group>/<artifact>/<version>/<hash>/<file>.jar`.
-fn gradle_cache_jar_uri(group: &str, artifact: &str, version: &str) -> Url {
-    Url::parse(&format!(
-        "jar:file:///home/user/.gradle/caches/modules-2/files-2.1/{group}/{artifact}/{version}/deadbeef/{artifact}-{version}.jar"
-    ))
-    .unwrap()
-}
 
 /// Two same-named JAR-backed candidates for `Activity`, one from a dependency
 /// of the calling module (`com.example.real:real-lib:2.0.0`), one from an
