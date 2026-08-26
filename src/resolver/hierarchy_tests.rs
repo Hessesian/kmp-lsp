@@ -235,7 +235,7 @@ fn unlisted_package_prefix_is_never_deprioritized() {
 }
 
 /// Regression guard for the Copilot-flagged gap in PR #286:
-/// `is_denylisted_supertype_package` only ever looked up `indexer.files`, so
+/// `is_denylisted_package_prefix` only ever looked up `indexer.files`, so
 /// a candidate declared in a compiled-only JAR entry (no `-sources.jar`
 /// companion — its parsed `FileData` lives in `indexer.jar_files` instead)
 /// was never recognized as denylisted even when its real package matched

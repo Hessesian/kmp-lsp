@@ -442,11 +442,11 @@ fn resolve_chain(
 /// way a broader "prefer this package family" heuristic could — see the
 /// design doc's self-critique. Do not grow this into a general
 /// preference-ranking system.
-const HIERARCHY_WALK_DENYLISTED_PACKAGE_PREFIXES: &[&str] = &["com.android.internal."];
+const DENYLISTED_PACKAGE_PREFIXES: &[&str] = &["com.android.internal."];
 
 /// Tail fallback for [`ResolveIo::HierarchyAmbiguitySafe`]: a unique
 /// candidate wins outright; an ambiguous set gets two narrow tie-breaks in
-/// sequence — first [`HIERARCHY_WALK_DENYLISTED_PACKAGE_PREFIXES`] (unconditional,
+/// sequence — first [`DENYLISTED_PACKAGE_PREFIXES`] (unconditional,
 /// project-wide), then [`module_scoped_tie_break`] (real per-module Gradle
 /// dependency data, when available) — before still declining unless one of
 /// them leaves exactly one candidate. See the real-workspace-json-schema
@@ -466,7 +466,7 @@ fn ambiguity_safe_tail_with_denylist(
     }
     let filtered: Vec<Location> = locations
         .into_iter()
-        .filter(|location| !is_denylisted_supertype_package(indexer, location))
+        .filter(|location| !is_denylisted_package_prefix(indexer, location))
         .collect();
     if filtered.len() == 1 {
         return filtered;
@@ -549,7 +549,7 @@ fn candidate_gradle_meta(location: &Location) -> Option<crate::cli::extract_sour
 }
 
 /// Whether `location`'s declaring file has a package matching one of
-/// [`HIERARCHY_WALK_DENYLISTED_PACKAGE_PREFIXES`]. Checks `indexer.files`
+/// [`DENYLISTED_PACKAGE_PREFIXES`]. Checks `indexer.files`
 /// first, then `indexer.jar_files` — a compiled-only JAR entry (no
 /// `-sources.jar` companion) has its parsed data in `jar_files` only, never
 /// `files` (same two-map lookup order as
@@ -557,7 +557,7 @@ fn candidate_gradle_meta(location: &Location) -> Option<crate::cli::extract_sour
 /// no known package in either map are never treated as denylisted — the
 /// tie-break must only ever remove a candidate it can positively prove is
 /// denylisted.
-fn is_denylisted_supertype_package(indexer: &Indexer, location: &Location) -> bool {
+fn is_denylisted_package_prefix(indexer: &Indexer, location: &Location) -> bool {
     let Some(package) = indexer
         .files
         .get(location.uri.as_str())
@@ -571,7 +571,7 @@ fn is_denylisted_supertype_package(indexer: &Indexer, location: &Location) -> bo
     else {
         return false;
     };
-    HIERARCHY_WALK_DENYLISTED_PACKAGE_PREFIXES
+    DENYLISTED_PACKAGE_PREFIXES
         .iter()
         .any(|prefix| package.starts_with(prefix))
 }
@@ -1244,8 +1244,13 @@ fn resolve_qualified(
             // `super` branches above already handle. Scoped to `anchor`'s own
             // class and declaring file, not `from_uri` — the qualifier and the
             // call site are commonly different files.
-            let hierarchy_locs =
-                resolve_from_class_hierarchy_scoped(indexer, name, anchor_class_name, &anchor.uri);
+            let hierarchy_locs = resolve_from_class_hierarchy_scoped(
+                indexer,
+                name,
+                anchor_class_name,
+                &anchor.uri,
+                from_uri,
+            );
             if !hierarchy_locs.is_empty() {
                 return hierarchy_locs;
             }
@@ -1859,7 +1864,7 @@ fn resolve_star_imports(indexer: &Indexer, name: &str, uri: &Url) -> Vec<Locatio
 /// 3. Search the resolved file's symbol table for `name`.
 /// 4. Recurse into that file's own supertypes (depth-limited, cycle-safe).
 fn resolve_from_class_hierarchy(indexer: &Indexer, name: &str, from_uri: &Url) -> Vec<Location> {
-    resolve_from_class_hierarchy_scoped(indexer, name, "", from_uri)
+    resolve_from_class_hierarchy_scoped(indexer, name, "", from_uri, from_uri)
 }
 
 /// Like [`resolve_from_class_hierarchy`] but scoped to one specific class's
@@ -1868,11 +1873,20 @@ fn resolve_from_class_hierarchy(indexer: &Indexer, name: &str, from_uri: &Url) -
 /// files — `Foo.member()` where `Foo` is a type/object name, not `this`/`super`
 /// (which are always resolved from inside the class they refer to, so the
 /// unscoped whole-file walk was never wrong for those callers).
+///
+/// `start_uri` is where `start_class` is declared (commonly a JAR for a
+/// library receiver type); `origin_uri` is the real call-site file, used only
+/// for `walk_hierarchy`'s module-scoped ambiguity tie-break, which needs a
+/// real `file://` path to map back to an owning module. The two coincide for
+/// [`resolve_from_class_hierarchy`]'s callers (`this`/`super`, always resolved
+/// from inside their own file) but not for [`resolve_qualified`]'s
+/// `Foo.member()` callers, where `start_uri` is `Foo`'s own declaring file.
 fn resolve_from_class_hierarchy_scoped(
     indexer: &Indexer,
     name: &str,
     start_class: &str,
-    from_uri: &Url,
+    start_uri: &Url,
+    origin_uri: &Url,
 ) -> Vec<Location> {
     // Deep enough for real Android/Kotlin hierarchies: app base classes often stack
     // several levels (`…Fragment → BaseFragment → … → androidx Fragment`) before the
@@ -1881,8 +1895,11 @@ fn resolve_from_class_hierarchy_scoped(
     let results = walk_hierarchy(
         indexer,
         start_class,
-        from_uri.as_str(),
-        CallerContext::default(),
+        start_uri.as_str(),
+        CallerContext {
+            uri: Some(origin_uri.as_str()),
+            cursor_line: None,
+        },
         12,
         MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK,
         |index, _, class_uri, _| find_name_in_uri(index, name, class_uri),
