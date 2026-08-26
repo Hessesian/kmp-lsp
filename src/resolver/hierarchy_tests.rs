@@ -2,9 +2,12 @@ use super::{
     receiver_type_agreement, supertype_chain_contains, supertype_targets, walk_hierarchy,
     ReceiverTypeAgreement, MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK,
 };
+use crate::cli::extract_sources::GradleMeta;
 use crate::indexer::Indexer;
 use crate::types::CallerContext;
-use tower_lsp::lsp_types::Url;
+use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
+use tower_lsp::lsp_types::{Location, Url};
 
 fn uri(path: &str) -> Url {
     Url::parse(&format!("file:///t{path}")).unwrap()
@@ -270,5 +273,115 @@ fn four_hop_walk_reaches_the_real_ancestor_past_a_denylisted_decoy() {
             .iter()
             .any(|(name, target_uri)| name == "Activity" && target_uri.contains("/internal/")),
         "must never resolve to the com.android.internal decoy, got {items:?}"
+    );
+}
+
+// ─── Module-scoped narrowing (real-workspace-json-schema wiring) ──────────
+//
+// See `docs/superpowers/specs/2026-08-25-real-workspace-json-schema-and-
+// consumption-design.md` §5: when the `com.android.internal.*` denylist
+// alone still leaves more than one candidate, a second tie-break narrows
+// using the calling file's own module's real Gradle dependency set (loaded
+// from `workspace.json` into `Indexer::module_dependencies` — see
+// `workspace_json::load_module_dependencies`). Neither candidate here has a
+// package known to `indexer.files` (both are JAR-only `Location`s, never
+// indexed as real files), so the denylist tie-break is a no-op in both
+// tests below and the module-scoped tie-break is what's actually exercised.
+
+/// A Gradle-cache-shaped `jar:` URI for `(group, artifact, version)`, mirroring
+/// the real layout `parse_jar_meta` parses:
+/// `.../modules-2/files-2.1/<group>/<artifact>/<version>/<hash>/<file>.jar`.
+fn gradle_cache_jar_uri(group: &str, artifact: &str, version: &str) -> Url {
+    Url::parse(&format!(
+        "jar:file:///home/user/.gradle/caches/modules-2/files-2.1/{group}/{artifact}/{version}/deadbeef/{artifact}-{version}.jar"
+    ))
+    .unwrap()
+}
+
+/// Two same-named JAR-backed candidates for `Activity`, one from a dependency
+/// of the calling module (`com.example.real:real-lib:2.0.0`), one from an
+/// unrelated library (`com.example.decoy:decoy-lib:1.0.0`) that the calling
+/// module does NOT depend on. `Indexer::module_dependencies` records only the
+/// real dependency for the calling file's own content root (`/t/app`).
+#[test]
+fn module_scoped_tie_break_narrows_jar_collision_to_the_calling_modules_dependency() {
+    let indexer = Indexer::new();
+    let decoy_jar_uri = gradle_cache_jar_uri("com.example.decoy", "decoy-lib", "1.0.0");
+    let real_jar_uri = gradle_cache_jar_uri("com.example.real", "real-lib", "2.0.0");
+    // Decoy indexed first, matching this file's established convention of
+    // seeding the wrong candidate first so a first-match tail would pick it.
+    indexer.jar_definitions.insert(
+        "Activity".to_owned(),
+        vec![
+            Location {
+                uri: decoy_jar_uri,
+                range: Default::default(),
+            },
+            Location {
+                uri: real_jar_uri.clone(),
+                range: Default::default(),
+            },
+        ],
+    );
+
+    let mut dependencies_by_content_root: HashMap<PathBuf, HashSet<GradleMeta>> = HashMap::new();
+    dependencies_by_content_root.insert(
+        PathBuf::from("/t/app"),
+        HashSet::from([GradleMeta {
+            group: "com.example.real".to_owned(),
+            artifact: "real-lib".to_owned(),
+            version: "2.0.0".to_owned(),
+        }]),
+    );
+    *indexer.module_dependencies.write().unwrap() = dependencies_by_content_root;
+
+    let bar_uri = uri("/app/Bar.kt");
+    indexer.index_content(&bar_uri, "class Bar : Activity()\n");
+
+    let mut budget = MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK;
+    let targets = supertype_targets(&indexer, "Bar", bar_uri.as_str(), &mut budget);
+    assert_eq!(
+        targets,
+        vec![("Activity".to_owned(), real_jar_uri.to_string())],
+        "expected the tie-break to narrow to the calling module's own \
+         real-lib dependency, got {targets:?}"
+    );
+}
+
+/// Same two-candidate JAR collision as above, but with no `workspace.json`
+/// module data loaded at all (`Indexer::module_dependencies` stays at its
+/// default empty map). Behavior must be unchanged from before this wiring
+/// existed: still decline on ambiguity, exactly like the plain
+/// `com.android.internal.*`-denylist-only behavior.
+#[test]
+fn no_module_dependency_data_still_declines_on_jar_collision() {
+    let indexer = Indexer::new();
+    let decoy_jar_uri = gradle_cache_jar_uri("com.example.decoy", "decoy-lib", "1.0.0");
+    let real_jar_uri = gradle_cache_jar_uri("com.example.real", "real-lib", "2.0.0");
+    indexer.jar_definitions.insert(
+        "Activity".to_owned(),
+        vec![
+            Location {
+                uri: decoy_jar_uri,
+                range: Default::default(),
+            },
+            Location {
+                uri: real_jar_uri,
+                range: Default::default(),
+            },
+        ],
+    );
+    // `indexer.module_dependencies` is left at its `Indexer::new()` default:
+    // an empty map, standing in for "no workspace.json present."
+
+    let bar_uri = uri("/app/Bar.kt");
+    indexer.index_content(&bar_uri, "class Bar : Activity()\n");
+
+    let mut budget = MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK;
+    let targets = supertype_targets(&indexer, "Bar", bar_uri.as_str(), &mut budget);
+    assert!(
+        targets.is_empty(),
+        "expected the ambiguous tail to still decline with no module \
+         dependency data available, got {targets:?}"
     );
 }

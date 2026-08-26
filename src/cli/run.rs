@@ -179,6 +179,14 @@ async fn build_index_inner(root: &Path, source_paths: Vec<String>) -> Arc<Indexe
     if !workspace_roots.is_empty() {
         *idx.workspace_source_roots.write().unwrap() = workspace_roots;
     }
+    // Per-module real Gradle dependency data, for the hierarchy-walk
+    // ambiguity-safe tail's module-scoped narrowing (see
+    // `resolver::resolve::ambiguity_safe_tail_with_denylist`). Empty when no
+    // real `workspace.json` module data is present.
+    let module_dependencies = crate::workspace_json::load_module_dependencies(root);
+    if !module_dependencies.is_empty() {
+        *idx.module_dependencies.write().unwrap() = module_dependencies;
+    }
     Arc::clone(&idx)
         .index_workspace_full(&canonical, Arc::new(NoopReporter))
         .await;

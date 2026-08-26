@@ -397,7 +397,7 @@ fn resolve_chain(
             }
         }
         ResolveIo::HierarchyAmbiguitySafe => {
-            ambiguity_safe_tail_with_denylist(indexer, indexer.lookup_definitions(name))
+            ambiguity_safe_tail_with_denylist(indexer, from_uri, indexer.lookup_definitions(name))
         }
     }
 }
@@ -414,14 +414,23 @@ fn resolve_chain(
 const HIERARCHY_WALK_DENYLISTED_PACKAGE_PREFIXES: &[&str] = &["com.android.internal."];
 
 /// Tail fallback for [`ResolveIo::HierarchyAmbiguitySafe`]: a unique
-/// candidate wins outright; an ambiguous set gets one narrow tie-break
-/// (dropping [`HIERARCHY_WALK_DENYLISTED_PACKAGE_PREFIXES`] matches) before
-/// still declining unless that leaves exactly one candidate.
-fn ambiguity_safe_tail_with_denylist(indexer: &Indexer, locs: Vec<Location>) -> Vec<Location> {
+/// candidate wins outright; an ambiguous set gets two narrow tie-breaks in
+/// sequence — first [`HIERARCHY_WALK_DENYLISTED_PACKAGE_PREFIXES`] (unconditional,
+/// project-wide), then [`module_scoped_tie_break`] (real per-module Gradle
+/// dependency data, when available) — before still declining unless one of
+/// them leaves exactly one candidate. See the real-workspace-json-schema
+/// design doc's §5 for why this ordering (denylist first, module-scoping
+/// second) is correct: the denylist is unconditional and needs no loaded
+/// data, while module-scoping only ever narrows what the denylist couldn't.
+fn ambiguity_safe_tail_with_denylist(
+    indexer: &Indexer,
+    from_uri: &Url,
+    locs: Vec<Location>,
+) -> Vec<Location> {
     if locs.len() == 1 {
         return locs;
     }
-    if locs.len() < 2 {
+    if locs.is_empty() {
         return vec![];
     }
     let filtered: Vec<Location> = locs
@@ -429,10 +438,79 @@ fn ambiguity_safe_tail_with_denylist(indexer: &Indexer, locs: Vec<Location>) -> 
         .filter(|loc| !is_denylisted_supertype_package(indexer, loc))
         .collect();
     if filtered.len() == 1 {
-        filtered
+        return filtered;
+    }
+    if filtered.len() < 2 {
+        return vec![];
+    }
+    module_scoped_tie_break(indexer, from_uri, filtered)
+}
+
+/// Second tie-break for [`ambiguity_safe_tail_with_denylist`]: when the
+/// denylist alone still leaves more than one candidate, narrow using the
+/// calling file's own module's real Gradle dependency set (see
+/// `workspace_json::load_module_dependencies`) — a candidate survives only
+/// if its own JAR's `(group, artifact, version)` is a dependency of the
+/// module `from_uri` belongs to. Declines (returns empty), exactly as before
+/// this narrowing existed, whenever no per-module data is available for
+/// `from_uri`'s module or the narrowing still leaves more than one candidate.
+fn module_scoped_tie_break(
+    indexer: &Indexer,
+    from_uri: &Url,
+    locs: Vec<Location>,
+) -> Vec<Location> {
+    let Some(dependencies) = owning_module_dependencies(indexer, from_uri) else {
+        return vec![];
+    };
+    let narrowed: Vec<Location> = locs
+        .into_iter()
+        .filter(|loc| candidate_gradle_meta(loc).is_some_and(|meta| dependencies.contains(&meta)))
+        .collect();
+    if narrowed.len() == 1 {
+        narrowed
     } else {
         vec![]
     }
+}
+
+/// Looks up `from_uri`'s owning module's real Gradle dependency set: the
+/// content-root directory that is the longest-prefix match of `from_uri`'s
+/// file path (see `workspace_json::load_module_dependencies`'s own doc
+/// comment for why this is the correct module-identity lookup, not a
+/// `build.gradle.kts`-nearest-ancestor heuristic). A cheap lookup against
+/// already-loaded, pre-parsed state — no file I/O or parsing on this path.
+/// Returns `None` when `from_uri` isn't a real file path (e.g. a `jar:`
+/// synthetic URI, as `from_uri` becomes beyond hop 1 of a hierarchy walk) or
+/// no `workspace.json` module data was loaded for this workspace.
+fn owning_module_dependencies(
+    indexer: &Indexer,
+    from_uri: &Url,
+) -> Option<HashSet<crate::cli::extract_sources::GradleMeta>> {
+    let file_path = from_uri.to_file_path().ok()?;
+    let dependencies_by_content_root = indexer
+        .module_dependencies
+        .read()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    dependencies_by_content_root
+        .iter()
+        .filter(|(content_root, _)| file_path.starts_with(content_root.as_path()))
+        .max_by_key(|(content_root, _)| content_root.as_os_str().len())
+        .map(|(_, dependencies)| dependencies.clone())
+}
+
+/// Resolves a candidate hierarchy-walk `Location`'s own JAR path to its
+/// Gradle coordinates, via the existing [`crate::cli::extract_sources::parse_jar_meta`]
+/// (design doc §2 point 3's cross-check opportunity). Handles both a
+/// compiled-only JAR URI (`jar:file://<jar>`, no entry — how `jar_definitions`
+/// locations are shaped) and a sources-JAR entry URI (`jar:file://<jar>!/<entry>`);
+/// [`crate::jar_extract::parse_jar_entry_uri`] only handles the latter shape,
+/// so it is not reused here. Returns `None` for a non-`jar:` URI or an
+/// unparseable jar path, never a wrong guess.
+fn candidate_gradle_meta(loc: &Location) -> Option<crate::cli::extract_sources::GradleMeta> {
+    let rest = loc.uri.as_str().strip_prefix("jar:")?;
+    let jar_part = rest.split_once("!/").map_or(rest, |(jar, _)| jar);
+    let jar_path = Url::parse(jar_part).ok()?.to_file_path().ok()?;
+    crate::cli::extract_sources::parse_jar_meta(&jar_path)
 }
 
 /// Whether `loc`'s declaring file has a package matching one of

@@ -232,6 +232,7 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
             .store(config.pin_workspace, std::sync::atomic::Ordering::Relaxed);
         self.write_source_paths(data.source_paths.clone());
         self.write_workspace_source_roots(&data.root);
+        self.write_module_dependencies(&data.root);
         self.state.write().await.set_state(data.clone());
         data
     }
@@ -262,6 +263,26 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
         match self.indexer.workspace_source_roots.write() {
             Ok(mut guard) => *guard = roots,
             Err(error) => log::warn!("Actor: failed to write workspace_source_roots: {error}"),
+        }
+    }
+
+    /// Loads real, per-module Gradle dependency data from `workspace.json` (see
+    /// `workspace_json::load_module_dependencies`) so the hierarchy-walk
+    /// ambiguity tie-break can narrow a same-named collision to the calling
+    /// file's own module's actual dependencies. Empty when no real
+    /// `workspace.json` module data is present — narrowing then simply
+    /// declines, same as before this data existed.
+    fn write_module_dependencies(&self, root: &std::path::Path) {
+        let dependencies = crate::workspace_json::load_module_dependencies(root);
+        if !dependencies.is_empty() {
+            log::info!(
+                "workspace.json: loaded module dependencies for {} content root(s)",
+                dependencies.len()
+            );
+        }
+        match self.indexer.module_dependencies.write() {
+            Ok(mut guard) => *guard = dependencies,
+            Err(error) => log::warn!("Actor: failed to write module_dependencies: {error}"),
         }
     }
 
