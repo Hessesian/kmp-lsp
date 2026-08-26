@@ -299,6 +299,66 @@ fn resolve_symbol_index_only_never_spawns_rg_or_fd() {
     );
 }
 
+/// `ResolveIo::IndexOnly`'s tail must apply the same denylist-first
+/// ambiguity tie-break `ResolveIo::HierarchyAmbiguitySafe` already uses
+/// (`ambiguity_safe_tail_with_denylist`), not the older plain
+/// unique-match-only rule. Real, measured bug: resolving a bare qualifier
+/// root like `String` (as `resolve_qualified`'s uppercase branch does before
+/// it can even attempt a member/extension lookup on it) hit exactly this
+/// tail on the real Moneta corpus, found 13 candidates including a
+/// `com.android.internal.*`-shaped decoy, and declined outright — which in
+/// turn meant a real receiver type could never resolve at all, no matter how
+/// correct any downstream member/extension lookup was.
+#[test]
+fn resolve_symbol_index_only_tail_applies_the_denylist_tie_break() {
+    let idx = Indexer::new();
+    let decoy_uri = Url::parse("jar:file:///decoy.jar!/String.class").unwrap();
+    let real_uri = Url::parse("jar:file:///real-stdlib.jar!/String.class").unwrap();
+    // Denylisted decoy indexed first, matching this file's established
+    // convention of seeding the wrong candidate first.
+    idx.jar_definitions.insert(
+        "String".to_owned(),
+        vec![
+            tower_lsp::lsp_types::Location {
+                uri: decoy_uri.clone(),
+                range: Default::default(),
+            },
+            tower_lsp::lsp_types::Location {
+                uri: real_uri.clone(),
+                range: Default::default(),
+            },
+        ],
+    );
+    idx.jar_files.insert(
+        decoy_uri.to_string(),
+        std::sync::Arc::new(crate::types::FileData {
+            package: Some("com.android.internal.telephony".to_owned()),
+            ..Default::default()
+        }),
+    );
+    idx.jar_files.insert(
+        real_uri.to_string(),
+        std::sync::Arc::new(crate::types::FileData {
+            package: Some("kotlin".to_owned()),
+            ..Default::default()
+        }),
+    );
+
+    let host_uri = uri("/Host.kt");
+    idx.index_content(&host_uri, "package com.pkg\n");
+
+    let locs = resolve_symbol_index_only(&idx, "String", None, &host_uri);
+    assert_eq!(
+        locs,
+        vec![tower_lsp::lsp_types::Location {
+            uri: real_uri,
+            range: Default::default(),
+        }],
+        "expected the com.android.internal.* decoy to be excluded, leaving \
+         the real kotlin.String as a unique match, got {locs:?}"
+    );
+}
+
 /// Same guarantee as `resolve_symbol_index_only_never_spawns_rg_or_fd`, but
 /// for a qualified lookup (`resolve_qualified`'s uppercase branch) — Copilot
 /// review on PR #274: `resolve_qualified` resolved its qualifier root via the

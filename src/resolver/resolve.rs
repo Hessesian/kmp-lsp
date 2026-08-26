@@ -83,7 +83,10 @@ pub(crate) enum ResolveIo {
     /// index. Tail fallback: first global-defs match. (completion/highlight hot path)
     NoRg,
     /// Strictly in-memory: no `fd`, no `rg`, no hierarchy. Tail fallback:
-    /// unique global-defs match only (ambiguity-safe). (diagnostics keystroke path)
+    /// a unique global-defs match wins outright; an ambiguous set gets the
+    /// same denylist-first tie-break as `HierarchyAmbiguitySafe` (see
+    /// `ambiguity_safe_tail_with_denylist`), still declining if more than
+    /// one candidate survives. (diagnostics keystroke path)
     IndexOnly,
     /// Same IO profile as `NoRg`, but NO global-defs tail fallback at all --
     /// only local/imports/same-package/star-imports/hierarchy count as a
@@ -388,9 +391,17 @@ fn resolve_chain(
     }
 
     // Tail fallback — global definitions index (includes JAR symbols).
-    //  - NoRg: first match.   - IndexOnly: unique match only (ambiguity-safe).
+    //  - NoRg: first match.
     //  - ScopedOnly: no tail at all (empty) -- see the variant's doc comment.
-    //  - HierarchyAmbiguitySafe: unique match, else a narrow denylist tie-break.
+    //  - IndexOnly / HierarchyAmbiguitySafe: unique match wins outright, else
+    //    the same denylist-first tie-break (`ambiguity_safe_tail_with_denylist`)
+    //    -- IndexOnly resolves a bare qualifier root (e.g. `resolve_qualified`'s
+    //    uppercase branch resolving `String` before it can even attempt a
+    //    member/extension lookup on it) just as often as the hierarchy walk's
+    //    own per-hop resolution does, and hit the identical real decoy shape
+    //    on the Moneta corpus (13 candidates for bare `String`, including a
+    //    `com.android.internal.*`-packaged one) when it used the older,
+    //    plain unique-match-only rule.
     //  - Full: never reached (returns inside the rg branch above).
     match io {
         ResolveIo::Full | ResolveIo::ScopedOnly => vec![],
@@ -401,12 +412,7 @@ fn resolve_chain(
             .map(|loc| vec![loc])
             .unwrap_or_default(),
         ResolveIo::IndexOnly => {
-            let locs = indexer.lookup_definitions(name);
-            if locs.len() == 1 {
-                locs
-            } else {
-                vec![]
-            }
+            ambiguity_safe_tail_with_denylist(indexer, from_uri, indexer.lookup_definitions(name))
         }
         ResolveIo::HierarchyAmbiguitySafe => ambiguity_safe_tail_with_denylist(
             indexer,
