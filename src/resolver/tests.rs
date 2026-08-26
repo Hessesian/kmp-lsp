@@ -954,6 +954,55 @@ fn resolve_nested_type_via_variable_annotation() {
 }
 
 #[test]
+fn resolve_variable_receiver_extension_disambiguates_by_receiver_type() {
+    // `message.toViewText()` where `message: String` — `String` has no
+    // indexed declaration file (a built-in type) and no matching member.
+    // `String.toViewText` is only imported (not same-package), and an
+    // unrelated `EFrequency.toViewText` also exists elsewhere in the
+    // workspace with neither import nor same-package visibility from the
+    // call site. Before the fix, the lowercase-root branch gave up once the
+    // receiver type's own member/hierarchy search failed, so this fell
+    // through all the way to the receiver-blind global-definitions tail,
+    // which sees both candidates and declines (ambiguous) rather than
+    // picking either. The fix must instead resolve `message`'s real type
+    // (`String`) and use the existing receiver-scoped, import-aware
+    // extension lookup to find the one real, in-scope candidate.
+    let host_uri = Url::parse("file:///app/Host.kt").unwrap();
+    let string_ext_uri = Url::parse("file:///lib/a/StringExtensions.kt").unwrap();
+    let other_ext_uri = Url::parse("file:///lib/b/OtherExtensions.kt").unwrap();
+    let idx = Indexer::new();
+    idx.index_content(
+        &string_ext_uri,
+        "package com.lib.a\nfun String.toViewText(): String = this\n",
+    );
+    idx.index_content(
+        &other_ext_uri,
+        concat!(
+            "package com.lib.b\n",
+            "enum class EFrequency { WEEKLY }\n",
+            "fun EFrequency.toViewText(): String = name\n",
+        ),
+    );
+    idx.index_content(
+        &host_uri,
+        concat!(
+            "package com.app\n",
+            "import com.lib.a.toViewText\n",
+            "val message: String = \"hi\"\n",
+            "fun foo() { message.toViewText() }\n",
+        ),
+    );
+
+    let locs = resolve_symbol_index_only(&idx, "toViewText", Some("message"), &host_uri);
+    assert_eq!(
+        locs.len(),
+        1,
+        "expected exactly the String.toViewText extension, got {locs:?}"
+    );
+    assert_eq!(locs[0].uri, string_ext_uri);
+}
+
+#[test]
 fn resolve_dotted_name_traverses_deep_nesting() {
     // `Bar.Baz.Foo` passed directly as `name` (no qualifier) must walk the full
     // nested-type chain Bar → Baz → Foo, not just the first dot.

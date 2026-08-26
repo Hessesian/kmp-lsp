@@ -1068,6 +1068,11 @@ fn resolve_qualified(
     // Resolve the variable's type to its source file.
     let type_locs = resolve_symbol(indexer, outer_type, None, from_uri);
     let mut current_file: Option<String> = type_locs.first().map(|l| l.uri.to_string());
+    // The receiver's own base type name, tracked alongside `current_file` for
+    // the in-scope extension-function fallback below — kept even when
+    // `current_file` is `None` (a built-in/stdlib type like `String` has no
+    // indexed declaration file, but can still have in-scope extensions).
+    let mut current_type_base: String = outer_type.last_segment().to_string();
 
     // If there's a nested type component (e.g. `Factory` in `Outer.Factory`),
     // the members we want to search are inside that nested type.
@@ -1096,6 +1101,7 @@ fn resolve_qualified(
                     .first()
                     .map(|l| l.uri.to_string())
             };
+            current_type_base = seg.to_string();
         } else {
             // Field access: infer the declared type of this field.
             let Some(field_type) = infer_field_type(indexer, uri, seg) else {
@@ -1103,23 +1109,38 @@ fn resolve_qualified(
             };
             let locs = resolve_symbol(indexer, &field_type, None, from_uri);
             current_file = locs.first().map(|l| l.uri.to_string());
+            current_type_base = field_type.strip_nullable().last_segment().to_string();
         }
     }
 
-    // Search the resolved type's file for the target member.
-    let Some(ref resolved_uri) = current_file else {
-        return vec![];
-    };
-    let locs = find_name_in_uri(indexer, name, resolved_uri);
-    if !locs.is_empty() {
-        return locs;
+    // Search the resolved type's file for the target member, then its
+    // superclass/interface hierarchy — Kotlin member (including inherited)
+    // resolution always shadows a same-named extension function, so both are
+    // tried before falling to the extension-in-scope lookup below.
+    if let Some(ref resolved_uri) = current_file {
+        let locs = find_name_in_uri(indexer, name, resolved_uri);
+        if !locs.is_empty() {
+            return locs;
+        }
+        if let Ok(parsed_uri) = Url::parse(resolved_uri) {
+            let hierarchy_locs = resolve_from_class_hierarchy(indexer, name, &parsed_uri);
+            if !hierarchy_locs.is_empty() {
+                return hierarchy_locs;
+            }
+        }
     }
 
-    // Member not found directly — walk the superclass/interface hierarchy.
-    let Ok(parsed_uri) = Url::parse(resolved_uri) else {
-        return vec![];
-    };
-    resolve_from_class_hierarchy(indexer, name, &parsed_uri)
+    // No member or inherited member named `name` on the receiver's type (this
+    // also covers built-in/stdlib receivers like `String`/`Int`, which have
+    // no indexed declaration file at all, so `current_file` is `None`) — the
+    // call may still be a same-named, receiver-scoped extension function
+    // declared elsewhere in the workspace. Without this, callers fell
+    // straight through to the receiver-blind global bare-name search, which
+    // can't distinguish `String.toViewText` from an unrelated
+    // `SomeEnum.toViewText` and simply declines when both exist — a real,
+    // measured source of ambiguous member-call resolution (see the
+    // 2026-08-26 resolution-accuracy investigation).
+    resolve_extension_in_scope(indexer, &current_type_base, name, from_uri)
 }
 
 /// Step 1 — symbols defined in the same source file.
