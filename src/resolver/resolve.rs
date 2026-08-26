@@ -1251,56 +1251,13 @@ fn resolve_qualified(
             }
 
             // `anchor`'s own class has no member, inherited member, or
-            // exact-key in-scope extension named `name` — it may still be
-            // reachable via an extension declared on one of `anchor`'s OWN
-            // ancestors (not `anchor` itself). `extension_by_receiver` /
-            // `resolve_extension_in_scope` are an exact-string-key lookup on
-            // the receiver's own leaf type name, so e.g. `receiver: String`
-            // never finds `fun CharSequence?.toViewText()` even though
-            // `String` implements `CharSequence` — the single largest
-            // measured component of the resolution-accuracy benchmark's
-            // ambiguous (FilteredCandidate) bucket on a real corpus. Placed
-            // after the real-member/hierarchy-member checks above so a real
-            // member on the CONCRETE receiver type still shadows a same-named
-            // extension declared on one of its ancestors — this only orders
-            // this one fallback relative to those checks, not a claim that
-            // this whole branch implements Kotlin's full member-vs-extension
-            // precedence (the exact-key extension check above, line ~1170,
-            // still runs before any member lookup at all). `CallerContext.uri`
-            // is the real call-site `from_uri`, not `anchor.uri` (`start_uri`
-            // below) — `anchor` is commonly a JAR-backed receiver type (e.g.
-            // `String`), and `walk_hierarchy`'s own module-scoped ambiguity
-            // tie-break needs a real `file://` origin to map back to an
-            // owning module; a `jar:` origin can never resolve one, silently
-            // disabling that tie-break for every ancestor lookup in this walk.
-            //
-            // This is a SECOND full hierarchy walk over the same chain
-            // `resolve_from_class_hierarchy_scoped` just walked above (only
-            // reached when that one found nothing) — worth noting since it's
-            // on a keystroke-sensitive path, but it does not double the real
-            // blocking-IPC cost: `promote_candidates_bounded`'s
-            // `materialized`/`materialization_failed` sets are memoized per
-            // JAR, independent of any one walk's own budget, so re-visiting
-            // an ancestor the first walk already attempted (successfully or
-            // not) costs this walk nothing — a plain in-memory set lookup,
-            // no new sidecar IPC. The only genuinely new cost this budget can
-            // spend is on ancestors BEYOND wherever the first walk's own
-            // budget ran out before it finished the chain — exactly the deep
-            // multi-hop case this fallback exists to reach (see the real
-            // 4-hop `AppCompatActivity → … → Activity` shape PR #286 fixed
-            // for member lookup); zeroing it here would silently reintroduce
-            // that same miss for extensions instead.
-            let supertype_ext_locs = walk_hierarchy(
+            // exact-key extension named `name` — check `anchor`'s ancestors.
+            let supertype_ext_locs = resolve_extension_via_supertype_hierarchy(
                 indexer,
                 anchor_class_name,
-                anchor.uri.as_str(),
-                CallerContext {
-                    uri: Some(from_uri.as_str()),
-                    cursor_line: None,
-                },
-                12,
-                MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK,
-                |idx, super_name, _, _| resolve_extension_in_scope(idx, super_name, name, from_uri),
+                &anchor.uri,
+                name,
+                from_uri,
             );
             if !supertype_ext_locs.is_empty() {
                 return supertype_ext_locs;
@@ -1943,6 +1900,50 @@ fn resolve_from_class_hierarchy_scoped(
             ))
         })
         .collect()
+}
+
+/// Extension-lookup counterpart to [`resolve_from_class_hierarchy_scoped`]:
+/// tried only when a member/inherited-member lookup on the concrete receiver
+/// type already failed, so a real member always shadows a same-named
+/// ancestor extension. `extension_by_receiver`/`resolve_extension_in_scope`
+/// are an exact-string-key lookup on the receiver's own leaf type name — a
+/// receiver like `String` (implements `CharSequence`) never matches an
+/// extension keyed `"CharSequence"` without this walk, the single largest
+/// measured component of the resolution-accuracy benchmark's ambiguous
+/// (FilteredCandidate) bucket on a real corpus.
+///
+/// `origin_uri` is the real call-site file, not `start_uri` (`anchor_uri`,
+/// commonly a JAR-backed receiver type) — `walk_hierarchy`'s module-scoped
+/// tie-break needs a real `file://` origin to map back to an owning module,
+/// which a `jar:` URI can never provide.
+///
+/// This walks the same chain `resolve_from_class_hierarchy_scoped` just
+/// walked, at the same budget — not a doubled cost: `promote_candidates_bounded`
+/// memoizes `materialized`/`materialization_failed` per JAR, so re-visiting
+/// an ancestor the first walk already attempted is a free set lookup. This
+/// walk's own budget only spends anything new on ancestors beyond wherever
+/// the first walk's budget ran out — the deep multi-hop case (see the real
+/// 4-hop `AppCompatActivity → … → Activity` shape PR #286 fixed for member
+/// lookup) this fallback exists to reach.
+fn resolve_extension_via_supertype_hierarchy(
+    indexer: &Indexer,
+    start_class: &str,
+    start_uri: &Url,
+    name: &str,
+    origin_uri: &Url,
+) -> Vec<Location> {
+    walk_hierarchy(
+        indexer,
+        start_class,
+        start_uri.as_str(),
+        CallerContext {
+            uri: Some(origin_uri.as_str()),
+            cursor_line: None,
+        },
+        12,
+        MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK,
+        |idx, super_name, _, _| resolve_extension_in_scope(idx, super_name, name, origin_uri),
+    )
 }
 
 /// `rg` scoped to the directory that would contain `package` sources.
