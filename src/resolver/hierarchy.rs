@@ -150,16 +150,22 @@ fn supertype_targets(
             // `super_name` can be a dotted qualified spelling
             // (`class X : com.lib.Base()`) — `ensure_jar_definitions_for`
             // handles that itself (tries the full name, falls back to the
-            // bare leaf), so it gets the original spelling. Every step of
-            // `resolve_symbol_hierarchy_ambiguity_safe`'s chain (local/
-            // imports/same-package/star/tail), by contrast, is keyed by the
-            // simple leaf name only — passing the qualified spelling
-            // straight through would never match anything, silently
-            // dead-ending the walk at this hop for any supertype written
-            // out fully-qualified in source. Resolve (and yield) the leaf.
-            let super_leaf = super_name.last_segment();
-            let leaf_owned = super_leaf.to_owned();
+            // bare leaf), so it gets the original spelling.
             crate::indexer::jar::ensure_jar_definitions_for(idx, &super_name, sidecar_budget);
+            let super_leaf = super_name.last_segment().to_owned();
+            // A qualified spelling names an EXACT package — resolve it
+            // there directly first (`find_symbol_in_package`, package-exact,
+            // no ambiguity risk) rather than falling straight to the
+            // leaf-only ambiguity-safe chain below, which is keyed by
+            // simple name only and could resolve to an unrelated same-leaf
+            // class reachable via same-package/import from this hop's own
+            // file — silently picking the WRONG supertype instead of the
+            // one the source specifically qualified to avoid exactly that.
+            if let Some((pkg, leaf)) = super_name.rsplit_once('.') {
+                if let Some(loc) = super::find_symbol_in_package(idx, leaf, pkg) {
+                    return vec![(super_leaf, loc.uri.to_string())];
+                }
+            }
             // Ambiguity-safe, not `resolve_symbol_no_rg`'s raw first-match tail: at
             // hop 2+ `uri` is frequently a `jar:` synthetic URI with no import list
             // to disambiguate a same-named collision against (compiled JARs carry
@@ -168,15 +174,19 @@ fn supertype_targets(
             // `resolve_symbol_no_rg` callers are unaffected. `origin_url` (the
             // walk's real starting file, not this hop's `uri`) is passed
             // separately so the module-scoped tie-break can still find real
-            // Gradle dependency data past hop 1.
+            // Gradle dependency data past hop 1. Reached for an unqualified
+            // `super_name`, or a qualified one whose exact package lookup
+            // above found nothing (falls back to the same leaf-only
+            // resolution every unqualified supertype already went through).
             super::resolve_symbol_hierarchy_ambiguity_safe(
                 idx,
-                super_leaf,
+                &super_leaf,
                 &uri,
                 origin_url.as_ref(),
             )
             .into_iter()
-            .map(move |loc| (leaf_owned.clone(), loc.uri.to_string()))
+            .map(move |loc| (super_leaf.clone(), loc.uri.to_string()))
+            .collect::<Vec<_>>()
         })
         .collect()
 }

@@ -1784,7 +1784,7 @@ fn symbols_in_package(indexer: &Indexer, name: &str, pkg: &str) -> Vec<Location>
 }
 
 /// Scan all indexed files in `pkg` for the first symbol named `name`.
-fn find_symbol_in_package(indexer: &Indexer, name: &str, pkg: &str) -> Option<Location> {
+pub(crate) fn find_symbol_in_package(indexer: &Indexer, name: &str, pkg: &str) -> Option<Location> {
     let peer_ids: Vec<crate::types::FileId> = indexer
         .packages
         .get(pkg)

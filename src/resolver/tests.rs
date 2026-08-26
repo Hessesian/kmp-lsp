@@ -1341,6 +1341,58 @@ fn resolve_qualified_supertype_extension_fallback_handles_a_fully_qualified_supe
 }
 
 #[test]
+fn resolve_qualified_fully_qualified_supertype_resolves_the_named_package_not_a_same_leaf_decoy() {
+    // Copilot review follow-up: naively stripping a fully-qualified supertype
+    // spelling to its bare leaf (the previous commit's fix) risks resolving
+    // to the WRONG class when a different, same-leaf-named symbol is also
+    // reachable from the subclass's own file -- e.g. a decoy `Seq` declared
+    // in the subclass's own package, shadowing the real, explicitly
+    // qualified `com.other.Seq` the source actually named. A qualified
+    // spelling exists specifically to disambiguate from exactly this kind
+    // of same-leaf collision, so silently discarding the qualifier and
+    // letting same-package resolution win would be a real regression (a
+    // wrong answer), not just a missed match (no answer) -- exercised via
+    // inherited-MEMBER lookup, where which specific file the walk resolves
+    // to actually matters (unlike the extension-lookup path, which is keyed
+    // by receiver leaf name alone regardless of which same-named class was
+    // reached).
+    let host_uri = uri("/Host.kt");
+    let str_uri = uri("/Str.kt");
+    let decoy_seq_uri = uri("/DecoySeq.kt");
+    let real_seq_uri = uri("/Seq.kt");
+    let idx = Indexer::new();
+    // Decoy: same package as Str.kt, same leaf name "Seq" -- what a naive
+    // same-package resolution of the bare leaf would find first. Declares
+    // the SAME member name as the real Seq, so a wrong resolution would
+    // still "succeed" (non-empty) but at the wrong location.
+    idx.index_content(
+        &decoy_seq_uri,
+        "package com.pkg\ninterface Seq {\n  fun getInfo(): String\n}\n",
+    );
+    idx.index_content(
+        &real_seq_uri,
+        "package com.other\ninterface Seq {\n  fun getInfo(): String\n}\n",
+    );
+    idx.index_content(&str_uri, "package com.pkg\nclass Str : com.other.Seq\n");
+    idx.index_content(
+        &host_uri,
+        "package com.pkg\nfun foo(receiver: Str) { receiver.getInfo() }\n",
+    );
+
+    let locs = resolve_symbol(&idx, "getInfo", Some("Str"), &host_uri);
+    assert!(
+        !locs.is_empty(),
+        "getInfo on the correctly-qualified com.other.Seq must still resolve"
+    );
+    assert_eq!(
+        locs[0].uri, real_seq_uri,
+        "must resolve via the real com.other.Seq the source actually named, \
+         not a same-package same-leaf decoy Seq, got a location in {:?}",
+        locs[0].uri
+    );
+}
+
+#[test]
 fn resolve_variable_receiver_extension_disambiguates_by_receiver_type() {
     // `message.toViewText()` where `message: String` — `String` has no
     // indexed declaration file (a built-in type) and no matching member.
