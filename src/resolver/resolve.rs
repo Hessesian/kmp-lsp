@@ -1251,12 +1251,21 @@ fn resolve_qualified(
             // ambiguous (FilteredCandidate) bucket on a real corpus. Placed
             // after the real-member/hierarchy-member checks above so
             // Kotlin's own "member always shadows extension" precedence
-            // still holds.
+            // still holds. `CallerContext.uri` is the real call-site
+            // `from_uri`, not `anchor.uri` (`start_uri` below) — `anchor` is
+            // commonly a JAR-backed receiver type (e.g. `String`), and
+            // `walk_hierarchy`'s own module-scoped ambiguity tie-break needs
+            // a real `file://` origin to map back to an owning module; a
+            // `jar:` origin can never resolve one, silently disabling that
+            // tie-break for every ancestor lookup in this walk.
             let supertype_ext_locs = walk_hierarchy(
                 indexer,
                 anchor_class_name,
                 anchor.uri.as_str(),
-                CallerContext::default(),
+                CallerContext {
+                    uri: Some(from_uri.as_str()),
+                    cursor_line: None,
+                },
                 12,
                 MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK,
                 |idx, super_name, _, _| resolve_extension_in_scope(idx, super_name, name, from_uri),

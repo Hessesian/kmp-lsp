@@ -1093,6 +1093,126 @@ fn resolve_qualified_member_on_concrete_type_still_shadows_supertype_extension()
     );
 }
 
+/// A Gradle-cache-shaped `jar:` URI for `(group, artifact, version)`, mirroring
+/// the real layout `parse_jar_meta` parses (duplicated from
+/// `hierarchy_tests.rs`'s own identical helper — a private fn in a sibling
+/// test module, not reachable from here).
+fn gradle_cache_jar_uri(group: &str, artifact: &str, version: &str) -> Url {
+    Url::parse(&format!(
+        "jar:file:///home/user/.gradle/caches/modules-2/files-2.1/{group}/{artifact}/{version}/deadbeef/{artifact}-{version}.jar"
+    ))
+    .unwrap()
+}
+
+#[test]
+fn resolve_qualified_supertype_extension_fallback_threads_the_real_origin_uri() {
+    // Copilot review finding on PR #289: the new supertype-extension-fallback
+    // `walk_hierarchy` call passed `CallerContext::default()`, so its
+    // `origin_uri` (used only for module-scoped ambiguity narrowing) fell
+    // back to `start_uri` -- here, the JAR-backed receiver type's own
+    // declaring file, NOT the real calling file. `owning_module_dependencies`
+    // can't map a `jar:` URI to any module, so whenever an ancestor's own
+    // name is ambiguous and only module-scoping (not the denylist) can
+    // narrow it, the walk would incorrectly decline and miss a valid
+    // ancestor extension entirely.
+    //
+    // Reproduces the real shape: `Str` (the receiver) is itself JAR-backed
+    // (mirroring `String` resolving from kotlin-stdlib), with an ambiguous
+    // "Seq" supertype -- two same-named JAR candidates, distinguishable only
+    // by which one is a real dependency of the CALLING file's module.
+    let indexer = Indexer::new();
+    let host_uri = uri("/app/Host.kt");
+    indexer.index_content(
+        &host_uri,
+        concat!(
+            "package com.app\n",
+            "import com.example.Str\n",
+            "import com.example.seqlib.toViewText\n",
+            "fun foo(receiver: Str) { receiver.toViewText() }\n",
+        ),
+    );
+
+    let str_uri = gradle_cache_jar_uri("com.example", "str-lib", "1.0.0");
+    let decoy_seq_uri = gradle_cache_jar_uri("com.example.decoy", "decoy-lib", "1.0.0");
+    let real_seq_uri = gradle_cache_jar_uri("com.example", "seq-lib", "2.0.0");
+
+    indexer.jar_definitions.insert(
+        "Str".to_owned(),
+        vec![tower_lsp::lsp_types::Location {
+            uri: str_uri.clone(),
+            range: Default::default(),
+        }],
+    );
+    // Decoy indexed first, matching this file's established convention.
+    indexer.jar_definitions.insert(
+        "Seq".to_owned(),
+        vec![
+            tower_lsp::lsp_types::Location {
+                uri: decoy_seq_uri,
+                range: Default::default(),
+            },
+            tower_lsp::lsp_types::Location {
+                uri: real_seq_uri.clone(),
+                range: Default::default(),
+            },
+        ],
+    );
+    indexer.jar_files.insert(
+        str_uri.to_string(),
+        std::sync::Arc::new(crate::types::FileData {
+            supers: vec![(0, "Seq".to_owned(), Vec::new())],
+            ..Default::default()
+        }),
+    );
+    indexer.jar_files.insert(
+        real_seq_uri.to_string(),
+        std::sync::Arc::new(crate::types::FileData {
+            package: Some("com.example.seqlib".to_owned()),
+            ..Default::default()
+        }),
+    );
+
+    // Only `Host.kt`'s own module (content root `/app`) depends on the real
+    // `com.example:seq-lib` artifact.
+    let mut dependencies_by_content_root: std::collections::HashMap<
+        std::path::PathBuf,
+        std::collections::HashSet<crate::cli::extract_sources::GradleMeta>,
+    > = std::collections::HashMap::new();
+    dependencies_by_content_root.insert(
+        std::path::PathBuf::from("/test/app"),
+        std::collections::HashSet::from([crate::cli::extract_sources::GradleMeta {
+            group: "com.example".to_owned(),
+            artifact: "seq-lib".to_owned(),
+            version: "2.0.0".to_owned(),
+        }]),
+    );
+    *indexer.module_dependencies.write().unwrap() = dependencies_by_content_root;
+
+    // Extension registered on the correctly-narrowed "Seq" ancestor only.
+    indexer.extension_by_receiver.insert(
+        "Seq".to_owned(),
+        vec![crate::types::ExtensionEntry {
+            file_uri: real_seq_uri.to_string(),
+            name: "toViewText".to_owned(),
+            kind: tower_lsp::lsp_types::SymbolKind::FUNCTION,
+            detail: "fun Seq.toViewText(): String".to_owned(),
+            visibility: crate::types::Visibility::Public,
+            package: Some("com.example.seqlib".to_owned()),
+            trailing_lambda: false,
+            deprecated: false,
+            container: None,
+        }],
+    );
+
+    let locs = resolve_symbol(&indexer, "toViewText", Some("Str"), &host_uri);
+    assert!(
+        !locs.is_empty(),
+        "expected the module-scoped tie-break to narrow the ambiguous Seq \
+         supertype using Host.kt's own real origin, not the JAR-backed Str \
+         receiver's own declaring file, and find toViewText on it"
+    );
+}
+
 #[test]
 fn resolve_variable_receiver_extension_disambiguates_by_receiver_type() {
     // `message.toViewText()` where `message: String` — `String` has no
