@@ -41,6 +41,7 @@ pub(crate) fn version_key(version: &str) -> Vec<VersionPart> {
 
 // ── Gradle cache path parsing ─────────────────────────────────────────────────
 
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub(crate) struct GradleMeta {
     pub(crate) group: String,
     pub(crate) artifact: String,

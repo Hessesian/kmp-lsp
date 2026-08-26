@@ -13,16 +13,29 @@
 //! - `"java-source"` — production Kotlin/Java sources
 //! - `"java-test"` — test Kotlin/Java sources
 
+use crate::cli::extract_sources::GradleMeta;
 use serde::Deserialize;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 const SOURCE_TYPES: &[&str] = &["java-source", "java-test"];
 const WORKSPACE_PLACEHOLDER: &str = "<WORKSPACE>";
+// No production caller yet; the real-schema GAV-resolution functions below
+// (`library_gradle_meta`, `load_module_dependencies`) await resolver wiring.
+#[allow(dead_code)]
+const GRADLE_LIBRARY_NAME_PREFIX: &str = "Gradle: ";
 
 #[derive(Deserialize)]
 struct WorkspaceData {
     #[serde(default)]
     modules: Vec<ModuleData>,
+    /// Every dependency-resolvable library in the project, keyed by `name`
+    /// from each module's `dependencies[]` entries. Populated by real
+    /// producers (the official `kotlin-lsp` importer or a third-party Gradle
+    /// plugin); no production caller yet — see `load_module_dependencies`.
+    #[allow(dead_code)]
+    #[serde(default)]
+    libraries: Vec<LibraryData>,
     /// Optional list of external library source directories.
     /// When present (even as `[]`), these override the global `~/.kmp-lsp/sources` default.
     /// Supports the `<WORKSPACE>` placeholder (substituted with the workspace root path).
@@ -38,12 +51,71 @@ struct WorkspaceData {
 
 #[derive(Deserialize)]
 struct ModuleData {
+    /// Parsed for schema fidelity; module identity for dependency-scoping
+    /// purposes keys off `content_roots[].path`, not this name, so it has no
+    /// reader yet in this slice.
+    #[allow(dead_code)]
+    #[serde(default)]
+    name: String,
     #[serde(default, rename = "contentRoots")]
     content_roots: Vec<ContentRootData>,
+    /// No production caller yet; consumed by `load_module_dependencies`'s
+    /// tests today, pending resolver wiring.
+    #[allow(dead_code)]
+    #[serde(default)]
+    dependencies: Vec<DependencyData>,
+    #[allow(dead_code)]
+    #[serde(default, rename = "externalProjectId")]
+    external_project_id: Option<String>,
+}
+
+/// One entry of a module's `dependencies[]` list, internally tagged on
+/// `"type"` — the real schema's own discriminator shape (verified against
+/// `Kotlin/kotlin-lsp`'s `model.kt`). A `#[serde(other)]` catch-all covers a
+/// future/unrecognized `type` value so parsing degrades to "entry ignored,"
+/// never a hard error — matching this file's existing "never panic on
+/// malformed input" convention.
+#[derive(Debug, Deserialize)]
+#[serde(tag = "type", rename_all = "camelCase")]
+enum DependencyData {
+    Library {
+        #[allow(dead_code)]
+        name: String,
+        /// Parsed for schema fidelity; dependency scope (compile/test/
+        /// runtime/provided) doesn't yet filter GAV resolution in this slice.
+        #[allow(dead_code)]
+        #[serde(default)]
+        scope: Option<String>,
+    },
+    /// An intra-project module-to-module dependency edge. Modeled so a real
+    /// file carrying one deserializes correctly, but no logic in this slice
+    /// reads it — wiring project-graph awareness from this variant is out of
+    /// scope here (see design doc's Non-goals).
+    #[allow(dead_code)]
+    Module {
+        name: String,
+    },
+    InheritedSdk,
+    ModuleSource,
+    /// A JDK/SDK dependency entry, e.g. `{"type":"sdk","name":"17","kind":"jdk"}`.
+    /// Modeled so it is never misinterpreted as a `Library` entry during GAV
+    /// resolution; its fields have no reader in this slice.
+    #[allow(dead_code)]
+    Sdk {
+        name: String,
+        kind: String,
+    },
+    #[serde(other)]
+    Unrecognized,
 }
 
 #[derive(Deserialize)]
 struct ContentRootData {
+    /// No production caller yet; consumed by `load_module_dependencies`'s
+    /// tests today, pending resolver wiring.
+    #[allow(dead_code)]
+    #[serde(default)]
+    path: String,
     #[serde(default, rename = "sourceRoots")]
     source_roots: Vec<SourceRootData>,
 }
@@ -53,6 +125,57 @@ struct SourceRootData {
     path: String,
     #[serde(rename = "type", default)]
     root_type: String,
+}
+
+/// A project-wide library entry from `libraries[]`, referenced by name from
+/// each module's `Library`-typed `dependencies[]` entries.
+#[derive(Debug, Deserialize)]
+pub(crate) struct LibraryData {
+    #[allow(dead_code)]
+    name: String,
+    /// Reserved for a future path-based JAR match (design doc §2 point 3:
+    /// an indexed JAR's path can equal a root's `path` after placeholder
+    /// substitution, sidestepping GAV parsing) — not consumed by the
+    /// GAV-string resolution this slice implements.
+    #[allow(dead_code)]
+    #[serde(default)]
+    roots: Vec<LibraryRootData>,
+    #[allow(dead_code)]
+    #[serde(default)]
+    properties: Option<LibraryProperties>,
+}
+
+/// One `roots[]` entry of a `LibraryData`. Parsed for schema fidelity and the
+/// future path-based matching noted on `LibraryData::roots`; unread by this
+/// slice's GAV-string-based resolution.
+#[allow(dead_code)]
+#[derive(Debug, Deserialize)]
+struct LibraryRootData {
+    path: String,
+    #[serde(rename = "type", default = "default_library_root_type")]
+    root_type: String,
+}
+
+fn default_library_root_type() -> String {
+    "CLASSES".to_owned()
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Deserialize)]
+struct LibraryProperties {
+    #[serde(default)]
+    attributes: Option<LibraryAttributes>,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Deserialize)]
+struct LibraryAttributes {
+    #[serde(default, rename = "groupId")]
+    group_id: Option<String>,
+    #[serde(default, rename = "artifactId")]
+    artifact_id: Option<String>,
+    #[serde(default)]
+    version: Option<String>,
 }
 
 /// Reads `<workspace_root>/workspace.json` and returns source root paths.
@@ -177,6 +300,159 @@ pub(crate) fn load_configured_jar_paths(workspace_root: &Path) -> Vec<PathBuf> {
         Some(raw) => resolve_jar_path_specs(&raw, workspace_root),
         None => Vec::new(),
     }
+}
+
+/// Reads and parses `<workspace_root>/workspace.json` into the full
+/// `WorkspaceData` structure. Returns `None` (with a log warning, except for
+/// the common "no file present" case) on any I/O or parse failure — never
+/// panics, matching every other loader in this file.
+///
+/// No production caller yet — shared by `load_module_dependencies` and its
+/// tests, pending resolver wiring (design doc §5, deferred).
+#[allow(dead_code)]
+fn parse_workspace_data(workspace_root: &Path) -> Option<WorkspaceData> {
+    let json_path = workspace_root.join("workspace.json");
+    if !json_path.exists() {
+        return None;
+    }
+    let content = match std::fs::read_to_string(&json_path) {
+        Ok(text) => text,
+        Err(error) => {
+            log::warn!("workspace.json: failed to read: {error}");
+            return None;
+        }
+    };
+    match serde_json::from_str(&content) {
+        Ok(data) => Some(data),
+        Err(error) => {
+            log::warn!("workspace.json: failed to parse: {error}");
+            None
+        }
+    }
+}
+
+/// Resolves a `LibraryData` entry to its Gradle group/artifact/version, in
+/// priority order: structured `properties.attributes` first, then a
+/// `"Gradle: <group>:<artifact>:<version>"`-shaped `name` fallback. Returns
+/// `None` (never a wrong guess) when neither shape matches — e.g. a
+/// hand-added local library.
+///
+/// No production caller yet — exercised directly by tests, pending resolver
+/// wiring (design doc §5, deferred).
+#[allow(dead_code)]
+pub(crate) fn library_gradle_meta(library: &LibraryData) -> Option<GradleMeta> {
+    if let Some(gradle_meta) = library_gradle_meta_from_attributes(library) {
+        return Some(gradle_meta);
+    }
+    library_gradle_meta_from_name(&library.name)
+}
+
+/// Structured GAV resolution from `properties.attributes`. Requires all
+/// three of `groupId`/`artifactId`/`version` to be present — a partial
+/// attribute set is treated the same as absent, never guessed at.
+#[allow(dead_code)]
+fn library_gradle_meta_from_attributes(library: &LibraryData) -> Option<GradleMeta> {
+    let attributes = library.properties.as_ref()?.attributes.as_ref()?;
+    Some(GradleMeta {
+        group: attributes.group_id.clone()?,
+        artifact: attributes.artifact_id.clone()?,
+        version: attributes.version.clone()?,
+    })
+}
+
+/// Fallback GAV resolution by parsing the real, decades-old IntelliJ
+/// `"Gradle: <group>:<artifact>:<version>"` library-name convention. Returns
+/// `None` if the prefix is absent or the remainder isn't exactly three
+/// colon-separated segments — including the third-party plugin's
+/// `"Gradle: "`-prefixed synthetic Android SDK entry, which is real-shaped
+/// despite being synthetic and so parses like any other library name.
+#[allow(dead_code)]
+fn library_gradle_meta_from_name(name: &str) -> Option<GradleMeta> {
+    let coordinate = name.strip_prefix(GRADLE_LIBRARY_NAME_PREFIX)?;
+    let segments: Vec<&str> = coordinate.split(':').collect();
+    let [group, artifact, version] = segments[..] else {
+        return None;
+    };
+    Some(GradleMeta {
+        group: group.to_owned(),
+        artifact: artifact.to_owned(),
+        version: version.to_owned(),
+    })
+}
+
+/// Builds a per-module dependency map: every content-root directory a module
+/// owns (from its own `contentRoots[].path`, after `<WORKSPACE>`
+/// substitution) is associated with the `GradleMeta` set resolved from that
+/// module's `library`-typed `dependencies[]` entries. Non-`Library` entries
+/// (`Module`/`InheritedSdk`/`ModuleSource`/`Sdk`) are skipped by construction
+/// — matching on the `Library` arm makes passing a JDK-version string or a
+/// module name through GAV resolution impossible, not merely discouraged.
+///
+/// Returns an empty map (never panics) when `workspace.json` is missing,
+/// malformed, or carries no `libraries[]`/`dependencies[]` data.
+///
+/// No production caller yet — built and tested standalone for the resolver's
+/// future JAR-collision-scoping use, per this slice's own scope boundary.
+#[allow(dead_code)]
+pub(crate) fn load_module_dependencies(
+    workspace_root: &Path,
+) -> HashMap<PathBuf, HashSet<GradleMeta>> {
+    let Some(data) = parse_workspace_data(workspace_root) else {
+        return HashMap::new();
+    };
+
+    let libraries_by_name: HashMap<&str, &LibraryData> = data
+        .libraries
+        .iter()
+        .map(|library| (library.name.as_str(), library))
+        .collect();
+
+    let workspace_str = workspace_root.to_string_lossy();
+    let mut dependencies_by_content_root: HashMap<PathBuf, HashSet<GradleMeta>> = HashMap::new();
+
+    for module in &data.modules {
+        let module_dependencies = module_gradle_dependencies(module, &libraries_by_name);
+        if module_dependencies.is_empty() {
+            continue;
+        }
+        for content_root in &module.content_roots {
+            if content_root.path.is_empty() {
+                continue;
+            }
+            let resolved = content_root
+                .path
+                .replace(WORKSPACE_PLACEHOLDER, &workspace_str);
+            dependencies_by_content_root
+                .entry(PathBuf::from(resolved))
+                .or_default()
+                .extend(module_dependencies.iter().cloned());
+        }
+    }
+
+    dependencies_by_content_root
+}
+
+/// Resolves a single module's `Library`-typed `dependencies[]` entries to
+/// their `GradleMeta`, looking each dependency's `name` up in the workspace's
+/// project-wide `libraries[]` registry.
+#[allow(dead_code)]
+fn module_gradle_dependencies(
+    module: &ModuleData,
+    libraries_by_name: &HashMap<&str, &LibraryData>,
+) -> HashSet<GradleMeta> {
+    let mut module_dependencies = HashSet::new();
+    for dependency in &module.dependencies {
+        let DependencyData::Library { name, .. } = dependency else {
+            continue;
+        };
+        let Some(library) = libraries_by_name.get(name.as_str()) else {
+            continue;
+        };
+        if let Some(gradle_meta) = library_gradle_meta(library) {
+            module_dependencies.insert(gradle_meta);
+        }
+    }
+    module_dependencies
 }
 
 /// Resolve a list of jar/aar path specs into concrete compiled-jar files.
