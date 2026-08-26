@@ -546,7 +546,7 @@ fn jar_paths_absent_returns_empty() {
 /// `library`-type dependency, and a matching `libraries[]` entry whose
 /// `properties.attributes` carries structured GAV coordinates.
 #[test]
-fn deserializes_real_schema_and_extracts_gav_from_properties() {
+fn real_schema_deserialization_extracts_gav_from_properties() {
     let dir = TempDir::new().unwrap();
     make_workspace_json(
         &dir,

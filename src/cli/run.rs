@@ -185,7 +185,9 @@ async fn build_index_inner(root: &Path, source_paths: Vec<String>) -> Arc<Indexe
     // real `workspace.json` module data is present.
     let module_dependencies = crate::workspace_json::load_module_dependencies(root);
     if !module_dependencies.is_empty() {
-        *idx.module_dependencies.write().unwrap() = module_dependencies;
+        *idx.module_dependencies
+            .write()
+            .unwrap_or_else(|e| e.into_inner()) = module_dependencies;
     }
     Arc::clone(&idx)
         .index_workspace_full(&canonical, Arc::new(NoopReporter))
