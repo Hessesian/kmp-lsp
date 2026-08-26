@@ -486,7 +486,7 @@ fn owning_module_dependencies(
     indexer: &Indexer,
     from_uri: &Url,
 ) -> Option<HashSet<crate::cli::extract_sources::GradleMeta>> {
-    let file_path = from_uri.to_file_path().ok()?;
+    let file_path = crate::path_util::path_from_uri(from_uri)?;
     let dependencies_by_content_root = indexer
         .module_dependencies
         .read()
@@ -509,7 +509,7 @@ fn owning_module_dependencies(
 fn candidate_gradle_meta(loc: &Location) -> Option<crate::cli::extract_sources::GradleMeta> {
     let rest = loc.uri.as_str().strip_prefix("jar:")?;
     let jar_part = rest.split_once("!/").map_or(rest, |(jar, _)| jar);
-    let jar_path = Url::parse(jar_part).ok()?.to_file_path().ok()?;
+    let jar_path = crate::path_util::path_from_uri(&Url::parse(jar_part).ok()?)?;
     crate::cli::extract_sources::parse_jar_meta(&jar_path)
 }
 
