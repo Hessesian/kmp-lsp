@@ -444,18 +444,24 @@ fn resolve_chain(
 /// preference-ranking system.
 const DENYLISTED_PACKAGE_PREFIXES: &[&str] = &["com.android.internal."];
 
-/// Tail fallback for [`ResolveIo::HierarchyAmbiguitySafe`]: a unique
-/// candidate wins outright; an ambiguous set gets two narrow tie-breaks in
-/// sequence — first [`DENYLISTED_PACKAGE_PREFIXES`] (unconditional,
-/// project-wide), then [`module_scoped_tie_break`] (real per-module Gradle
-/// dependency data, when available) — before still declining unless one of
-/// them leaves exactly one candidate. See the real-workspace-json-schema
-/// design doc's §5 for why this ordering (denylist first, module-scoping
-/// second) is correct: the denylist is unconditional and needs no loaded
-/// data, while module-scoping only ever narrows what the denylist couldn't.
+/// Tail fallback shared by [`ResolveIo::HierarchyAmbiguitySafe`] (the
+/// hierarchy walk's own per-hop resolution) and [`ResolveIo::IndexOnly`]
+/// (general bare-name resolution — diagnostics, `resolve_qualified`'s
+/// qualifier-root lookup, etc.): a unique candidate wins outright; an
+/// ambiguous set gets two narrow tie-breaks in sequence — first
+/// [`DENYLISTED_PACKAGE_PREFIXES`] (unconditional, project-wide), then
+/// [`module_scoped_tie_break`] (real per-module Gradle dependency data, when
+/// available) — before still declining unless one of them leaves exactly
+/// one candidate. See the real-workspace-json-schema design doc's §5 for why
+/// this ordering (denylist first, module-scoping second) is correct: the
+/// denylist is unconditional and needs no loaded data, while module-scoping
+/// only ever narrows what the denylist couldn't. `origin_uri` is the real
+/// file to resolve an owning module from for the second tie-break — the
+/// hierarchy walk's own starting file for `HierarchyAmbiguitySafe`, or
+/// simply the caller's own `from_uri` for `IndexOnly`.
 fn ambiguity_safe_tail_with_denylist(
     indexer: &Indexer,
-    hierarchy_walk_origin_uri: &Url,
+    origin_uri: &Url,
     locations: Vec<Location>,
 ) -> Vec<Location> {
     if locations.len() == 1 {
@@ -474,7 +480,7 @@ fn ambiguity_safe_tail_with_denylist(
     if filtered.len() < 2 {
         return vec![];
     }
-    module_scoped_tie_break(indexer, hierarchy_walk_origin_uri, filtered)
+    module_scoped_tie_break(indexer, origin_uri, filtered)
 }
 
 /// Second tie-break for [`ambiguity_safe_tail_with_denylist`]: when the
