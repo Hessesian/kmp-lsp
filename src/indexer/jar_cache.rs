@@ -40,7 +40,12 @@ use crate::sidecar::SidecarSymbol;
 ///            in addition to classes/methods — a cache built before this shipped has no
 ///            field entries at all, and the JAR's own (mtime, size) fingerprint never
 ///            changes to reveal that, so the version must be bumped to force a rescan.
-const JAR_CACHE_VERSION: u32 = 14;
+/// v14 → v15: sidecar's `renderFunction` now marks each Kotlin default-valued parameter
+///            with a trailing `= ...` in the rendered `detail` text, so `params_from_detail`
+///            can tell a defaulted param apart from a required one (previously every
+///            JAR-derived extension function's default-valued params were counted as
+///            required, wrongly rejecting real calls like `scope.launch { }` on arity).
+const JAR_CACHE_VERSION: u32 = 15;
 
 #[derive(Serialize, Deserialize)]
 struct JarCache {
