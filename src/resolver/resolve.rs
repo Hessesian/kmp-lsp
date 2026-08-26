@@ -179,7 +179,8 @@ fn resolve_symbol_with_io(
         let segments: Vec<&str> = name.split('.').collect();
         // Start at the first type (uppercase) segment, skipping package prefixes.
         if let Some(start) = segments.iter().position(|s| s.starts_with_uppercase()) {
-            let outer_locs = resolve_chain(indexer, segments[start], from_uri, io, true, None);
+            let outer_locs =
+                resolve_chain(indexer, segments[start], from_uri, io, true, None, None);
             if let Some(outer_loc) = outer_locs.first() {
                 // A package-qualified plain type (`demo.Foo`) has no nested
                 // segments after the type — the resolved type itself is the target.
@@ -201,7 +202,7 @@ fn resolve_symbol_with_io(
         }
     }
 
-    resolve_chain(indexer, name, from_uri, io, true, None)
+    resolve_chain(indexer, name, from_uri, io, true, None, None)
 }
 
 /// Resolve a call's callee name, filtering same-file candidates by `shape`
@@ -215,7 +216,7 @@ pub(crate) fn resolve_callee_definition(
     uri: &Url,
     shape: CallShape,
 ) -> Vec<Location> {
-    resolve_chain(indexer, name, uri, ResolveIo::Full, true, Some(shape))
+    resolve_chain(indexer, name, uri, ResolveIo::Full, true, Some(shape), None)
 }
 
 /// The single prioritised resolution chain, parameterised by IO policy.
@@ -232,6 +233,12 @@ pub(crate) fn resolve_callee_definition(
 ///
 /// `shape` is forwarded to step 1 only (see [`resolve_local`]) — every existing
 /// caller passes `None`; only [`resolve_callee_definition`] passes a real shape.
+///
+/// `hierarchy_walk_origin_uri` is forwarded to the tail fallback only, and only
+/// matters for [`ResolveIo::HierarchyAmbiguitySafe`] — every other caller passes
+/// `None`; only [`resolve_symbol_hierarchy_ambiguity_safe`] passes the hierarchy
+/// walk's real starting file (see [`crate::resolver::hierarchy::walk_hierarchy`]),
+/// which can differ from `from_uri` past hop 1 of that walk.
 fn resolve_chain(
     indexer: &Indexer,
     name: &str,
@@ -239,6 +246,7 @@ fn resolve_chain(
     io: ResolveIo,
     with_hierarchy: bool,
     shape: Option<CallShape>,
+    hierarchy_walk_origin_uri: Option<&Url>,
 ) -> Vec<Location> {
     // Behavioural knobs derived from the policy (see the `ResolveIo` table):
     //  - `full_io`: cold-index + local-decl + swift + hierarchy + project-wide rg
@@ -400,9 +408,11 @@ fn resolve_chain(
                 vec![]
             }
         }
-        ResolveIo::HierarchyAmbiguitySafe => {
-            ambiguity_safe_tail_with_denylist(indexer, from_uri, indexer.lookup_definitions(name))
-        }
+        ResolveIo::HierarchyAmbiguitySafe => ambiguity_safe_tail_with_denylist(
+            indexer,
+            hierarchy_walk_origin_uri.unwrap_or(from_uri),
+            indexer.lookup_definitions(name),
+        ),
     }
 }
 
@@ -428,18 +438,18 @@ const HIERARCHY_WALK_DENYLISTED_PACKAGE_PREFIXES: &[&str] = &["com.android.inter
 /// data, while module-scoping only ever narrows what the denylist couldn't.
 fn ambiguity_safe_tail_with_denylist(
     indexer: &Indexer,
-    from_uri: &Url,
-    locs: Vec<Location>,
+    hierarchy_walk_origin_uri: &Url,
+    locations: Vec<Location>,
 ) -> Vec<Location> {
-    if locs.len() == 1 {
-        return locs;
+    if locations.len() == 1 {
+        return locations;
     }
-    if locs.is_empty() {
+    if locations.is_empty() {
         return vec![];
     }
-    let filtered: Vec<Location> = locs
+    let filtered: Vec<Location> = locations
         .into_iter()
-        .filter(|loc| !is_denylisted_supertype_package(indexer, loc))
+        .filter(|location| !is_denylisted_supertype_package(indexer, location))
         .collect();
     if filtered.len() == 1 {
         return filtered;
@@ -447,28 +457,31 @@ fn ambiguity_safe_tail_with_denylist(
     if filtered.len() < 2 {
         return vec![];
     }
-    module_scoped_tie_break(indexer, from_uri, filtered)
+    module_scoped_tie_break(indexer, hierarchy_walk_origin_uri, filtered)
 }
 
 /// Second tie-break for [`ambiguity_safe_tail_with_denylist`]: when the
 /// denylist alone still leaves more than one candidate, narrow using the
-/// calling file's own module's real Gradle dependency set (see
-/// `workspace_json::load_module_dependencies`) — a candidate survives only
-/// if its own JAR's `(group, artifact, version)` is a dependency of the
-/// module `from_uri` belongs to. Declines (returns empty), exactly as before
-/// this narrowing existed, whenever no per-module data is available for
-/// `from_uri`'s module or the narrowing still leaves more than one candidate.
+/// hierarchy walk's real starting file's own module's real Gradle dependency
+/// set (see `workspace_json::load_module_dependencies`) — a candidate
+/// survives only if its own JAR's `(group, artifact, version)` is a
+/// dependency of the module `hierarchy_walk_origin_uri` belongs to. Declines
+/// (returns empty), exactly as before this narrowing existed, whenever no
+/// per-module data is available for that module or the narrowing still
+/// leaves more than one candidate.
 fn module_scoped_tie_break(
     indexer: &Indexer,
-    from_uri: &Url,
-    locs: Vec<Location>,
+    hierarchy_walk_origin_uri: &Url,
+    locations: Vec<Location>,
 ) -> Vec<Location> {
-    let Some(dependencies) = owning_module_dependencies(indexer, from_uri) else {
+    let Some(dependencies) = owning_module_dependencies(indexer, hierarchy_walk_origin_uri) else {
         return vec![];
     };
-    let narrowed: Vec<Location> = locs
+    let narrowed: Vec<Location> = locations
         .into_iter()
-        .filter(|loc| candidate_gradle_meta(loc).is_some_and(|meta| dependencies.contains(&meta)))
+        .filter(|location| {
+            candidate_gradle_meta(location).is_some_and(|meta| dependencies.contains(&meta))
+        })
         .collect();
     if narrowed.len() == 1 {
         narrowed
@@ -484,8 +497,9 @@ fn module_scoped_tie_break(
 /// `build.gradle.kts`-nearest-ancestor heuristic). A cheap lookup against
 /// already-loaded, pre-parsed state — no file I/O or parsing on this path.
 /// Returns `None` when `from_uri` isn't a real file path (e.g. a `jar:`
-/// synthetic URI, as `from_uri` becomes beyond hop 1 of a hierarchy walk) or
-/// no `workspace.json` module data was loaded for this workspace.
+/// synthetic URI — [`module_scoped_tie_break`]'s caller passes the hierarchy
+/// walk's real starting file for this reason, not the current hop's own URI)
+/// or no `workspace.json` module data was loaded for this workspace.
 fn owning_module_dependencies(
     indexer: &Indexer,
     from_uri: &Url,
@@ -510,22 +524,22 @@ fn owning_module_dependencies(
 /// [`crate::jar_extract::parse_jar_entry_uri`] only handles the latter shape,
 /// so it is not reused here. Returns `None` for a non-`jar:` URI or an
 /// unparseable jar path, never a wrong guess.
-fn candidate_gradle_meta(loc: &Location) -> Option<crate::cli::extract_sources::GradleMeta> {
-    let rest = loc.uri.as_str().strip_prefix("jar:")?;
+fn candidate_gradle_meta(location: &Location) -> Option<crate::cli::extract_sources::GradleMeta> {
+    let rest = location.uri.as_str().strip_prefix("jar:")?;
     let jar_part = rest.split_once("!/").map_or(rest, |(jar, _)| jar);
     let jar_path = crate::path_util::path_from_uri(&Url::parse(jar_part).ok()?)?;
     crate::cli::extract_sources::parse_jar_meta(&jar_path)
 }
 
-/// Whether `loc`'s declaring file has a package matching one of
+/// Whether `location`'s declaring file has a package matching one of
 /// [`HIERARCHY_WALK_DENYLISTED_PACKAGE_PREFIXES`]. Locations with no known
 /// package (e.g. a not-yet-materialized compiled-JAR entry, absent from
 /// `indexer.files`) are never treated as denylisted — the tie-break must
 /// only ever remove a candidate it can positively prove is denylisted.
-fn is_denylisted_supertype_package(indexer: &Indexer, loc: &Location) -> bool {
+fn is_denylisted_supertype_package(indexer: &Indexer, location: &Location) -> bool {
     let Some(package) = indexer
         .files
-        .get(loc.uri.as_str())
+        .get(location.uri.as_str())
         .and_then(|f| f.package.clone())
     else {
         return false;
@@ -549,7 +563,7 @@ fn find_in_star_imports(indexer: &Indexer, name: &str, star_pkgs: &[String]) -> 
 /// its own doc comment for the exact IO policy, since restating it here is
 /// how this comment drifted out of sync with it the first time).
 pub(crate) fn resolve_symbol_no_rg(indexer: &Indexer, name: &str, from_uri: &Url) -> Vec<Location> {
-    resolve_chain(indexer, name, from_uri, ResolveIo::NoRg, false, None)
+    resolve_chain(indexer, name, from_uri, ResolveIo::NoRg, false, None, None)
 }
 
 /// Ambiguity-safe sibling of [`resolve_symbol_no_rg`], scoped to the
@@ -557,10 +571,17 @@ pub(crate) fn resolve_symbol_no_rg(indexer: &Indexer, name: &str, from_uri: &Url
 /// `resolver/hierarchy.rs`) — see [`ResolveIo::HierarchyAmbiguitySafe`].
 /// Does not alter `resolve_symbol_no_rg` itself or any of its other
 /// callers' behavior.
+///
+/// `hierarchy_walk_origin_uri` is the hierarchy walk's real starting file
+/// (see [`crate::resolver::hierarchy::walk_hierarchy`]'s doc comment),
+/// forwarded here from `supertype_targets` so the module-scoped tie-break
+/// can still find real Gradle dependency data past hop 1, where `from_uri`
+/// itself has become the previous hop's own (often `jar:`) resolved URI.
 pub(crate) fn resolve_symbol_hierarchy_ambiguity_safe(
     indexer: &Indexer,
     name: &str,
     from_uri: &Url,
+    hierarchy_walk_origin_uri: Option<&Url>,
 ) -> Vec<Location> {
     resolve_chain(
         indexer,
@@ -569,6 +590,7 @@ pub(crate) fn resolve_symbol_hierarchy_ambiguity_safe(
         ResolveIo::HierarchyAmbiguitySafe,
         false,
         None,
+        hierarchy_walk_origin_uri,
     )
 }
 
@@ -580,7 +602,15 @@ pub(crate) fn resolve_symbol_scoped_only(
     name: &str,
     from_uri: &Url,
 ) -> Vec<Location> {
-    resolve_chain(indexer, name, from_uri, ResolveIo::ScopedOnly, false, None)
+    resolve_chain(
+        indexer,
+        name,
+        from_uri,
+        ResolveIo::ScopedOnly,
+        false,
+        None,
+        None,
+    )
 }
 
 /// Index-only type resolver for the diagnostics hot path.
@@ -616,7 +646,15 @@ pub(crate) fn resolve_type_index_only(
 
 /// Inner helper: resolves a simple (non-dotted) type name using the index-only chain.
 fn resolve_type_index_only_simple(indexer: &Indexer, name: &str, from_uri: &Url) -> Vec<Location> {
-    resolve_chain(indexer, name, from_uri, ResolveIo::IndexOnly, false, None)
+    resolve_chain(
+        indexer,
+        name,
+        from_uri,
+        ResolveIo::IndexOnly,
+        false,
+        None,
+        None,
+    )
 }
 
 // ─── missing-import diagnostic helpers ────────────────────────────────────────

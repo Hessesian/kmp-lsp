@@ -4,9 +4,10 @@ use super::{
 };
 use crate::cli::extract_sources::GradleMeta;
 use crate::indexer::Indexer;
-use crate::types::CallerContext;
+use crate::types::{CallerContext, FileData};
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
+use std::sync::Arc;
 use tower_lsp::lsp_types::{Location, Url};
 
 fn uri(path: &str) -> Url {
@@ -143,7 +144,13 @@ fn ambiguous_same_name_supertype_declines_instead_of_guessing() {
     indexer.index_content(&bar_uri, "class Bar : Activity()\n");
 
     let mut budget = MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK;
-    let targets = supertype_targets(&indexer, "Bar", bar_uri.as_str(), &mut budget);
+    let targets = supertype_targets(
+        &indexer,
+        "Bar",
+        bar_uri.as_str(),
+        &mut budget,
+        bar_uri.as_str(),
+    );
     assert!(
         targets.is_empty(),
         "expected the ambiguous tail to decline, got {targets:?}"
@@ -172,7 +179,13 @@ fn denylisted_package_candidate_is_deprioritized_in_favor_of_the_other() {
     indexer.index_content(&bar_uri, "class Bar : Activity()\n");
 
     let mut budget = MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK;
-    let targets = supertype_targets(&indexer, "Bar", bar_uri.as_str(), &mut budget);
+    let targets = supertype_targets(
+        &indexer,
+        "Bar",
+        bar_uri.as_str(),
+        &mut budget,
+        bar_uri.as_str(),
+    );
     assert_eq!(
         targets.len(),
         1,
@@ -207,7 +220,13 @@ fn unlisted_package_prefix_is_never_deprioritized() {
     indexer.index_content(&bar_uri, "class Bar : Activity()\n");
 
     let mut budget = MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK;
-    let targets = supertype_targets(&indexer, "Bar", bar_uri.as_str(), &mut budget);
+    let targets = supertype_targets(
+        &indexer,
+        "Bar",
+        bar_uri.as_str(),
+        &mut budget,
+        bar_uri.as_str(),
+    );
     assert!(
         targets.is_empty(),
         "expected still-ambiguous decline (no denylist match), got {targets:?}"
@@ -339,7 +358,13 @@ fn module_scoped_tie_break_narrows_jar_collision_to_the_calling_modules_dependen
     indexer.index_content(&bar_uri, "class Bar : Activity()\n");
 
     let mut budget = MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK;
-    let targets = supertype_targets(&indexer, "Bar", bar_uri.as_str(), &mut budget);
+    let targets = supertype_targets(
+        &indexer,
+        "Bar",
+        bar_uri.as_str(),
+        &mut budget,
+        bar_uri.as_str(),
+    );
     assert_eq!(
         targets,
         vec![("Activity".to_owned(), real_jar_uri.to_string())],
@@ -378,10 +403,139 @@ fn no_module_dependency_data_still_declines_on_jar_collision() {
     indexer.index_content(&bar_uri, "class Bar : Activity()\n");
 
     let mut budget = MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK;
-    let targets = supertype_targets(&indexer, "Bar", bar_uri.as_str(), &mut budget);
+    let targets = supertype_targets(
+        &indexer,
+        "Bar",
+        bar_uri.as_str(),
+        &mut budget,
+        bar_uri.as_str(),
+    );
     assert!(
         targets.is_empty(),
         "expected the ambiguous tail to still decline with no module \
          dependency data available, got {targets:?}"
+    );
+}
+
+// ─── Module-scoped narrowing must reach a hop-4 collision, not just hop 1 ──
+//
+// Regression guard for the wiring bug found on PR #286: beyond hop 1 of a
+// hierarchy walk, the per-hop `class_uri`/`from_uri` a candidate is resolved
+// from is the PREVIOUS hop's own resolved location — a `jar:` URI once any
+// ancestor lives in a compiled JAR, which `owning_module_dependencies` can
+// never map to a module. Unlike the test above (which resolves every hop via
+// `indexer.index_content`, so every `class_uri` stays a real `file://` URI
+// the whole way and never actually exercises the jar: case), this test makes
+// hops 1-3 JAR-backed so hop 4 — where the real collision lives — is reached
+// with a `jar:` `class_uri`, and only the calling file at hop 0 has a real
+// `file://` URI.
+
+/// Minimal jar-backed `FileData`: `symbols` stays empty, so
+/// `super_names_for_class`'s class-name lookup misses and it falls back to
+/// returning every entry in `supers` — exactly what a single-super JAR entry
+/// needs here, without hand-building a full symbol table.
+fn jar_backed_file_data(super_name: &str) -> FileData {
+    FileData {
+        supers: vec![(0, super_name.to_owned(), Vec::new())],
+        ..Default::default()
+    }
+}
+
+#[test]
+fn module_scoped_tie_break_narrows_a_hop_four_jar_collision_using_the_walks_real_origin() {
+    let indexer = Indexer::new();
+    let call_us_uri = uri("/app/CallUsActivity.kt");
+    indexer.index_content(
+        &call_us_uri,
+        "package com.example.app\nclass CallUsActivity : AppCompatActivity()\n",
+    );
+
+    let appcompat_uri = gradle_cache_jar_uri("androidx.appcompat", "appcompat", "1.6.1");
+    let fragment_uri = gradle_cache_jar_uri("androidx.fragment", "fragment", "1.6.1");
+    let component_uri = gradle_cache_jar_uri("androidx.activity", "activity", "1.7.0");
+    let decoy_activity_uri = gradle_cache_jar_uri("com.example.decoy", "decoy-lib", "1.0.0");
+    let real_activity_uri = gradle_cache_jar_uri("android", "android-stubs", "34.0.0");
+
+    indexer.jar_definitions.insert(
+        "AppCompatActivity".to_owned(),
+        vec![Location {
+            uri: appcompat_uri.clone(),
+            range: Default::default(),
+        }],
+    );
+    indexer.jar_definitions.insert(
+        "FragmentActivity".to_owned(),
+        vec![Location {
+            uri: fragment_uri.clone(),
+            range: Default::default(),
+        }],
+    );
+    indexer.jar_definitions.insert(
+        "ComponentActivity".to_owned(),
+        vec![Location {
+            uri: component_uri.clone(),
+            range: Default::default(),
+        }],
+    );
+    // The hop-4 collision: two same-named `Activity` JAR candidates. Decoy
+    // indexed first, matching this file's established insertion-order convention.
+    indexer.jar_definitions.insert(
+        "Activity".to_owned(),
+        vec![
+            Location {
+                uri: decoy_activity_uri,
+                range: Default::default(),
+            },
+            Location {
+                uri: real_activity_uri.clone(),
+                range: Default::default(),
+            },
+        ],
+    );
+
+    indexer.jar_files.insert(
+        appcompat_uri.to_string(),
+        Arc::new(jar_backed_file_data("FragmentActivity")),
+    );
+    indexer.jar_files.insert(
+        fragment_uri.to_string(),
+        Arc::new(jar_backed_file_data("ComponentActivity")),
+    );
+    indexer.jar_files.insert(
+        component_uri.to_string(),
+        Arc::new(jar_backed_file_data("Activity")),
+    );
+
+    // Only the calling file's module (`/t/app`, `CallUsActivity`'s own content
+    // root) depends on the real `android:android-stubs` artifact — the decoy
+    // belongs to an unrelated dependency the calling module never declared.
+    let mut dependencies_by_content_root: HashMap<PathBuf, HashSet<GradleMeta>> = HashMap::new();
+    dependencies_by_content_root.insert(
+        PathBuf::from("/t/app"),
+        HashSet::from([GradleMeta {
+            group: "android".to_owned(),
+            artifact: "android-stubs".to_owned(),
+            version: "34.0.0".to_owned(),
+        }]),
+    );
+    *indexer.module_dependencies.write().unwrap() = dependencies_by_content_root;
+
+    let items = walk_hierarchy(
+        &indexer,
+        "CallUsActivity",
+        call_us_uri.as_str(),
+        CallerContext::default(),
+        12,
+        MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK,
+        |_, super_name, super_uri, _| vec![(super_name.to_string(), super_uri.to_string())],
+    );
+
+    assert!(
+        items
+            .iter()
+            .any(|(name, target_uri)| name == "Activity"
+                && *target_uri == real_activity_uri.to_string()),
+        "expected the walk to reach the calling module's real dependency past \
+         the hop-4 collision using the walk's real origin file, got {items:?}"
     );
 }
