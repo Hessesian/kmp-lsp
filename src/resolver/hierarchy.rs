@@ -4,6 +4,7 @@ use std::collections::HashSet;
 
 use crate::indexer::{Indexer, InferDeps};
 use crate::types::{CallerContext, FileData};
+use crate::StrExt;
 
 /// Per-WALK cap on blocking sidecar-IPC promotion attempts for ancestor
 /// classes living in not-yet-materialized JARs. The walk runs on paths that
@@ -147,8 +148,17 @@ fn supertype_targets(
             // BUDGETED per walk (see the constant above): unbudgeted, this
             // was the one promotion site reachable around every request cap.
             // `super_name` can be a dotted qualified spelling
-            // (`class X : com.lib.Base()`) — the accessor handles the
-            // bare-leaf fallback.
+            // (`class X : com.lib.Base()`) — `ensure_jar_definitions_for`
+            // handles that itself (tries the full name, falls back to the
+            // bare leaf), so it gets the original spelling. Every step of
+            // `resolve_symbol_hierarchy_ambiguity_safe`'s chain (local/
+            // imports/same-package/star/tail), by contrast, is keyed by the
+            // simple leaf name only — passing the qualified spelling
+            // straight through would never match anything, silently
+            // dead-ending the walk at this hop for any supertype written
+            // out fully-qualified in source. Resolve (and yield) the leaf.
+            let super_leaf = super_name.last_segment();
+            let leaf_owned = super_leaf.to_owned();
             crate::indexer::jar::ensure_jar_definitions_for(idx, &super_name, sidecar_budget);
             // Ambiguity-safe, not `resolve_symbol_no_rg`'s raw first-match tail: at
             // hop 2+ `uri` is frequently a `jar:` synthetic URI with no import list
@@ -161,12 +171,12 @@ fn supertype_targets(
             // Gradle dependency data past hop 1.
             super::resolve_symbol_hierarchy_ambiguity_safe(
                 idx,
-                &super_name,
+                super_leaf,
                 &uri,
                 origin_url.as_ref(),
             )
             .into_iter()
-            .map(move |loc| (super_name.clone(), loc.uri.to_string()))
+            .map(move |loc| (leaf_owned.clone(), loc.uri.to_string()))
         })
         .collect()
 }

@@ -1959,6 +1959,9 @@ fn resolve_extension_via_supertype_hierarchy(
         },
         12,
         MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK,
+        // `super_name` is already the simple leaf name — `supertype_targets`
+        // (hierarchy.rs) normalizes a fully-qualified supertype spelling
+        // (`class Str : com.other.Seq`) before yielding it.
         |idx, super_name, _, _| resolve_extension_in_scope(idx, super_name, name, origin_uri),
     )
 }

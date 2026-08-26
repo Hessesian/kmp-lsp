@@ -1303,6 +1303,44 @@ fn resolve_qualified_inherited_member_lookup_threads_the_real_origin_uri() {
 }
 
 #[test]
+fn resolve_qualified_supertype_extension_fallback_handles_a_fully_qualified_supertype_spelling() {
+    // Copilot review finding on PR #289: `walk_hierarchy` yields `super_name`
+    // exactly as written in the source's own delegation-specifier text
+    // (`user_type_name` joins every dotted segment) -- a fully-qualified
+    // supertype spelling like `class Str : com.other.Seq` produces
+    // `super_name = "com.other.Seq"`, not the bare `"Seq"`. `extension_by_receiver`
+    // is keyed by the receiver's SIMPLE leaf name only (every other caller in
+    // this file strips qualification via `.last_segment()` before looking it
+    // up, e.g. `let root_base = root.last_segment();` a few lines above this
+    // fallback) -- passing the qualified name straight through would silently
+    // miss the extension.
+    let host_uri = uri("/Host.kt");
+    let str_uri = uri("/Str.kt");
+    let seq_uri = uri("/Seq.kt");
+    let ext_uri = uri("/SeqExtensions.kt");
+    let idx = Indexer::new();
+    idx.index_content(&seq_uri, "package com.other\ninterface Seq\n");
+    // Fully-qualified delegation specifier -- no import needed for this shape.
+    idx.index_content(&str_uri, "package com.pkg\nclass Str : com.other.Seq\n");
+    idx.index_content(
+        &ext_uri,
+        "package com.pkg\nfun Seq.toViewText(): String = TODO()\n",
+    );
+    idx.index_content(
+        &host_uri,
+        "package com.pkg\nfun foo(receiver: Str) { receiver.toViewText() }\n",
+    );
+
+    let locs = resolve_symbol(&idx, "toViewText", Some("Str"), &host_uri);
+    assert!(
+        !locs.is_empty(),
+        "toViewText declared on a fully-qualified supertype spelling (com.other.Seq) \
+         must still be found via a Str receiver"
+    );
+    assert_eq!(locs[0].uri, ext_uri);
+}
+
+#[test]
 fn resolve_variable_receiver_extension_disambiguates_by_receiver_type() {
     // `message.toViewText()` where `message: String` — `String` has no
     // indexed declaration file (a built-in type) and no matching member.
