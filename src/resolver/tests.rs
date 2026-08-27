@@ -7506,6 +7506,37 @@ fn resolve_in_scope_strict_true_via_default_import_type() {
     assert!(resolve_in_scope_strict(&idx, "Result", &caller_uri));
 }
 
+/// Real, measured false positive on the Moneta corpus: `ByteArray` (a
+/// specialized primitive array type, in scope everywhere without an import
+/// exactly like `Result` above) accounted for 74 of 164 total flags (45%)
+/// in the `missing-import` POC diagnostic before this fix — `is_default_import_type`
+/// allowlisted `Array` itself plus the boxed collection/primitive types, but
+/// missed all 8 specialized primitive array types Kotlin also default-imports.
+#[test]
+fn resolve_in_scope_strict_true_via_default_import_type_for_primitive_array_types() {
+    let caller_uri = uri("/Caller.kt");
+    let idx = Indexer::new();
+    idx.index_content(
+        &caller_uri,
+        "package app\nfun use(bytes: ByteArray) = bytes\n",
+    );
+    for name in [
+        "ByteArray",
+        "CharArray",
+        "ShortArray",
+        "IntArray",
+        "LongArray",
+        "FloatArray",
+        "DoubleArray",
+        "BooleanArray",
+    ] {
+        assert!(
+            resolve_in_scope_strict(&idx, name, &caller_uri),
+            "expected {name} to be in scope via Kotlin's default import, was flagged as missing"
+        );
+    }
+}
+
 /// Regression: `resolvable_via_default_import` must check `jar_definitions`
 /// directly (by package), not the narrower `importable_fqns` cache — a
 /// top-level `kotlin.*` FUNCTION (e.g. `error`, `run`, `with`, `repeat`) is not
@@ -8115,5 +8146,117 @@ fn resolve_kotlin_builtin_type_platform_equivalent_surfaces_supertype_extensions
     assert!(
         labels.contains(&"toViewText"),
         "expected the CharSequence extension to appear for a String receiver, got: {labels:?}"
+    );
+}
+
+/// `MutableList` maps to the SAME real platform type as `List`
+/// (`java.util.List` — Kotlin's mutable/immutable distinction is a
+/// compile-time-only view over one real JVM interface literally named
+/// `List`, never `MutableList`). A lookup that searches the target file for
+/// a symbol named `name` (the ORIGINAL Kotlin spelling) rather than the
+/// resolved platform type's own simple name would search `List.java` for a
+/// symbol called `"MutableList"` and always come up empty -- this must
+/// search by the platform type's own simple name instead.
+#[test]
+fn resolve_kotlin_builtin_type_platform_equivalent_maps_mutablelist_to_the_real_list_interface() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    write_fake_android_sdk_source(
+        root,
+        "java/util/List.java",
+        "package java.util;\npublic interface List<E> extends Collection<E> {\n}\n",
+    );
+
+    let idx = Indexer::new();
+    idx.workspace_root.set(root.to_path_buf());
+
+    let locs = resolve_kotlin_builtin_type_platform_equivalent(&idx, "MutableList");
+    assert_eq!(
+        locs.len(),
+        1,
+        "expected MutableList to resolve to the real java.util.List declaration, got {locs:?}"
+    );
+    assert!(
+        locs[0].uri.path().ends_with("java/util/List.java"),
+        "expected the real platform source file, got {:?}",
+        locs[0].uri
+    );
+}
+
+/// `Map` -> `java.util.Map`, the plain (non-Mutable-aliased) case, matching
+/// the same on-demand-index-and-find shape already proven for `String`.
+#[test]
+fn resolve_kotlin_builtin_type_platform_equivalent_resolves_map_to_the_real_java_util_map() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    write_fake_android_sdk_source(
+        root,
+        "java/util/Map.java",
+        "package java.util;\npublic interface Map<K, V> {\n}\n",
+    );
+
+    let idx = Indexer::new();
+    idx.workspace_root.set(root.to_path_buf());
+
+    let locs = resolve_kotlin_builtin_type_platform_equivalent(&idx, "Map");
+    assert_eq!(locs.len(), 1, "expected Map to resolve, got {locs:?}");
+    assert!(locs[0].uri.path().ends_with("java/util/Map.java"));
+}
+
+/// End-to-end through the real supertype-hierarchy walk (`extension_fn_completions`,
+/// via `resolve_symbol_no_rg`): an extension declared on `Iterable` must
+/// surface for a `List`-typed receiver, since `java.util.List` really does
+/// extend `Collection` which really does extend `Iterable` -- proving the
+/// collection interfaces resolve to declarations with correct, walkable
+/// supertype chains, not just a bare unlinked file.
+#[test]
+fn resolve_kotlin_builtin_type_platform_equivalent_surfaces_iterable_extensions_for_a_list_receiver(
+) {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    write_fake_android_sdk_source(
+        root,
+        "java/util/List.java",
+        "package java.util;\npublic interface List<E> extends Collection<E> {\n}\n",
+    );
+    write_fake_android_sdk_source(
+        root,
+        "java/util/Collection.java",
+        "package java.util;\npublic interface Collection<E> extends Iterable<E> {\n}\n",
+    );
+    write_fake_android_sdk_source(
+        root,
+        "java/lang/Iterable.java",
+        "package java.lang;\npublic interface Iterable<T> {\n}\n",
+    );
+
+    let idx = Indexer::new();
+    idx.workspace_root.set(root.to_path_buf());
+    idx.extension_by_receiver
+        .entry("Iterable".to_owned())
+        .or_default()
+        .push(crate::types::ExtensionEntry {
+            file_uri: "file:///app/Extensions.kt".to_owned(),
+            name: "secondOrNull".to_owned(),
+            kind: tower_lsp::lsp_types::SymbolKind::FUNCTION,
+            detail: "fun <T> Iterable<T>.secondOrNull(): T?".to_owned(),
+            visibility: crate::types::Visibility::Public,
+            package: Some("app".to_owned()),
+            trailing_lambda: false,
+            deprecated: false,
+            container: None,
+        });
+
+    let caller_src = "package app\nfun use(items: List<Int>) { items }\n";
+    let caller_path = root.join("Caller.kt");
+    std::fs::write(&caller_path, caller_src).unwrap();
+    let caller_uri = Url::from_file_path(&caller_path).unwrap();
+    idx.index_content(&caller_uri, caller_src);
+
+    let items = complete_dot(&idx, "items", &caller_uri, false, None);
+    let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
+    assert!(
+        labels.contains(&"secondOrNull"),
+        "expected the Iterable extension to appear for a List receiver, got: {labels:?}"
     );
 }
