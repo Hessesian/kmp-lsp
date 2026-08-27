@@ -1115,6 +1115,64 @@ fn resolve_qualified_supertype_extension_fallback_prefers_the_nearest_ancestor()
 }
 
 #[test]
+fn resolve_qualified_supertype_extension_fallback_prefers_the_nearer_of_two_direct_supertypes() {
+    // Copilot review follow-up (real, distinct from the single-chain case
+    // above): depth-first traversal's "first collected" match is NOT always
+    // the nearest one when a class has MULTIPLE direct supertypes -- an
+    // entirely ordinary Kotlin shape (implementing several interfaces).
+    // `Str : First, Second` where `First` (direct, hop 1) has no match of
+    // its own but its OWN ancestor `DeepAncestor` (hop 2) does, while
+    // `Second` (ALSO direct, hop 1) has its own matching extension.
+    // Depth-first fully explores `First`'s entire chain (finding
+    // `DeepAncestor`'s hop-2 match) before ever reaching `Second` at all --
+    // so a naive "first in the collected list" pick would wrongly prefer
+    // the FARTHER `DeepAncestor` over the nearer, direct `Second`.
+    let host_uri = uri("/Host.kt");
+    let str_uri = uri("/Str.kt");
+    let first_uri = uri("/First.kt");
+    let deep_ancestor_uri = uri("/DeepAncestor.kt");
+    let second_uri = uri("/Second.kt");
+    let deep_ext_uri = uri("/DeepExtensions.kt");
+    let second_ext_uri = uri("/SecondExtensions.kt");
+    let idx = Indexer::new();
+    idx.index_content(
+        &deep_ancestor_uri,
+        "package com.pkg\ninterface DeepAncestor\n",
+    );
+    idx.index_content(
+        &first_uri,
+        "package com.pkg\ninterface First : DeepAncestor\n",
+    );
+    idx.index_content(&second_uri, "package com.pkg\ninterface Second\n");
+    idx.index_content(&str_uri, "package com.pkg\nclass Str : First, Second\n");
+    idx.index_content(
+        &deep_ext_uri,
+        "package com.pkg\nfun DeepAncestor.toViewText(): String = TODO()\n",
+    );
+    idx.index_content(
+        &second_ext_uri,
+        "package com.pkg\nfun Second.toViewText(): String = TODO()\n",
+    );
+    idx.index_content(
+        &host_uri,
+        "package com.pkg\nfun foo(receiver: Str) { receiver.toViewText() }\n",
+    );
+
+    let locs = resolve_symbol(&idx, "toViewText", Some("Str"), &host_uri);
+    assert_eq!(
+        locs.len(),
+        1,
+        "expected exactly the nearer direct supertype's extension, got {locs:?}"
+    );
+    assert_eq!(
+        locs[0].uri, second_ext_uri,
+        "expected Second's toViewText (a direct, hop-1 supertype) over \
+         DeepAncestor's (First's own hop-2 ancestor), got a location in {:?}",
+        locs[0].uri
+    );
+}
+
+#[test]
 fn resolve_qualified_member_on_concrete_type_still_shadows_supertype_extension() {
     // Kotlin's own precedence rule: a real member on the concrete receiver
     // type always wins over a same-named extension declared on an ancestor

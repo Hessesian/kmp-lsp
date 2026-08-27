@@ -33,7 +33,9 @@ use crate::StrExt;
 
 use super::fd::{fd_find_and_parse, import_package_prefix};
 use super::find::{find_local_declaration, find_name_in_uri, find_name_scoped_to_container};
-use super::hierarchy::{walk_hierarchy, MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK};
+use super::hierarchy::{
+    walk_hierarchy, walk_hierarchy_breadth_first, MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK,
+};
 use super::infer::{infer_field_type, infer_variable_type};
 
 /// Return `FileData` for `uri` — from the live index if indexed, otherwise parse from disk.
@@ -1974,7 +1976,15 @@ fn resolve_extension_via_supertype_hierarchy(
     name: &str,
     origin_uri: &Url,
 ) -> Vec<Location> {
-    let matches = walk_hierarchy(
+    // Breadth-first (`walk_hierarchy_breadth_first`), not `walk_hierarchy`'s
+    // depth-first order: Kotlin's own extension resolution prefers the most
+    // specific (nearest) applicable receiver type, and depth-first fully
+    // explores one direct supertype's entire chain before ever touching a
+    // SIBLING direct supertype — so with multiple direct supertypes (an
+    // ordinary Kotlin shape, e.g. implementing several interfaces), a
+    // farther ancestor down the first branch could otherwise outrank a
+    // nearer, directly-implemented one down a sibling branch.
+    let matches = walk_hierarchy_breadth_first(
         indexer,
         start_class,
         start_uri.as_str(),
@@ -1989,14 +1999,11 @@ fn resolve_extension_via_supertype_hierarchy(
         // (`class Str : com.other.Seq`) before yielding it.
         |idx, super_name, _, _| resolve_extension_in_scope(idx, super_name, name, origin_uri),
     );
-    // `walk_hierarchy` collects across the WHOLE chain, but Kotlin's own
-    // extension resolution prefers the most specific applicable receiver
-    // type: if both a near and a far ancestor declare their own same-named
-    // extension, only the near one should ever be offered. The walk visits
-    // each hop's own supertypes before recursing into any of their further
-    // ancestors (`HierarchyWalker::recurse`: collect, then recurse), so for
-    // the common single-inheritance chain shape the nearest match is always
-    // first — take only that one, not the full collected set.
+    // The breadth-first walk already stops at the nearest level with any
+    // match, but two SIBLING supertypes at that same level could both have
+    // one (a genuine tie Kotlin itself would flag as a compile error) —
+    // take just the first, matching this function's single-location
+    // contract rather than surfacing a spurious multi-candidate ambiguity.
     matches.into_iter().next().into_iter().collect()
 }
 

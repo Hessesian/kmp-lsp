@@ -70,6 +70,60 @@ where
     walker.items
 }
 
+/// Breadth-first counterpart to [`walk_hierarchy`], for callers that need
+/// Kotlin's own "nearest, most specific applicable ancestor wins"
+/// precedence rather than every match across the whole chain.
+/// `walk_hierarchy`'s depth-first traversal fully explores one direct
+/// supertype's entire ancestor chain before ever touching the NEXT direct
+/// supertype — so when a class has multiple direct supertypes (an entirely
+/// ordinary Kotlin shape, e.g. implementing several interfaces), a farther
+/// ancestor found down the first branch can appear before a nearer,
+/// directly-implemented one down a sibling branch. This instead visits
+/// supertypes strictly level-by-level and returns as soon as ANY level
+/// produces a match — never checking, let alone returning, anything from a
+/// farther level once a nearer one has something.
+pub(crate) fn walk_hierarchy_breadth_first<T, F>(
+    idx: &Indexer,
+    start_class: &str,
+    start_uri: &str,
+    caller: CallerContext<'_>,
+    max_depth: usize,
+    mut sidecar_budget: usize,
+    collect: F,
+) -> Vec<T>
+where
+    F: Fn(&Indexer, &str, &str, CallerContext<'_>) -> Vec<T>,
+{
+    let origin_uri = caller.uri.unwrap_or(start_uri);
+    let mut visited: HashSet<(String, String)> =
+        HashSet::from([(start_uri.to_owned(), start_class.to_owned())]);
+    let mut current_level: Vec<(String, String)> =
+        vec![(start_class.to_owned(), start_uri.to_owned())];
+    for _ in 0..max_depth {
+        let mut next_level: Vec<(String, String)> = Vec::new();
+        let mut found: Vec<T> = Vec::new();
+        for (class_name, class_uri) in &current_level {
+            for (super_name, super_uri) in
+                supertype_targets(idx, class_name, class_uri, &mut sidecar_budget, origin_uri)
+            {
+                if !visited.insert((super_uri.clone(), super_name.clone())) {
+                    continue;
+                }
+                found.extend(collect(idx, &super_name, &super_uri, caller));
+                next_level.push((super_name, super_uri));
+            }
+        }
+        if !found.is_empty() {
+            return found;
+        }
+        if next_level.is_empty() {
+            break;
+        }
+        current_level = next_level;
+    }
+    Vec::new()
+}
+
 struct HierarchyWalker<'a, T, F>
 where
     F: Fn(&Indexer, &str, &str, CallerContext<'_>) -> Vec<T>,
