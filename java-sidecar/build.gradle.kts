@@ -34,6 +34,16 @@ dependencies {
     coroutinesFixture("org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm:1.11.0")
 }
 
+// Real-world fixture JAR for the named-companion-object regression test:
+// Timber's entire public API (`d`, `e`, `i`, `w`, `tag`, `plant`, ...) lives in
+// `companion object Forest : Tree()` — a NAMED companion, compiled as
+// `Timber$Forest`, not the default-companion `Timber$Companion` shape the
+// indexer's `$`-name filter already special-cased.
+val timberFixture by configurations.creating { isTransitive = false }
+dependencies {
+    timberFixture("com.jakewharton.timber:timber:5.0.1")
+}
+
 application {
     mainClass.set("io.github.hessesian.jarindexer.MainKt")
 }
@@ -49,6 +59,9 @@ tasks.test {
         coroutinesFixture.files
             .firstOrNull { it.name.startsWith("kotlinx-coroutines-core-jvm") }
             ?.let { systemProperty("coroutines.jar", it.absolutePath) }
+        timberFixture.files
+            .firstOrNull { it.name.startsWith("timber") }
+            ?.let { systemProperty("timber.jar", it.absolutePath) }
     }
 }
 

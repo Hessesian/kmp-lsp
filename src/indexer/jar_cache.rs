@@ -45,7 +45,17 @@ use crate::sidecar::SidecarSymbol;
 ///            can tell a defaulted param apart from a required one (previously every
 ///            JAR-derived extension function's default-valued params were counted as
 ///            required, wrongly rejecting real calls like `scope.launch { }` on arity).
-const JAR_CACHE_VERSION: u32 = 15;
+/// v15 → v16: sidecar's `indexClassBytes` now admits a NAMED companion object
+///            (`companion object Forest : Tree()`, compiled as `Outer$Forest`),
+///            not just the default unnamed one (`Outer$Companion`) — real,
+///            measured regression: Timber's entire public API (`d`/`e`/`i`/`w`/
+///            `tag`/`plant`/...) lives in exactly such a named companion and was
+///            previously silently dropped, making `Timber.d(...)` resolve to zero
+///            candidates. Also fixes the companion's own `container`/`name` to
+///            match the enclosing class's bare simple name (was a fully-qualified
+///            `"Outer.Forest"`, which could never match an `Outer.member` lookup
+///            keyed by `Outer`'s own bare name) — force re-scan.
+const JAR_CACHE_VERSION: u32 = 16;
 
 #[derive(Serialize, Deserialize)]
 struct JarCache {
