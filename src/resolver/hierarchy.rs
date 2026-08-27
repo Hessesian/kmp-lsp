@@ -174,10 +174,40 @@ fn supertype_targets(
             // search a package that (almost always) doesn't exist, and
             // could accidentally match an unrelated file that happens to
             // declare a real (if unconventional) `package Outer`.
-            if let Some((pkg, leaf)) = super_name.rsplit_once('.') {
-                if !pkg.last_segment().starts_with_uppercase() {
-                    if let Some(loc) = super::find_symbol_in_package(idx, leaf, pkg) {
+            if let Some((prefix, leaf)) = super_name.rsplit_once('.') {
+                if !prefix.last_segment().starts_with_uppercase() {
+                    if let Some(loc) = super::find_symbol_in_package(idx, leaf, prefix) {
                         return vec![(super_leaf, loc.uri.to_string())];
+                    }
+                } else {
+                    // A nested-type spelling instead: `prefix` is itself a
+                    // (possibly further-nested) type name, e.g. `Outer` in
+                    // `Outer.Inner`, or `A.B` in `A.B.Inner`. Resolve the
+                    // outermost segment ambiguity-safely, then walk each
+                    // remaining segment's own container scope
+                    // (`find_name_scoped_to_container`, the same helper
+                    // `resolve_qualified` already uses for this) — the same
+                    // precision `find_symbol_in_package` gives
+                    // package-qualified spellings, so a same-leaf collision
+                    // elsewhere in the workspace can't be picked by accident.
+                    let segments: Vec<&str> = super_name.split('.').collect();
+                    if let Some((&first, rest)) = segments.split_first() {
+                        let mut container = super::resolve_symbol_hierarchy_ambiguity_safe(
+                            idx,
+                            first,
+                            &uri,
+                            origin_url.as_ref(),
+                        )
+                        .into_iter()
+                        .next();
+                        for &seg in rest {
+                            container = container.as_ref().and_then(|c| {
+                                crate::resolver::find::find_name_scoped_to_container(idx, seg, c)
+                            });
+                        }
+                        if let Some(loc) = container {
+                            return vec![(super_leaf, loc.uri.to_string())];
+                        }
                     }
                 }
             }

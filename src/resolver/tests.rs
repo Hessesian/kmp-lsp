@@ -1444,6 +1444,70 @@ fn resolve_qualified_nested_type_supertype_is_not_mistaken_for_a_package_qualifi
 }
 
 #[test]
+fn resolve_qualified_nested_type_supertype_resolves_within_its_own_named_container() {
+    // Copilot review follow-up: once a dotted supertype spelling is
+    // correctly recognized as a nested-type chain (not package-qualified,
+    // the sibling test above), naively falling through to plain leaf-only
+    // resolution of just "Inner" still risks the SAME kind of same-leaf
+    // collision `find_symbol_in_package` was added to prevent for
+    // package-qualified spellings -- just for nested types instead.
+    //
+    // The decoy is placed behind an EXPLICIT IMPORT (not same-package) so
+    // this test is deterministic rather than depending on which of two
+    // same-package peers a first-match scan happens to iterate first: an
+    // import match is resolved by `resolve_via_imports`, a distinct,
+    // earlier step than the same-package scan, so only a genuine
+    // container-walk (not just "some" leaf-only resolution succeeding)
+    // can make this test pass for the right reason.
+    let host_uri = uri("/Host.kt");
+    let str_uri = uri("/Str.kt");
+    let outer_uri = uri("/Outer.kt");
+    let decoy_inner_uri = uri("/DecoyInner.kt");
+    let idx = Indexer::new();
+    idx.index_content(
+        &outer_uri,
+        concat!(
+            "package com.other\n",
+            "class Outer {\n",
+            "  interface Inner {\n",
+            "    fun getInfo(): String\n",
+            "  }\n",
+            "}\n",
+        ),
+    );
+    // Decoy: an unrelated top-level Inner, explicitly imported by Str.kt --
+    // what plain leaf-only resolution would find (via the import step),
+    // ignoring the container the source actually named.
+    idx.index_content(
+        &decoy_inner_uri,
+        "package com.decoy\ninterface Inner {\n  fun getInfo(): String\n}\n",
+    );
+    idx.index_content(
+        &str_uri,
+        concat!(
+            "package com.pkg\n",
+            "import com.other.Outer\n",
+            "import com.decoy.Inner\n",
+            "class Str : Outer.Inner\n",
+        ),
+    );
+    idx.index_content(
+        &host_uri,
+        "package com.pkg\nfun foo(receiver: Str) { receiver.getInfo() }\n",
+    );
+
+    let locs = resolve_symbol(&idx, "getInfo", Some("Str"), &host_uri);
+    assert!(!locs.is_empty(), "getInfo must still resolve");
+    assert_eq!(
+        locs[0].uri, outer_uri,
+        "Outer.Inner must resolve within Outer's own container, not the \
+         explicitly-imported unrelated top-level Inner decoy -- got a \
+         location in {:?}",
+        locs[0].uri
+    );
+}
+
+#[test]
 fn find_symbol_in_package_uses_the_real_per_symbol_package_for_jar_candidates() {
     // Copilot review follow-up: `find_symbol_in_package`'s JAR-check branch
     // is what the qualified-supertype resolution fix relies on to be
