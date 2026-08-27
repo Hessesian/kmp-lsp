@@ -380,7 +380,7 @@ fn resolve_chain(
         }
         let rg_locations =
             rg_find_definition(name, root.as_deref(), &source_roots, matcher.as_deref());
-        return match shape {
+        let rg_result = match shape {
             // `rg` is a blind text search with no arity awareness of its own — without this,
             // a same-file, wrong-arity declaration that step 1 already ruled out can come
             // straight back here, since `rg` re-finds it by pattern match alone.
@@ -390,6 +390,16 @@ fn resolve_chain(
                 .collect(),
             None => rg_locations,
         };
+        if !rg_result.is_empty() {
+            return rg_result;
+        }
+        // 5.5 ── Kotlin built-in-type platform equivalent (last resort) ────────
+        // `rg`/`fd` search the *workspace's own* source tree and can never find
+        // `String`/`CharSequence`: those are compiler intrinsics with no
+        // compiled `.class` file in kotlin-stdlib's JAR at all, and no
+        // in-workspace source either -- see
+        // docs/superpowers/specs/2026-08-27-kotlin-builtin-type-platform-mapping-design.md.
+        return resolve_kotlin_builtin_type_platform_equivalent(indexer, name);
     }
 
     // Tail fallback — global definitions index (includes JAR symbols).
@@ -405,22 +415,50 @@ fn resolve_chain(
     //    `com.android.internal.*`-packaged one) when it used the older,
     //    plain unique-match-only rule.
     //  - Full: never reached (returns inside the rg branch above).
+    //
+    // Each non-`ScopedOnly` arm falls through to
+    // `resolve_kotlin_builtin_type_platform_equivalent` when its own lookup
+    // comes up empty -- see the 5.5 comment above the `Full`/rg branch.
+    // `ScopedOnly` is deliberately excluded: "no tail at all" is its own
+    // documented contract (its callers already have their own downstream
+    // fallback), so it must not gain one here.
     match io {
-        ResolveIo::Full | ResolveIo::ScopedOnly => vec![],
-        ResolveIo::NoRg => indexer
-            .lookup_definitions(name)
-            .into_iter()
-            .next()
-            .map(|loc| vec![loc])
-            .unwrap_or_default(),
-        ResolveIo::IndexOnly => {
-            ambiguity_safe_tail_with_denylist(indexer, from_uri, indexer.lookup_definitions(name))
+        ResolveIo::Full => vec![],
+        ResolveIo::ScopedOnly => vec![],
+        ResolveIo::NoRg => {
+            let found = indexer
+                .lookup_definitions(name)
+                .into_iter()
+                .next()
+                .map(|loc| vec![loc])
+                .unwrap_or_default();
+            if !found.is_empty() {
+                return found;
+            }
+            resolve_kotlin_builtin_type_platform_equivalent(indexer, name)
         }
-        ResolveIo::HierarchyAmbiguitySafe => ambiguity_safe_tail_with_denylist(
-            indexer,
-            hierarchy_walk_origin_uri.unwrap_or(from_uri),
-            indexer.lookup_definitions(name),
-        ),
+        ResolveIo::IndexOnly => {
+            let found = ambiguity_safe_tail_with_denylist(
+                indexer,
+                from_uri,
+                indexer.lookup_definitions(name),
+            );
+            if !found.is_empty() {
+                return found;
+            }
+            resolve_kotlin_builtin_type_platform_equivalent(indexer, name)
+        }
+        ResolveIo::HierarchyAmbiguitySafe => {
+            let found = ambiguity_safe_tail_with_denylist(
+                indexer,
+                hierarchy_walk_origin_uri.unwrap_or(from_uri),
+                indexer.lookup_definitions(name),
+            );
+            if !found.is_empty() {
+                return found;
+            }
+            resolve_kotlin_builtin_type_platform_equivalent(indexer, name)
+        }
     }
 }
 
@@ -2142,6 +2180,84 @@ pub(crate) fn is_stdlib(pkg: &str) -> bool {
         | "WebKit" | "StoreKit" | "GameKit" | "ARKit" | "RealityKit"
         | "Swift" | "ObjectiveC" | "Darwin" | "Dispatch" | "os"
     )
+}
+
+/// Kotlin's own "mapped types" — compiler-intrinsic built-in types with NO
+/// compiled `.class` file in kotlin-stdlib's JAR at all. The Kotlin compiler
+/// substitutes their real JVM platform-type equivalent directly into
+/// bytecode, so a class-file-scanning indexer (this project's JAR sidecar)
+/// can never find a class file that doesn't exist. Real corpus evidence: a
+/// typical Android/Kotlin workspace has 13 same-named JAR/workspace
+/// candidates for bare `String`, and NONE of them is the real class — see
+/// `docs/superpowers/specs/2026-08-27-kotlin-builtin-type-platform-mapping-design.md`.
+///
+/// Deliberately narrow (2 entries, the ones directly evidenced by
+/// measurement) — Kotlin has roughly 20 mapped types in total
+/// (`Any`/`Throwable`/`Number`/the boxed primitives/the collection
+/// interfaces/...), but adding the rest speculatively, without real corpus
+/// evidence each one is actually hit, would violate the same
+/// "evidenced-only, not a broad heuristic" discipline
+/// [`DENYLISTED_PACKAGE_PREFIXES`] already established. Extending this list
+/// is a mechanical follow-up once a real gap is measured, not a redesign.
+const KOTLIN_BUILTIN_TYPE_PLATFORM_EQUIVALENTS: &[(&str, &str)] = &[
+    ("String", "java.lang.String"),
+    ("CharSequence", "java.lang.CharSequence"),
+];
+
+/// Last-resort fallback for a Kotlin compiler-intrinsic built-in type name
+/// (see [`KOTLIN_BUILTIN_TYPE_PLATFORM_EQUIVALENTS`]): every normal
+/// resolution step already failed by the time any tail fallback calls this,
+/// since a built-in type is never locally declared, explicitly imported, or
+/// present in the workspace's own source tree — so this can only ever turn
+/// an existing decline into a correct resolve, never introduce a wrong one.
+///
+/// Re-derives the Android SDK sources root via the already-existing
+/// [`crate::workspace_json::detect_android_sdk_source_paths`] (no new
+/// discovery mechanism — reuses Primitive B's own function) and, if the
+/// expected `<root>/java/lang/String.java`-shaped file exists on disk,
+/// indexes it on demand — the same `std::fs::read_to_string` +
+/// `index_content` pattern `resolve_chain`'s own step 0.5 already uses for
+/// "the caller's own file isn't indexed yet", just triggered by a known
+/// built-in name instead. One-time cost per session per type: once indexed,
+/// the file is permanently cached like any other, so this filesystem lookup
+/// only ever runs for the first `String`/`CharSequence` resolution.
+///
+/// Scoped to Android projects for now — a plain JVM/non-Android Kotlin
+/// project has no equivalent auto-detected `java.lang.*` source bundle;
+/// locating a JDK's own bundled sources is a separate discovery problem,
+/// not addressed here (see the design doc's explicit scope boundary).
+pub(crate) fn resolve_kotlin_builtin_type_platform_equivalent(
+    indexer: &Indexer,
+    name: &str,
+) -> Vec<Location> {
+    let Some(&(_, platform_fqn)) = KOTLIN_BUILTIN_TYPE_PLATFORM_EQUIVALENTS
+        .iter()
+        .find(|&&(builtin, _)| builtin == name)
+    else {
+        return vec![];
+    };
+    let Some(workspace_root) = indexer.workspace_root.get() else {
+        return vec![];
+    };
+    let relative_path = platform_fqn.replace('.', "/") + ".java";
+    for sdk_source_root in crate::workspace_json::detect_android_sdk_source_paths(&workspace_root) {
+        let file_path = sdk_source_root.join(&relative_path);
+        let Ok(file_uri) = Url::from_file_path(&file_path) else {
+            continue;
+        };
+        let file_uri_str = file_uri.as_str();
+        if !indexer.files.contains_key(file_uri_str) {
+            let Ok(content) = std::fs::read_to_string(&file_path) else {
+                continue;
+            };
+            indexer.index_content(&file_uri, &content);
+        }
+        let locs = find_name_in_uri(indexer, name, file_uri_str);
+        if !locs.is_empty() {
+            return locs;
+        }
+    }
+    vec![]
 }
 
 // ─── impl Indexer wrappers ────────────────────────────────────────────────────

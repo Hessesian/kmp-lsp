@@ -55,6 +55,8 @@ pub(crate) use infer_lines::{
     find_declaration_range_in_lines, infer_type_in_lines, infer_type_in_lines_raw,
 };
 #[cfg(test)]
+pub(crate) use resolve::resolve_kotlin_builtin_type_platform_equivalent;
+#[cfg(test)]
 pub(crate) use resolve::resolve_symbol;
 #[cfg(test)]
 pub(crate) use resolve::resolve_symbol_index_only;

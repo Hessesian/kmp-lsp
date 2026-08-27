@@ -7908,3 +7908,212 @@ fn the_initializer_search_survives_a_pathologically_deep_file() {
     let found = handle.join().expect("must not overflow the stack");
     assert_eq!(found, None, "the name is not declared anywhere in the file");
 }
+
+// ─── Kotlin built-in-type platform-equivalent fallback ───────────────────────
+//
+// `kotlin.String`/`kotlin.CharSequence` are compiler intrinsics with no
+// compiled `.class` file anywhere in kotlin-stdlib's JAR (verified via
+// `unzip -l kotlin-stdlib-*.jar | grep String.class` -> no output — see
+// docs/superpowers/specs/2026-08-27-kotlin-builtin-type-platform-mapping-design.md).
+// `resolve_kotlin_builtin_type_platform_equivalent` is the last-resort
+// fallback that indexes the real platform declaration from the Android SDK
+// sources bundle on demand.
+
+/// Builds a fake Android SDK layout (`local.properties` + `sdk/sources/
+/// android-<api>/<relative_java_path>`) under `root`, matching the exact
+/// shape `detect_android_sdk_source_paths` looks for (see
+/// `sdk_dir_from_local_properties_finds_sdk_dot_dir` in
+/// `workspace_json_tests.rs`, the precedent this fixture follows).
+fn write_fake_android_sdk_source(root: &std::path::Path, relative_java_path: &str, content: &str) {
+    let fake_sdk = root.join("sdk");
+    let file_path = fake_sdk
+        .join("sources")
+        .join("android-34")
+        .join(relative_java_path);
+    std::fs::create_dir_all(file_path.parent().unwrap()).unwrap();
+    std::fs::write(&file_path, content).unwrap();
+    std::fs::write(
+        root.join("local.properties"),
+        format!("sdk.dir={}\n", fake_sdk.display()),
+    )
+    .unwrap();
+}
+
+#[test]
+fn resolve_kotlin_builtin_type_platform_equivalent_indexes_java_lang_string_on_demand() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    write_fake_android_sdk_source(
+        root,
+        "java/lang/String.java",
+        "package java.lang;\npublic final class String implements CharSequence {\n}\n",
+    );
+
+    let idx = Indexer::new();
+    idx.workspace_root.set(root.to_path_buf());
+
+    let locs = resolve_kotlin_builtin_type_platform_equivalent(&idx, "String");
+    assert_eq!(
+        locs.len(),
+        1,
+        "expected the on-demand-indexed java.lang.String declaration, got {locs:?}"
+    );
+    assert!(
+        locs[0].uri.path().ends_with("java/lang/String.java"),
+        "expected the real platform source file, got {:?}",
+        locs[0].uri
+    );
+
+    // The on-demand indexing must persist (step 0.5's own contract), not
+    // just parse ad hoc — a later hierarchy walk from `String` needs its
+    // supertypes (`CharSequence` here) available from `indexer.files`.
+    assert!(
+        idx.files.contains_key(locs[0].uri.as_str()),
+        "expected the file to be permanently cached after the first resolution"
+    );
+}
+
+#[test]
+fn resolve_kotlin_builtin_type_platform_equivalent_ignores_unmapped_names() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    write_fake_android_sdk_source(
+        root,
+        "java/lang/String.java",
+        "package java.lang;\npublic final class String {\n}\n",
+    );
+
+    let idx = Indexer::new();
+    idx.workspace_root.set(root.to_path_buf());
+
+    // "SomeRandomClass" is not one of Kotlin's mapped built-in types, so the
+    // fallback must not fire even though an SDK is present.
+    let locs = resolve_kotlin_builtin_type_platform_equivalent(&idx, "SomeRandomClass");
+    assert!(
+        locs.is_empty(),
+        "expected no fallback for an unmapped name, got {locs:?}"
+    );
+}
+
+#[test]
+fn resolve_kotlin_builtin_type_platform_equivalent_returns_empty_without_an_sdk() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    // No local.properties, no fake SDK -- `detect_android_sdk_source_paths`
+    // must come back empty (short of a real SDK on the CI machine's own env
+    // vars, which `no_sdk_returns_empty` in workspace_json_tests.rs already
+    // documents as a possible, harmless false pass).
+    let idx = Indexer::new();
+    idx.workspace_root.set(root.to_path_buf());
+
+    let locs = resolve_kotlin_builtin_type_platform_equivalent(&idx, "String");
+    assert!(
+        locs.is_empty()
+            || std::env::var("ANDROID_HOME").is_ok()
+            || std::env::var("ANDROID_SDK_ROOT").is_ok(),
+        "expected no fallback without any SDK, got {locs:?}"
+    );
+}
+
+/// End-to-end through the real public entry point (`resolve_symbol`, the
+/// `Full` policy that spawns `rg`) -- the flagship scenario the whole design
+/// doc exists for: resolving a bare `String` qualifier root when nothing in
+/// the workspace's own source explicitly names it, matching the real
+/// `toViewText` receiver-resolution gap found on the Moneta corpus.
+#[test]
+fn resolve_symbol_full_policy_falls_back_to_the_builtin_type_platform_equivalent() {
+    if !rg_available() {
+        return;
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    write_fake_android_sdk_source(
+        root,
+        "java/lang/String.java",
+        "package java.lang;\npublic final class String implements CharSequence {\n}\n",
+    );
+
+    let caller_src = "package com.example\nfun use(s: String) { }\n";
+    let caller_path = root.join("Caller.kt");
+    std::fs::write(&caller_path, caller_src).unwrap();
+    let caller_uri = Url::from_file_path(&caller_path).unwrap();
+
+    let idx = Indexer::new();
+    idx.workspace_root.set(root.to_path_buf());
+    idx.index_content(&caller_uri, caller_src);
+
+    let locs = resolve_symbol(&idx, "String", None, &caller_uri);
+    assert_eq!(
+        locs.len(),
+        1,
+        "expected the builtin-type fallback to resolve bare String, got {locs:?}"
+    );
+    assert!(
+        locs[0].uri.path().ends_with("java/lang/String.java"),
+        "expected the real platform source file, got {:?}",
+        locs[0].uri
+    );
+}
+
+/// The same fallback must also surface in dot-completion, not just goto-def/
+/// hover: `extension_fn_completions` resolves the receiver class via
+/// `resolve_symbol_no_rg` and walks its real supertypes to build the
+/// ancestor set an extension's receiver is matched against. Before this fix,
+/// `resolve_symbol_no_rg(idx, "String", ..)` came back empty, so a `String`
+/// receiver's ancestor set was just `{"String"}` -- an extension declared on
+/// `CharSequence` (e.g. the real `toViewText`) could never match and so
+/// never appeared as a suggestion while typing.
+#[test]
+fn resolve_kotlin_builtin_type_platform_equivalent_surfaces_supertype_extensions_in_dot_completion()
+{
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    write_fake_android_sdk_source(
+        root,
+        "java/lang/String.java",
+        "package java.lang;\npublic final class String implements CharSequence {\n}\n",
+    );
+    // The walk from String to CharSequence must itself resolve CharSequence's
+    // own declaration (via the same builtin-type fallback) to become a real
+    // hop -- without a real java.lang.CharSequence.java on disk too (as the
+    // real Android SDK sources bundle always has), the walk dead-ends at
+    // String and this test would pass for the wrong reason.
+    write_fake_android_sdk_source(
+        root,
+        "java/lang/CharSequence.java",
+        "package java.lang;\npublic interface CharSequence {\n}\n",
+    );
+
+    let idx = Indexer::new();
+    idx.workspace_root.set(root.to_path_buf());
+
+    // Simulate an indexed extension declared on CharSequence, the same shape
+    // `jar_extension_appears_in_dot_completion` uses for a JAR-sourced one.
+    idx.extension_by_receiver
+        .entry("CharSequence".to_owned())
+        .or_default()
+        .push(crate::types::ExtensionEntry {
+            file_uri: "file:///app/ViewText.kt".to_owned(),
+            name: "toViewText".to_owned(),
+            kind: tower_lsp::lsp_types::SymbolKind::FUNCTION,
+            detail: "fun CharSequence?.toViewText(): String".to_owned(),
+            visibility: crate::types::Visibility::Public,
+            package: Some("app".to_owned()),
+            trailing_lambda: false,
+            deprecated: false,
+            container: None,
+        });
+
+    let caller_src = "package app\nfun use(s: String) { s }\n";
+    let caller_path = root.join("Caller.kt");
+    std::fs::write(&caller_path, caller_src).unwrap();
+    let caller_uri = Url::from_file_path(&caller_path).unwrap();
+    idx.index_content(&caller_uri, caller_src);
+
+    let items = complete_dot(&idx, "s", &caller_uri, false, None);
+    let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
+    assert!(
+        labels.contains(&"toViewText"),
+        "expected the CharSequence extension to appear for a String receiver, got: {labels:?}"
+    );
+}
