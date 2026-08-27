@@ -196,6 +196,9 @@ pub(crate) fn parse_kotlin(content: &str) -> FileData {
         // ── synthesize compiler-generated copy() for every data class ────────
         synthesize_data_class_copy(root, bytes, &mut data.symbols);
 
+        // ── synthesize compiler-generated entries/values/valueOf for every enum ──
+        synthesize_enum_members(&mut data.symbols);
+
         finalize_parse(data, root, bytes);
     })
 }
@@ -468,6 +471,78 @@ fn synthesize_data_class_copy(root: Node, bytes: &[u8], symbols: &mut Vec<Symbol
             cold: None,
             trailing_lambda: false,
             deprecated: cls.deprecated,
+        });
+    }
+}
+
+/// Synthesize the three compiler-generated static members every `enum class`
+/// gets: `entries` (a `EnumEntries<T>` property, Kotlin 1.9+), `values()`
+/// (`Array<T>`), and `valueOf(name: String)` (`T`). None of these ever
+/// appears as a literal declared symbol in the source text — the compiler
+/// generates them — so without this, `Flavor.entries`/
+/// `TransactionAction.valueOf(it.name)` resolve to zero candidates no matter
+/// how correct qualified-member lookup otherwise is. Same synthesis shape as
+/// [`synthesize_data_class_copy`] just above; instance members inherited
+/// from `kotlin.Enum` (`.name`, `.ordinal`) are a separate, already-handled
+/// concern and not touched here.
+fn synthesize_enum_members(symbols: &mut Vec<SymbolEntry>) {
+    let enum_classes: Vec<SymbolEntry> = symbols
+        .iter()
+        .filter(|s| s.kind == SymbolKind::ENUM)
+        .cloned()
+        .collect();
+
+    for cls in enum_classes {
+        // `range` deliberately points at the class name's own (small) span,
+        // not `cls.range` (the full class body): `find_name_scoped_to_container`
+        // treats a member whose `range` equals its container's `range` as the
+        // container symbol matching itself and excludes it. Using `cls.range`
+        // here — as `synthesize_data_class_copy` above does — would make these
+        // three synthesized members invisible to that lookup. It's harmless
+        // there only because `copy()` is instance-called and resolves through
+        // a different path; `Type.entries`/`values()`/`valueOf()` are
+        // type-qualified and go through exactly this containment check.
+        symbols.push(SymbolEntry {
+            name: "entries".to_owned(),
+            kind: SymbolKind::PROPERTY,
+            visibility: cls.visibility,
+            range: cls.selection_range,
+            selection_range: cls.selection_range,
+            detail: format!("val entries: EnumEntries<{}>", cls.name),
+            params: String::new(),
+            param_counts: (0, 0),
+            container: Some(cls.name.clone()),
+            cold: None,
+            trailing_lambda: false,
+            deprecated: false,
+        });
+        symbols.push(SymbolEntry {
+            name: "values".to_owned(),
+            kind: SymbolKind::FUNCTION,
+            visibility: cls.visibility,
+            range: cls.selection_range,
+            selection_range: cls.selection_range,
+            detail: format!("fun values(): Array<{}>", cls.name),
+            params: String::new(),
+            param_counts: (0, 0),
+            container: Some(cls.name.clone()),
+            cold: None,
+            trailing_lambda: false,
+            deprecated: false,
+        });
+        symbols.push(SymbolEntry {
+            name: "valueOf".to_owned(),
+            kind: SymbolKind::FUNCTION,
+            visibility: cls.visibility,
+            range: cls.selection_range,
+            selection_range: cls.selection_range,
+            detail: format!("fun valueOf(value: String): {}", cls.name),
+            params: "value: String".to_owned(),
+            param_counts: (1, 1),
+            container: Some(cls.name),
+            cold: None,
+            trailing_lambda: false,
+            deprecated: false,
         });
     }
 }

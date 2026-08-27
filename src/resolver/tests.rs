@@ -667,6 +667,47 @@ fn resolve_qualified_class_name_prefers_private_companion_member() {
     );
 }
 
+/// Regression: the enum-member-synthesis fix originally gave `entries`/
+/// `values`/`valueOf` the same `range` as their enclosing enum class, which
+/// made `find_name_scoped_to_container`'s self-containment guard
+/// (`symbol.range != container_symbol.range`) silently exclude them —
+/// `Flavor.entries` resolved to nothing even though the symbol existed in
+/// the table. Must resolve through the actual type-qualified lookup path,
+/// not just be present in the symbol table (a symbol-table-only check
+/// missed this bug the first time).
+#[test]
+fn enum_type_qualified_entries_values_valueof_resolve() {
+    // No literal "entries"/"values"/"valueOf" text anywhere but the enum
+    // declaration itself — `find_name_scoped_to_container`'s degenerate-
+    // container fallback does a raw post-declaration text scan, which could
+    // paper over a range-containment bug by matching a call-site occurrence
+    // instead of the synthesized symbol actually being found.
+    let uri = uri("/Flavor.kt");
+    let idx = Indexer::new();
+    idx.index_content(
+        &uri,
+        concat!(
+            "package app\n",
+            "enum class Flavor {\n",
+            "  PROD, DEV\n",
+            "}\n",
+        ),
+    );
+
+    assert!(
+        !resolve_symbol(&idx, "entries", Some("Flavor"), &uri).is_empty(),
+        "Flavor.entries did not resolve"
+    );
+    assert!(
+        !resolve_symbol(&idx, "values", Some("Flavor"), &uri).is_empty(),
+        "Flavor.values did not resolve"
+    );
+    assert!(
+        !resolve_symbol(&idx, "valueOf", Some("Flavor"), &uri).is_empty(),
+        "Flavor.valueOf did not resolve"
+    );
+}
+
 #[test]
 fn resolve_qualified_class_name_prefers_named_companion_member() {
     // Same as above but with an explicitly named companion (`companion object

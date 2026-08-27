@@ -1962,6 +1962,50 @@ fn data_class_copy_function_type_param_not_split_on_arrow() {
 }
 
 #[test]
+fn enum_class_synthesizes_entries_values_valueof() {
+    // Kotlin 1.9+ synthesizes `entries`/`values()`/`valueOf(name)` onto every
+    // enum class at compile time -- they never appear as literal declared
+    // symbols in the source text, so nothing before this indexed them at all.
+    // Real, measured gap: `Flavor.entries`/`TransactionAction.valueOf(name)`
+    // in the Moneta corpus resolved to zero candidates.
+    let content = "enum class Flavor { PROD, DEV }";
+    let data = crate::parser::parse_kotlin(content);
+
+    let entries = data
+        .symbols
+        .iter()
+        .find(|s| s.name == "entries" && s.container.as_deref() == Some("Flavor"))
+        .expect("entries should be synthesized for enum class");
+    assert_eq!(entries.kind, SymbolKind::PROPERTY);
+
+    let value_of = data
+        .symbols
+        .iter()
+        .find(|s| s.name == "valueOf" && s.container.as_deref() == Some("Flavor"))
+        .expect("valueOf(name) should be synthesized for enum class");
+    assert_eq!(value_of.kind, SymbolKind::FUNCTION);
+    assert_eq!(
+        value_of.param_counts,
+        (1, 1),
+        "valueOf(name: String) has one required param, got {:?}",
+        value_of.param_counts
+    );
+
+    let values = data
+        .symbols
+        .iter()
+        .find(|s| s.name == "values" && s.container.as_deref() == Some("Flavor"))
+        .expect("values() should be synthesized for enum class");
+    assert_eq!(values.kind, SymbolKind::FUNCTION);
+    assert_eq!(
+        values.param_counts,
+        (0, 0),
+        "values() takes no params, got {:?}",
+        values.param_counts
+    );
+}
+
+#[test]
 fn extension_property_with_public_modifier_receiver() {
     let src = "public val ViewModel.viewModelScope: CoroutineScope get() = TODO()";
     let data = super::parse_kotlin(src);
