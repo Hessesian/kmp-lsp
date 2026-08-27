@@ -2249,12 +2249,12 @@ pub(crate) fn is_stdlib(pkg: &str) -> bool {
 /// candidates for bare `String`, and NONE of them is the real class — see
 /// `docs/superpowers/specs/2026-08-27-kotlin-builtin-type-platform-mapping-design.md`.
 ///
-/// Deliberately narrow (`String`/`CharSequence` plus the
-/// `kotlin.collections.*` interfaces, the ones directly evidenced by
-/// measurement so far) — Kotlin has roughly 20 mapped types in total
-/// (`Any`/`Throwable`/`Number`/the boxed primitives/...), but adding the
-/// rest speculatively, without real corpus evidence each one is actually
-/// hit, would violate the same "evidenced-only, not a broad heuristic"
+/// Deliberately narrow (`String`/`CharSequence`, the `kotlin.collections.*`
+/// interfaces, and the 8 primitive scalar types, the ones directly
+/// evidenced by measurement so far) — Kotlin has roughly 20 mapped types in
+/// total (`Any`/`Throwable`/`Number`/`Comparable`/...), but adding the rest
+/// speculatively, without real corpus evidence each one is actually hit,
+/// would violate the same "evidenced-only, not a broad heuristic"
 /// discipline [`DENYLISTED_PACKAGE_PREFIXES`] already established.
 /// Extending this list is a mechanical follow-up once a real gap is
 /// measured, not a redesign.
@@ -2280,6 +2280,20 @@ const KOTLIN_BUILTIN_TYPE_PLATFORM_EQUIVALENTS: &[(&str, &str)] = &[
     ("MutableIterable", "java.lang.Iterable"),
     ("Iterator", "java.util.Iterator"),
     ("MutableIterator", "java.util.Iterator"),
+    // Kotlin's 8 primitive scalar types -- same compiler-intrinsic shape:
+    // verified none of `Int`/`Long`/`Double`/`Float`/`Boolean`/`Byte`/`Short`/`Char`
+    // has a compiled `.class` file in kotlin-stdlib's JAR either. `Char` is
+    // the one name mismatch (-> `Character`, not `Char`) -- handled the same
+    // way `MutableList` -> `java.util.List` already is, by looking up the
+    // platform type's own simple name rather than the original Kotlin one.
+    ("Int", "java.lang.Integer"),
+    ("Long", "java.lang.Long"),
+    ("Double", "java.lang.Double"),
+    ("Float", "java.lang.Float"),
+    ("Boolean", "java.lang.Boolean"),
+    ("Byte", "java.lang.Byte"),
+    ("Short", "java.lang.Short"),
+    ("Char", "java.lang.Character"),
 ];
 
 /// Last-resort fallback for a Kotlin compiler-intrinsic built-in type name
