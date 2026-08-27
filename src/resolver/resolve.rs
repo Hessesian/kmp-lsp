@@ -900,6 +900,24 @@ pub(crate) fn resolve_in_scope_strict(indexer: &Indexer, name: &str, from_uri: &
     if !resolve_same_package(indexer, name, from_uri).is_empty() {
         return true;
     }
+    // A star import of a stdlib-shaped package (`java.*`/`kotlin.*`/`android.*`/
+    // `androidx.*`) has no locally-indexed source for `find_in_star_imports`
+    // below to search, so it's excluded from that search entirely — but for
+    // THIS check (does some import plausibly cover `name`, at all), that
+    // exclusion is wrong: the file compiles, so `import java.util.*` really
+    // does bring `Date` into scope even though we can't confirm membership
+    // one way or the other. Real, measured false positive on Moneta:
+    // `Date`/`Calendar`/`Collections` were flagged as missing imports in
+    // files that explicitly had `import java.util.*`.
+    if let Some(file_data) = indexer.files.get(from_uri.as_str()) {
+        if file_data
+            .imports
+            .iter()
+            .any(|i| i.is_star && is_stdlib(&i.full_path))
+        {
+            return true;
+        }
+    }
     let star_pkgs: Vec<String> = match indexer.files.get(from_uri.as_str()) {
         Some(f) => f
             .imports

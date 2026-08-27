@@ -7537,6 +7537,31 @@ fn resolve_in_scope_strict_true_via_default_import_type_for_primitive_array_type
     }
 }
 
+/// Real, measured false positive on the Moneta corpus: a file with an
+/// explicit `import java.util.*` still had `Date`/`Calendar`/`Collections`
+/// flagged as missing imports. Root cause: the star-import-coverage check
+/// filtered OUT any star import whose package `is_stdlib()` (`java.*`,
+/// `kotlin.*`, `android.*`, `androidx.*`) before even considering it,
+/// because that filter's ORIGINAL purpose was "don't waste an `rg`/source-tree
+/// search on a package with no local source to search" — a reasonable
+/// optimization for the SEARCH itself, but wrong for this EXISTENCE check:
+/// the code compiles, so `import java.util.*` genuinely does bring `Date`
+/// into scope even though we have no local source to verify it against.
+#[test]
+fn resolve_in_scope_strict_true_via_stdlib_star_import() {
+    let caller_uri = uri("/Caller.kt");
+    let idx = Indexer::new();
+    idx.index_content(
+        &caller_uri,
+        "package app\nimport java.util.*\nfun use() { Date() }\n",
+    );
+    assert!(
+        resolve_in_scope_strict(&idx, "Date", &caller_uri),
+        "import java.util.* must cover Date, even though java.util has no \
+         locally-indexed source to confirm membership against"
+    );
+}
+
 /// Regression: `resolvable_via_default_import` must check `jar_definitions`
 /// directly (by package), not the narrower `importable_fqns` cache — a
 /// top-level `kotlin.*` FUNCTION (e.g. `error`, `run`, `with`, `repeat`) is not
