@@ -153,17 +153,32 @@ fn supertype_targets(
             // bare leaf), so it gets the original spelling.
             crate::indexer::jar::ensure_jar_definitions_for(idx, &super_name, sidecar_budget);
             let super_leaf = super_name.last_segment().to_owned();
-            // A qualified spelling names an EXACT package — resolve it
-            // there directly first (`find_symbol_in_package`, package-exact,
-            // no ambiguity risk) rather than falling straight to the
-            // leaf-only ambiguity-safe chain below, which is keyed by
-            // simple name only and could resolve to an unrelated same-leaf
-            // class reachable via same-package/import from this hop's own
-            // file — silently picking the WRONG supertype instead of the
-            // one the source specifically qualified to avoid exactly that.
+            // A package-qualified spelling names an EXACT package — resolve
+            // it there directly first (`find_symbol_in_package`,
+            // package-exact, no ambiguity risk) rather than falling
+            // straight to the leaf-only ambiguity-safe chain below, which
+            // is keyed by simple name only and could resolve to an
+            // unrelated same-leaf class reachable via same-package/import
+            // from this hop's own file — silently picking the WRONG
+            // supertype instead of the one the source specifically
+            // qualified to avoid exactly that.
+            //
+            // A dotted spelling isn't always package-qualified, though —
+            // `Outer.Inner` (a nested-type supertype) is dotted too, with
+            // no package involved at all. Kotlin/Java convention (already
+            // relied on throughout `resolve.rs`, e.g.
+            // `root.starts_with_uppercase()`) distinguishes them: a real
+            // package's own immediate segment is never uppercase-first, an
+            // enclosing type's name always is. Only try the package-exact
+            // path when that holds — treating `Outer` as a package would
+            // search a package that (almost always) doesn't exist, and
+            // could accidentally match an unrelated file that happens to
+            // declare a real (if unconventional) `package Outer`.
             if let Some((pkg, leaf)) = super_name.rsplit_once('.') {
-                if let Some(loc) = super::find_symbol_in_package(idx, leaf, pkg) {
-                    return vec![(super_leaf, loc.uri.to_string())];
+                if !pkg.last_segment().starts_with_uppercase() {
+                    if let Some(loc) = super::find_symbol_in_package(idx, leaf, pkg) {
+                        return vec![(super_leaf, loc.uri.to_string())];
+                    }
                 }
             }
             // Ambiguity-safe, not `resolve_symbol_no_rg`'s raw first-match tail: at

@@ -1396,6 +1396,54 @@ fn resolve_qualified_fully_qualified_supertype_resolves_the_named_package_not_a_
 }
 
 #[test]
+fn resolve_qualified_nested_type_supertype_is_not_mistaken_for_a_package_qualified_one() {
+    // Copilot review follow-up: `super_name.rsplit_once('.')` treats ANY
+    // dotted supertype spelling as package-qualified, but a NESTED-TYPE
+    // spelling (`class Str : Outer.Inner`, extending a type nested inside
+    // `Outer`) is dotted too, with no package involved at all -- "Outer" is
+    // a type name, not a package. Kotlin/Java convention (already relied on
+    // throughout this file, e.g. `root.starts_with_uppercase()`) is the
+    // discriminator: a real package segment is never uppercase-first, an
+    // enclosing type's name always is. Without checking this, `Outer.Inner`
+    // would incorrectly search for a package literally named "Outer" --
+    // real files that declare `package Outer` are rare but not impossible,
+    // and here one exists specifically to prove the wrong match.
+    let host_uri = uri("/Host.kt");
+    let str_uri = uri("/Str.kt");
+    let real_inner_uri = uri("/RealInner.kt");
+    let decoy_inner_uri = uri("/DecoyInner.kt");
+    let idx = Indexer::new();
+    // Decoy: a real (if unconventional) package literally named "Outer" --
+    // what the buggy package-qualified fast path would incorrectly match.
+    idx.index_content(
+        &decoy_inner_uri,
+        "package Outer\ninterface Inner {\n  fun getInfo(): String\n}\n",
+    );
+    // Real: same package as Str.kt, reachable via ordinary same-package
+    // resolution once the nested-type spelling correctly falls through to
+    // plain leaf-only resolution instead of a package-qualified lookup.
+    idx.index_content(
+        &real_inner_uri,
+        "package com.pkg\ninterface Inner {\n  fun getInfo(): String\n}\n",
+    );
+    idx.index_content(&str_uri, "package com.pkg\nclass Str : Outer.Inner\n");
+    idx.index_content(
+        &host_uri,
+        "package com.pkg\nfun foo(receiver: Str) { receiver.getInfo() }\n",
+    );
+
+    let locs = resolve_symbol(&idx, "getInfo", Some("Str"), &host_uri);
+    assert!(!locs.is_empty(), "getInfo must still resolve");
+    assert_eq!(
+        locs[0].uri, real_inner_uri,
+        "Outer.Inner must resolve as a nested-type supertype (falling through \
+         to plain same-package resolution of the leaf \"Inner\"), not be \
+         misread as package \"Outer\", symbol \"Inner\" -- got a location in {:?}",
+        locs[0].uri
+    );
+}
+
+#[test]
 fn find_symbol_in_package_uses_the_real_per_symbol_package_for_jar_candidates() {
     // Copilot review follow-up: `find_symbol_in_package`'s JAR-check branch
     // is what the qualified-supertype resolution fix relies on to be
