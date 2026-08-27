@@ -1120,11 +1120,35 @@ fn members_for_jar_backed_type(
             }
             result
         };
-        // Candidate members: container match + the shared symbol filters.
+        // Kotlin resolves `Outer.member` through `Outer`'s own companion object
+        // when `Outer` has no such member itself (implicit companion
+        // forwarding) — the same idiom `members_for_workspace_type` already
+        // special-cases for source-parsed files, via `is_declared_in`'s
+        // container-name match. A JAR-derived companion's own
+        // class-declaration symbol carries `container == inner_name` (see
+        // `entriesFromClass` on the sidecar side), and its own members in turn
+        // carry ITS bare name as their container — so a companion-of-`inner_name`'s
+        // members are exactly those whose container matches that companion's
+        // own name.
+        let companion_names: Vec<&str> = symbols
+            .iter()
+            .filter(|symbol| {
+                symbol.is_companion_object() && symbol.container.as_deref() == Some(inner_name)
+            })
+            .map(|symbol| symbol.name.as_str())
+            .collect();
+        // Candidate members: container match (direct or via a companion) + the
+        // shared symbol filters.
         let candidate_indices: Vec<usize> = symbols
             .iter()
             .enumerate()
-            .filter(|(_, symbol)| symbol.container.as_deref() == Some(inner_name))
+            .filter(|(_, symbol)| {
+                symbol.container.as_deref() == Some(inner_name)
+                    || symbol
+                        .container
+                        .as_deref()
+                        .is_some_and(|c| companion_names.contains(&c))
+            })
             .filter(|(_, symbol)| !symbol.deprecated)
             .filter(|(_, symbol)| symbol.visibility != Visibility::Private)
             .filter(|(_, symbol)| member_kind_allowed(context, symbol.kind))

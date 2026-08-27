@@ -293,7 +293,21 @@ private fun extensionReceiverRenderedForProp(prop: KmProperty, classTypeParams: 
 
 private fun entriesFromClass(klass: KmClass, dep: DeprecationInfo, pkg: String): List<SymbolEntry> {
     val entries = mutableListOf<SymbolEntry>()
-    val simpleName = klass.name.substringAfterLast('/')
+    // Kotlin metadata's own class-name convention is `pkg/Outer.Inner.Innermost`
+    // (slash-separated package, DOT-separated nesting) -- distinct from the JVM
+    // binary name's `$`-separated nesting ASM reports elsewhere in this file.
+    // Only the LAST dotted segment is this class's own simple name; the segment
+    // immediately before it (if any) is its enclosing container -- matching how
+    // the Rust/source-parsing side's `assign_containers` already names a nested
+    // symbol's `container` (the tightest enclosing container's own bare name,
+    // never a fully-qualified path). Getting this right matters beyond cosmetics:
+    // `Outer.member` lookups on the Rust side match a member's `container`
+    // against `Outer`'s own bare name by exact string equality -- a dotted
+    // "Outer.Inner" container can never match a query for "Outer".
+    val nameSegments = klass.name.substringAfterLast('/').split('.')
+    val simpleName = nameSegments.last()
+    val ownContainer = if (nameSegments.size > 1) nameSegments[nameSegments.size - 2] else ""
+    val isTopLevel = nameSegments.size == 1
     val containerName = simpleName
 
     val classKind = when {
@@ -304,18 +318,23 @@ private fun entriesFromClass(klass: KmClass, dep: DeprecationInfo, pkg: String):
         klass.kind == ClassKind.ANNOTATION_CLASS   -> "interface"
         else                                       -> "class"
     }
+    // A companion renders as "companion object X", not just "object X" -- the
+    // Rust side's `is_companion_object()` recognizes a companion by exactly
+    // this adjacent-token text, the same signal source-parsed (non-JAR) files
+    // already produce for a real `companion object` declaration.
+    val classDetailPrefix = if (klass.kind == ClassKind.COMPANION_OBJECT) "companion object" else classKind
     val classDetail = if (klass.typeParameters.isEmpty()) {
-        "$classKind $simpleName"
+        "$classDetailPrefix $simpleName"
     } else {
         val tps = klass.typeParameters.joinToString(", ") { it.name }
-        "$classKind $simpleName<$tps>"
+        "$classDetailPrefix $simpleName<$tps>"
     }
     // Direct super types (super class + interfaces) as simple names, for inheritance
     // walking on the Rust side. `Any` is implicit and dropped as noise.
     val supers = klass.supertypes.mapNotNull { st ->
         (st.classifier as? KmClassifier.Class)?.name?.substringAfterLast('/')
     }.filter { it != "Any" }
-    entries += SymbolEntry(simpleName, classKind, "", classDetail, pkg = pkg, topLevel = true, supers = supers)
+    entries += SymbolEntry(simpleName, classKind, ownContainer, classDetail, pkg = pkg, topLevel = isTopLevel, supers = supers)
 
     for (fn in klass.functions) {
         if (!fn.visibility.isPublicLike()) continue
@@ -460,8 +479,19 @@ fun indexClassBytes(bytes: ByteArray): List<SymbolEntry> {
             val metadata = runCatching { KotlinClassMetadata.readLenient(metaVisitor.toMetadata()) }.getOrNull()
                 ?: return emptyList()
             val isFacade = metadata is KotlinClassMetadata.FileFacade || metadata is KotlinClassMetadata.MultiFileClassPart
-            // Skip anonymous/inner synthetic helpers for regular Class only
-            if (!isFacade && name.contains('$') && !name.endsWith("\$Companion")) return emptyList()
+            // A companion object (named OR the default unnamed one) is the one
+            // nested-class shape whose members are worth indexing -- everything
+            // else `$`-named is an anonymous/synthetic compiler helper (lambdas,
+            // `WhenMappings`, anonymous objects, ...). Checked via the REAL
+            // Kotlin-metadata signal (`ClassKind.COMPANION_OBJECT`), not a
+            // `$Companion`-suffix name heuristic: the suffix only ever matches
+            // the default, UNNAMED companion (`Foo$Companion`) and silently
+            // drops every NAMED companion (`companion object Forest : Tree()`,
+            // compiled as `Foo$Forest`) -- a real, measured gap (Timber's
+            // entire public API -- `d`/`e`/`i`/`w`/`tag`/`plant`/... -- lives in
+            // exactly such a named companion and was previously unindexed).
+            val isCompanion = (metadata as? KotlinClassMetadata.Class)?.kmClass?.kind == ClassKind.COMPANION_OBJECT
+            if (!isFacade && !isCompanion && name.contains('$')) return emptyList()
             val dep = DeprecationInfo(visitor.deprecatedMethods, visitor.deprecatedFields)
             val pkg = visitor.packageName
             when (metadata) {

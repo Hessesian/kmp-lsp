@@ -8260,3 +8260,158 @@ fn resolve_kotlin_builtin_type_platform_equivalent_surfaces_iterable_extensions_
         "expected the Iterable extension to appear for a List receiver, got: {labels:?}"
     );
 }
+
+// ─── named companion-object members on a JAR-derived type ────────────────────
+//
+// Real-world regression: Timber's entire public API (`d`, `e`, `i`, `w`,
+// `tag`, `plant`, ...) lives inside `companion object Forest : Tree()` --
+// a NAMED companion, not the default unnamed one. The sidecar's own
+// `entriesFromClass` gives the companion's class-declaration symbol
+// `container == "Timber"` and gives its members `container == "Forest"`
+// (its own bare name) -- mirroring exactly how a source-parsed file's
+// `assign_containers` names a nested symbol's container. `resolve_companion_member`
+// must recognize a JAR-backed file (whose synthetic per-entry ranges carry no
+// real nesting for range-containment to discover) and match by this
+// container-name chain instead of range containment.
+
+fn fake_sidecar_symbol(
+    name: &str,
+    kind: &str,
+    container: &str,
+    detail: &str,
+    supers: Vec<String>,
+) -> crate::sidecar::SidecarSymbol {
+    crate::sidecar::SidecarSymbol {
+        name: name.to_owned(),
+        kind: kind.to_owned(),
+        container: container.to_owned(),
+        detail: detail.to_owned(),
+        doc: String::new(),
+        type_params: Vec::new(),
+        extension_receiver_type: String::new(),
+        trailing_lambda: false,
+        deprecated: false,
+        pkg: "timber.log".to_owned(),
+        top_level: container.is_empty(),
+        supers,
+    }
+}
+
+/// Builds a fake compiled-JAR fixture matching exactly the shape
+/// `entriesFromClass` produces for `class Timber { companion object Forest :
+/// Tree() { fun d(...) } }` -- PLUS an unrelated decoy class with its own
+/// companion object that ALSO declares a member named `d`, positioned
+/// between Timber and its real Forest/d in the synthetic per-entry line
+/// order. `find_name_in_uri_after_line` (an existing, more general fallback
+/// for JAR-derived degenerate ranges) picks the symbol named `d` with the
+/// SMALLEST line number at or after the container's own line -- without
+/// real container-name matching, that fallback would return the decoy
+/// (closer to Timber's line) instead of the real Forest.d, so this decoy is
+/// what makes the test actually exercise container-based matching rather
+/// than passing for the wrong reason.
+fn populate_fake_timber_jar(idx: &crate::indexer::Indexer) {
+    let jar_path = "/home/test/.gradle/caches/timber-5.0.1.jar";
+    let symbols = vec![
+        fake_sidecar_symbol("Timber", "class", "", "class Timber", vec![]),
+        fake_sidecar_symbol("DecoyOwner", "class", "", "class DecoyOwner", vec![]),
+        fake_sidecar_symbol(
+            "DecoyForest",
+            "object",
+            "DecoyOwner",
+            "companion object DecoyForest",
+            vec![],
+        ),
+        fake_sidecar_symbol(
+            "d",
+            "fun",
+            "DecoyForest",
+            "fun d(): Nothing = TODO(\"decoy\")",
+            vec![],
+        ),
+        fake_sidecar_symbol(
+            "Forest",
+            "object",
+            "Timber",
+            "companion object Forest",
+            vec!["Tree".to_owned()],
+        ),
+        fake_sidecar_symbol(
+            "d",
+            "fun",
+            "Forest",
+            "fun d(message: String?, args: Array<out Any?>)",
+            vec![],
+        ),
+    ];
+    crate::indexer::jar::populate_from_symbols(idx, jar_path.as_ref(), &symbols);
+}
+
+#[test]
+fn resolve_qualified_finds_a_named_companion_member_on_a_jar_backed_type() {
+    let idx = Indexer::new();
+    populate_fake_timber_jar(&idx);
+
+    let caller_uri = uri("/Host.kt");
+    idx.index_content(
+        &caller_uri,
+        "package app\nimport timber.log.Timber\nfun use() { Timber.d(\"hi\") }\n",
+    );
+
+    let locs = resolve_symbol(&idx, "d", Some("Timber"), &caller_uri);
+    assert_eq!(
+        locs.len(),
+        1,
+        "expected Timber.d to resolve through the named Forest companion, got {locs:?}"
+    );
+    let file_data = idx
+        .jar_files
+        .get("jar:file:///home/test/.gradle/caches/timber-5.0.1.jar")
+        .expect("fake jar must be indexed")
+        .clone();
+    let resolved_symbol = file_data
+        .symbols
+        .iter()
+        .find(|s| s.selection_range == locs[0].range)
+        .expect("resolved location must map to a real symbol");
+    assert_eq!(
+        resolved_symbol.detail, "fun d(message: String?, args: Array<out Any?>)",
+        "expected the REAL Forest.d, not the DecoyForest.d decoy -- got detail: {}",
+        resolved_symbol.detail
+    );
+    assert!(
+        locs[0].uri.as_str().starts_with("jar:file://"),
+        "expected the JAR-backed declaration, got {:?}",
+        locs[0].uri
+    );
+}
+
+/// Companion to the resolution test above, for dot-completion
+/// (`members_for_jar_backed_type`): typing `Timber.` must suggest the real
+/// Forest companion's members (`d`, `e`, ...), not the DecoyForest decoy.
+#[test]
+fn complete_dot_finds_named_companion_members_on_a_jar_backed_type() {
+    let idx = Indexer::new();
+    populate_fake_timber_jar(&idx);
+
+    let caller_uri = uri("/Host.kt");
+    idx.index_content(
+        &caller_uri,
+        "package app\nimport timber.log.Timber\nfun use() { }\n",
+    );
+
+    let items = complete_dot(&idx, "Timber", &caller_uri, false, None);
+    let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
+    assert!(
+        labels.contains(&"d"),
+        "expected Timber. to suggest the real Forest.d, got: {labels:?}"
+    );
+    let d_item = items
+        .iter()
+        .find(|i| i.label == "d")
+        .expect("d must be present");
+    assert_eq!(
+        d_item.detail.as_deref(),
+        Some("fun d(message: String?, args: Array<out Any?>)"),
+        "expected the REAL Forest.d, not the DecoyForest.d decoy"
+    );
+}

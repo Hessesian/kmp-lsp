@@ -464,4 +464,46 @@ class IndexerTest {
                 "got: ${real.detail}",
         )
     }
+
+    @Test
+    @DisplayName("indexJarFile finds Timber's named companion object (Forest) and its members")
+    fun testNamedCompanionObjectMembersAreIndexed() {
+        // Timber's entire public API (`d`, `e`, `i`, `w`, `tag`, `plant`, ...)
+        // lives inside `companion object Forest : Tree()` -- a NAMED
+        // companion, compiled as `Timber$Forest`, not the default unnamed
+        // `Timber$Companion` shape the indexer used to special-case by name
+        // suffix alone. Real, measured regression: this entire API was
+        // previously unindexed (only the bare `Timber` class itself and an
+        // unrelated, empty `Timber$DebugTree$Companion` survived), which in
+        // turn made every `Timber.d(...)`/`Timber.e(...)` call in a real
+        // consuming project resolve to zero candidates.
+        val jarPath = System.getProperty("timber.jar")
+        assertNotNull(jarPath, "timber.jar system property must be set by the build")
+
+        val entries = indexJarFile(jarPath!!)
+
+        val timberClass = entries.singleOrNull { it.name == "Timber" && it.kind == "class" }
+        assertNotNull(timberClass, "expected the Timber class itself to be indexed")
+
+        val forest = entries.singleOrNull { it.name == "Forest" && it.kind == "object" }
+        assertNotNull(forest, "expected the named Forest companion to be indexed")
+        assertEquals(
+            "Timber", forest!!.container,
+            "Forest's own container must be Timber (its enclosing class), " +
+                "not empty and not a fully-qualified 'Timber.Forest'",
+        )
+        assertTrue(
+            forest.detail.startsWith("companion object"),
+            "Forest's detail must say 'companion object', the signal " +
+                "`is_companion_object()` on the Rust side keys off of, got: ${forest.detail}",
+        )
+
+        val logMethodNames = setOf("d", "e", "i", "w", "v", "wtf", "log", "tag", "plant", "uproot")
+        val logMethods = entries.filter { it.name in logMethodNames && it.container == "Forest" }
+        assertTrue(
+            logMethods.map { it.name }.toSet().containsAll(logMethodNames),
+            "expected all of Timber's log methods under Forest's own container, " +
+                "got: ${logMethods.map { it.name }}",
+        )
+    }
 }

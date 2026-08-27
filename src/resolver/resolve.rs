@@ -1601,6 +1601,40 @@ fn resolve_companion_member(
     let Some(file_data) = indexer.file_data_for(file_uri) else {
         return vec![];
     };
+
+    if indexer.jar_files.contains_key(file_uri) {
+        // A compiled JAR's synthetic FileData gives every symbol its own
+        // one-line range keyed by sequential position in the sidecar's flat
+        // entry list (see `build_jar_file_data`) — there is no real nesting
+        // for range containment to discover, unlike a source-parsed file.
+        // Match by container name instead: the sidecar's `entriesFromClass`
+        // gives a companion's own class-declaration symbol `container ==
+        // class_name`, and gives ITS members that companion's own bare name
+        // as their container in turn — mirroring the exact shape
+        // `members_for_jar_backed_type` (completion) already matches on.
+        let companion_name = file_data
+            .symbols
+            .iter()
+            .find(|symbol| {
+                symbol.is_companion_object() && symbol.container.as_deref() == Some(class_name)
+            })
+            .map(|symbol| symbol.name.as_str());
+        let Some(companion_name) = companion_name else {
+            return vec![];
+        };
+        return file_data
+            .symbols
+            .iter()
+            .filter(|symbol| {
+                symbol.name == name && symbol.container.as_deref() == Some(companion_name)
+            })
+            .map(|symbol| Location {
+                uri: uri.clone(),
+                range: symbol.selection_range,
+            })
+            .collect();
+    }
+
     // The class's full declaration range (not just its name's selection range) is
     // needed to tell which companion object belongs to it when a file has more
     // than one class.
