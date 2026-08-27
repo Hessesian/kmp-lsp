@@ -358,6 +358,17 @@ private fun entriesFromClass(klass: KmClass, dep: DeprecationInfo, pkg: String):
             pkg = pkg, topLevel = false,
         )
     }
+    // `klass.enumEntries` is metadata-only -- a `KmClass`'s functions/properties
+    // lists never include its own enum constants (`BufferOverflow.DROP_OLDEST`),
+    // just their simple names. `"enum_member"` mirrors the Rust source-parsing
+    // side's `SymbolKind::ENUM_MEMBER` for a real `enum_entry` CST node, so a
+    // JAR-compiled enum constant and a source-declared one behave identically.
+    for (entryName in klass.enumEntries) {
+        entries += SymbolEntry(
+            entryName, "enum_member", containerName, "$simpleName.$entryName",
+            pkg = pkg, topLevel = false,
+        )
+    }
     return entries
 }
 

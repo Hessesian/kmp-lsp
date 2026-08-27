@@ -1611,6 +1611,62 @@ fn jar_nested_class_fqn_in_qualified_index() {
 }
 
 #[test]
+fn jar_enum_constant_resolves_with_enum_member_kind() {
+    // The sidecar now emits an "enum_member" SymbolEntry for each of a
+    // JAR-compiled enum class's own constants (see KotlinClassIndexer.kt's
+    // `entriesFromClass`, which iterates `klass.enumEntries`). Confirms the
+    // Rust side both resolves `BufferOverflow.DROP_OLDEST` as a qualified
+    // member (same container-name matching already proven for JAR functions/
+    // properties) and maps its kind to `SymbolKind::ENUM_MEMBER`, not the
+    // `NULL` sentinel an unrecognized kind string would fall back to.
+    let indexer = idx();
+    let jar_path = "/home/test/.gradle/caches/kotlinx-coroutines-core-jvm-1.11.0.jar";
+
+    let symbols = vec![
+        make_sidecar_symbol(
+            "BufferOverflow",
+            "class",
+            "class kotlinx.coroutines.channels.BufferOverflow",
+            "",
+        ),
+        make_sidecar_symbol(
+            "DROP_OLDEST",
+            "enum_member",
+            "BufferOverflow.DROP_OLDEST",
+            "BufferOverflow",
+        ),
+    ];
+    populate_from_symbols(&indexer, jar_path.as_ref(), &symbols);
+
+    let user_uri = Url::parse("file:///src/main/Main.kt").unwrap();
+    indexer.index_content(
+        &user_uri,
+        "package com.example.main\n\nimport kotlinx.coroutines.channels.BufferOverflow\n\nfun example() = BufferOverflow.DROP_OLDEST",
+    );
+
+    let locs =
+        crate::resolver::resolve_symbol(&indexer, "DROP_OLDEST", Some("BufferOverflow"), &user_uri);
+    assert!(
+        !locs.is_empty(),
+        "BufferOverflow.DROP_OLDEST should resolve via container-name matching"
+    );
+
+    let fd = indexer
+        .file_data_for(&format!("jar:file://{jar_path}"))
+        .expect("jar file data should be populated");
+    let drop_oldest = fd
+        .symbols
+        .iter()
+        .find(|s| s.name == "DROP_OLDEST")
+        .expect("DROP_OLDEST symbol should be present");
+    assert_eq!(
+        drop_oldest.kind,
+        tower_lsp::lsp_types::SymbolKind::ENUM_MEMBER,
+        "enum_member sidecar kind must map to SymbolKind::ENUM_MEMBER, not fall back to NULL"
+    );
+}
+
+#[test]
 fn jar_extension_has_package_for_same_package_resolution() {
     let indexer = idx();
     let jar_path = "/home/test/.gradle/caches/coroutines-core-1.7.3.jar";

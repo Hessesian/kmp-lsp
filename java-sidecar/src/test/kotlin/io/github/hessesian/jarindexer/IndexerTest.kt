@@ -506,4 +506,38 @@ class IndexerTest {
                 "got: ${logMethods.map { it.name }}",
         )
     }
+
+    @Test
+    @DisplayName("indexJarFile indexes a compiled enum class's own constants")
+    fun testCompiledEnumClassConstantsAreIndexed() {
+        // `entriesFromClass` iterates `klass.functions`/`klass.properties` but
+        // never `klass.enumEntries` -- so a JAR-compiled enum class's own
+        // constants (e.g. `BufferOverflow.DROP_OLDEST`) were never indexed at
+        // all, even though the enum class itself (and any real functions/
+        // properties it declares) were. Real, measured gap: any qualified
+        // reference to a JAR-compiled enum constant resolves to zero
+        // candidates in a real consuming project.
+        val jarPath = System.getProperty("coroutines.jar")
+        assertNotNull(jarPath, "coroutines.jar system property must be set by the build")
+
+        val entries = indexJarFile(jarPath!!)
+
+        val bufferOverflow = entries.singleOrNull { it.name == "BufferOverflow" && it.kind == "class" }
+        assertNotNull(bufferOverflow, "expected the BufferOverflow enum class itself to be indexed")
+
+        val constantNames = setOf("SUSPEND", "DROP_OLDEST", "DROP_LATEST")
+        val constants = entries.filter { it.name in constantNames && it.container == "BufferOverflow" }
+        assertEquals(
+            constantNames,
+            constants.map { it.name }.toSet(),
+            "expected all three BufferOverflow enum constants under its own container, " +
+                "got: ${entries.filter { it.container == "BufferOverflow" }.map { "${it.name}:${it.kind}" }}",
+        )
+        assertTrue(
+            constants.all { it.kind == "enum_member" },
+            "enum constants must carry the 'enum_member' kind so the Rust side maps them " +
+                "to SymbolKind::ENUM_MEMBER (matching source-parsed enum constants), " +
+                "got: ${constants.map { "${it.name}:${it.kind}" }}",
+        )
+    }
 }
