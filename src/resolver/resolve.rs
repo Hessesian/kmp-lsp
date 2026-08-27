@@ -1974,7 +1974,7 @@ fn resolve_extension_via_supertype_hierarchy(
     name: &str,
     origin_uri: &Url,
 ) -> Vec<Location> {
-    walk_hierarchy(
+    let matches = walk_hierarchy(
         indexer,
         start_class,
         start_uri.as_str(),
@@ -1988,7 +1988,16 @@ fn resolve_extension_via_supertype_hierarchy(
         // (hierarchy.rs) normalizes a fully-qualified supertype spelling
         // (`class Str : com.other.Seq`) before yielding it.
         |idx, super_name, _, _| resolve_extension_in_scope(idx, super_name, name, origin_uri),
-    )
+    );
+    // `walk_hierarchy` collects across the WHOLE chain, but Kotlin's own
+    // extension resolution prefers the most specific applicable receiver
+    // type: if both a near and a far ancestor declare their own same-named
+    // extension, only the near one should ever be offered. The walk visits
+    // each hop's own supertypes before recursing into any of their further
+    // ancestors (`HierarchyWalker::recurse`: collect, then recurse), so for
+    // the common single-inheritance chain shape the nearest match is always
+    // first — take only that one, not the full collected set.
+    matches.into_iter().next().into_iter().collect()
 }
 
 /// `rg` scoped to the directory that would contain `package` sources.

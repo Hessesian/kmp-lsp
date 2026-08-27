@@ -1067,6 +1067,54 @@ fn resolve_qualified_extension_falls_back_to_supertype_when_receiver_type_has_no
 }
 
 #[test]
+fn resolve_qualified_supertype_extension_fallback_prefers_the_nearest_ancestor() {
+    // Copilot review finding (real): `resolve_extension_via_supertype_hierarchy`
+    // used `walk_hierarchy`'s full collected `Vec`, returning EVERY matching
+    // ancestor extension across the whole chain, not just the nearest one.
+    // Kotlin's own extension resolution prefers the most specific applicable
+    // receiver type -- if `Str : Near : Far` and BOTH `Near` and `Far` (an
+    // ancestor of `Near`) declare their own `toViewText` extension, a `Str`
+    // receiver must resolve to `Near`'s (the nearer, more specific one), not
+    // return both as if genuinely ambiguous.
+    let host_uri = uri("/Host.kt");
+    let str_uri = uri("/Str.kt");
+    let near_uri = uri("/Near.kt");
+    let far_uri = uri("/Far.kt");
+    let near_ext_uri = uri("/NearExtensions.kt");
+    let far_ext_uri = uri("/FarExtensions.kt");
+    let idx = Indexer::new();
+    idx.index_content(&far_uri, "package com.pkg\ninterface Far\n");
+    idx.index_content(&near_uri, "package com.pkg\ninterface Near : Far\n");
+    idx.index_content(&str_uri, "package com.pkg\nclass Str : Near\n");
+    idx.index_content(
+        &far_ext_uri,
+        "package com.pkg\nfun Far.toViewText(): String = TODO()\n",
+    );
+    idx.index_content(
+        &near_ext_uri,
+        "package com.pkg\nfun Near.toViewText(): String = TODO()\n",
+    );
+    idx.index_content(
+        &host_uri,
+        "package com.pkg\nfun foo(receiver: Str) { receiver.toViewText() }\n",
+    );
+
+    let locs = resolve_symbol(&idx, "toViewText", Some("Str"), &host_uri);
+    assert_eq!(
+        locs.len(),
+        1,
+        "expected exactly the nearest ancestor's extension, not every \
+         ancestor's, got {locs:?}"
+    );
+    assert_eq!(
+        locs[0].uri, near_ext_uri,
+        "expected Near's toViewText (the nearer, more specific ancestor), \
+         got a location in {:?}",
+        locs[0].uri
+    );
+}
+
+#[test]
 fn resolve_qualified_member_on_concrete_type_still_shadows_supertype_extension() {
     // Kotlin's own precedence rule: a real member on the concrete receiver
     // type always wins over a same-named extension declared on an ancestor
@@ -1503,6 +1551,59 @@ fn resolve_qualified_nested_type_supertype_resolves_within_its_own_named_contain
         "Outer.Inner must resolve within Outer's own container, not the \
          explicitly-imported unrelated top-level Inner decoy -- got a \
          location in {:?}",
+        locs[0].uri
+    );
+}
+
+#[test]
+fn resolve_qualified_package_qualified_nested_type_supertype_resolves_correctly() {
+    // Copilot review finding (real): a supertype spelling combining BOTH a
+    // package qualifier AND nesting (`class Str : com.other.Outer.Inner`)
+    // was mishandled entirely -- the nested-type branch treated
+    // `super_name.split('.').next()` ("com") as the outermost TYPE segment,
+    // when it's actually a package segment. Real fix: skip leading
+    // lowercase (package) segments, resolve the first uppercase segment
+    // package-exactly there, then walk any remaining nested segments.
+    let host_uri = uri("/Host.kt");
+    let str_uri = uri("/Str.kt");
+    let outer_uri = uri("/Outer.kt");
+    let decoy_inner_uri = uri("/DecoyInner.kt");
+    let idx = Indexer::new();
+    idx.index_content(
+        &outer_uri,
+        concat!(
+            "package com.other\n",
+            "class Outer {\n",
+            "  interface Inner {\n",
+            "    fun getInfo(): String\n",
+            "  }\n",
+            "}\n",
+        ),
+    );
+    idx.index_content(
+        &decoy_inner_uri,
+        "package com.decoy\ninterface Inner {\n  fun getInfo(): String\n}\n",
+    );
+    idx.index_content(
+        &str_uri,
+        concat!(
+            "package com.pkg\n",
+            "import com.decoy.Inner\n",
+            "class Str : com.other.Outer.Inner\n",
+        ),
+    );
+    idx.index_content(
+        &host_uri,
+        "package com.pkg\nfun foo(receiver: Str) { receiver.getInfo() }\n",
+    );
+
+    let locs = resolve_symbol(&idx, "getInfo", Some("Str"), &host_uri);
+    assert!(!locs.is_empty(), "getInfo must still resolve");
+    assert_eq!(
+        locs[0].uri, outer_uri,
+        "com.other.Outer.Inner must resolve within the real, \
+         package-qualified Outer's own container, not the \
+         explicitly-imported unrelated Inner decoy -- got a location in {:?}",
         locs[0].uri
     );
 }
