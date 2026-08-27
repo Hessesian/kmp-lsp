@@ -10,7 +10,7 @@ import kotlinx.serialization.Serializable
 @Serializable
 data class SymbolEntry(
     val name: String,
-    /** "class", "interface", "object", "fun", "val", "var", "typealias" */
+    /** "class", "interface", "object", "fun", "val", "var", "typealias", "enum_member" */
     val kind: String,
     /** Enclosing class/object name; empty for top-level symbols. */
     val container: String,

@@ -1173,6 +1173,7 @@ fn kind_str_to_lsp(kind: &str) -> tower_lsp::lsp_types::SymbolKind {
         "val" => tower_lsp::lsp_types::SymbolKind::PROPERTY,
         "var" => tower_lsp::lsp_types::SymbolKind::VARIABLE,
         "typealias" => tower_lsp::lsp_types::SymbolKind::CLASS,
+        "enum_member" => tower_lsp::lsp_types::SymbolKind::ENUM_MEMBER,
         _ => tower_lsp::lsp_types::SymbolKind::NULL,
     }
 }
