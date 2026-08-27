@@ -554,20 +554,29 @@ fn candidate_gradle_meta(location: &Location) -> Option<crate::cli::extract_sour
     crate::cli::extract_sources::parse_jar_meta(&jar_path)
 }
 
-/// Whether `location`'s declaring file has a package matching one of
-/// [`DENYLISTED_PACKAGE_PREFIXES`]. Checks `indexer.files`
-/// first, then `indexer.jar_files` — a compiled-only JAR entry (no
-/// `-sources.jar` companion) has its parsed data in `jar_files` only, never
-/// `files` (same two-map lookup order as
-/// [`crate::indexer::infer::sig::collect_params_from_file`]). Locations with
-/// no known package in either map are never treated as denylisted — the
-/// tie-break must only ever remove a candidate it can positively prove is
-/// denylisted.
+/// Whether `location` has a package matching one of
+/// [`DENYLISTED_PACKAGE_PREFIXES`]. Tries [`jar_symbol_package`] first — a
+/// real compiled JAR spans many packages across its symbols, so `location`'s
+/// own accurate per-symbol package (the `jar_symbol_packages` side table) is
+/// checked before `indexer.jar_files`' single `FileData.package`, which
+/// `build_jar_file_data` derives from only the FIRST class-like symbol it
+/// happens to find and is therefore not necessarily `location`'s own real
+/// package. Falls back to `indexer.files` (regular source files, always
+/// exactly one package each, so no per-symbol ambiguity exists) and then
+/// `indexer.jar_files` (compiled-only entries pre-dating the per-symbol
+/// cache, or files this side table has no entry for at all) — same two-map
+/// lookup order as [`crate::indexer::infer::sig::collect_params_from_file`].
+/// Locations with no known package anywhere are never treated as
+/// denylisted — the tie-break must only ever remove a candidate it can
+/// positively prove is denylisted.
 fn is_denylisted_package_prefix(indexer: &Indexer, location: &Location) -> bool {
-    let Some(package) = indexer
-        .files
-        .get(location.uri.as_str())
-        .and_then(|f| f.package.clone())
+    let Some(package) = jar_symbol_package(indexer, location)
+        .or_else(|| {
+            indexer
+                .files
+                .get(location.uri.as_str())
+                .and_then(|f| f.package.clone())
+        })
         .or_else(|| {
             indexer
                 .jar_files

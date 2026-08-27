@@ -9,7 +9,7 @@ use crate::types::{CallerContext, FileData};
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
-use tower_lsp::lsp_types::{Location, Url};
+use tower_lsp::lsp_types::{Location, Position, Range, Url};
 
 fn uri(path: &str) -> Url {
     Url::parse(&format!("file:///t{path}")).unwrap()
@@ -294,6 +294,87 @@ fn denylisted_jar_only_package_candidate_is_deprioritized_in_favor_of_the_other(
         vec![("Activity".to_owned(), real_jar_uri.to_string())],
         "expected the JAR-only com.android.internal.* candidate to be \
          deprioritized in favor of the non-denylisted one, got {targets:?}"
+    );
+}
+
+/// Copilot review finding on PR #289: `is_denylisted_package_prefix` reads
+/// `FileData.package` -- a single value covering the WHOLE synthetic file a
+/// compiled JAR is indexed under, derived (`build_jar_file_data`) from just
+/// the FIRST class-like symbol it happens to find. A real JAR spans many
+/// packages across its symbols, so that single value can be wrong for any
+/// OTHER symbol in the same JAR. The codebase already has an accurate
+/// per-symbol lookup for this (`jar_symbol_package`, backed by the
+/// `jar_symbol_packages` side table) -- the denylist check must consult it
+/// first, not just the file-level approximation.
+#[test]
+fn denylisted_check_uses_the_real_per_symbol_package_not_the_jars_first_symbol_guess() {
+    let indexer = Indexer::new();
+    // Both candidates live in the SAME jar-derived synthetic file -- the
+    // realistic multi-package-JAR shape. The file-level `package` is a
+    // first-symbol guess that happens to equal the REAL candidate's package,
+    // not the decoy's -- exactly the case a naive file-level check gets wrong.
+    let same_jar_uri = gradle_cache_jar_uri("android", "multi-pkg-stubs", "1.0.0");
+    indexer.jar_definitions.insert(
+        "Activity".to_owned(),
+        vec![
+            Location {
+                uri: same_jar_uri.clone(),
+                range: Range {
+                    start: Position::new(0, 0),
+                    end: Position::new(0, 8),
+                },
+            },
+            Location {
+                uri: same_jar_uri.clone(),
+                range: Range {
+                    start: Position::new(1, 0),
+                    end: Position::new(1, 8),
+                },
+            },
+        ],
+    );
+    indexer.jar_files.insert(
+        same_jar_uri.to_string(),
+        Arc::new(FileData {
+            package: Some("android.app".to_owned()),
+            ..Default::default()
+        }),
+    );
+    // Per-symbol ground truth: line 0 (the decoy) is really
+    // com.android.internal.*, contradicting the file-level guess above.
+    indexer.jar_symbol_packages.insert(
+        same_jar_uri.to_string(),
+        vec![
+            "com.android.internal.telephony".to_owned(),
+            "android.app".to_owned(),
+        ],
+    );
+
+    let bar_uri = uri("/app/Bar.kt");
+    indexer.index_content(&bar_uri, "class Bar : Activity()\n");
+
+    // `supertype_targets`'s own `(name, uri)` output can't distinguish which
+    // of two same-URI candidates survived (both share `same_jar_uri`) --
+    // call the ambiguity-safe resolver directly instead, so the surviving
+    // candidate's own `range` (line 1, the real one) can be asserted on.
+    let locs = super::super::resolve_symbol_hierarchy_ambiguity_safe(
+        &indexer,
+        "Activity",
+        &bar_uri,
+        Some(&bar_uri),
+    );
+    assert_eq!(
+        locs,
+        vec![Location {
+            uri: same_jar_uri,
+            range: Range {
+                start: Position::new(1, 0),
+                end: Position::new(1, 8),
+            },
+        }],
+        "expected the per-symbol-denylisted line-0 candidate to be excluded \
+         using its real per-symbol package, not the file-level first-symbol \
+         guess, got {locs:?}"
     );
 }
 
