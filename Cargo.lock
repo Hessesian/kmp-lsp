@@ -1609,8 +1609,9 @@ checksum = "009994f150cc0cd50ff54917d5bc8bffe8cad10ca10d81c34da2ec421ae61782"
 
 [[package]]
 name = "tree-sitter-swift-bundled"
-version = "0.1.0"
-source = "git+https://github.com/Hessesian/tree-sitter-swift?rev=00ddccfa09fc556f7e1120d3d3a2fd62ec86bd65#00ddccfa09fc556f7e1120d3d3a2fd62ec86bd65"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "71f8a1d8fae8824c9f73871e36b2a49ff0516ed9ef561eff1a522b2eef7bd487"
 dependencies = [
  "cc",
  "tree-sitter",

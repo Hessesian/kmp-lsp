@@ -33,11 +33,14 @@ tree-sitter-java = "0.23"
 # aliased under the same crate name so every `tree_sitter_kotlin::` path in this
 # codebase keeps working unchanged.
 tree-sitter-kotlin = { package = "brokk-tree-sitter-kotlin", version = "0.4.0" }
-# The published crate hard-pins tree-sitter = "0.22", which conflicts with
-# the core bump above (Cargo's `links` uniqueness rule) — this is our own
-# sibling repo (https://github.com/Hessesian/tree-sitter-swift), bumped to
-# 0.26 there and referenced by rev rather than vendoring its source here.
-tree-sitter-swift-bundled = { git = "https://github.com/Hessesian/tree-sitter-swift", rev = "00ddccfa09fc556f7e1120d3d3a2fd62ec86bd65" }
+# Our own sibling repo (https://github.com/Hessesian/tree-sitter-swift),
+# bumped to tree-sitter 0.26 there (the published 0.1.0 hard-pinned 0.22,
+# which conflicted with the core bump above via Cargo's `links` uniqueness
+# rule) and published as 0.2.0. A git+rev reference here would resolve fine
+# locally but silently breaks `cargo publish` for kmp-lsp itself — crates.io
+# refuses to publish any crate whose dependency graph includes an
+# un-versioned git dependency — so this must stay a normal version dependency.
+tree-sitter-swift-bundled = "0.2.0"
 
 # Concurrent index storage (no Mutex needed)
 dashmap = "5"
