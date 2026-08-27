@@ -789,6 +789,12 @@ fn is_default_import_type(name: &str) -> bool {
         | "MutableIterable" | "MutableCollection" | "MutableList" | "MutableSet"
         | "MutableMap" | "ArrayList" | "HashMap" | "HashSet" | "LinkedHashMap"
         | "LinkedHashSet"
+        // kotlin.* specialized primitive array types (default-imported, same as
+        // `Array` above) -- real, measured false-positive source: `ByteArray`
+        // alone was 45% of the missing-import POC's total flags on the Moneta
+        // corpus before this fix.
+        | "ByteArray" | "CharArray" | "ShortArray" | "IntArray" | "LongArray"
+        | "FloatArray" | "DoubleArray" | "BooleanArray"
         // kotlin.sequences.*
         | "Sequence"
     )
@@ -2191,17 +2197,37 @@ pub(crate) fn is_stdlib(pkg: &str) -> bool {
 /// candidates for bare `String`, and NONE of them is the real class — see
 /// `docs/superpowers/specs/2026-08-27-kotlin-builtin-type-platform-mapping-design.md`.
 ///
-/// Deliberately narrow (2 entries, the ones directly evidenced by
-/// measurement) — Kotlin has roughly 20 mapped types in total
-/// (`Any`/`Throwable`/`Number`/the boxed primitives/the collection
-/// interfaces/...), but adding the rest speculatively, without real corpus
-/// evidence each one is actually hit, would violate the same
-/// "evidenced-only, not a broad heuristic" discipline
-/// [`DENYLISTED_PACKAGE_PREFIXES`] already established. Extending this list
-/// is a mechanical follow-up once a real gap is measured, not a redesign.
+/// Deliberately narrow (`String`/`CharSequence` plus the
+/// `kotlin.collections.*` interfaces, the ones directly evidenced by
+/// measurement so far) — Kotlin has roughly 20 mapped types in total
+/// (`Any`/`Throwable`/`Number`/the boxed primitives/...), but adding the
+/// rest speculatively, without real corpus evidence each one is actually
+/// hit, would violate the same "evidenced-only, not a broad heuristic"
+/// discipline [`DENYLISTED_PACKAGE_PREFIXES`] already established.
+/// Extending this list is a mechanical follow-up once a real gap is
+/// measured, not a redesign.
 const KOTLIN_BUILTIN_TYPE_PLATFORM_EQUIVALENTS: &[(&str, &str)] = &[
     ("String", "java.lang.String"),
     ("CharSequence", "java.lang.CharSequence"),
+    // kotlin.collections.* interfaces -- same "compiler-intrinsic mapped
+    // type, no compiled .class anywhere in kotlin-stdlib's JAR" shape as
+    // String/CharSequence above (verified the same way: `unzip -l
+    // kotlin-stdlib-*.jar | grep List.class` etc. -> no output). Kotlin's
+    // read-only/mutable pairs (`List`/`MutableList`, ...) are a compile-time
+    // view over ONE real platform interface -- both map to the same target,
+    // which is why e.g. `MutableList` and `List` share a value here.
+    ("List", "java.util.List"),
+    ("MutableList", "java.util.List"),
+    ("Set", "java.util.Set"),
+    ("MutableSet", "java.util.Set"),
+    ("Map", "java.util.Map"),
+    ("MutableMap", "java.util.Map"),
+    ("Collection", "java.util.Collection"),
+    ("MutableCollection", "java.util.Collection"),
+    ("Iterable", "java.lang.Iterable"),
+    ("MutableIterable", "java.lang.Iterable"),
+    ("Iterator", "java.util.Iterator"),
+    ("MutableIterator", "java.util.Iterator"),
 ];
 
 /// Last-resort fallback for a Kotlin compiler-intrinsic built-in type name
@@ -2236,6 +2262,14 @@ pub(crate) fn resolve_kotlin_builtin_type_platform_equivalent(
     else {
         return vec![];
     };
+    // The platform type's own simple name, NOT `name` -- some entries
+    // (`MutableList` -> `java.util.List`) map a Kotlin-only spelling onto a
+    // real interface declared under a DIFFERENT simple name; searching the
+    // target file for a symbol literally called "MutableList" would always
+    // come up empty.
+    let Some(platform_simple_name) = platform_fqn.rsplit('.').next() else {
+        return vec![];
+    };
     let Some(workspace_root) = indexer.workspace_root.get() else {
         return vec![];
     };
@@ -2252,7 +2286,7 @@ pub(crate) fn resolve_kotlin_builtin_type_platform_equivalent(
             };
             indexer.index_content(&file_uri, &content);
         }
-        let locs = find_name_in_uri(indexer, name, file_uri_str);
+        let locs = find_name_in_uri(indexer, platform_simple_name, file_uri_str);
         if !locs.is_empty() {
             return locs;
         }
