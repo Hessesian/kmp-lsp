@@ -28,7 +28,10 @@ use crate::types::{FileData, FileIndexResult, Visibility};
 ///      `extension_receiver`, `extension_receiver_type`, `doc`) moved behind a
 ///      boxed `cold: Option<Box<SymbolColdFields>>` — a positional bincode
 ///      layout change, so older caches must be rejected and rescanned.
-pub(crate) const CACHE_VERSION: u32 = 30;
+/// v31: `parse_kotlin` now synthesizes `entries`/`values`/`valueOf` symbols
+///      for every enum class — a cached pre-v31 file's symbol list lacks
+///      them, so older caches must be rejected and rescanned.
+pub(crate) const CACHE_VERSION: u32 = 31;
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
