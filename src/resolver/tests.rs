@@ -1,3 +1,4 @@
+use super::shared_fixture_tests::gradle_cache_jar_uri;
 use super::*;
 use crate::indexer::{CallShape, Indexer};
 use crate::parser::{parse_java, parse_kotlin};
@@ -296,6 +297,69 @@ fn resolve_symbol_index_only_never_spawns_rg_or_fd() {
         index_only.is_empty(),
         "IndexOnly must never spawn rg, so it can't find a target only \
          reachable via the filesystem tail fallback, got: {index_only:?}"
+    );
+}
+
+/// `ResolveIo::IndexOnly`'s tail must apply the same denylist-first
+/// ambiguity tie-break `ResolveIo::HierarchyAmbiguitySafe` already uses
+/// (`ambiguity_safe_tail_with_denylist`), not the older plain
+/// unique-match-only rule. Real, measured bug: resolving a bare qualifier
+/// root like `String` (as `resolve_qualified`'s uppercase branch does before
+/// it can even attempt a member/extension lookup on it) hit exactly this
+/// tail on the real Moneta corpus, found 13 candidates including a
+/// `com.android.internal.*`-shaped decoy, and declined outright — which in
+/// turn meant a real receiver type could never resolve at all, no matter how
+/// correct any downstream member/extension lookup was.
+#[test]
+fn resolve_symbol_index_only_tail_applies_the_denylist_tie_break() {
+    let idx = Indexer::new();
+    // No `!/<entry>` suffix -- real compiled-JAR-derived `jar_definitions`
+    // entries key the whole JAR as one synthetic file (see `gradle_cache_jar_uri`),
+    // not a per-class entry path.
+    let decoy_uri = Url::parse("jar:file:///decoy.jar").unwrap();
+    let real_uri = Url::parse("jar:file:///real-stdlib.jar").unwrap();
+    // Denylisted decoy indexed first, matching this file's established
+    // convention of seeding the wrong candidate first.
+    idx.jar_definitions.insert(
+        "String".to_owned(),
+        vec![
+            tower_lsp::lsp_types::Location {
+                uri: decoy_uri.clone(),
+                range: Default::default(),
+            },
+            tower_lsp::lsp_types::Location {
+                uri: real_uri.clone(),
+                range: Default::default(),
+            },
+        ],
+    );
+    idx.jar_files.insert(
+        decoy_uri.to_string(),
+        std::sync::Arc::new(crate::types::FileData {
+            package: Some("com.android.internal.telephony".to_owned()),
+            ..Default::default()
+        }),
+    );
+    idx.jar_files.insert(
+        real_uri.to_string(),
+        std::sync::Arc::new(crate::types::FileData {
+            package: Some("kotlin".to_owned()),
+            ..Default::default()
+        }),
+    );
+
+    let host_uri = uri("/Host.kt");
+    idx.index_content(&host_uri, "package com.pkg\n");
+
+    let locs = resolve_symbol_index_only(&idx, "String", None, &host_uri);
+    assert_eq!(
+        locs,
+        vec![tower_lsp::lsp_types::Location {
+            uri: real_uri,
+            range: Default::default(),
+        }],
+        "expected the com.android.internal.* decoy to be excluded, leaving \
+         the real kotlin.String as a unique match, got {locs:?}"
     );
 }
 
@@ -951,6 +1015,696 @@ fn resolve_nested_type_via_variable_annotation() {
     let locs = resolve_symbol(&idx, "create", Some("factory"), &host_uri);
     assert!(!locs.is_empty(), "create not found via nested type Factory");
     assert_eq!(locs[0].uri, reducer_uri);
+}
+
+#[test]
+fn resolve_qualified_extension_falls_back_to_supertype_when_receiver_type_has_no_own_match() {
+    // `receiver.toViewText()` where `receiver`'s static type is `Str`, which
+    // implements `Seq`, and `toViewText` is declared as an extension on
+    // `Seq`, not `Str` itself. `extension_by_receiver` is an exact-string-key
+    // lookup on the receiver's own leaf type name (see its own doc comment),
+    // so a plain `resolve_extension_in_scope(idx, "Str", ...)` finds nothing
+    // -- this must instead walk `Str`'s supertype hierarchy and find the
+    // extension declared on its ancestor `Seq`.
+    //
+    // This mirrors a real, measured Moneta bug: `fun CharSequence?.
+    // toViewText()` never resolved for a `String` receiver (`String`
+    // implements `CharSequence`) via this exact mechanism -- the single
+    // largest component (~23%) of the resolution-accuracy benchmark's
+    // ambiguous (FilteredCandidate) bucket on the real corpus.
+    //
+    // Critically, `toViewText` is declared in a THIRD file, separate from
+    // `Seq`'s own declaration -- the normal real-world shape (an extension
+    // almost never lives in the same file as the class it extends). Colocating
+    // them would let `resolve_from_class_hierarchy_scoped`'s existing
+    // `find_name_in_uri` (a blunt whole-file name scan with no
+    // extension-vs-member awareness) accidentally find it as a false
+    // positive, masking the actual bug this test targets.
+    let host_uri = uri("/Host.kt");
+    let str_uri = uri("/Str.kt");
+    let seq_uri = uri("/Seq.kt");
+    let ext_uri = uri("/SeqExtensions.kt");
+    let idx = Indexer::new();
+    idx.index_content(&seq_uri, "package com.pkg\ninterface Seq\n");
+    idx.index_content(&str_uri, "package com.pkg\nclass Str : Seq\n");
+    idx.index_content(
+        &ext_uri,
+        "package com.pkg\nfun Seq.toViewText(): String = TODO()\n",
+    );
+    idx.index_content(
+        &host_uri,
+        "package com.pkg\nfun foo(receiver: Str) { receiver.toViewText() }\n",
+    );
+
+    // `receiver_type: Some("Str")` mirrors exactly what `resolve_identity`
+    // passes in production -- an already-resolved, capitalized type name.
+    let locs = resolve_symbol(&idx, "toViewText", Some("Str"), &host_uri);
+    assert!(
+        !locs.is_empty(),
+        "toViewText declared on supertype Seq must be found via a Str receiver"
+    );
+    assert_eq!(locs[0].uri, ext_uri);
+}
+
+#[test]
+fn resolve_qualified_supertype_extension_fallback_prefers_the_nearest_ancestor() {
+    // Copilot review finding (real): `resolve_extension_via_supertype_hierarchy`
+    // used `walk_hierarchy`'s full collected `Vec`, returning EVERY matching
+    // ancestor extension across the whole chain, not just the nearest one.
+    // Kotlin's own extension resolution prefers the most specific applicable
+    // receiver type -- if `Str : Near : Far` and BOTH `Near` and `Far` (an
+    // ancestor of `Near`) declare their own `toViewText` extension, a `Str`
+    // receiver must resolve to `Near`'s (the nearer, more specific one), not
+    // return both as if genuinely ambiguous.
+    let host_uri = uri("/Host.kt");
+    let str_uri = uri("/Str.kt");
+    let near_uri = uri("/Near.kt");
+    let far_uri = uri("/Far.kt");
+    let near_ext_uri = uri("/NearExtensions.kt");
+    let far_ext_uri = uri("/FarExtensions.kt");
+    let idx = Indexer::new();
+    idx.index_content(&far_uri, "package com.pkg\ninterface Far\n");
+    idx.index_content(&near_uri, "package com.pkg\ninterface Near : Far\n");
+    idx.index_content(&str_uri, "package com.pkg\nclass Str : Near\n");
+    idx.index_content(
+        &far_ext_uri,
+        "package com.pkg\nfun Far.toViewText(): String = TODO()\n",
+    );
+    idx.index_content(
+        &near_ext_uri,
+        "package com.pkg\nfun Near.toViewText(): String = TODO()\n",
+    );
+    idx.index_content(
+        &host_uri,
+        "package com.pkg\nfun foo(receiver: Str) { receiver.toViewText() }\n",
+    );
+
+    let locs = resolve_symbol(&idx, "toViewText", Some("Str"), &host_uri);
+    assert_eq!(
+        locs.len(),
+        1,
+        "expected exactly the nearest ancestor's extension, not every \
+         ancestor's, got {locs:?}"
+    );
+    assert_eq!(
+        locs[0].uri, near_ext_uri,
+        "expected Near's toViewText (the nearer, more specific ancestor), \
+         got a location in {:?}",
+        locs[0].uri
+    );
+}
+
+#[test]
+fn resolve_qualified_supertype_extension_fallback_prefers_the_nearer_of_two_direct_supertypes() {
+    // Copilot review follow-up (real, distinct from the single-chain case
+    // above): depth-first traversal's "first collected" match is NOT always
+    // the nearest one when a class has MULTIPLE direct supertypes -- an
+    // entirely ordinary Kotlin shape (implementing several interfaces).
+    // `Str : First, Second` where `First` (direct, hop 1) has no match of
+    // its own but its OWN ancestor `DeepAncestor` (hop 2) does, while
+    // `Second` (ALSO direct, hop 1) has its own matching extension.
+    // Depth-first fully explores `First`'s entire chain (finding
+    // `DeepAncestor`'s hop-2 match) before ever reaching `Second` at all --
+    // so a naive "first in the collected list" pick would wrongly prefer
+    // the FARTHER `DeepAncestor` over the nearer, direct `Second`.
+    let host_uri = uri("/Host.kt");
+    let str_uri = uri("/Str.kt");
+    let first_uri = uri("/First.kt");
+    let deep_ancestor_uri = uri("/DeepAncestor.kt");
+    let second_uri = uri("/Second.kt");
+    let deep_ext_uri = uri("/DeepExtensions.kt");
+    let second_ext_uri = uri("/SecondExtensions.kt");
+    let idx = Indexer::new();
+    idx.index_content(
+        &deep_ancestor_uri,
+        "package com.pkg\ninterface DeepAncestor\n",
+    );
+    idx.index_content(
+        &first_uri,
+        "package com.pkg\ninterface First : DeepAncestor\n",
+    );
+    idx.index_content(&second_uri, "package com.pkg\ninterface Second\n");
+    idx.index_content(&str_uri, "package com.pkg\nclass Str : First, Second\n");
+    idx.index_content(
+        &deep_ext_uri,
+        "package com.pkg\nfun DeepAncestor.toViewText(): String = TODO()\n",
+    );
+    idx.index_content(
+        &second_ext_uri,
+        "package com.pkg\nfun Second.toViewText(): String = TODO()\n",
+    );
+    idx.index_content(
+        &host_uri,
+        "package com.pkg\nfun foo(receiver: Str) { receiver.toViewText() }\n",
+    );
+
+    let locs = resolve_symbol(&idx, "toViewText", Some("Str"), &host_uri);
+    assert_eq!(
+        locs.len(),
+        1,
+        "expected exactly the nearer direct supertype's extension, got {locs:?}"
+    );
+    assert_eq!(
+        locs[0].uri, second_ext_uri,
+        "expected Second's toViewText (a direct, hop-1 supertype) over \
+         DeepAncestor's (First's own hop-2 ancestor), got a location in {:?}",
+        locs[0].uri
+    );
+}
+
+#[test]
+fn resolve_qualified_member_on_concrete_type_still_shadows_supertype_extension() {
+    // Kotlin's own precedence rule: a real member on the concrete receiver
+    // type always wins over a same-named extension declared on an ancestor
+    // type, even after the new supertype-extension fallback is added.
+    let host_uri = uri("/Host.kt");
+    let str_uri = uri("/Str.kt");
+    let seq_uri = uri("/Seq.kt");
+    let idx = Indexer::new();
+    idx.index_content(
+        &seq_uri,
+        "package com.pkg\ninterface Seq\nfun Seq.toViewText(): String = TODO()\n",
+    );
+    idx.index_content(
+        &str_uri,
+        "package com.pkg\nclass Str : Seq {\n  fun toViewText(): String = \"own\"\n}\n",
+    );
+    idx.index_content(
+        &host_uri,
+        "package com.pkg\nfun foo(receiver: Str) { receiver.toViewText() }\n",
+    );
+
+    let locs = resolve_symbol(&idx, "toViewText", Some("Str"), &host_uri);
+    assert!(!locs.is_empty(), "toViewText not found at all");
+    assert_eq!(
+        locs[0].uri, str_uri,
+        "Str's own member toViewText must shadow Seq's extension, got a location in {:?}",
+        locs[0].uri
+    );
+}
+
+#[test]
+fn resolve_qualified_supertype_extension_fallback_threads_the_real_origin_uri() {
+    // Copilot review finding on PR #289: the new supertype-extension-fallback
+    // `walk_hierarchy` call passed `CallerContext::default()`, so its
+    // `origin_uri` (used only for module-scoped ambiguity narrowing) fell
+    // back to `start_uri` -- here, the JAR-backed receiver type's own
+    // declaring file, NOT the real calling file. `owning_module_dependencies`
+    // can't map a `jar:` URI to any module, so whenever an ancestor's own
+    // name is ambiguous and only module-scoping (not the denylist) can
+    // narrow it, the walk would incorrectly decline and miss a valid
+    // ancestor extension entirely.
+    //
+    // Reproduces the real shape: `Str` (the receiver) is itself JAR-backed
+    // (mirroring `String` resolving from kotlin-stdlib), with an ambiguous
+    // "Seq" supertype -- two same-named JAR candidates, distinguishable only
+    // by which one is a real dependency of the CALLING file's module.
+    let indexer = Indexer::new();
+    let host_uri = uri("/app/Host.kt");
+    indexer.index_content(
+        &host_uri,
+        concat!(
+            "package com.app\n",
+            "import com.example.Str\n",
+            "import com.example.seqlib.toViewText\n",
+            "fun foo(receiver: Str) { receiver.toViewText() }\n",
+        ),
+    );
+
+    let str_uri = gradle_cache_jar_uri("com.example", "str-lib", "1.0.0");
+    let decoy_seq_uri = gradle_cache_jar_uri("com.example.decoy", "decoy-lib", "1.0.0");
+    let real_seq_uri = gradle_cache_jar_uri("com.example", "seq-lib", "2.0.0");
+
+    indexer.jar_definitions.insert(
+        "Str".to_owned(),
+        vec![tower_lsp::lsp_types::Location {
+            uri: str_uri.clone(),
+            range: Default::default(),
+        }],
+    );
+    // Decoy indexed first, matching this file's established convention.
+    indexer.jar_definitions.insert(
+        "Seq".to_owned(),
+        vec![
+            tower_lsp::lsp_types::Location {
+                uri: decoy_seq_uri,
+                range: Default::default(),
+            },
+            tower_lsp::lsp_types::Location {
+                uri: real_seq_uri.clone(),
+                range: Default::default(),
+            },
+        ],
+    );
+    indexer.jar_files.insert(
+        str_uri.to_string(),
+        std::sync::Arc::new(crate::types::FileData {
+            supers: vec![(0, "Seq".to_owned(), Vec::new())],
+            ..Default::default()
+        }),
+    );
+    indexer.jar_files.insert(
+        real_seq_uri.to_string(),
+        std::sync::Arc::new(crate::types::FileData {
+            package: Some("com.example.seqlib".to_owned()),
+            ..Default::default()
+        }),
+    );
+
+    // Only `Host.kt`'s own module (content root `/app`) depends on the real
+    // `com.example:seq-lib` artifact.
+    let mut dependencies_by_content_root: std::collections::HashMap<
+        std::path::PathBuf,
+        std::collections::HashSet<crate::cli::extract_sources::GradleMeta>,
+    > = std::collections::HashMap::new();
+    dependencies_by_content_root.insert(
+        std::path::PathBuf::from("/test/app"),
+        std::collections::HashSet::from([crate::cli::extract_sources::GradleMeta {
+            group: "com.example".to_owned(),
+            artifact: "seq-lib".to_owned(),
+            version: "2.0.0".to_owned(),
+        }]),
+    );
+    *indexer.module_dependencies.write().unwrap() = dependencies_by_content_root;
+
+    // Extension registered on the correctly-narrowed "Seq" ancestor only.
+    indexer.extension_by_receiver.insert(
+        "Seq".to_owned(),
+        vec![crate::types::ExtensionEntry {
+            file_uri: real_seq_uri.to_string(),
+            name: "toViewText".to_owned(),
+            kind: tower_lsp::lsp_types::SymbolKind::FUNCTION,
+            detail: "fun Seq.toViewText(): String".to_owned(),
+            visibility: crate::types::Visibility::Public,
+            package: Some("com.example.seqlib".to_owned()),
+            trailing_lambda: false,
+            deprecated: false,
+            container: None,
+        }],
+    );
+
+    let locs = resolve_symbol(&indexer, "toViewText", Some("Str"), &host_uri);
+    assert!(
+        !locs.is_empty(),
+        "expected the module-scoped tie-break to narrow the ambiguous Seq \
+         supertype using Host.kt's own real origin, not the JAR-backed Str \
+         receiver's own declaring file, and find toViewText on it"
+    );
+}
+
+#[test]
+fn resolve_qualified_inherited_member_lookup_threads_the_real_origin_uri() {
+    // Copilot review follow-up on PR #289: the pre-existing inherited-member
+    // hierarchy walk (`resolve_from_class_hierarchy_scoped`, called from the
+    // same `resolve_qualified` uppercase-root branch, one step before the new
+    // supertype-extension fallback) has the identical bug the extension
+    // fallback was just fixed for -- it also passes `CallerContext::default()`,
+    // so it also falls back to the JAR-backed receiver's own declaring file
+    // as its `origin_uri`, also disabling module-scoped ambiguity narrowing
+    // for a real inherited MEMBER (not just an extension) on an ambiguous
+    // ancestor. Same reproduction shape as the extension-fallback test above,
+    // but `Seq` declares a real member `getInfo()` instead of an extension.
+    let indexer = Indexer::new();
+    let host_uri = uri("/app/Host.kt");
+    indexer.index_content(
+        &host_uri,
+        concat!(
+            "package com.app\n",
+            "import com.example.Str\n",
+            "fun foo(receiver: Str) { receiver.getInfo() }\n",
+        ),
+    );
+
+    let str_uri = gradle_cache_jar_uri("com.example", "str-lib", "1.0.0");
+    let decoy_seq_uri = gradle_cache_jar_uri("com.example.decoy", "decoy-lib", "1.0.0");
+    let real_seq_uri = gradle_cache_jar_uri("com.example", "seq-lib", "2.0.0");
+
+    indexer.jar_definitions.insert(
+        "Str".to_owned(),
+        vec![tower_lsp::lsp_types::Location {
+            uri: str_uri.clone(),
+            range: Default::default(),
+        }],
+    );
+    indexer.jar_definitions.insert(
+        "Seq".to_owned(),
+        vec![
+            tower_lsp::lsp_types::Location {
+                uri: decoy_seq_uri,
+                range: Default::default(),
+            },
+            tower_lsp::lsp_types::Location {
+                uri: real_seq_uri.clone(),
+                range: Default::default(),
+            },
+        ],
+    );
+    indexer.jar_files.insert(
+        str_uri.to_string(),
+        std::sync::Arc::new(crate::types::FileData {
+            supers: vec![(0, "Seq".to_owned(), Vec::new())],
+            ..Default::default()
+        }),
+    );
+    indexer.jar_files.insert(
+        real_seq_uri.to_string(),
+        std::sync::Arc::new(crate::types::FileData {
+            package: Some("com.example.seqlib".to_owned()),
+            symbols: vec![crate::types::SymbolEntry {
+                name: "getInfo".to_owned(),
+                kind: tower_lsp::lsp_types::SymbolKind::METHOD,
+                visibility: crate::types::Visibility::Public,
+                range: Default::default(),
+                selection_range: Default::default(),
+                detail: "fun getInfo(): String".to_owned(),
+                params: String::new(),
+                param_counts: (0, 0),
+                container: None,
+                cold: None,
+                trailing_lambda: false,
+                deprecated: false,
+            }],
+            ..Default::default()
+        }),
+    );
+
+    let mut dependencies_by_content_root: std::collections::HashMap<
+        std::path::PathBuf,
+        std::collections::HashSet<crate::cli::extract_sources::GradleMeta>,
+    > = std::collections::HashMap::new();
+    dependencies_by_content_root.insert(
+        std::path::PathBuf::from("/test/app"),
+        std::collections::HashSet::from([crate::cli::extract_sources::GradleMeta {
+            group: "com.example".to_owned(),
+            artifact: "seq-lib".to_owned(),
+            version: "2.0.0".to_owned(),
+        }]),
+    );
+    *indexer.module_dependencies.write().unwrap() = dependencies_by_content_root;
+
+    let locs = resolve_symbol(&indexer, "getInfo", Some("Str"), &host_uri);
+    assert!(
+        !locs.is_empty(),
+        "expected the module-scoped tie-break to narrow the ambiguous Seq \
+         supertype using Host.kt's own real origin, not the JAR-backed Str \
+         receiver's own declaring file, and find the inherited member getInfo on it"
+    );
+}
+
+#[test]
+fn resolve_qualified_supertype_extension_fallback_handles_a_fully_qualified_supertype_spelling() {
+    // Copilot review finding on PR #289: `walk_hierarchy` yields `super_name`
+    // exactly as written in the source's own delegation-specifier text
+    // (`user_type_name` joins every dotted segment) -- a fully-qualified
+    // supertype spelling like `class Str : com.other.Seq` produces
+    // `super_name = "com.other.Seq"`, not the bare `"Seq"`. `extension_by_receiver`
+    // is keyed by the receiver's SIMPLE leaf name only (every other caller in
+    // this file strips qualification via `.last_segment()` before looking it
+    // up, e.g. `let root_base = root.last_segment();` a few lines above this
+    // fallback) -- passing the qualified name straight through would silently
+    // miss the extension.
+    let host_uri = uri("/Host.kt");
+    let str_uri = uri("/Str.kt");
+    let seq_uri = uri("/Seq.kt");
+    let ext_uri = uri("/SeqExtensions.kt");
+    let idx = Indexer::new();
+    idx.index_content(&seq_uri, "package com.other\ninterface Seq\n");
+    // Fully-qualified delegation specifier -- no import needed for this shape.
+    idx.index_content(&str_uri, "package com.pkg\nclass Str : com.other.Seq\n");
+    idx.index_content(
+        &ext_uri,
+        "package com.pkg\nfun Seq.toViewText(): String = TODO()\n",
+    );
+    idx.index_content(
+        &host_uri,
+        "package com.pkg\nfun foo(receiver: Str) { receiver.toViewText() }\n",
+    );
+
+    let locs = resolve_symbol(&idx, "toViewText", Some("Str"), &host_uri);
+    assert!(
+        !locs.is_empty(),
+        "toViewText declared on a fully-qualified supertype spelling (com.other.Seq) \
+         must still be found via a Str receiver"
+    );
+    assert_eq!(locs[0].uri, ext_uri);
+}
+
+#[test]
+fn resolve_qualified_fully_qualified_supertype_resolves_the_named_package_not_a_same_leaf_decoy() {
+    // Copilot review follow-up: naively stripping a fully-qualified supertype
+    // spelling to its bare leaf (the previous commit's fix) risks resolving
+    // to the WRONG class when a different, same-leaf-named symbol is also
+    // reachable from the subclass's own file -- e.g. a decoy `Seq` declared
+    // in the subclass's own package, shadowing the real, explicitly
+    // qualified `com.other.Seq` the source actually named. A qualified
+    // spelling exists specifically to disambiguate from exactly this kind
+    // of same-leaf collision, so silently discarding the qualifier and
+    // letting same-package resolution win would be a real regression (a
+    // wrong answer), not just a missed match (no answer) -- exercised via
+    // inherited-MEMBER lookup, where which specific file the walk resolves
+    // to actually matters (unlike the extension-lookup path, which is keyed
+    // by receiver leaf name alone regardless of which same-named class was
+    // reached).
+    let host_uri = uri("/Host.kt");
+    let str_uri = uri("/Str.kt");
+    let decoy_seq_uri = uri("/DecoySeq.kt");
+    let real_seq_uri = uri("/Seq.kt");
+    let idx = Indexer::new();
+    // Decoy: same package as Str.kt, same leaf name "Seq" -- what a naive
+    // same-package resolution of the bare leaf would find first. Declares
+    // the SAME member name as the real Seq, so a wrong resolution would
+    // still "succeed" (non-empty) but at the wrong location.
+    idx.index_content(
+        &decoy_seq_uri,
+        "package com.pkg\ninterface Seq {\n  fun getInfo(): String\n}\n",
+    );
+    idx.index_content(
+        &real_seq_uri,
+        "package com.other\ninterface Seq {\n  fun getInfo(): String\n}\n",
+    );
+    idx.index_content(&str_uri, "package com.pkg\nclass Str : com.other.Seq\n");
+    idx.index_content(
+        &host_uri,
+        "package com.pkg\nfun foo(receiver: Str) { receiver.getInfo() }\n",
+    );
+
+    let locs = resolve_symbol(&idx, "getInfo", Some("Str"), &host_uri);
+    assert!(
+        !locs.is_empty(),
+        "getInfo on the correctly-qualified com.other.Seq must still resolve"
+    );
+    assert_eq!(
+        locs[0].uri, real_seq_uri,
+        "must resolve via the real com.other.Seq the source actually named, \
+         not a same-package same-leaf decoy Seq, got a location in {:?}",
+        locs[0].uri
+    );
+}
+
+#[test]
+fn resolve_qualified_nested_type_supertype_is_not_mistaken_for_a_package_qualified_one() {
+    // Copilot review follow-up: `super_name.rsplit_once('.')` treats ANY
+    // dotted supertype spelling as package-qualified, but a NESTED-TYPE
+    // spelling (`class Str : Outer.Inner`, extending a type nested inside
+    // `Outer`) is dotted too, with no package involved at all -- "Outer" is
+    // a type name, not a package. Kotlin/Java convention (already relied on
+    // throughout this file, e.g. `root.starts_with_uppercase()`) is the
+    // discriminator: a real package segment is never uppercase-first, an
+    // enclosing type's name always is. Without checking this, `Outer.Inner`
+    // would incorrectly search for a package literally named "Outer" --
+    // real files that declare `package Outer` are rare but not impossible,
+    // and here one exists specifically to prove the wrong match.
+    let host_uri = uri("/Host.kt");
+    let str_uri = uri("/Str.kt");
+    let real_inner_uri = uri("/RealInner.kt");
+    let decoy_inner_uri = uri("/DecoyInner.kt");
+    let idx = Indexer::new();
+    // Decoy: a real (if unconventional) package literally named "Outer" --
+    // what the buggy package-qualified fast path would incorrectly match.
+    idx.index_content(
+        &decoy_inner_uri,
+        "package Outer\ninterface Inner {\n  fun getInfo(): String\n}\n",
+    );
+    // Real: same package as Str.kt, reachable via ordinary same-package
+    // resolution once the nested-type spelling correctly falls through to
+    // plain leaf-only resolution instead of a package-qualified lookup.
+    idx.index_content(
+        &real_inner_uri,
+        "package com.pkg\ninterface Inner {\n  fun getInfo(): String\n}\n",
+    );
+    idx.index_content(&str_uri, "package com.pkg\nclass Str : Outer.Inner\n");
+    idx.index_content(
+        &host_uri,
+        "package com.pkg\nfun foo(receiver: Str) { receiver.getInfo() }\n",
+    );
+
+    let locs = resolve_symbol(&idx, "getInfo", Some("Str"), &host_uri);
+    assert!(!locs.is_empty(), "getInfo must still resolve");
+    assert_eq!(
+        locs[0].uri, real_inner_uri,
+        "Outer.Inner must resolve as a nested-type supertype (falling through \
+         to plain same-package resolution of the leaf \"Inner\"), not be \
+         misread as package \"Outer\", symbol \"Inner\" -- got a location in {:?}",
+        locs[0].uri
+    );
+}
+
+#[test]
+fn resolve_qualified_nested_type_supertype_resolves_within_its_own_named_container() {
+    // Copilot review follow-up: once a dotted supertype spelling is
+    // correctly recognized as a nested-type chain (not package-qualified,
+    // the sibling test above), naively falling through to plain leaf-only
+    // resolution of just "Inner" still risks the SAME kind of same-leaf
+    // collision `find_symbol_in_package` was added to prevent for
+    // package-qualified spellings -- just for nested types instead.
+    //
+    // The decoy is placed behind an EXPLICIT IMPORT (not same-package) so
+    // this test is deterministic rather than depending on which of two
+    // same-package peers a first-match scan happens to iterate first: an
+    // import match is resolved by `resolve_via_imports`, a distinct,
+    // earlier step than the same-package scan, so only a genuine
+    // container-walk (not just "some" leaf-only resolution succeeding)
+    // can make this test pass for the right reason.
+    let host_uri = uri("/Host.kt");
+    let str_uri = uri("/Str.kt");
+    let outer_uri = uri("/Outer.kt");
+    let decoy_inner_uri = uri("/DecoyInner.kt");
+    let idx = Indexer::new();
+    idx.index_content(
+        &outer_uri,
+        concat!(
+            "package com.other\n",
+            "class Outer {\n",
+            "  interface Inner {\n",
+            "    fun getInfo(): String\n",
+            "  }\n",
+            "}\n",
+        ),
+    );
+    // Decoy: an unrelated top-level Inner, explicitly imported by Str.kt --
+    // what plain leaf-only resolution would find (via the import step),
+    // ignoring the container the source actually named.
+    idx.index_content(
+        &decoy_inner_uri,
+        "package com.decoy\ninterface Inner {\n  fun getInfo(): String\n}\n",
+    );
+    idx.index_content(
+        &str_uri,
+        concat!(
+            "package com.pkg\n",
+            "import com.other.Outer\n",
+            "import com.decoy.Inner\n",
+            "class Str : Outer.Inner\n",
+        ),
+    );
+    idx.index_content(
+        &host_uri,
+        "package com.pkg\nfun foo(receiver: Str) { receiver.getInfo() }\n",
+    );
+
+    let locs = resolve_symbol(&idx, "getInfo", Some("Str"), &host_uri);
+    assert!(!locs.is_empty(), "getInfo must still resolve");
+    assert_eq!(
+        locs[0].uri, outer_uri,
+        "Outer.Inner must resolve within Outer's own container, not the \
+         explicitly-imported unrelated top-level Inner decoy -- got a \
+         location in {:?}",
+        locs[0].uri
+    );
+}
+
+#[test]
+fn resolve_qualified_package_qualified_nested_type_supertype_resolves_correctly() {
+    // Copilot review finding (real): a supertype spelling combining BOTH a
+    // package qualifier AND nesting (`class Str : com.other.Outer.Inner`)
+    // was mishandled entirely -- the nested-type branch treated
+    // `super_name.split('.').next()` ("com") as the outermost TYPE segment,
+    // when it's actually a package segment. Real fix: skip leading
+    // lowercase (package) segments, resolve the first uppercase segment
+    // package-exactly there, then walk any remaining nested segments.
+    let host_uri = uri("/Host.kt");
+    let str_uri = uri("/Str.kt");
+    let outer_uri = uri("/Outer.kt");
+    let decoy_inner_uri = uri("/DecoyInner.kt");
+    let idx = Indexer::new();
+    idx.index_content(
+        &outer_uri,
+        concat!(
+            "package com.other\n",
+            "class Outer {\n",
+            "  interface Inner {\n",
+            "    fun getInfo(): String\n",
+            "  }\n",
+            "}\n",
+        ),
+    );
+    idx.index_content(
+        &decoy_inner_uri,
+        "package com.decoy\ninterface Inner {\n  fun getInfo(): String\n}\n",
+    );
+    idx.index_content(
+        &str_uri,
+        concat!(
+            "package com.pkg\n",
+            "import com.decoy.Inner\n",
+            "class Str : com.other.Outer.Inner\n",
+        ),
+    );
+    idx.index_content(
+        &host_uri,
+        "package com.pkg\nfun foo(receiver: Str) { receiver.getInfo() }\n",
+    );
+
+    let locs = resolve_symbol(&idx, "getInfo", Some("Str"), &host_uri);
+    assert!(!locs.is_empty(), "getInfo must still resolve");
+    assert_eq!(
+        locs[0].uri, outer_uri,
+        "com.other.Outer.Inner must resolve within the real, \
+         package-qualified Outer's own container, not the \
+         explicitly-imported unrelated Inner decoy -- got a location in {:?}",
+        locs[0].uri
+    );
+}
+
+#[test]
+fn find_symbol_in_package_uses_the_real_per_symbol_package_for_jar_candidates() {
+    // Copilot review follow-up: `find_symbol_in_package`'s JAR-check branch
+    // is what the qualified-supertype resolution fix relies on to be
+    // package-exact -- it must not fall back to leaf-only matching just
+    // because a multi-package JAR's file-level `FileData.package` (a
+    // first-symbol guess covering the WHOLE synthetic file) doesn't happen
+    // to equal the package actually being searched for.
+    let idx = Indexer::new();
+    let jar_uri = Url::parse("jar:file:///multi-pkg.jar").unwrap();
+    idx.jar_definitions.insert(
+        "Seq".to_owned(),
+        vec![tower_lsp::lsp_types::Location {
+            uri: jar_uri.clone(),
+            range: Default::default(),
+        }],
+    );
+    // File-level guess is some unrelated package; the per-symbol table
+    // (line 0, matching the location's synthetic range) has the real one.
+    idx.jar_files.insert(
+        jar_uri.to_string(),
+        std::sync::Arc::new(crate::types::FileData {
+            package: Some("com.wrong.guess".to_owned()),
+            ..Default::default()
+        }),
+    );
+    idx.jar_symbol_packages
+        .insert(jar_uri.to_string(), vec!["com.other".to_owned()]);
+
+    let loc = find_symbol_in_package(&idx, "Seq", "com.other");
+    assert_eq!(
+        loc,
+        Some(tower_lsp::lsp_types::Location {
+            uri: jar_uri,
+            range: Default::default(),
+        }),
+        "expected the real per-symbol package (com.other) to be used, not \
+         the file-level first-symbol guess (com.wrong.guess), got {loc:?}"
+    );
 }
 
 #[test]

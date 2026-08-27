@@ -4,6 +4,7 @@ use std::collections::HashSet;
 
 use crate::indexer::{Indexer, InferDeps};
 use crate::types::{CallerContext, FileData};
+use crate::StrExt;
 
 /// Per-WALK cap on blocking sidecar-IPC promotion attempts for ancestor
 /// classes living in not-yet-materialized JARs. The walk runs on paths that
@@ -67,6 +68,60 @@ where
     };
     walker.recurse(start_class, start_uri, 0);
     walker.items
+}
+
+/// Breadth-first counterpart to [`walk_hierarchy`], for callers that need
+/// Kotlin's own "nearest, most specific applicable ancestor wins"
+/// precedence rather than every match across the whole chain.
+/// `walk_hierarchy`'s depth-first traversal fully explores one direct
+/// supertype's entire ancestor chain before ever touching the NEXT direct
+/// supertype — so when a class has multiple direct supertypes (an entirely
+/// ordinary Kotlin shape, e.g. implementing several interfaces), a farther
+/// ancestor found down the first branch can appear before a nearer,
+/// directly-implemented one down a sibling branch. This instead visits
+/// supertypes strictly level-by-level and returns as soon as ANY level
+/// produces a match — never checking, let alone returning, anything from a
+/// farther level once a nearer one has something.
+pub(crate) fn walk_hierarchy_breadth_first<T, F>(
+    idx: &Indexer,
+    start_class: &str,
+    start_uri: &str,
+    caller: CallerContext<'_>,
+    max_depth: usize,
+    mut sidecar_budget: usize,
+    collect: F,
+) -> Vec<T>
+where
+    F: Fn(&Indexer, &str, &str, CallerContext<'_>) -> Vec<T>,
+{
+    let origin_uri = caller.uri.unwrap_or(start_uri);
+    let mut visited: HashSet<(String, String)> =
+        HashSet::from([(start_uri.to_owned(), start_class.to_owned())]);
+    let mut current_level: Vec<(String, String)> =
+        vec![(start_class.to_owned(), start_uri.to_owned())];
+    for _ in 0..max_depth {
+        let mut next_level: Vec<(String, String)> = Vec::new();
+        let mut found: Vec<T> = Vec::new();
+        for (class_name, class_uri) in &current_level {
+            for (super_name, super_uri) in
+                supertype_targets(idx, class_name, class_uri, &mut sidecar_budget, origin_uri)
+            {
+                if !visited.insert((super_uri.clone(), super_name.clone())) {
+                    continue;
+                }
+                found.extend(collect(idx, &super_name, &super_uri, caller));
+                next_level.push((super_name, super_uri));
+            }
+        }
+        if !found.is_empty() {
+            return found;
+        }
+        if next_level.is_empty() {
+            break;
+        }
+        current_level = next_level;
+    }
+    Vec::new()
 }
 
 struct HierarchyWalker<'a, T, F>
@@ -147,9 +202,64 @@ fn supertype_targets(
             // BUDGETED per walk (see the constant above): unbudgeted, this
             // was the one promotion site reachable around every request cap.
             // `super_name` can be a dotted qualified spelling
-            // (`class X : com.lib.Base()`) — the accessor handles the
-            // bare-leaf fallback.
+            // (`class X : com.lib.Base()`) — `ensure_jar_definitions_for`
+            // handles that itself (tries the full name, falls back to the
+            // bare leaf), so it gets the original spelling.
             crate::indexer::jar::ensure_jar_definitions_for(idx, &super_name, sidecar_budget);
+            let super_leaf = super_name.last_segment().to_owned();
+            // A dotted spelling names either a package-qualified type
+            // (`com.other.Seq`), a nested-type chain (`Outer.Inner`), or
+            // both at once (`com.other.Outer.Inner`). Resolving it
+            // precisely — instead of falling straight to the leaf-only
+            // ambiguity-safe chain below, which is keyed by simple name
+            // only and could resolve to an unrelated same-leaf class
+            // reachable via same-package/import from this hop's own file —
+            // matters for the same reason in every one of these shapes:
+            // silently picking the WRONG supertype instead of the one the
+            // source specifically qualified to avoid exactly that.
+            //
+            // Package vs. type segments are told apart the same way
+            // `resolve_symbol_with_io`'s own dotted-name handling already
+            // does: skip leading lowercase (package) segments, the first
+            // uppercase segment is the outermost TYPE. A real package
+            // segment is never uppercase-first; an enclosing type's name
+            // always is.
+            if super_name.contains('.') {
+                let segments: Vec<&str> = super_name.split('.').collect();
+                if let Some(start) = segments.iter().position(|s| s.starts_with_uppercase()) {
+                    let outer = segments[start];
+                    let mut container = if start > 0 {
+                        // Leading lowercase segments are a real package --
+                        // resolve the outermost type there exactly
+                        // (`find_symbol_in_package`, no ambiguity risk).
+                        let pkg = segments[..start].join(".");
+                        super::find_symbol_in_package(idx, outer, &pkg)
+                    } else {
+                        // No package prefix at all -- a pure nested-type
+                        // chain. Resolve the outermost type ambiguity-safely.
+                        super::resolve_symbol_hierarchy_ambiguity_safe(
+                            idx,
+                            outer,
+                            &uri,
+                            origin_url.as_ref(),
+                        )
+                        .into_iter()
+                        .next()
+                    };
+                    // Walk any remaining nested-type segments
+                    // (`find_name_scoped_to_container`, the same helper
+                    // `resolve_qualified` already uses for this) into the
+                    // specific outer type's own scope.
+                    for &seg in &segments[start + 1..] {
+                        container = container.as_ref().and_then(|c| {
+                            crate::resolver::find::find_name_scoped_to_container(idx, seg, c)
+                        });
+                    }
+                    if let Some(loc) = container {
+                        return vec![(super_leaf, loc.uri.to_string())];
+                    }
+                }
+            }
             // Ambiguity-safe, not `resolve_symbol_no_rg`'s raw first-match tail: at
             // hop 2+ `uri` is frequently a `jar:` synthetic URI with no import list
             // to disambiguate a same-named collision against (compiled JARs carry
@@ -158,15 +268,19 @@ fn supertype_targets(
             // `resolve_symbol_no_rg` callers are unaffected. `origin_url` (the
             // walk's real starting file, not this hop's `uri`) is passed
             // separately so the module-scoped tie-break can still find real
-            // Gradle dependency data past hop 1.
+            // Gradle dependency data past hop 1. Reached for an unqualified
+            // `super_name`, or a qualified one whose exact package lookup
+            // above found nothing (falls back to the same leaf-only
+            // resolution every unqualified supertype already went through).
             super::resolve_symbol_hierarchy_ambiguity_safe(
                 idx,
-                &super_name,
+                &super_leaf,
                 &uri,
                 origin_url.as_ref(),
             )
             .into_iter()
-            .map(move |loc| (super_name.clone(), loc.uri.to_string()))
+            .map(move |loc| (super_leaf.clone(), loc.uri.to_string()))
+            .collect::<Vec<_>>()
         })
         .collect()
 }

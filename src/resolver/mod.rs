@@ -12,6 +12,8 @@ pub(crate) mod infer;
 pub(crate) mod infer_lines;
 pub(crate) mod resolve;
 #[cfg(test)]
+mod shared_fixture_tests;
+#[cfg(test)]
 mod tests;
 
 // ─── re-exports ───────────────────────────────────────────────────────────────
@@ -29,8 +31,8 @@ pub(crate) use infer::{
 };
 pub(crate) use infer_lines::extract_collection_element_type;
 pub(crate) use resolve::{
-    ensure_file_data, fqns_for_name, receiver_provides_member, resolve_callee_definition,
-    resolve_implicit_receiver_callee, resolve_in_scope_strict,
+    ensure_file_data, find_symbol_in_package, fqns_for_name, receiver_provides_member,
+    resolve_callee_definition, resolve_implicit_receiver_callee, resolve_in_scope_strict,
     resolve_symbol_hierarchy_ambiguity_safe, resolve_symbol_no_rg, resolve_symbol_scoped_only,
 };
 
