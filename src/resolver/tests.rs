@@ -8440,3 +8440,59 @@ fn complete_dot_finds_named_companion_members_on_a_jar_backed_type() {
         "expected the REAL Forest.d, not the DecoyForest.d decoy"
     );
 }
+
+// ─── primitive-scalar compiler-intrinsic mapped types ────────────────────────
+//
+// Kotlin's 8 primitive scalar types (`Int`/`Long`/`Double`/`Float`/`Boolean`/
+// `Byte`/`Short`/`Char`) are compiler intrinsics with no compiled `.class`
+// file in kotlin-stdlib's JAR at all — the exact same shape as
+// `String`/`CharSequence`/the collection interfaces already handled. Real,
+// measured gap: `Int.MAX_VALUE` (a real call site in Moneta,
+// `core/common/src/main/java/cz/moneta/smartbanka/common/extensions/ListExtensions.kt`)
+// resolved to zero candidates.
+
+/// Plain case: the Kotlin name matches the Java platform type's own simple
+/// name (`Long` -> `java.lang.Long`).
+#[test]
+fn resolve_kotlin_builtin_type_platform_equivalent_resolves_long_to_java_lang_long() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    write_fake_android_sdk_source(
+        root,
+        "java/lang/Long.java",
+        "package java.lang;\npublic final class Long {\n    public static final long MAX_VALUE = 0x7fffffffffffffffL;\n}\n",
+    );
+
+    let idx = Indexer::new();
+    idx.workspace_root.set(root.to_path_buf());
+
+    let locs = resolve_kotlin_builtin_type_platform_equivalent(&idx, "Long");
+    assert_eq!(locs.len(), 1, "expected Long to resolve, got {locs:?}");
+    assert!(locs[0].uri.path().ends_with("java/lang/Long.java"));
+}
+
+/// The one name-mismatch case among the 8: `Char` maps to `java.lang.Character`,
+/// not `java.lang.Char` -- mirroring the exact `MutableList` -> `java.util.List`
+/// mismatch already handled by looking up the platform type's own simple name
+/// rather than the original Kotlin spelling.
+#[test]
+fn resolve_kotlin_builtin_type_platform_equivalent_resolves_char_to_java_lang_character() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    write_fake_android_sdk_source(
+        root,
+        "java/lang/Character.java",
+        "package java.lang;\npublic final class Character {\n}\n",
+    );
+
+    let idx = Indexer::new();
+    idx.workspace_root.set(root.to_path_buf());
+
+    let locs = resolve_kotlin_builtin_type_platform_equivalent(&idx, "Char");
+    assert_eq!(
+        locs.len(),
+        1,
+        "expected Char to resolve to java.lang.Character, got {locs:?}"
+    );
+    assert!(locs[0].uri.path().ends_with("java/lang/Character.java"));
+}
