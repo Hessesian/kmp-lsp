@@ -8054,3 +8054,66 @@ fn resolve_symbol_full_policy_falls_back_to_the_builtin_type_platform_equivalent
         locs[0].uri
     );
 }
+
+/// The same fallback must also surface in dot-completion, not just goto-def/
+/// hover: `extension_fn_completions` resolves the receiver class via
+/// `resolve_symbol_no_rg` and walks its real supertypes to build the
+/// ancestor set an extension's receiver is matched against. Before this fix,
+/// `resolve_symbol_no_rg(idx, "String", ..)` came back empty, so a `String`
+/// receiver's ancestor set was just `{"String"}` -- an extension declared on
+/// `CharSequence` (e.g. the real `toViewText`) could never match and so
+/// never appeared as a suggestion while typing.
+#[test]
+fn resolve_kotlin_builtin_type_platform_equivalent_surfaces_supertype_extensions_in_dot_completion()
+{
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    write_fake_android_sdk_source(
+        root,
+        "java/lang/String.java",
+        "package java.lang;\npublic final class String implements CharSequence {\n}\n",
+    );
+    // The walk from String to CharSequence must itself resolve CharSequence's
+    // own declaration (via the same builtin-type fallback) to become a real
+    // hop -- without a real java.lang.CharSequence.java on disk too (as the
+    // real Android SDK sources bundle always has), the walk dead-ends at
+    // String and this test would pass for the wrong reason.
+    write_fake_android_sdk_source(
+        root,
+        "java/lang/CharSequence.java",
+        "package java.lang;\npublic interface CharSequence {\n}\n",
+    );
+
+    let idx = Indexer::new();
+    idx.workspace_root.set(root.to_path_buf());
+
+    // Simulate an indexed extension declared on CharSequence, the same shape
+    // `jar_extension_appears_in_dot_completion` uses for a JAR-sourced one.
+    idx.extension_by_receiver
+        .entry("CharSequence".to_owned())
+        .or_default()
+        .push(crate::types::ExtensionEntry {
+            file_uri: "file:///app/ViewText.kt".to_owned(),
+            name: "toViewText".to_owned(),
+            kind: tower_lsp::lsp_types::SymbolKind::FUNCTION,
+            detail: "fun CharSequence?.toViewText(): String".to_owned(),
+            visibility: crate::types::Visibility::Public,
+            package: Some("app".to_owned()),
+            trailing_lambda: false,
+            deprecated: false,
+            container: None,
+        });
+
+    let caller_src = "package app\nfun use(s: String) { s }\n";
+    let caller_path = root.join("Caller.kt");
+    std::fs::write(&caller_path, caller_src).unwrap();
+    let caller_uri = Url::from_file_path(&caller_path).unwrap();
+    idx.index_content(&caller_uri, caller_src);
+
+    let items = complete_dot(&idx, "s", &caller_uri, false, None);
+    let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
+    assert!(
+        labels.contains(&"toViewText"),
+        "expected the CharSequence extension to appear for a String receiver, got: {labels:?}"
+    );
+}
