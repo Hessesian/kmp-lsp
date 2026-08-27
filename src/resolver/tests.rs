@@ -313,8 +313,11 @@ fn resolve_symbol_index_only_never_spawns_rg_or_fd() {
 #[test]
 fn resolve_symbol_index_only_tail_applies_the_denylist_tie_break() {
     let idx = Indexer::new();
-    let decoy_uri = Url::parse("jar:file:///decoy.jar!/String.class").unwrap();
-    let real_uri = Url::parse("jar:file:///real-stdlib.jar!/String.class").unwrap();
+    // No `!/<entry>` suffix -- real compiled-JAR-derived `jar_definitions`
+    // entries key the whole JAR as one synthetic file (see `gradle_cache_jar_uri`),
+    // not a per-class entry path.
+    let decoy_uri = Url::parse("jar:file:///decoy.jar").unwrap();
+    let real_uri = Url::parse("jar:file:///real-stdlib.jar").unwrap();
     // Denylisted decoy indexed first, matching this file's established
     // convention of seeding the wrong candidate first.
     idx.jar_definitions.insert(
