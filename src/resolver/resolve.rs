@@ -1820,10 +1820,20 @@ pub(crate) fn find_symbol_in_package(indexer: &Indexer, name: &str, pkg: &str) -
     crate::indexer::jar::ensure_jar_definitions_for(indexer, name, &mut cache_backed_only);
     if let Some(locs) = indexer.jar_definitions.get(name) {
         for loc in locs.iter() {
-            if let Some(f) = indexer.jar_files.get(loc.uri.as_str()) {
-                if f.package.as_ref().is_some_and(|p| p == pkg) {
-                    return Some(loc.clone());
-                }
+            // `jar_symbol_package` (this location's own real per-symbol
+            // package) first — a real JAR spans many packages, so
+            // `FileData.package` (the whole synthetic file's first-symbol
+            // guess, checked only as a fallback) is not necessarily this
+            // specific symbol's own package. Same reasoning as
+            // `is_denylisted_package_prefix`.
+            let candidate_pkg = jar_symbol_package(indexer, loc).or_else(|| {
+                indexer
+                    .jar_files
+                    .get(loc.uri.as_str())
+                    .and_then(|f| f.package.clone())
+            });
+            if candidate_pkg.as_deref() == Some(pkg) {
+                return Some(loc.clone());
             }
         }
     }

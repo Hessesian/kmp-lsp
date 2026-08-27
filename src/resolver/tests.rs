@@ -1396,6 +1396,47 @@ fn resolve_qualified_fully_qualified_supertype_resolves_the_named_package_not_a_
 }
 
 #[test]
+fn find_symbol_in_package_uses_the_real_per_symbol_package_for_jar_candidates() {
+    // Copilot review follow-up: `find_symbol_in_package`'s JAR-check branch
+    // is what the qualified-supertype resolution fix relies on to be
+    // package-exact -- it must not fall back to leaf-only matching just
+    // because a multi-package JAR's file-level `FileData.package` (a
+    // first-symbol guess covering the WHOLE synthetic file) doesn't happen
+    // to equal the package actually being searched for.
+    let idx = Indexer::new();
+    let jar_uri = Url::parse("jar:file:///multi-pkg.jar").unwrap();
+    idx.jar_definitions.insert(
+        "Seq".to_owned(),
+        vec![tower_lsp::lsp_types::Location {
+            uri: jar_uri.clone(),
+            range: Default::default(),
+        }],
+    );
+    // File-level guess is some unrelated package; the per-symbol table
+    // (line 0, matching the location's synthetic range) has the real one.
+    idx.jar_files.insert(
+        jar_uri.to_string(),
+        std::sync::Arc::new(crate::types::FileData {
+            package: Some("com.wrong.guess".to_owned()),
+            ..Default::default()
+        }),
+    );
+    idx.jar_symbol_packages
+        .insert(jar_uri.to_string(), vec!["com.other".to_owned()]);
+
+    let loc = find_symbol_in_package(&idx, "Seq", "com.other");
+    assert_eq!(
+        loc,
+        Some(tower_lsp::lsp_types::Location {
+            uri: jar_uri,
+            range: Default::default(),
+        }),
+        "expected the real per-symbol package (com.other) to be used, not \
+         the file-level first-symbol guess (com.wrong.guess), got {loc:?}"
+    );
+}
+
+#[test]
 fn resolve_variable_receiver_extension_disambiguates_by_receiver_type() {
     // `message.toViewText()` where `message: String` — `String` has no
     // indexed declaration file (a built-in type) and no matching member.
