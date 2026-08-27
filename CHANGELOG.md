@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.26.0
+
 ### Features
 
 - **Unused-import diagnostic** — an `import` statement whose name is never used anywhere in the file is now flagged (`HINT` severity, `UNNECESSARY` tag — grayed out rather than a squiggle in most editors), live, as you edit, with a "Remove unused import" quick-fix. Exempts star imports, Kotlin's operator-convention imports (`getValue`/`setValue`/`invoke`/`get`/… — needed for `by` delegation, Gradle Kotlin DSL sugar, and other operator syntax that never appears as literal identifier text), names referenced only via a KDoc `[Reference]` link, and names used only via bare `$identifier` string-template interpolation. Verified at scale: zero false positives on nowInAndroid; on a real ~13k-file monorepo (Moneta), every one of 392 flagged imports was deleted and the project recompiled clean (`BUILD SUCCESSFUL`, 0 errors) — the strongest precision validation available, not a sample.
@@ -27,6 +29,7 @@
 - **`clearCache`/reindex/git-branch-switch reliability** — `clearCache` failed with a spurious warning when the cache directory didn't already exist (e.g. right after a clean checkout); a git-watcher whose reindex channel had died silently stopped polling with no explanation. Both are now handled cleanly, and all three code paths are routed through the same indexing actor.
 - **Swift argument-count diagnostics** — Swift's grammar has no parameter-list wrapper node like Kotlin/Java's, so every `func`/`init`/protocol-method parameter count was silently computed as zero, causing false-positive "wrong argument count" diagnostics on nearly every non-trivial Swift construction.
 - **VS Code extension failed to activate** — `vscode-languageclient` wasn't bundled into the packaged extension.
+- **Linux release binaries required glibc 2.39+** — building on `ubuntu-latest` (Ubuntu 24.04) linked against a glibc newer than most current Linux distros ship (Debian 12, RHEL/EL 9, Ubuntu 22.04, …), so the release binary failed to even start with a `version GLIBC_2.39 not found` error. Linux x86_64/aarch64 builds now happen inside a `manylinux_2_28` container, dropping the floor to glibc 2.28 (2018) — every symbol above that in the previous build was either a same-function/newer-ABI-tag artifact or an optional fast-path glibc has always shipped a working fallback for, so nothing is lost functionally. Thanks @benward2301.
 
 ## 0.25.0
 
