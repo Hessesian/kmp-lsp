@@ -151,18 +151,21 @@ class IndexerTest {
     }
 
     @Test
-    @DisplayName("indexClassBytes does not orphan fields on a nested (\$-named) class")
-    fun testJavaFieldExtractionSkipsNestedClass() {
-        // The class-visiting entry point already skips emitting a class definition
-        // for `$`-named classes (see testInnerClass). Field extraction must apply
-        // the same exclusion — otherwise fields get indexed under a container
-        // qualifier ("Outer$Inner") that was never indexed as a class and that no
-        // Kotlin caller would ever reference (Kotlin spells it "Outer.Inner").
+    @DisplayName("indexClassBytes does not orphan fields on a synthetic (compiler-numbered) nested class")
+    fun testJavaFieldExtractionSkipsSyntheticNestedClass() {
+        // The class-visiting entry point excludes compiler-SYNTHESIZED `$`-named
+        // classes (anonymous/local, numbered `Outer$1` — see
+        // testJavaAnonymousNestedClassIsExcluded) but now indexes a REAL named
+        // nested class (see testJavaNestedClassIsIndexed). Field extraction must
+        // apply the same synthetic-only exclusion — otherwise fields on an
+        // anonymous class get indexed under a container qualifier ("Outer$1")
+        // that was never indexed as a class and that no Kotlin caller could ever
+        // reference.
         val cw = org.objectweb.asm.ClassWriter(0)
         cw.visit(
             org.objectweb.asm.Opcodes.V1_8,
             org.objectweb.asm.Opcodes.ACC_PUBLIC,
-            "com/example/Outer\$Inner",
+            "com/example/Outer\$1",
             null,
             "java/lang/Object",
             null
@@ -180,7 +183,7 @@ class IndexerTest {
 
         assertTrue(
             result.isEmpty(),
-            "fields on a \$-named class must be skipped, matching class-skipping behavior; got: ${result.map { "${it.name}:${it.kind}:${it.container}" }}"
+            "fields on an anonymous/synthetic \$-named class must be skipped, matching class-skipping behavior; got: ${result.map { "${it.name}:${it.kind}:${it.container}" }}"
         )
     }
 
@@ -322,22 +325,29 @@ class IndexerTest {
     }
 
     @Test
-    @DisplayName("indexClassBytes handles class with \$ in name (inner class)")
-    fun testInnerClass(@TempDir tmpDir: File) {
+    @DisplayName("indexClassBytes indexes a real named nested (\$-named, pure-Java) class")
+    fun testJavaNestedClassIsIndexed(@TempDir tmpDir: File) {
+        // A real named nested class (`Outer$Inner`, referenced from Kotlin as
+        // `Outer.Inner`) is a legitimate, user-nameable declaration — same as
+        // a real top-level class — and must be indexed under its own bare
+        // name with its enclosing class as its container.
         val innerBytes = minimalClassBytes("com/example/Outer\$Inner")
         val result = indexClassBytes(innerBytes)
-        // Inner classes with $ should be skipped unless they end with $Companion
-        assertTrue(result.isEmpty(), "should skip inner class with \$ in name")
+        val cls = result.singleOrNull { it.name == "Inner" && it.kind == "class" }
+        assertTrue(cls != null, "should index the real named nested class; got: ${result.map { it.name }}")
+        assertEquals("Outer", cls!!.container, "nested class's container must be its enclosing class")
+        assertFalse(cls.topLevel, "a nested class is not top-level")
     }
 
     @Test
-    @DisplayName("indexClassBytes accepts Companion classes")
-    fun testCompanionClass(@TempDir tmpDir: File) {
-        val companionBytes = minimalClassBytes("com/example/Foo\$Companion")
-        val result = indexClassBytes(companionBytes)
-        // No Kotlin metadata → Java fallback path; ACC_PUBLIC class but name has $
-        // JavaClassVisitor skips names containing '$'
-        assertTrue(result.isEmpty(), "JavaClassVisitor skips \$ names")
+    @DisplayName("indexClassBytes skips an anonymous/local (compiler-numbered) nested class")
+    fun testJavaAnonymousNestedClassIsExcluded(@TempDir tmpDir: File) {
+        // javac numbers anonymous and local classes (`Outer$1`, `Outer$1Local`)
+        // — never true for a class with a real declared name — so this shape
+        // must stay excluded even though it's otherwise ACC_PUBLIC.
+        val anonymousBytes = minimalClassBytes("com/example/Outer\$1")
+        val result = indexClassBytes(anonymousBytes)
+        assertTrue(result.isEmpty(), "should skip an anonymous (numbered) nested class; got: ${result.map { it.name }}")
     }
 
     @Test
@@ -462,6 +472,65 @@ class IndexerTest {
             real.detail.substringAfter("block:").contains("="),
             "block has no default value and must NOT be marked with '=', " +
                 "got: ${real.detail}",
+        )
+    }
+
+    @Test
+    @DisplayName("indexJarFile indexes a JAR-compiled, pure-Java, non-companion nested class (Moshi.Builder)")
+    fun testJarCompiledPlainNestedClassIsIndexed() {
+        // Moshi's core module is pure Java (no Kotlin metadata at all) — its
+        // entire builder API lives in `Moshi$Builder`, a plain static nested
+        // class, not a companion (Java has no such concept). The nested-class
+        // gate used to exclude EVERY `$`-named class outright in the Java
+        // fallback path, so `Moshi.Builder(...)` — a very common real-world
+        // constructor call — resolved to zero candidates.
+        val jarPath = System.getProperty("moshi.jar")
+        assertNotNull(jarPath, "moshi.jar system property must be set by the build")
+
+        val entries = indexJarFile(jarPath!!)
+
+        val builder = entries.singleOrNull { it.name == "Builder" && it.kind == "class" && it.container == "Moshi" }
+        assertNotNull(builder, "expected Moshi\$Builder to be indexed under container Moshi; got: " +
+            entries.filter { it.name == "Builder" }.map { "${it.name}:${it.container}" })
+
+        val buildMethod = entries.filter { it.name == "build" && it.container == "Builder" }
+        assertTrue(buildMethod.isNotEmpty(), "expected Builder.build() to be indexed under container Builder")
+
+        // A public, differently-named nested class in a different top-level
+        // class must also work — proves the container-parsing isn't hardcoded
+        // to a single class.
+        val factory = entries.singleOrNull { it.name == "Factory" && it.kind == "class" && it.container == "JsonAdapter" }
+        assertNotNull(factory, "expected JsonAdapter\$Factory to be indexed under container JsonAdapter")
+    }
+
+    @Test
+    @DisplayName("indexJarFile excludes compiler-synthesized nested classes even with the broadened gate")
+    fun testJarSyntheticNestedClassesAreExcluded() {
+        // The nested-class gate now admits real named declarations (see
+        // testJarCompiledPlainNestedClassIsIndexed / testNamedCompanionObjectMembersAreIndexed),
+        // so this regression-tests that the compiler's own synthetic helpers
+        // (`WhenMappings`, `DefaultImpls`, lambdas, anonymous objects) stay
+        // excluded — none of them are declarations a Kotlin caller could ever
+        // reference by name.
+        val jarPath = System.getProperty("coroutines.jar")
+        assertNotNull(jarPath, "coroutines.jar system property must be set by the build")
+
+        val entries = indexJarFile(jarPath!!)
+
+        assertTrue(
+            entries.none { it.container == "CoroutineStart" && it.name == "WhenMappings" },
+            "WhenMappings must never be indexed as a nested class",
+        )
+        assertTrue(
+            entries.none { it.name == "DefaultImpls" },
+            "DefaultImpls must never be indexed as a nested class",
+        )
+        assertTrue(
+            entries.none { it.name.contains('$') },
+            "no indexed symbol name should ever contain a raw '\$' " +
+                "(covers anonymous lambda/object-expression classes like AwaitKt\$joinAll\$1 " +
+                "and CoroutineExceptionHandlerKt\$CoroutineExceptionHandler\$1); got: " +
+                entries.filter { it.name.contains('$') }.map { "${it.name}:${it.container}" },
         )
     }
 

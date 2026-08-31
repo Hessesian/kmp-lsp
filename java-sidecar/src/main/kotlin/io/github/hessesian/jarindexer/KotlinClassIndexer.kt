@@ -10,6 +10,25 @@ import org.objectweb.asm.FieldVisitor
 import org.objectweb.asm.MethodVisitor
 import org.objectweb.asm.Opcodes
 
+// ── Nested-class naming: real declarations vs. compiler-synthesized helpers ──
+
+/**
+ * True when `simpleName` (the segment after a class's *last* `$`, e.g. `"Builder"`
+ * in `Moshi$Builder`) is the compiler's naming pattern for a synthetic nested
+ * class rather than a real, user-nameable declaration.
+ *
+ * Both javac and kotlinc number anonymous classes, local classes, and lambdas
+ * with a digit immediately after the `$` (`Outer$1`, `Outer$1Local`,
+ * `Outer$foo$1`, ...) — never true for a real named nested class/interface/
+ * object, so this alone is enough to reject them. `WhenMappings`/`DefaultImpls`
+ * (Kotlin's own synthesized helpers) pass this check by name, but are already
+ * excluded upstream: they compile to `KotlinClassMetadata.SyntheticClass`, not
+ * `.Class`, so `indexClassBytes`'s `when (metadata)` dispatch drops them via its
+ * `else -> emptyList()` branch before a nested class ever reaches this check.
+ */
+private fun looksSynthetic(simpleName: String): Boolean =
+    simpleName.isEmpty() || simpleName.first().isDigit()
+
 // ── ASM: extract @kotlin.Metadata annotation bytes ───────────────────────────
 
 private class StringArrayCollector(private val target: MutableList<String>) : AnnotationVisitor(Opcodes.ASM9) {
@@ -425,14 +444,21 @@ private class JavaClassVisitor(private val entries: MutableList<SymbolEntry>, pr
     private var className = ""
     private var isPublicClass = false
 
+    private var ownContainer = ""
+
     override fun visit(version: Int, access: Int, name: String, signature: String?, superName: String?, interfaces: Array<out String>?) {
-        className = name.substringAfterLast('/')
-        // Excludes `$`-named (nested/inner) classes here, once, so every
-        // member-visiting callback below (`visitMethod`, `visitField`) that
-        // gates on `isPublicClass` automatically skips members of a class
-        // that was never itself emitted as a class definition — Kotlin
-        // callers reference `Outer.Inner`, never the JVM's `Outer$Inner`.
-        isPublicClass = (access and Opcodes.ACC_PUBLIC) != 0 && !className.contains('$')
+        // JVM binary names nest with a literal `$` (`Outer$Builder`, unlike the
+        // Kotlin-metadata side's own dot convention -- see `entriesFromClass`).
+        // A real named nested class (`Outer$Builder`, referenced from Kotlin as
+        // `Outer.Builder`) is worth indexing, same as a real top-level class --
+        // what must stay excluded is a compiler-synthesized one: javac numbers
+        // anonymous and local classes (`Outer$1`, `Outer$1Local`), never true
+        // for a class with a real declared name.
+        val segments = name.substringAfterLast('/').split('$')
+        className = segments.last()
+        ownContainer = if (segments.size > 1) segments[segments.size - 2] else ""
+        val looksSyntheticNested = segments.size > 1 && looksSynthetic(className)
+        isPublicClass = (access and Opcodes.ACC_PUBLIC) != 0 && !looksSyntheticNested
         if (isPublicClass) {
             // Direct super types (super class + interfaces) as simple names; `Object`
             // is implicit and dropped as noise.
@@ -440,7 +466,10 @@ private class JavaClassVisitor(private val entries: MutableList<SymbolEntry>, pr
                 superName?.takeIf { it != "java/lang/Object" }?.let { add(it.substringAfterLast('/')) }
                 interfaces?.forEach { add(it.substringAfterLast('/')) }
             }
-            entries += SymbolEntry(className, "class", "", "class $className", pkg = pkg, topLevel = true, supers = supers)
+            entries += SymbolEntry(
+                className, "class", ownContainer, "class $className",
+                pkg = pkg, topLevel = segments.size == 1, supers = supers,
+            )
         }
     }
 
@@ -490,19 +519,20 @@ fun indexClassBytes(bytes: ByteArray): List<SymbolEntry> {
             val metadata = runCatching { KotlinClassMetadata.readLenient(metaVisitor.toMetadata()) }.getOrNull()
                 ?: return emptyList()
             val isFacade = metadata is KotlinClassMetadata.FileFacade || metadata is KotlinClassMetadata.MultiFileClassPart
-            // A companion object (named OR the default unnamed one) is the one
-            // nested-class shape whose members are worth indexing -- everything
-            // else `$`-named is an anonymous/synthetic compiler helper (lambdas,
-            // `WhenMappings`, anonymous objects, ...). Checked via the REAL
-            // Kotlin-metadata signal (`ClassKind.COMPANION_OBJECT`), not a
-            // `$Companion`-suffix name heuristic: the suffix only ever matches
-            // the default, UNNAMED companion (`Foo$Companion`) and silently
-            // drops every NAMED companion (`companion object Forest : Tree()`,
-            // compiled as `Foo$Forest`) -- a real, measured gap (Timber's
-            // entire public API -- `d`/`e`/`i`/`w`/`tag`/`plant`/... -- lives in
-            // exactly such a named companion and was previously unindexed).
-            val isCompanion = (metadata as? KotlinClassMetadata.Class)?.kmClass?.kind == ClassKind.COMPANION_OBJECT
-            if (!isFacade && !isCompanion && name.contains('$')) return emptyList()
+            // Any REAL named nested declaration (class/interface/object/enum/
+            // companion) is worth indexing, not just companions -- Kotlin
+            // callers reference `Outer.Builder(...)`/`Outer.Nested.member` just
+            // as often as a companion member. What must stay excluded is a
+            // compiler-SYNTHESIZED `$`-named class: lambdas, `WhenMappings`,
+            // `DefaultImpls` all compile to `KotlinClassMetadata.SyntheticClass`
+            // (filtered below, by the `when (metadata)` dispatch's `else`
+            // branch), and anonymous/local classes are numbered (`Outer$1`,
+            // `Outer$foo$1Local`) -- `looksSynthetic` on the class's own last
+            // `$`-segment catches those even though they DO carry `.Class`
+            // metadata (an anonymous `object : Foo {}` expression does).
+            if (name.contains('$') && !isFacade && looksSynthetic(name.substringAfterLast('$'))) {
+                return emptyList()
+            }
             val dep = DeprecationInfo(visitor.deprecatedMethods, visitor.deprecatedFields)
             val pkg = visitor.packageName
             when (metadata) {

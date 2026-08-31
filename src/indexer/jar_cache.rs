@@ -59,7 +59,7 @@ use crate::sidecar::SidecarSymbol;
 ///      compiled enum class's own constants (`BufferOverflow.DROP_OLDEST`) —
 ///      a cached pre-v17 JAR's entries lack them, so older caches must be
 ///      rejected and rescanned.
-const JAR_CACHE_VERSION: u32 = 17;
+const JAR_CACHE_VERSION: u32 = 18;
 
 #[derive(Serialize, Deserialize)]
 struct JarCache {
