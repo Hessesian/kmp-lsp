@@ -1,5 +1,9 @@
 # Features
 
+All features work immediately, even in a brand-new workspace — an `rg`/`fd` fallback
+handles lookups before the background index finishes, then results get faster and
+more precise (superclass hierarchy, cross-file resolution) as indexing completes.
+
 ## LSP capabilities
 
 | LSP capability | Notes |
@@ -177,7 +181,27 @@ When completing an unimported symbol:
 - Already-imported symbols appear without a duplicate edit
 - Star imports (`import pkg.*`) are respected — no redundant explicit import added
 
-## Ignore pattern semantics
+## Configuration
+
+### Workspace root
+
+Resolved in order:
+
+1. `KMP_LSP_WORKSPACE_ROOT` env var
+2. LSP client `rootUri` / `workspaceFolders`
+3. `~/.config/kmp-lsp/workspace` file (for clients that send no root)
+
+### Ignore patterns
+
+```toml
+# ~/.config/helix/languages.toml
+[language-server.kmp-lsp.config.indexingOptions]
+ignorePatterns = ["bazel-*", "build/**", "third-party/**"]
+```
+
+Patterns follow gitignore glob rules and apply to both `fd` and `walkdir` fallback.
+
+#### Ignore pattern semantics
 
 | Pattern | Matches |
 |---|---|
@@ -187,7 +211,55 @@ When completing an unimported symbol:
 
 Patterns apply to both `fd` (fast path) and the `walkdir` fallback, and filter the warm-start cached manifest so newly added patterns take effect without clearing the cache.
 
-## Source path behaviour
+### Source paths
+
+Library sources are resolved automatically — no manual config needed in most cases:
+
+| Source | How it's discovered |
+|---|---|
+| Android SDK (`Activity`, `Context`, …) | `sdk.dir` in `local.properties` → `$ANDROID_HOME` → `$ANDROID_SDK_ROOT` |
+| Gradle library sources (Compose, coroutines, …) | `*-sources.jar` files auto-mounted from `~/.gradle/caches` at startup |
+| IntelliJ/Android Studio project roots | `workspace.json` at project root (exported by IDE) |
+| Standard Gradle/Maven layouts | `src/main/kotlin`, `src/test/kotlin`, per-module subprojects |
+
+**`workspace.json`** — JetBrains IDEs export this file to the project root. It describes every module's source roots and lets you override library source directories:
+
+```json
+{
+  "sourcePaths": [
+    "<WORKSPACE>/custom-stubs",
+    "/absolute/path/to/generated-sources"
+  ]
+}
+```
+
+When `sourcePaths` is present (even as `[]`), it overrides the `~/.kmp-lsp/sources` default. Use `[]` to disable all library sources for a specific project.
+
+**`jarPaths`** — for projects **without a Gradle cache** (Make/Bazel/manual builds), where the automatic `~/.gradle/caches` scan finds nothing, point the indexer directly at your compiled dependency jars. Entries may be `.jar`/`.aar` files **or directories** (recursively expanded); `<WORKSPACE>` and relative paths resolve against the project root. These are indexed *in addition to* anything found in the Gradle cache.
+
+```json
+{
+  "jarPaths": [
+    "<WORKSPACE>/build/libs",
+    "/opt/deps/some-library.jar"
+  ]
+}
+```
+
+Hover docs for these come from a sibling `*-sources.jar` when one is present next to the jar; otherwise you still get signatures, completions, and go-to-definition to the compiled symbol.
+
+**Manual override** via LSP config (for custom stubs or generated code):
+
+```toml
+# ~/.config/helix/languages.toml
+[language-server.kmp-lsp.config.indexingOptions]
+sourcePaths = ["buildSrc/src", "/path/to/generated-stubs"]
+jarPaths = ["/opt/deps/some-library.jar", "build/libs"]
+```
+
+Source path files are indexed for hover and completions but excluded from `findReferences` and `rename`.
+
+#### Source path behaviour
 
 | Behaviour | `sourcePaths` files |
 |---|---|
@@ -205,3 +277,25 @@ Paths can be absolute (including `~/…`) or relative to the workspace root. The
 - `this.method()` and `super.method()` qualifier handling
 - Precise `fd --full-path` search uses the full package path from the import, not just the filename — dramatically faster in multi-module projects
 - Cross-file fallback via `rg` for symbols not yet in the index
+
+## Limitations
+
+- **No type inference** for generic lambda parameters — use explicit annotations for unresolvable cases
+- **No type checking** — syntax errors only; use Gradle/Xcode/CI for semantic diagnostics
+- **Swift support is structural** — all symbols indexed; no module boundaries or closure type inference
+- **Java completion** is less refined than Kotlin
+- **`findReferences` on common names** returns noise — name-based search via `rg`, no import filtering yet
+- **Binary `.aar`/`.jar`** — hover and completions work from compiled symbol metadata; go-to-definition into library code requires a `*-sources.jar` in the Gradle cache (auto-mounted at startup). Direct class-file indexing is [planned](https://github.com/Hessesian/kmp-lsp/issues/79).
+
+## vs. Official Kotlin LSP
+
+| | **kmp-lsp** | **[Kotlin/kotlin-language-server](https://github.com/Kotlin/kotlin-language-server)** (JetBrains) |
+|---|---|---|
+| **Runtime** | Native Rust, no JVM | JVM 17+, ~500 MB |
+| **Startup** | Instant | Gradle import (slow) |
+| **Memory** | < 200 MB | 1+ GB |
+| **Accuracy** | Syntactic (tree-sitter) | Full IntelliJ Analysis API |
+| **Editor support** | Any LSP editor | VS Code (official) |
+| **Swift** | ✓ | ✗ |
+
+They can coexist — use kmp-lsp for fast navigation, the official one for type-checked diagnostics.

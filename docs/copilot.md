@@ -1,10 +1,25 @@
-# GitHub Copilot CLI integration
+# AI agent integration
 
-kmp-lsp integrates with the [GitHub Copilot CLI](https://githubnext.com/projects/copilot-cli/) to give Copilot full code-intelligence tools when working on Kotlin/Java/Swift projects.
+kmp-lsp ships a ready-made skill file that teaches coding agents — GitHub Copilot CLI, Serena, Claude Code, and others that read Markdown skill/instruction files — how to use it for code navigation. This page also covers the deeper, Copilot-CLI-specific setup below: wiring kmp-lsp in as an LSP server and pairing it with Serena MCP.
+
+## Agent skill file
+
+```bash
+# Copilot CLI — drop into your skills directory
+curl -fsSL https://raw.githubusercontent.com/Hessesian/kmp-lsp/main/contrib/copilot-skill/SKILL.md \
+  -o ~/.copilot/skills/kmp-lsp.md
+
+# Or copy from the repo if you have it cloned
+cp contrib/copilot-skill/SKILL.md ~/.copilot/skills/kmp-lsp.md
+```
+
+For other agents, copy `contrib/copilot-skill/SKILL.md` into wherever that agent looks for skill/instruction files.
+
+The skill covers: LSP navigation workflow, `kmp-lsp check` for post-edit syntax verification, `kmp-lsp refs --exclude-imports` for clean reference lists, when to use Serena MCP vs the `lsp` tool, and workspace switching.
+
+## Copilot CLI setup
 
 > **Requires:** `copilot --experimental` (or `--exp`) — the `lsp` tool is only available in experimental mode.
-
-## Setup
 
 **1. Add kmp-lsp to Copilot's LSP config** (`~/.copilot/lsp-config.json`):
 
