@@ -6,12 +6,6 @@
 -- repo) inherits from — porting it gives Neovim the same background/UI chrome
 -- Helix shows, so the `jetbrains-kotlin` semantic-token overlay (which only
 -- sets accent colors, not background) has a matching base to sit on top of.
---
--- Note: this theme's neutral fg (#bcbec4) is a slightly different grey than
--- jetbrains_kotlin's own "default_text" (#A9B7C6) — that mismatch already
--- exists in the Helix setup (base theme vs. kotlin-specific overlay use
--- neighboring but distinct IntelliJ greys) and isn't something to fix here;
--- this file just reproduces jetbrains_dark faithfully.
 
 vim.cmd("hi clear")
 if vim.fn.exists("syntax_on") == 1 then

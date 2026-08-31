@@ -275,12 +275,6 @@ vim.cmd.colorscheme("jetbrains_dark")
 require("jetbrains-kotlin").apply()
 ```
 
-Note the two files use neighboring but distinct IntelliJ greys for default
-text (`jetbrains_dark`'s `#bcbec4` vs. the Kotlin overlay's `#A9B7C6`) — that
-mismatch already exists between Helix's own `jetbrains_dark` and
-`jetbrains_kotlin.toml`, so it's carried over faithfully rather than fixed
-here.
-
 ## Zed
 
 ### Recommended: install the extension
