@@ -44,6 +44,16 @@ dependencies {
     timberFixture("com.jakewharton.timber:timber:5.0.1")
 }
 
+// Real-world fixture JAR for the plain-nested-class regression test: Moshi's
+// core module is pure Java (no Kotlin metadata), and its entire builder API
+// lives in `Moshi$Builder` — a plain static nested class, not a companion
+// (Java has no such concept). Also covers a differently-named nested class
+// in a different class (`JsonAdapter$Factory`).
+val moshiFixture by configurations.creating { isTransitive = false }
+dependencies {
+    moshiFixture("com.squareup.moshi:moshi:1.15.2")
+}
+
 application {
     mainClass.set("io.github.hessesian.jarindexer.MainKt")
 }
@@ -62,6 +72,9 @@ tasks.test {
         timberFixture.files
             .firstOrNull { it.name.startsWith("timber") }
             ?.let { systemProperty("timber.jar", it.absolutePath) }
+        moshiFixture.files
+            .firstOrNull { it.name.startsWith("moshi") }
+            ?.let { systemProperty("moshi.jar", it.absolutePath) }
     }
 }
 
