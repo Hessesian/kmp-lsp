@@ -236,6 +236,51 @@ require('cmp').setup {
 }
 ```
 
+### Bonus: JetBrains-style highlighting
+
+Unlike Helix, Neovim renders LSP semantic tokens directly — as `@lsp.type.*` /
+`@lsp.mod.*` highlight groups — so there's no tree-sitter query file to patch
+here; the port is two Lua files instead of a theme + a query override.
+
+**Requires semantic tokens to be enabled** in your `on_attach`:
+
+```lua
+lspconfig.kmp_lsp.setup {
+  on_attach = function(_, bufnr)
+    vim.lsp.semantic_tokens.enable(true, { bufnr = bufnr })
+  end,
+}
+```
+
+Save [`jetbrains_dark.lua`](themes/jetbrains_dark.lua) to
+`~/.config/nvim/colors/jetbrains_dark.lua` — it's a port of Helix's built-in
+`jetbrains_dark` base theme (background, cursorline, statusline, popup menu,
+diagnostics, base syntax groups), read straight from the palette Helix ships
+so the two stay in sync. Load it in place of your current colorscheme:
+
+```lua
+vim.cmd.colorscheme("jetbrains_dark")
+```
+
+Then save [`jetbrains-kotlin.lua`](themes/jetbrains-kotlin.lua) to
+`~/.config/nvim/lua/jetbrains-kotlin.lua` — this is the accent layer, ported
+from `jetbrains_kotlin.toml`'s `[palette]`. It sets the `@lsp.type.*` groups
+kmp-lsp's semantic tokens drive (parameters periwinkle, decorators
+yellow-green, functions/methods gold, keywords orange, …) and re-applies
+itself on the `ColorScheme` autocmd so it survives a `:colorscheme` switch.
+Require it and call `apply()` right after loading the colorscheme:
+
+```lua
+vim.cmd.colorscheme("jetbrains_dark")
+require("jetbrains-kotlin").apply()
+```
+
+Note the two files use neighboring but distinct IntelliJ greys for default
+text (`jetbrains_dark`'s `#bcbec4` vs. the Kotlin overlay's `#A9B7C6`) — that
+mismatch already exists between Helix's own `jetbrains_dark` and
+`jetbrains_kotlin.toml`, so it's carried over faithfully rather than fixed
+here.
+
 ## Zed
 
 ### Recommended: install the extension
