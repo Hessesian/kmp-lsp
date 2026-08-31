@@ -1,0 +1,71 @@
+# jetbrains_kotlin — extends jetbrains_dark with all missing scopes
+# matching IntelliJ IDEA Darcula palette for Kotlin/Java development.
+#
+# Missing from base jetbrains_dark:
+#   attribute/decorator, type, type.parameter, variable.parameter,
+#   function.method, operator, namespace, constant, constructor, struct
+inherits = "jetbrains_dark"
+
+# ── Annotations ─────────────────────────────────────────────────────────────
+# IntelliJ Darcula: #BBB529 (yellow-green). Both tree-sitter @attribute
+# and LSP semantic DECORATOR token map here.
+"attribute"               = { fg = "yellow_annotation" }
+
+# ── Types ────────────────────────────────────────────────────────────────────
+# IntelliJ: class names = default text (#A9B7C6); interfaces = italic default.
+# Helix maps semantic CLASS/STRUCT/INTERFACE/ENUM all to "type" fallback.
+"type"                    = { fg = "default_text" }
+"type.enum"               = { fg = "purple_field" }           # enum type name stays purple
+"type.enum.variant"       = { fg = "purple_field" }           # enum entries: #9876AA
+"type.parameter"          = { fg = "teal_type_param" }        # <T>: #20999D
+
+# ── Variables ────────────────────────────────────────────────────────────────
+# Named argument labels emit PARAMETER (matches JetBrains official impl).
+# Use a soft periwinkle blue — visually distinct from identifiers and properties.
+"variable.parameter"      = { fg = "periwinkle_param" }       # #94BBFF
+# Local variables: default text
+"variable"                = { fg = "default_text" }
+
+# ── Functions ────────────────────────────────────────────────────────────────
+# IntelliJ Darcula method color: #FFC66D (gold/amber)
+"function"                = { fg = "gold_method" }            # top-level fns
+"function.method"         = { fg = "gold_method" }            # member methods
+"function.macro"          = { fg = "gold_method" }            # macros/inline
+
+# ── Operators / Namespace / Constants ───────────────────────────────────────
+"operator"                = { fg = "default_text" }
+"namespace"               = { fg = "default_text" }           # package names
+"constant"                = { fg = "purple_field" }           # enum members fallback
+
+# ── Modifiers ────────────────────────────────────────────────────────────────
+# Semantic STATIC modifier → italic (IntelliJ marks static members italic)
+"modifier"                = { fg = "orange_keyword", modifiers = ["italic"] }
+
+# ── Keywords ─────────────────────────────────────────────────────────────────
+# Override base jetbrains_dark (maps keyword → red207) with IntelliJ orange.
+# Covers all tree-sitter @keyword* captures AND the semantic KEYWORD token
+# (emitted for soft keywords: is, !is, as, as?, in, !in, by).
+"keyword"                 = { fg = "orange_keyword" }
+"keyword.control"         = { fg = "orange_keyword" }
+"keyword.control.conditional" = { fg = "orange_keyword" }
+"keyword.control.repeat"  = { fg = "orange_keyword" }
+"keyword.control.return"  = { fg = "orange_keyword" }
+"keyword.control.exception" = { fg = "orange_keyword" }
+"keyword.control.import"  = { fg = "orange_keyword" }
+"keyword.function"        = { fg = "orange_keyword" }
+"keyword.operator"        = { fg = "orange_keyword" }
+
+# ── Numbers: IntelliJ #6897BB (blue) ─────────────────────────────────────────
+# Override the base theme's teal (#2aacb8) with IntelliJ blue
+"constant.numeric"        = { fg = "blue_number" }
+
+[palette]
+# IntelliJ Darcula exact colors
+periwinkle_param   = "#94BBFF"   # named argument labels (PARAMETER token)
+yellow_annotation  = "#BBB529"   # @annotation, @attribute
+gold_method        = "#FFC66D"   # function/method names
+purple_field       = "#9876AA"   # fields, properties, enum entries
+teal_type_param    = "#20999D"   # type parameters <T>
+default_text       = "#A9B7C6"   # default identifier text
+orange_keyword     = "#CC7832"   # keywords (base theme already close)
+blue_number        = "#6897BB"   # numeric literals

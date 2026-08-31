@@ -72,66 +72,109 @@ command = "kmp-lsp"
 
 Restart Helix (or run `:lsp-restart`). Check the server is running: `:lsp-workspace-command` or watch `:log-open`.
 
-### Bonus: JetBrains-style semantic highlighting
+### Bonus: JetBrains-style highlighting
 
-kmp-lsp emits LSP **semantic tokens** for Kotlin/Java/Swift, so highlighting goes
-beyond what tree-sitter alone can color. Notably, it emits a `parameter` token for
-**value parameters** — at the declaration *and* at every use-site inside the
-function body — so parameters can be tinted distinctly from locals and properties
-(the way IntelliJ does). Helix maps semantic tokens onto theme scopes, but most
-themes leave `variable.parameter` unstyled, so out of the box parameters look like
-plain identifiers.
+kmp-lsp emits LSP **semantic tokens** for Kotlin/Java/Swift (a `parameter` token
+for value parameters at both declaration and use-sites, `decorator` for
+annotations, and so on), but Helix doesn't render LSP semantic tokens at all —
+its highlighting comes entirely from tree-sitter queries. So none of that
+directly colors anything in Helix; it matters for other semantic-token-aware
+editors (see the sections below), not this one.
 
-The tokens kmp-lsp emits map to these Helix scopes:
+For Helix, everything below is driven by tree-sitter: a query file assigns
+scope names to parse-tree nodes, and the theme paints those scope names. Helix's
+stock Kotlin query already assigns most of what a JetBrains-style palette needs
+(`type`, `function`, `keyword`, …), but it's missing a few scopes we want:
+named-argument labels, annotation type names (a catch-all `@type` capture wins
+over them otherwise), and the `by` delegation keyword. To add those, save
+[`kotlin-highlights.scm`](themes/kotlin-highlights.scm) as
+`~/.config/helix/runtime/queries/kotlin/highlights.scm`. It's a full copy of the
+stock file (so it can shadow it) with three blocks layered in:
 
-| Semantic token | Helix scope | Colors |
-| --- | --- | --- |
-| `parameter` | `variable.parameter` | value parameters (decl + use-sites) |
-| `typeParameter` | `type.parameter` | generic `<T>` |
-| `decorator` | `attribute` | annotations |
-| `keyword` | `keyword` | soft keywords (`is`, `as`, `by`, `in`) |
-| `function` / `method` | `function` / `function.method` | calls and declarations |
-| `namespace` | `namespace` | package / import paths |
-| `class` / `interface` / `enum` / `struct` | `type` (+ `type.enum`) | type names |
+```scheme
+; Ensure annotation names win over catch-all @type
+(annotation
+	(user_type
+		(type_identifier) @attribute))
+(annotation
+	(constructor_invocation
+		(user_type
+			(type_identifier) @attribute)))
 
-To surface all of this in a JetBrains Darcula palette, save the theme below to
+; Named argument labels (e.g., `overviewMapper =` in function calls)
+(value_argument
+  (simple_identifier) @variable.parameter
+  .
+  "=" @operator)
+
+; Property delegation keyword 'by'
+(property_delegate
+  "by" @keyword)
+```
+
+Because it's a full-file override rather than a diff, it can drift from Helix's
+own `runtime/queries/kotlin/highlights.scm` across upstream upgrades — re-diff
+against the version bundled with your Helix install after updating and re-apply
+these three blocks if the stock file has moved on.
+
+With those scopes in place, save
+[`jetbrains_kotlin.toml`](themes/jetbrains_kotlin.toml) to
 `~/.config/helix/themes/jetbrains_kotlin.toml` and set `theme = "jetbrains_kotlin"`
-in `~/.config/helix/config.toml`. It extends Helix's built-in `jetbrains_dark` with
-the scopes that base theme leaves out — `variable.parameter` (the value-parameter
-color) chief among them:
+in `~/.config/helix/config.toml` to paint them in a JetBrains Darcula palette. It
+extends Helix's built-in `jetbrains_dark` with the scopes that base theme leaves
+out — `variable.parameter` (the value-parameter color) chief among them. (Its
+comments mention "semantic" tokens in a couple of places — read those as "the LSP
+token of that name," describing the concept the scope corresponds to, not as a
+claim that Helix consumes LSP semantic tokens; per above, it doesn't.)
 
 ```toml
-# jetbrains_kotlin — extends jetbrains_dark with the scopes kmp-lsp's semantic
-# tokens drive, matching the IntelliJ IDEA Darcula palette.
+# jetbrains_kotlin — extends jetbrains_dark with all missing scopes
+# matching IntelliJ IDEA Darcula palette for Kotlin/Java development.
+#
+# Missing from base jetbrains_dark:
+#   attribute/decorator, type, type.parameter, variable.parameter,
+#   function.method, operator, namespace, constant, constructor, struct
 inherits = "jetbrains_dark"
 
-# Annotations (tree-sitter @attribute + semantic DECORATOR token)
+# ── Annotations ─────────────────────────────────────────────────────────────
+# IntelliJ Darcula: #BBB529 (yellow-green). Both tree-sitter @attribute
+# and LSP semantic DECORATOR token map here.
 "attribute"               = { fg = "yellow_annotation" }
 
-# Types: IntelliJ shows class/interface names as default text; enums purple.
+# ── Types ────────────────────────────────────────────────────────────────────
+# IntelliJ: class names = default text (#A9B7C6); interfaces = italic default.
+# Helix maps semantic CLASS/STRUCT/INTERFACE/ENUM all to "type" fallback.
 "type"                    = { fg = "default_text" }
-"type.enum"               = { fg = "purple_field" }
-"type.enum.variant"       = { fg = "purple_field" }
-"type.parameter"          = { fg = "teal_type_param" }   # <T>
+"type.enum"               = { fg = "purple_field" }           # enum type name stays purple
+"type.enum.variant"       = { fg = "purple_field" }           # enum entries: #9876AA
+"type.parameter"          = { fg = "teal_type_param" }        # <T>: #20999D
 
-# Value parameters (semantic PARAMETER token) — soft periwinkle, distinct from
-# locals (default text) and properties (purple).
-"variable.parameter"      = { fg = "periwinkle_param" }
+# ── Variables ────────────────────────────────────────────────────────────────
+# Named argument labels emit PARAMETER (matches JetBrains official impl).
+# Use a soft periwinkle blue — visually distinct from identifiers and properties.
+"variable.parameter"      = { fg = "periwinkle_param" }       # #94BBFF
+# Local variables: default text
 "variable"                = { fg = "default_text" }
 
-# Functions / methods: IntelliJ gold.
-"function"                = { fg = "gold_method" }
-"function.method"         = { fg = "gold_method" }
-"function.macro"          = { fg = "gold_method" }
+# ── Functions ────────────────────────────────────────────────────────────────
+# IntelliJ Darcula method color: #FFC66D (gold/amber)
+"function"                = { fg = "gold_method" }            # top-level fns
+"function.method"         = { fg = "gold_method" }            # member methods
+"function.macro"          = { fg = "gold_method" }            # macros/inline
 
+# ── Operators / Namespace / Constants ───────────────────────────────────────
 "operator"                = { fg = "default_text" }
-"namespace"               = { fg = "default_text" }      # package names
-"constant"                = { fg = "purple_field" }
+"namespace"               = { fg = "default_text" }           # package names
+"constant"                = { fg = "purple_field" }           # enum members fallback
 
+# ── Modifiers ────────────────────────────────────────────────────────────────
 # Semantic STATIC modifier → italic (IntelliJ marks static members italic)
 "modifier"                = { fg = "orange_keyword", modifiers = ["italic"] }
 
-# Keywords (tree-sitter @keyword* + semantic KEYWORD for soft keywords)
+# ── Keywords ─────────────────────────────────────────────────────────────────
+# Override base jetbrains_dark (maps keyword → red207) with IntelliJ orange.
+# Covers all tree-sitter @keyword* captures AND the semantic KEYWORD token
+# (emitted for soft keywords: is, !is, as, as?, in, !in, by).
 "keyword"                 = { fg = "orange_keyword" }
 "keyword.control"         = { fg = "orange_keyword" }
 "keyword.control.conditional" = { fg = "orange_keyword" }
@@ -142,22 +185,21 @@ inherits = "jetbrains_dark"
 "keyword.function"        = { fg = "orange_keyword" }
 "keyword.operator"        = { fg = "orange_keyword" }
 
+# ── Numbers: IntelliJ #6897BB (blue) ─────────────────────────────────────────
+# Override the base theme's teal (#2aacb8) with IntelliJ blue
 "constant.numeric"        = { fg = "blue_number" }
 
 [palette]
-periwinkle_param   = "#94BBFF"   # value parameters (PARAMETER token)
-yellow_annotation  = "#BBB529"   # @annotation
+# IntelliJ Darcula exact colors
+periwinkle_param   = "#94BBFF"   # named argument labels (PARAMETER token)
+yellow_annotation  = "#BBB529"   # @annotation, @attribute
 gold_method        = "#FFC66D"   # function/method names
 purple_field       = "#9876AA"   # fields, properties, enum entries
 teal_type_param    = "#20999D"   # type parameters <T>
 default_text       = "#A9B7C6"   # default identifier text
-orange_keyword     = "#CC7832"   # keywords
+orange_keyword     = "#CC7832"   # keywords (base theme already close)
 blue_number        = "#6897BB"   # numeric literals
 ```
-
-Semantic tokens are enabled automatically — no extra Helix config is needed beyond
-the theme. (Requires a Helix build with LSP semantic-token support, which is the
-default in current releases.)
 
 ## Neovim (nvim-lspconfig)
 
