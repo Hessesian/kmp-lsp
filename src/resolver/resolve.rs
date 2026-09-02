@@ -393,6 +393,32 @@ fn resolve_chain(
         if !rg_result.is_empty() {
             return rg_result;
         }
+        // 5.4 ── global definitions index (includes JAR symbols) ───────────────
+        // `rg`/`fd` only search the *workspace's own* source tree, so a type
+        // used purely through inference and never explicitly imported (Kotlin
+        // doesn't require an import for that) — e.g. `scope.async { }.await()`,
+        // where `Deferred` is inferred from `async`'s JAR-indexed return type
+        // but no file spells out `import kotlinx.coroutines.Deferred` — was
+        // unreachable here: real, measured gap. Same ambiguity-safe tie-break
+        // `IndexOnly`/`HierarchyAmbiguitySafe` already use below, extended to
+        // `Full` too — a unique JAR/workspace candidate wins outright; an
+        // ambiguous set still declines rather than guessing. Shape-filtered
+        // first, same as `rg_result` just above: an arity-incompatible
+        // same-name workspace declaration (e.g. a differently-shaped local
+        // overload) must not win here just because it's the sole candidate
+        // this index lookup happens to return.
+        let jar_tail_candidates = indexer.lookup_definitions(name);
+        let jar_tail_candidates = match shape {
+            Some(shape) => jar_tail_candidates
+                .into_iter()
+                .filter(|location| rg_location_satisfies_call_shape(indexer, location, name, shape))
+                .collect(),
+            None => jar_tail_candidates,
+        };
+        let jar_tail = ambiguity_safe_tail_with_denylist(indexer, from_uri, jar_tail_candidates);
+        if !jar_tail.is_empty() {
+            return jar_tail;
+        }
         // 5.5 ── Kotlin built-in-type platform equivalent (last resort) ────────
         // `rg`/`fd` search the *workspace's own* source tree and can never find
         // `String`/`CharSequence`: those are compiler intrinsics with no
@@ -414,7 +440,9 @@ fn resolve_chain(
     //    on the Moneta corpus (13 candidates for bare `String`, including a
     //    `com.android.internal.*`-packaged one) when it used the older,
     //    plain unique-match-only rule.
-    //  - Full: never reached (returns inside the rg branch above).
+    //  - Full: never reached — it has its own equivalent tail (5.4 above,
+    //    same `ambiguity_safe_tail_with_denylist` call) inside the rg branch,
+    //    since Full always returns from within that `if full_io` block.
     //
     // Each non-`ScopedOnly` arm falls through to
     // `resolve_kotlin_builtin_type_platform_equivalent` when its own lookup
@@ -485,20 +513,27 @@ fn resolve_chain(
 const DENYLISTED_PACKAGE_PREFIXES: &[&str] = &["com.android.internal."];
 
 /// Tail fallback shared by [`ResolveIo::HierarchyAmbiguitySafe`] (the
-/// hierarchy walk's own per-hop resolution) and [`ResolveIo::IndexOnly`]
+/// hierarchy walk's own per-hop resolution), [`ResolveIo::IndexOnly`]
 /// (general bare-name resolution — diagnostics, `resolve_qualified`'s
-/// qualifier-root lookup, etc.): a unique candidate wins outright; an
-/// ambiguous set gets two narrow tie-breaks in sequence — first
+/// qualifier-root lookup, etc.), and `Full`'s own equivalent tail (see
+/// `resolve_chain`'s step 5.4): a unique candidate wins outright; an
+/// ambiguous set gets three narrow tie-breaks in sequence — first
 /// [`DENYLISTED_PACKAGE_PREFIXES`] (unconditional, project-wide), then
 /// [`module_scoped_tie_break`] (real per-module Gradle dependency data, when
-/// available) — before still declining unless one of them leaves exactly
-/// one candidate. See the real-workspace-json-schema design doc's §5 for why
-/// this ordering (denylist first, module-scoping second) is correct: the
-/// denylist is unconditional and needs no loaded data, while module-scoping
-/// only ever narrows what the denylist couldn't. `origin_uri` is the real
-/// file to resolve an owning module from for the second tie-break — the
-/// hierarchy walk's own starting file for `HierarchyAmbiguitySafe`, or
-/// simply the caller's own `from_uri` for `IndexOnly`.
+/// `workspace.json` provides it), then [`import_package_tie_break`] (the
+/// calling file's own already-parsed import list, always available — no
+/// external data needed, unlike module-scoping) — before still declining
+/// unless one of them leaves exactly one candidate. See the
+/// real-workspace-json-schema design doc's §5 for why denylist-first is
+/// correct: it's unconditional and needs no loaded data. Import-package
+/// narrowing runs last because it's the weakest signal of the three (a file
+/// merely importing a sibling from the right package, not the ambiguous
+/// name itself) — module-scoped narrowing, when its data is available, is
+/// strictly more precise (it's the *real* Gradle dependency graph, not an
+/// inference from unrelated imports). `origin_uri` is the real file to
+/// resolve an owning module/import-list from — the hierarchy walk's own
+/// starting file for `HierarchyAmbiguitySafe`, or simply the caller's own
+/// `from_uri` for `IndexOnly`/`Full`.
 fn ambiguity_safe_tail_with_denylist(
     indexer: &Indexer,
     origin_uri: &Url,
@@ -520,7 +555,11 @@ fn ambiguity_safe_tail_with_denylist(
     if filtered.len() < 2 {
         return vec![];
     }
-    module_scoped_tie_break(indexer, origin_uri, filtered)
+    let module_scoped = module_scoped_tie_break(indexer, origin_uri, filtered.clone());
+    if !module_scoped.is_empty() {
+        return module_scoped;
+    }
+    import_package_tie_break(indexer, origin_uri, filtered)
 }
 
 /// Second tie-break for [`ambiguity_safe_tail_with_denylist`]: when the
@@ -544,6 +583,52 @@ fn module_scoped_tie_break(
         .into_iter()
         .filter(|location| {
             candidate_gradle_meta(location).is_some_and(|meta| dependencies.contains(&meta))
+        })
+        .collect();
+    if narrowed.len() == 1 {
+        narrowed
+    } else {
+        vec![]
+    }
+}
+
+/// Third tie-break for [`ambiguity_safe_tail_with_denylist`]: when the
+/// denylist and module-scoped narrowing still leave more than one candidate,
+/// narrow using `origin_uri`'s own explicit (non-star) imports — not of the
+/// ambiguous name itself (`resolve_via_imports` already tried that, earlier
+/// in the chain, and failed, or this tail would never have been reached) but
+/// of any OTHER symbol from the same package. A file that writes `import
+/// kotlinx.coroutines.async` but never spells out `Deferred` (used only
+/// through inference, e.g. `scope.async { }.await()`) still tells us
+/// `kotlinx.coroutines` is a real, in-use package for this file — evidence
+/// an unrelated same-named decoy from a package this file never otherwise
+/// references (real, measured case: `com.google.firebase.components.Deferred`)
+/// doesn't have. Weaker than [`module_scoped_tie_break`] (an inference from
+/// unrelated imports, not the real dependency graph), so tried after it, but
+/// needs no `workspace.json` data at all — narrows real cases that
+/// module-scoping can't when a workspace has no module-dependency data
+/// loaded (e.g. a `workspace.json` with only `sourcePaths`, no `libraries`).
+fn import_package_tie_break(
+    indexer: &Indexer,
+    origin_uri: &Url,
+    locations: Vec<Location>,
+) -> Vec<Location> {
+    let Some(file_data) = indexer.files.get(origin_uri.as_str()) else {
+        return vec![];
+    };
+    let imported_packages: std::collections::HashSet<String> = file_data
+        .imports
+        .iter()
+        .filter(|i| !i.is_star)
+        .map(|i| import_package_prefix(&i.full_path))
+        .collect();
+    if imported_packages.is_empty() {
+        return vec![];
+    }
+    let narrowed: Vec<Location> = locations
+        .into_iter()
+        .filter(|location| {
+            location_package(indexer, location).is_some_and(|pkg| imported_packages.contains(&pkg))
         })
         .collect();
     if narrowed.len() == 1 {
@@ -610,7 +695,22 @@ fn candidate_gradle_meta(location: &Location) -> Option<crate::cli::extract_sour
 /// denylisted — the tie-break must only ever remove a candidate it can
 /// positively prove is denylisted.
 fn is_denylisted_package_prefix(indexer: &Indexer, location: &Location) -> bool {
-    let Some(package) = jar_symbol_package(indexer, location)
+    let Some(package) = location_package(indexer, location) else {
+        return false;
+    };
+    DENYLISTED_PACKAGE_PREFIXES
+        .iter()
+        .any(|prefix| package.starts_with(prefix))
+}
+
+/// `location`'s own real package — same three-map fallback chain
+/// [`is_denylisted_package_prefix`]'s doc comment explains (per-symbol JAR
+/// package first, then a regular source file's single package, then a
+/// compiled-only JAR entry's first-symbol-derived package). Shared by every
+/// tie-break in [`ambiguity_safe_tail_with_denylist`] that needs to compare
+/// a candidate's package against something else.
+fn location_package(indexer: &Indexer, location: &Location) -> Option<String> {
+    jar_symbol_package(indexer, location)
         .or_else(|| {
             indexer
                 .files
@@ -623,12 +723,6 @@ fn is_denylisted_package_prefix(indexer: &Indexer, location: &Location) -> bool 
                 .get(location.uri.as_str())
                 .and_then(|f| f.package.clone())
         })
-    else {
-        return false;
-    };
-    DENYLISTED_PACKAGE_PREFIXES
-        .iter()
-        .any(|prefix| package.starts_with(prefix))
 }
 
 /// Returns the first Location found by scanning star-import packages.

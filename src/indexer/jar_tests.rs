@@ -438,6 +438,104 @@ fn jar_qualified_name_in_qualified_index() {
 }
 
 #[test]
+fn jar_qualified_member_resolves_for_inferred_but_unimported_receiver_type() {
+    // A variable's type can be correctly INFERRED (e.g. via a JAR function's
+    // return type, `scope.async { ... }` returning `Deferred<T>`) without
+    // ever being explicitly imported in the referencing file -- Kotlin
+    // doesn't require an import for a type used only through inference.
+    // `find_definition_qualified` is called with that inferred type name as
+    // the qualifier (see `cst_symbol.rs`'s `receiver_type`), so qualified
+    // member lookup must not depend on the file's own import list to resolve
+    // the qualifier root -- real, measured gap: `Deferred<T>.await()` (and
+    // any JAR type used only via inference) resolved to zero candidates.
+    let indexer = idx();
+    populate_from_symbols(
+        &indexer,
+        "/home/test/.gradle/caches/coroutines-core-1.7.3.jar".as_ref(),
+        &[
+            make_sidecar_symbol(
+                "Deferred",
+                "interface",
+                "interface kotlinx.coroutines.Deferred",
+                "",
+            ),
+            make_sidecar_symbol("await", "fun", "suspend fun await(): T", "Deferred"),
+        ],
+    );
+
+    let user_uri = Url::parse("file:///src/main/Main.kt").unwrap();
+    // Deliberately no `import kotlinx.coroutines.Deferred` -- the file only
+    // ever uses `Deferred` via inference.
+    indexer.index_content(&user_uri, "package com.example\nfun test() {}");
+
+    let locs = indexer.find_definition_qualified("await", Some("Deferred"), &user_uri);
+    assert!(
+        !locs.is_empty(),
+        "await should resolve on an inferred-but-unimported JAR receiver type; got 0 locations"
+    );
+}
+
+#[test]
+fn jar_qualified_member_ambiguous_root_narrowed_by_sibling_import_package() {
+    // Real, measured Moneta collision: `kotlinx.coroutines.Deferred` and an
+    // unrelated `com.google.firebase.components.Deferred` share a bare name.
+    // A file that calls `.await()` on an inferred `Deferred` almost never
+    // spells out `import kotlinx.coroutines.Deferred` (it's never written as
+    // a literal type), but DOES import a sibling from the same package
+    // (`kotlinx.coroutines.async`, the function that produced the inferred
+    // value) -- real, available evidence the denylist/module-scoped
+    // tie-breaks can't use (no denylist entry applies, and this workspace
+    // has no `workspace.json` module-dependency data).
+    let indexer = idx();
+    populate_from_symbols(
+        &indexer,
+        "/home/test/.gradle/caches/coroutines-core-1.7.3.jar".as_ref(),
+        &[
+            make_sidecar_symbol(
+                "Deferred",
+                "interface",
+                "interface kotlinx.coroutines.Deferred",
+                "",
+            ),
+            make_sidecar_symbol("await", "fun", "suspend fun await(): T", "Deferred"),
+        ],
+    );
+    populate_from_symbols(
+        &indexer,
+        "/home/test/.gradle/caches/firebase-components-19.0.0.aar".as_ref(),
+        &[make_sidecar_symbol(
+            "Deferred",
+            "class",
+            "class com.google.firebase.components.Deferred",
+            "",
+        )],
+    );
+
+    let user_uri = Url::parse("file:///src/main/Main.kt").unwrap();
+    // No `import ...Deferred` at all (used only via inference) -- but DOES
+    // import a sibling symbol from the real package.
+    indexer.index_content(
+        &user_uri,
+        "package com.example\nimport kotlinx.coroutines.async\nfun test() {}",
+    );
+
+    let locs = indexer.find_definition_qualified("await", Some("Deferred"), &user_uri);
+    assert_eq!(
+        locs.len(),
+        1,
+        "await should resolve uniquely via the sibling-import package tie-break, \
+         not decline as ambiguous; got: {:?}",
+        locs
+    );
+    assert!(
+        locs[0].uri.as_str().contains("coroutines-core"),
+        "must resolve to the kotlinx.coroutines Deferred, not the unrelated \
+         firebase-components one; got: {:?}",
+        locs[0]
+    );
+}
+
+#[test]
 fn empty_sidecar_symbols_no_crash() {
     let indexer = idx();
     let jar_path = "/home/test/.gradle/caches/empty-1.0.jar";
