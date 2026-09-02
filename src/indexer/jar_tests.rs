@@ -438,6 +438,44 @@ fn jar_qualified_name_in_qualified_index() {
 }
 
 #[test]
+fn jar_qualified_member_resolves_for_inferred_but_unimported_receiver_type() {
+    // A variable's type can be correctly INFERRED (e.g. via a JAR function's
+    // return type, `scope.async { ... }` returning `Deferred<T>`) without
+    // ever being explicitly imported in the referencing file -- Kotlin
+    // doesn't require an import for a type used only through inference.
+    // `find_definition_qualified` is called with that inferred type name as
+    // the qualifier (see `cst_symbol.rs`'s `receiver_type`), so qualified
+    // member lookup must not depend on the file's own import list to resolve
+    // the qualifier root -- real, measured gap: `Deferred<T>.await()` (and
+    // any JAR type used only via inference) resolved to zero candidates.
+    let indexer = idx();
+    populate_from_symbols(
+        &indexer,
+        "/home/test/.gradle/caches/coroutines-core-1.7.3.jar".as_ref(),
+        &[
+            make_sidecar_symbol(
+                "Deferred",
+                "interface",
+                "interface kotlinx.coroutines.Deferred",
+                "",
+            ),
+            make_sidecar_symbol("await", "fun", "suspend fun await(): T", "Deferred"),
+        ],
+    );
+
+    let user_uri = Url::parse("file:///src/main/Main.kt").unwrap();
+    // Deliberately no `import kotlinx.coroutines.Deferred` -- the file only
+    // ever uses `Deferred` via inference.
+    indexer.index_content(&user_uri, "package com.example\nfun test() {}");
+
+    let locs = indexer.find_definition_qualified("await", Some("Deferred"), &user_uri);
+    assert!(
+        !locs.is_empty(),
+        "await should resolve on an inferred-but-unimported JAR receiver type; got 0 locations"
+    );
+}
+
+#[test]
 fn empty_sidecar_symbols_no_crash() {
     let indexer = idx();
     let jar_path = "/home/test/.gradle/caches/empty-1.0.jar";

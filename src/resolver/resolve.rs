@@ -393,6 +393,32 @@ fn resolve_chain(
         if !rg_result.is_empty() {
             return rg_result;
         }
+        // 5.4 ── global definitions index (includes JAR symbols) ───────────────
+        // `rg`/`fd` only search the *workspace's own* source tree, so a type
+        // used purely through inference and never explicitly imported (Kotlin
+        // doesn't require an import for that) — e.g. `scope.async { }.await()`,
+        // where `Deferred` is inferred from `async`'s JAR-indexed return type
+        // but no file spells out `import kotlinx.coroutines.Deferred` — was
+        // unreachable here: real, measured gap. Same ambiguity-safe tie-break
+        // `IndexOnly`/`HierarchyAmbiguitySafe` already use below, extended to
+        // `Full` too — a unique JAR/workspace candidate wins outright; an
+        // ambiguous set still declines rather than guessing. Shape-filtered
+        // first, same as `rg_result` just above: an arity-incompatible
+        // same-name workspace declaration (e.g. a differently-shaped local
+        // overload) must not win here just because it's the sole candidate
+        // this index lookup happens to return.
+        let jar_tail_candidates = indexer.lookup_definitions(name);
+        let jar_tail_candidates = match shape {
+            Some(shape) => jar_tail_candidates
+                .into_iter()
+                .filter(|location| rg_location_satisfies_call_shape(indexer, location, name, shape))
+                .collect(),
+            None => jar_tail_candidates,
+        };
+        let jar_tail = ambiguity_safe_tail_with_denylist(indexer, from_uri, jar_tail_candidates);
+        if !jar_tail.is_empty() {
+            return jar_tail;
+        }
         // 5.5 ── Kotlin built-in-type platform equivalent (last resort) ────────
         // `rg`/`fd` search the *workspace's own* source tree and can never find
         // `String`/`CharSequence`: those are compiler intrinsics with no
@@ -414,7 +440,9 @@ fn resolve_chain(
     //    on the Moneta corpus (13 candidates for bare `String`, including a
     //    `com.android.internal.*`-packaged one) when it used the older,
     //    plain unique-match-only rule.
-    //  - Full: never reached (returns inside the rg branch above).
+    //  - Full: never reached — it has its own equivalent tail (5.4 above,
+    //    same `ambiguity_safe_tail_with_denylist` call) inside the rg branch,
+    //    since Full always returns from within that `if full_io` block.
     //
     // Each non-`ScopedOnly` arm falls through to
     // `resolve_kotlin_builtin_type_platform_equivalent` when its own lookup
