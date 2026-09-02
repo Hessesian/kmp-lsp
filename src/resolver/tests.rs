@@ -5816,6 +5816,42 @@ fn find_definition_qualified_prefers_own_member_over_scope_function_fallback() {
     );
 }
 
+/// Real, measured bug (Moneta's `FormatUtil.java`, 6 real `formatAmount`
+/// overloads): a Java class's overloaded method always resolved to exactly
+/// ONE arbitrary candidate via `find_name_scoped_to_container`'s `.find()`
+/// (Java method symbols land in reverse source order in `file_data.symbols`,
+/// so `.find()` always picked the highest-arity, last-declared overload) —
+/// which then failed arity-based shape filtering (`shape_filter_locations`)
+/// for nearly every real call site, since callers overwhelmingly use the
+/// OTHER overloads. Qualified member lookup must hand the caller ALL
+/// same-named candidates so shape filtering — not first-match order — picks
+/// the right one.
+#[test]
+fn find_definition_qualified_returns_all_overload_candidates() {
+    let idx = Indexer::new();
+    let use_uri = Url::parse("file:///app/FormatUtil.java").unwrap();
+    idx.index_content(
+        &use_uri,
+        concat!(
+            "package app;\n",
+            "public class FormatUtil {\n",
+            "    public static String formatAmount(java.math.BigDecimal a) { return null; }\n",
+            "    public static String formatAmount(java.math.BigDecimal a, int b) { return null; }\n",
+            "    public static String formatAmount(java.math.BigDecimal a, int b, boolean c) { return null; }\n",
+            "}\n",
+        ),
+    );
+
+    let locs = idx.find_definition_qualified("formatAmount", Some("FormatUtil"), &use_uri);
+    assert_eq!(
+        locs.len(),
+        3,
+        "must return all 3 overload candidates, not collapse to the single \
+         highest-arity/last-declared one; got {:?}",
+        locs
+    );
+}
+
 /// Primitive D (member-extension visibility): `fun Modifier.weight(...)`
 /// declared as a MEMBER of `interface ColumnScope` — the real Compose
 /// `ColumnScope`/`Modifier.weight` shape — must resolve via goto-definition

@@ -32,7 +32,10 @@ use crate::types::{CallerContext, FileData};
 use crate::StrExt;
 
 use super::fd::{fd_find_and_parse, import_package_prefix};
-use super::find::{find_local_declaration, find_name_in_uri, find_name_scoped_to_container};
+use super::find::{
+    find_all_names_scoped_to_container, find_local_declaration, find_name_in_uri,
+    find_name_scoped_to_container,
+};
 use super::hierarchy::{
     walk_hierarchy, walk_hierarchy_breadth_first, MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK,
 };
@@ -1407,8 +1410,15 @@ fn resolve_qualified(
                 continue;
             }
 
-            if let Some(loc) = find_name_scoped_to_container(indexer, name, &anchor) {
-                return vec![loc];
+            // Every same-named candidate, not just the first match — `name`
+            // may be an overloaded Java/Kotlin function, and collapsing to
+            // one arbitrary overload here (before the caller's own
+            // arity-based shape filtering ever runs) would make nearly
+            // every real call site to a DIFFERENT overload resolve to
+            // nothing (see `find_all_names_scoped_to_container`'s doc).
+            let member_locs = find_all_names_scoped_to_container(indexer, name, &anchor);
+            if !member_locs.is_empty() {
+                return member_locs;
             }
 
             // `anchor`'s own body doesn't declare `name` — it may live on a
