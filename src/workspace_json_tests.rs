@@ -829,7 +829,7 @@ fn r_class_jar_prefers_debug_shaped_variant_over_custom_flavor() {
 }
 
 #[test]
-fn r_class_jar_falls_back_to_compile_and_runtime_task_dir() {
+fn r_class_jar_found_under_app_module_task_dir() {
     // App/test modules use a differently-named AGP task output dir than
     // library modules (`compile_and_runtime_r_class_jar`, not
     // `compile_r_class_jar`) — both must be checked.
