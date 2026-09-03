@@ -59,7 +59,14 @@ use crate::sidecar::SidecarSymbol;
 ///      compiled enum class's own constants (`BufferOverflow.DROP_OLDEST`) —
 ///      a cached pre-v17 JAR's entries lack them, so older caches must be
 ///      rejected and rescanned.
-const JAR_CACHE_VERSION: u32 = 18;
+/// v18 → v19: `JavaClassVisitor.visitMethod` (pure-Java, no-Kotlin-metadata
+///            fallback path) now emits each method's real per-parameter types
+///            instead of a literal `"(...)"` placeholder — a pre-v19 cache's
+///            Java-only-library methods (e.g. `org.junit.Assert.fail`/
+///            `assertEquals`) all carry the wrong `(1, 1)` arity (parsed from
+///            the placeholder's single `...` "parameter"), so older caches
+///            must be rejected and rescanned.
+const JAR_CACHE_VERSION: u32 = 19;
 
 #[derive(Serialize, Deserialize)]
 struct JarCache {

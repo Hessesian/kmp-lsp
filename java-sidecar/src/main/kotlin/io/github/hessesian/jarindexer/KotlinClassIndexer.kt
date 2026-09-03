@@ -480,7 +480,23 @@ private class JavaClassVisitor(private val entries: MutableList<SymbolEntry>, pr
         val isBridge = (access and Opcodes.ACC_BRIDGE) != 0
         if (!isPublic || isSynthetic || isBridge || name == "<init>" || name == "<clinit>") return null
         if (name.contains('$')) return null
-        entries += SymbolEntry(name, "fun", className, "fun $name(...)", pkg = pkg, topLevel = false)
+        // Real per-param types from the descriptor -- NOT a "(...)" placeholder.
+        // Rust's `params_from_detail` parses this `detail` text to compute each
+        // symbol's `(required, total)` arity for call-site shape filtering; a
+        // literal "..." (no comma) always parsed as exactly one required param,
+        // so every plain-Java (non-Kotlin-metadata) method -- 0-arg, 2-arg,
+        // overloaded, whatever its real signature -- silently reported arity
+        // (1, 1). A real 0-arg or 2+-arg call site (e.g. `Assert.fail()`,
+        // `Assert.assertEquals(a, b)`) then failed arity-based shape filtering
+        // and fell through to a Gap/FilteredCandidate resolution outcome.
+        val isVarargs = (access and Opcodes.ACC_VARARGS) != 0
+        val argTypes = org.objectweb.asm.Type.getArgumentTypes(descriptor)
+        val paramsText = argTypes.mapIndexed { i, t ->
+            val typeName = t.className.substringAfterLast('.')
+            val prefix = if (isVarargs && i == argTypes.size - 1) "vararg " else ""
+            "$prefix p$i: $typeName"
+        }.joinToString(", ")
+        entries += SymbolEntry(name, "fun", className, "fun $name($paramsText)", pkg = pkg, topLevel = false)
         return null
     }
 
