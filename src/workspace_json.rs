@@ -734,6 +734,99 @@ pub(crate) fn detect_android_sdk_jar_path(workspace_root: &Path) -> Vec<PathBuf>
     }
 }
 
+/// Real AGP task-output directories that produce a module's own `R.jar` —
+/// `compile_r_class_jar` for library modules, `compile_and_runtime_r_class_jar`
+/// for application/test modules. Neither has one fixed variant subdirectory
+/// name across a real project: a custom product-flavor setup produces names
+/// like `tst1Debug`/`ppeDebug`/`prodDebug` instead of plain `debug`/`release`
+/// (real, observed on a production multi-flavor app) — [`find_r_class_jar_for_module`]
+/// globs every variant under both task dirs rather than assuming one name.
+const R_CLASS_JAR_TASK_DIRS: &[&str] = &["compile_r_class_jar", "compile_and_runtime_r_class_jar"];
+
+/// Locates each Gradle module's own AAPT-generated `R.jar` (the module's
+/// resource-symbol class — `R`, plus its real nested classes `R$string`,
+/// `R$drawable`, `R$id`, … since PR #301 indexes those correctly) under its
+/// `build/` output, so `R.string.foo`-style references resolve like any
+/// other JAR type.
+///
+/// `R.jar` is never a Gradle dependency — it never lands in the shared
+/// Gradle cache [`scan_gradle_jars`] scans — and AGP regenerates it per
+/// module, per build variant, under an unpredictable variant-named
+/// subdirectory (see [`R_CLASS_JAR_TASK_DIRS`]'s doc). Picks at most ONE
+/// variant's `R.jar` per module (preferring one whose variant name contains
+/// "debug", else whichever is found first): a real, measured, and
+/// acceptable trade-off — resource NAMES don't change with build variant
+/// for the same module (an id's underlying numeric VALUE does, but that has
+/// no bearing on name resolution, all this benchmark/goto-definition needs).
+///
+/// Reuses [`settings_subprojects`] for module identity — the same
+/// `include(":module")` parsing [`detect_build_layout_source_paths`] already
+/// uses — so a module directory that plain doesn't have a built `R.jar` yet
+/// (never built, or a pure-Kotlin module with no `res/`) is silently
+/// skipped, never an error.
+pub(crate) fn detect_android_r_class_jars(workspace_root: &Path) -> Vec<PathBuf> {
+    let subprojects = settings_subprojects(workspace_root);
+    let module_dirs: Vec<PathBuf> = if subprojects.is_empty() {
+        vec![workspace_root.to_owned()]
+    } else {
+        subprojects.iter().map(|s| workspace_root.join(s)).collect()
+    };
+
+    let jars: Vec<PathBuf> = module_dirs
+        .iter()
+        .filter_map(|module_dir| find_r_class_jar_for_module(module_dir))
+        .collect();
+
+    if !jars.is_empty() {
+        log::info!(
+            "android-r-class: auto-detected {} module R.jar(s)",
+            jars.len()
+        );
+    }
+    jars
+}
+
+/// One module's own `R.jar`, if its project has been built — see
+/// [`detect_android_r_class_jars`]'s doc for the selection rule (prefer a
+/// "debug"-named variant, else the first one found).
+fn find_r_class_jar_for_module(module_dir: &Path) -> Option<PathBuf> {
+    let mut fallback: Option<PathBuf> = None;
+    for task_dir_name in R_CLASS_JAR_TASK_DIRS {
+        let task_dir = module_dir.join("build/intermediates").join(task_dir_name);
+        let Ok(variant_entries) = std::fs::read_dir(&task_dir) else {
+            continue;
+        };
+        for variant_entry in variant_entries.filter_map(|e| e.ok()) {
+            if !variant_entry
+                .file_type()
+                .map(|t| t.is_dir())
+                .unwrap_or(false)
+            {
+                continue;
+            }
+            let Ok(task_output_entries) = std::fs::read_dir(variant_entry.path()) else {
+                continue;
+            };
+            for task_output_entry in task_output_entries.filter_map(|e| e.ok()) {
+                let jar = task_output_entry.path().join("R.jar");
+                if !jar.is_file() {
+                    continue;
+                }
+                let is_debug_shaped = variant_entry
+                    .file_name()
+                    .to_string_lossy()
+                    .to_lowercase()
+                    .contains("debug");
+                if is_debug_shaped {
+                    return Some(jar);
+                }
+                fallback.get_or_insert(jar);
+            }
+        }
+    }
+    fallback
+}
+
 /// Resolve the local Android SDK root directory, checking (in order)
 /// `local.properties`' `sdk.dir`, then `$ANDROID_HOME`, then
 /// `$ANDROID_SDK_ROOT`. Shared by `detect_android_sdk_source_paths` and

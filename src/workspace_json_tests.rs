@@ -746,3 +746,132 @@ fn load_module_dependencies_scopes_each_module_to_its_own_content_roots() {
         "app-only dependency leaked into core's scope: {artifacts:?}"
     );
 }
+
+// ─── Android R.jar detection tests ───────────────────────────────────────────
+
+/// Real, observed AGP output shape: `<module>/build/intermediates/
+/// compile_r_class_jar/<variant>/generate<Variant>RFile/R.jar`.
+fn write_r_jar(module_dir: &std::path::Path, task_dir: &str, variant: &str, task_output: &str) {
+    let dir = module_dir
+        .join("build/intermediates")
+        .join(task_dir)
+        .join(variant)
+        .join(task_output);
+    fs::create_dir_all(&dir).unwrap();
+    fs::write(dir.join("R.jar"), b"fake r.jar").unwrap();
+}
+
+#[test]
+fn r_class_jars_found_across_multiple_modules() {
+    let dir = TempDir::new().unwrap();
+    fs::write(
+        dir.path().join("settings.gradle.kts"),
+        "include(\":core:common\")\ninclude(\":feature:accident\")\n",
+    )
+    .unwrap();
+    write_r_jar(
+        &dir.path().join("core/common"),
+        "compile_r_class_jar",
+        "debug",
+        "generateDebugRFile",
+    );
+    write_r_jar(
+        &dir.path().join("feature/accident"),
+        "compile_r_class_jar",
+        "debug",
+        "generateDebugRFile",
+    );
+
+    let jars = detect_android_r_class_jars(dir.path());
+    assert_eq!(jars.len(), 2, "expected one R.jar per module; got {jars:?}");
+    assert!(jars
+        .iter()
+        .any(|j| j.starts_with(dir.path().join("core/common"))));
+    assert!(jars
+        .iter()
+        .any(|j| j.starts_with(dir.path().join("feature/accident"))));
+}
+
+#[test]
+fn r_class_jar_prefers_debug_shaped_variant_over_custom_flavor() {
+    // Real, observed shape: a custom product-flavor setup produces variant
+    // names like `tst1Debug`/`ppeDebug`/`prodDebug` — none literally named
+    // "debug", but "prodDebug" (say) still CONTAINS "debug" and should win
+    // over a variant that doesn't (e.g. a pure "release"-only entry, or an
+    // unrelated non-debug flavor combination).
+    let dir = TempDir::new().unwrap();
+    fs::write(
+        dir.path().join("settings.gradle.kts"),
+        "include(\":app\")\n",
+    )
+    .unwrap();
+    let module_dir = dir.path().join("app");
+    write_r_jar(
+        &module_dir,
+        "compile_and_runtime_r_class_jar",
+        "release",
+        "processReleaseResources",
+    );
+    write_r_jar(
+        &module_dir,
+        "compile_and_runtime_r_class_jar",
+        "prodDebug",
+        "processProdDebugResources",
+    );
+
+    let jars = detect_android_r_class_jars(dir.path());
+    assert_eq!(jars.len(), 1);
+    assert!(
+        jars[0].to_string_lossy().contains("prodDebug"),
+        "must prefer the debug-shaped variant over release; got {:?}",
+        jars[0]
+    );
+}
+
+#[test]
+fn r_class_jar_falls_back_to_compile_and_runtime_task_dir() {
+    // App/test modules use a differently-named AGP task output dir than
+    // library modules (`compile_and_runtime_r_class_jar`, not
+    // `compile_r_class_jar`) — both must be checked.
+    let dir = TempDir::new().unwrap();
+    fs::write(
+        dir.path().join("settings.gradle.kts"),
+        "include(\":mobile\")\n",
+    )
+    .unwrap();
+    write_r_jar(
+        &dir.path().join("mobile"),
+        "compile_and_runtime_r_class_jar",
+        "tst1Debug",
+        "processTst1DebugResources",
+    );
+
+    let jars = detect_android_r_class_jars(dir.path());
+    assert_eq!(jars.len(), 1);
+}
+
+#[test]
+fn r_class_jar_skips_module_never_built() {
+    // A module with no `build/` output at all (never built, or pure-Kotlin
+    // with no `res/`) must be silently skipped, never an error.
+    let dir = TempDir::new().unwrap();
+    fs::write(
+        dir.path().join("settings.gradle.kts"),
+        "include(\":core:common\")\ninclude(\":core:pure-kotlin\")\n",
+    )
+    .unwrap();
+    write_r_jar(
+        &dir.path().join("core/common"),
+        "compile_r_class_jar",
+        "debug",
+        "generateDebugRFile",
+    );
+    // core/pure-kotlin has no build/ dir at all.
+
+    let jars = detect_android_r_class_jars(dir.path());
+    assert_eq!(
+        jars.len(),
+        1,
+        "only the built module's R.jar should be found; got {jars:?}"
+    );
+}
