@@ -5,7 +5,9 @@
 //! `build_subst_map`) depends on `IndexRead`, and `WorkspaceRead: IndexRead`.
 //! Migrating these to the new traits is tracked as part of F5 cleanup.
 
-use tower_lsp::lsp_types::{Hover, HoverContents, MarkupContent, MarkupKind, Position, Url};
+use tower_lsp::lsp_types::{
+    Hover, HoverContents, Location, MarkupContent, MarkupKind, Position, Url,
+};
 
 use crate::backend::cursor::CursorContext;
 use crate::backend::format::{format_contextual_hover, format_symbol_hover};
@@ -82,21 +84,16 @@ fn contextual_receiver_hover<W: WorkspaceRead>(
 ) -> Option<Hover> {
     let receiver_type = ctx.contextual.as_ref()?;
     ctx.qualifier.as_ref()?;
-    let mut locations = resolve_with_receiver_fallback(workspace, &ctx.word, receiver_type, uri);
+    let locations = resolve_with_receiver_fallback(workspace, &ctx.word, receiver_type, uri);
     // Same self-shadow reasoning as goto-definition's identical branch (see
-    // `CursorContext::contextual`'s doc). Filtering to empty returns `None`
-    // rather than the wrong candidate — `compute_hover` then falls through to
-    // `regular_symbol_hover`'s string-qualifier path, which never consults
-    // the extension-in-scope registry that causes the wrong match.
-    if let Some(indexer) = workspace.as_indexer() {
-        if let Some(shape) =
-            crate::features::definition::call_shape_at_callee(indexer, uri, position)
-        {
-            locations =
-                crate::indexer::shape_filter_locations(indexer, shape, locations).resolved();
-        }
-    }
-    let location = locations.into_iter().next()?;
+    // `CursorContext::contextual`'s doc): arity-filter by a derivable call
+    // shape first. And — same "don't guess" reasoning as
+    // `qualified_member_hover_markdown` — decline (`None`) rather than an
+    // arbitrary pick when more than one candidate still remains, shape
+    // filtering or no. Either way, `compute_hover` then falls through to
+    // `regular_symbol_hover`'s string-qualifier path.
+    let shape_ctx = call_shape_ctx(workspace, uri, position);
+    let location = pick_unambiguous_location(shape_ctx, locations)?;
     let info = enrich_at_location(
         workspace,
         &location,
@@ -105,6 +102,46 @@ fn contextual_receiver_hover<W: WorkspaceRead>(
         &ResolveOptions::hover(),
     )?;
     Some(make_markdown_hover(format_symbol_hover(&info, uri.path())))
+}
+
+/// The call shape of the call whose callee sits under `position`, paired with
+/// the `Indexer` needed to apply it — `None` when there's no indexer (test
+/// stubs) or the cursor isn't precisely on a call's callee (see
+/// `call_shape_at_callee`).
+fn call_shape_ctx<'a, W: WorkspaceRead>(
+    workspace: &'a W,
+    uri: &Url,
+    position: Position,
+) -> Option<(&'a crate::indexer::Indexer, crate::indexer::CallShape)> {
+    let indexer = workspace.as_indexer()?;
+    let shape = crate::features::definition::call_shape_at_callee(indexer, uri, position)?;
+    Some((indexer, shape))
+}
+
+/// Reduce `locations` — candidates for a possibly-overloaded qualified
+/// reference — to a single unambiguous one, or decline (`None`) instead of
+/// guessing.
+///
+/// When `shape_ctx` is `Some` (the cursor sits on an actual call's callee),
+/// candidates are first arity-filtered via `shape_filter_locations` — the
+/// same filtering `resolve_identity_with_io` applies for goto-definition.
+/// Whether or not a shape was available, more than one candidate surviving
+/// means the reference is genuinely ambiguous (a bare reference to an
+/// overloaded name, or two overloads sharing an arity) — showing no hover is
+/// more honest than picking an arbitrary overload's docs. See PR #304, which
+/// stopped `resolve_qualified`'s member-lookup step from collapsing overloads
+/// to one arbitrary candidate before this point ever got a look at them.
+fn pick_unambiguous_location(
+    shape_ctx: Option<(&crate::indexer::Indexer, crate::indexer::CallShape)>,
+    mut locations: Vec<Location>,
+) -> Option<Location> {
+    if let Some((indexer, shape)) = shape_ctx {
+        locations = crate::indexer::shape_filter_locations(indexer, shape, locations).resolved();
+    }
+    if locations.len() > 1 {
+        return None;
+    }
+    locations.into_iter().next()
 }
 
 fn regular_symbol_hover<W: WorkspaceRead>(
@@ -118,18 +155,49 @@ fn regular_symbol_hover<W: WorkspaceRead>(
             return hover;
         }
     }
-    let markdown = resolve_hover_markdown(
-        workspace,
-        &ctx.word,
-        ctx.qualifier.as_deref(),
-        uri,
-        position.line,
-    )
-    .or_else(|| crate::stdlib::hover(&ctx.word));
+    let markdown = qualified_member_hover_markdown(workspace, ctx, uri, position)
+        .or_else(|| crate::stdlib::hover(&ctx.word));
     if let Some(markdown) = markdown {
         return Some(make_markdown_hover(markdown));
     }
     fallback_local_binding_hover(workspace, ctx, uri, position.line)
+}
+
+/// Resolve `ctx.word` (optionally behind `ctx.qualifier`) to hover markdown.
+///
+/// An unqualified reference is unaffected by PR #304's overload fan-out
+/// (`resolve_qualified`, where that fan-out happens, is only ever reached
+/// with a qualifier) and delegates straight to `resolve_hover_markdown`.
+///
+/// A qualified reference (`Type.member`, e.g. a Java class's overloaded
+/// static method) resolves ambiguity-aware instead of going through
+/// `resolve_hover_markdown` — that path's `locate_symbol` picks
+/// `.into_iter().next()` with no shape-awareness at all, so it silently shows
+/// one arbitrary overload's docs post-#304. `contextual_receiver_hover`
+/// already covers the sibling case where `ctx.contextual` narrows a receiver
+/// type (smart-cast, lambda params, `it`/`this`); this covers the plain
+/// string-qualifier lookup that function never reaches (`ctx.contextual` is
+/// `None` for a `Type.member` reference on a class name, not a variable).
+fn qualified_member_hover_markdown<W: WorkspaceRead>(
+    workspace: &W,
+    ctx: &CursorContext,
+    uri: &Url,
+    position: Position,
+) -> Option<String> {
+    let Some(qualifier) = ctx.qualifier.as_deref() else {
+        return resolve_hover_markdown(workspace, &ctx.word, None, uri, position.line);
+    };
+    let locations = workspace.find_definition_qualified(&ctx.word, Some(qualifier), uri);
+    let shape_ctx = call_shape_ctx(workspace, uri, position);
+    let location = pick_unambiguous_location(shape_ctx, locations)?;
+    let info = enrich_at_location(
+        workspace,
+        &location,
+        &ctx.word,
+        hover_substitution_context(uri, position.line),
+        &ResolveOptions::hover(),
+    )?;
+    Some(format_symbol_hover(&info, uri.path()))
 }
 
 /// `Some(hover)` when the cursor sits on a call's callee and the call's own

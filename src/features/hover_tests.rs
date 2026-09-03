@@ -316,3 +316,90 @@ class Reducer {
          sibling field found by proximity to Event's own declaration, got: {text:?}"
     );
 }
+
+/// Real corpus case that motivated PR #304 (Moneta's `FormatUtil.java`),
+/// reached through hover's own resolution pipeline instead of goto-def's.
+/// `resolve_qualified` now hands every same-named overload to its caller
+/// (`find_all_names_scoped_to_container`, see PR #304), in `file_data.symbols`
+/// order — reverse source order for Java, so the 3-arg (last-declared)
+/// overload sorts first. Before this fix, `locate_symbol`
+/// (`src/indexer/resolution.rs`) picked `.into_iter().next()` with no
+/// shape-awareness at all, so hovering the CALL to the 2-arg overload always
+/// showed the 3-arg overload's own signature instead.
+#[test]
+fn hover_on_qualified_call_shows_the_called_overload_not_an_arbitrary_one() {
+    let idx = Indexer::new();
+    let java_uri = Url::parse("file:///app/FormatUtil.java").unwrap();
+    idx.index_content(
+        &java_uri,
+        concat!(
+            "package app;\n",
+            "public class FormatUtil {\n",
+            "    public static String formatAmount(java.math.BigDecimal a) { return null; }\n",
+            "    public static String formatAmount(java.math.BigDecimal a, int b) { return null; }\n",
+            "    public static String formatAmount(java.math.BigDecimal a, int b, boolean c) { return null; }\n",
+            "}\n",
+        ),
+    );
+
+    let uri = Url::parse("file:///app/Caller.kt").unwrap();
+    let src = "package app\n\
+               class Caller {\n\
+                   fun run(amount: java.math.BigDecimal) {\n\
+                       FormatUtil.formatAmount(amount, 2)\n\
+                   }\n\
+               }\n";
+    idx.index_content(&uri, src);
+    idx.store_live_tree(&uri, src);
+    let col = src.lines().nth(3).unwrap().find("formatAmount").unwrap() as u32;
+    let position = Position::new(3, col);
+    let ctx = CursorContext::build(&idx, &uri, position).unwrap();
+
+    let hover = compute_hover(&idx, &ctx, &uri, position).expect("expected a hover result");
+    let text = hover_text(&hover);
+    assert!(
+        text.contains("int b") && !text.contains("boolean c"),
+        "hovering the 2-arg call must show the 2-arg overload's own \
+         signature, not the 3-arg (or 1-arg) overload's, got: {text:?}"
+    );
+}
+
+/// The sibling gap left open by PR #304: a qualified reference with NO
+/// derivable call shape (here, a bare property-style reference — no call
+/// parens at all) that still resolves to more than one overload candidate
+/// must decline rather than silently showing an arbitrary overload's docs.
+#[test]
+fn hover_on_ambiguous_qualified_reference_without_call_declines_rather_than_guessing() {
+    let idx = Indexer::new();
+    let java_uri = Url::parse("file:///app/FormatUtil.java").unwrap();
+    idx.index_content(
+        &java_uri,
+        concat!(
+            "package app;\n",
+            "public class FormatUtil {\n",
+            "    public static String formatAmount(java.math.BigDecimal a) { return null; }\n",
+            "    public static String formatAmount(java.math.BigDecimal a, int b) { return null; }\n",
+            "    public static String formatAmount(java.math.BigDecimal a, int b, boolean c) { return null; }\n",
+            "}\n",
+        ),
+    );
+
+    let uri = Url::parse("file:///app/Caller.kt").unwrap();
+    let src = "package app\n\
+               class Caller {\n\
+                   val ref = FormatUtil.formatAmount\n\
+               }\n";
+    idx.index_content(&uri, src);
+    idx.store_live_tree(&uri, src);
+    let col = src.lines().nth(2).unwrap().find("formatAmount").unwrap() as u32;
+    let position = Position::new(2, col);
+    let ctx = CursorContext::build(&idx, &uri, position).unwrap();
+
+    let hover = compute_hover(&idx, &ctx, &uri, position);
+    assert!(
+        hover.is_none(),
+        "an ambiguous qualified reference with no derivable call shape must \
+         decline rather than showing an arbitrary overload's docs, got: {:?}",
+        hover.map(|h| hover_text(&h))
+    );
+}
