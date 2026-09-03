@@ -373,6 +373,27 @@ fn property_type_simple() {
     );
 }
 
+// Regression: the sidecar's pure-Java fallback (`JavaClassVisitor` in
+// `KotlinClassIndexer.kt`) reads a field's type off ASM's `Type.className`,
+// which is lowercase for a JVM primitive ("int", not "Int") — e.g. Android's
+// generated `R$drawable.ic_account: int`. Without `kotlin_primitive_type_name`
+// this fails the uppercase check and silently drops the field's type.
+#[test]
+fn property_type_java_int_primitive_maps_to_kotlin_int() {
+    assert_eq!(
+        extract_property_type_from_detail("val ic_account: int"),
+        Some("Int".into()),
+    );
+}
+
+#[test]
+fn property_type_java_boolean_primitive_maps_to_kotlin_boolean() {
+    assert_eq!(
+        extract_property_type_from_detail("var enabled: boolean"),
+        Some("Boolean".into()),
+    );
+}
+
 #[test]
 fn property_type_no_keyword_returns_none() {
     assert_eq!(

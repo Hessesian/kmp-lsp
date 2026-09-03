@@ -1709,6 +1709,50 @@ fn jar_nested_class_fqn_in_qualified_index() {
 }
 
 #[test]
+fn nested_type_member_access_resolves_through_outer_type() {
+    // `R.drawable.ic_account`: `R` is a top-level class, `drawable` a nested
+    // CLASS of `R` (not a field), `ic_account` a property of `drawable`.
+    // Regression for the #1 concentrated member-ref Gap in the
+    // resolution-accuracy benchmark (Android's generated `R` class, but the
+    // shape is general: any `Outer.Nested.leaf` chain where `Nested` is
+    // itself a nested type, not a value).
+    let indexer = idx();
+    let jar_path = "/home/test/.gradle/caches/app-r-jar/R.jar";
+
+    let symbols = vec![
+        make_sidecar_symbol("R", "class", "class com.example.R", ""),
+        make_sidecar_symbol("drawable", "class", "class com.example.R.drawable", "R"),
+        // Matches the sidecar's real Java-fallback output for a plain
+        // `public static int` field: the JVM primitive name is lowercase
+        // ("int"), not the Kotlin-visible "Int" — see
+        // `kotlin_primitive_type_name` in `resolver::infer_lines`.
+        make_sidecar_symbol("ic_account", "val", "val ic_account: int", "drawable"),
+    ];
+    populate_from_symbols(&indexer, jar_path.as_ref(), &symbols);
+
+    let uri = Url::parse("file:///src/Caller.kt").unwrap();
+
+    // `drawable` is a nested TYPE of `R`, not a field — `field_type("R",
+    // "drawable", ...)` must resolve to that nested type, not None.
+    let nested_type = crate::resolver::Resolver::field_type(&indexer, "R", "drawable", &uri);
+    assert!(
+        nested_type.is_some(),
+        "R.drawable must resolve as a nested-type receiver, got None"
+    );
+    let (nested_type_name, _) = nested_type.unwrap();
+
+    // And the final hop, `.ic_account` on that nested type, must resolve too
+    // — to "Int", the Kotlin-visible name for the field's raw Java "int".
+    let leaf_type =
+        crate::resolver::Resolver::field_type(&indexer, &nested_type_name, "ic_account", &uri);
+    assert_eq!(
+        leaf_type.map(|(t, _)| t).as_deref(),
+        Some("Int"),
+        "R.drawable.ic_account must resolve through the nested type {nested_type_name:?}, got None"
+    );
+}
+
+#[test]
 fn jar_enum_constant_resolves_with_enum_member_kind() {
     // The sidecar now emits an "enum_member" SymbolEntry for each of a
     // JAR-compiled enum class's own constants (see KotlinClassIndexer.kt's

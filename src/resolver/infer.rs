@@ -1173,6 +1173,51 @@ fn find_field_type_in_class_impl(
             return Some((field_type, location.uri.clone()));
         }
     }
+    // Fallback: JAR-indexed classes carry ALL their members (including
+    // compiled properties like `R.drawable`'s resource constants) as flat
+    // symbol-table entries rather than real source text, so the two
+    // text-scanning loops above never see them (`infer_field_type_raw` reads
+    // `indexer.files`/disk, never `indexer.jar_files`). Read the symbol table
+    // directly, scoped to `field_name` entries whose own `container` is
+    // `class_name`'s bare (last-segment) name — `s.container` is only
+    // populated by the JAR sidecar, so this is a no-op for real source files
+    // (already covered by the loops above).
+    //
+    // This also covers `field_name` naming a nested TYPE of `class_name`, not
+    // a field — e.g. `R.drawable` where `drawable` is a nested class of `R`
+    // (Android's generated resource class; the same shape applies to any
+    // user-defined `Outer.Nested` reference, not just `R`). Mirrors
+    // `infer_ident_type`'s bare-uppercase-resolves-to-itself trick one level
+    // up the chain: the member's "type" becomes the nested type itself, so
+    // the next hop in the chain (`.leaf`) can search inside it.
+    let class_base = class_name.rsplit('.').next().unwrap_or(class_name);
+    for location in &candidates {
+        let Some(file_data) = ensure_file_data(indexer, &location.uri) else {
+            continue;
+        };
+        let Some(sym) = file_data
+            .symbols
+            .iter()
+            .find(|s| s.name == field_name && s.container.as_deref() == Some(class_base))
+        else {
+            continue;
+        };
+        if matches!(
+            sym.kind,
+            SymbolKind::CLASS
+                | SymbolKind::INTERFACE
+                | SymbolKind::ENUM
+                | SymbolKind::OBJECT
+                | SymbolKind::STRUCT
+        ) {
+            return Some((format!("{class_name}.{field_name}"), location.uri.clone()));
+        }
+        if matches!(sym.kind, SymbolKind::PROPERTY | SymbolKind::VARIABLE) {
+            if let Some(type_name) = extract_property_type_from_detail(&sym.detail) {
+                return Some((type_name, location.uri.clone()));
+            }
+        }
+    }
     None
 }
 
