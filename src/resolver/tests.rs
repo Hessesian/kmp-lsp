@@ -6015,7 +6015,7 @@ fn find_definition_qualified_falls_back_to_bare_lookup_for_scope_functions() {
 /// (Moneta's own real corpus state — confirmed no `libraries`/`dependencies`
 /// section), and no explicit import of anything relevant at all.
 #[test]
-fn find_definition_qualified_prefers_kotlin_default_import_when_ambiguous_and_unimported() {
+fn find_definition_qualified_prefers_kotlin_default_import_over_unimported_decoy() {
     use crate::types::FileData;
     use std::sync::Arc;
 
