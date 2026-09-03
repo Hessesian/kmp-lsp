@@ -2093,10 +2093,17 @@ fn resolve_same_package(indexer: &Indexer, name: &str, uri: &Url) -> Vec<Locatio
     crate::indexer::jar::ensure_jar_definitions_for(indexer, name, &mut cache_backed_only);
     if let Some(locs) = indexer.jar_definitions.get(name) {
         for loc in locs.iter() {
-            if let Some(f) = indexer.jar_files.get(loc.uri.as_str()) {
-                if f.package.as_ref() == Some(&pkg) {
-                    return vec![loc.clone()];
-                }
+            // `jar_symbol_package` (the sidecar's real per-symbol package)
+            // first, NOT `indexer.jar_files.get(...).package` — that whole-JAR
+            // fallback is `build_jar_file_data`'s guess from the FIRST
+            // class-like symbol's `detail` text, which the sidecar's
+            // pure-Java fallback (`JavaClassVisitor`, e.g. Android's
+            // AAPT-generated `R.jar`) never includes a package in (`"class
+            // R"`, not `"class pkg.R"`) — so for a jar like that, this same-
+            // package check could never fire at all without the per-symbol
+            // table, regardless of how many symbols really live in `pkg`.
+            if location_package(indexer, loc).as_ref() == Some(&pkg) {
+                return vec![loc.clone()];
             }
         }
     }

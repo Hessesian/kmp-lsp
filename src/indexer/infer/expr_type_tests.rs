@@ -554,6 +554,72 @@ fn infer_navigation_expr_type_reanchors_reachability_on_receiver_declaring_file(
 }
 
 #[test]
+fn nested_type_receiver_chain_resolves_end_to_end() {
+    // `R.drawable.ic_account`: `R` is a top-level (JAR-indexed) class,
+    // `drawable` a nested class of `R` (not a field), `ic_account` a
+    // property of `drawable`. Full CST-to-type-inference path, not just the
+    // underlying `find_field_type_in_class` unit — see
+    // `indexer::jar_tests::nested_type_member_access_resolves_through_outer_type`
+    // for the isolated resolver-level test.
+    use crate::indexer::jar::populate_from_symbols;
+    use crate::indexer::Indexer;
+    use crate::queries::KIND_NAV_EXPR;
+    use crate::sidecar::SidecarSymbol;
+
+    fn find_outermost_nav_expr(node: tree_sitter::Node) -> Option<tree_sitter::Node> {
+        if node.kind() == KIND_NAV_EXPR {
+            return Some(node);
+        }
+        let mut cursor = node.walk();
+        let found = node.children(&mut cursor).find_map(find_outermost_nav_expr);
+        found
+    }
+
+    fn sidecar_symbol(name: &str, kind: &str, detail: &str, container: &str) -> SidecarSymbol {
+        SidecarSymbol {
+            name: name.to_owned(),
+            kind: kind.to_owned(),
+            container: container.to_owned(),
+            detail: detail.to_owned(),
+            doc: String::new(),
+            type_params: Vec::new(),
+            extension_receiver_type: String::new(),
+            trailing_lambda: false,
+            deprecated: false,
+            pkg: String::new(),
+            top_level: container.is_empty(),
+            supers: vec![],
+        }
+    }
+
+    let idx = Indexer::new();
+    let symbols = vec![
+        sidecar_symbol("R", "class", "class com.example.R", ""),
+        sidecar_symbol("drawable", "class", "class com.example.R.drawable", "R"),
+        // Matches the sidecar's real Java-fallback output for a plain
+        // `public static int` field: lowercase JVM primitive name, not the
+        // Kotlin-visible "Int" (see `kotlin_primitive_type_name`).
+        sidecar_symbol("ic_account", "val", "val ic_account: int", "drawable"),
+    ];
+    populate_from_symbols(
+        &idx,
+        "/home/test/.gradle/caches/app-r-jar/R.jar".as_ref(),
+        &symbols,
+    );
+
+    let caller_uri = test_url();
+    let caller_src = "fun f() = R.drawable.ic_account\n";
+    let (tree, bytes) = fun_body_expr_node(caller_src);
+    let expr = find_outermost_nav_expr(tree.root_node()).expect("R.drawable.ic_account not parsed");
+
+    assert_eq!(
+        infer_expr_type(expr, &bytes, &idx, &caller_uri).as_deref(),
+        Some("Int"),
+        "R.drawable.ic_account must resolve through the nested type R.drawable"
+    );
+}
+
+#[test]
 fn unknown_identifier_returns_none() {
     // An unregistered variable → no type known
     assert_eq!(

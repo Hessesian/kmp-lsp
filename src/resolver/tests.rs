@@ -929,6 +929,71 @@ fn resolve_does_not_cross_packages_without_import() {
     );
 }
 
+/// Regression: `resolve_same_package`'s JAR branch used to check
+/// `indexer.jar_files.get(loc.uri).package` — the whole-JAR fallback package
+/// `build_jar_file_data` infers from the FIRST class-like symbol's `detail`
+/// text. The sidecar's pure-Java fallback (`JavaClassVisitor` in
+/// `KotlinClassIndexer.kt`, used for AAPT-generated classes like Android's
+/// `R` — no Kotlin metadata) emits a *bare* class detail (`"class R"`, not
+/// `"class pkg.R"` the way the Kotlin-metadata path does) — so that
+/// whole-JAR inference always fails (no dot to split on) and the same-package
+/// JAR check could never fire for an `R.jar`-shaped compiled JAR, no matter
+/// how many symbols shared its real package. The fix reads each symbol's own
+/// *real* package via `jar_symbol_package` (the sidecar's per-symbol `pkg`
+/// side table — see `location_package`) instead.
+#[test]
+fn resolve_same_package_finds_jar_symbol_with_bare_class_detail() {
+    use crate::sidecar::SidecarSymbol;
+
+    let sym = |name: &str, kind: &str, container: &str, detail: &str, pkg: &str| SidecarSymbol {
+        name: name.to_owned(),
+        kind: kind.to_owned(),
+        container: container.to_owned(),
+        detail: detail.to_owned(),
+        doc: String::new(),
+        type_params: vec![],
+        extension_receiver_type: String::new(),
+        trailing_lambda: false,
+        deprecated: false,
+        pkg: pkg.to_owned(),
+        top_level: container.is_empty(),
+        supers: vec![],
+    };
+    let idx = Indexer::new();
+    // Two Android modules, each with its own AAPT-generated `R.jar` in its
+    // own package — the real-world shape (a real workspace has one such JAR
+    // per module). Bare `detail` text throughout, exactly as
+    // `JavaClassVisitor.visit()`/`visitField()` emit it for a pure-Java class
+    // (no package prefix) — unlike the Kotlin-metadata path's `"class pkg.Name"`.
+    crate::indexer::jar::populate_from_symbols(
+        &idx,
+        std::path::Path::new("/fake/commonui-R.jar"),
+        &[sym("R", "class", "", "class R", "cz.moneta.commonui")],
+    );
+    crate::indexer::jar::populate_from_symbols(
+        &idx,
+        std::path::Path::new("/fake/other-R.jar"),
+        &[sym("R", "class", "", "class R", "com.other.app")],
+    );
+
+    let caller_uri = uri("/cz/moneta/commonui/DrawableMap.kt");
+    idx.index_content(&caller_uri, "package cz.moneta.commonui\nval x = R\n");
+
+    let locs = resolve_symbol(&idx, "R", None, &caller_uri);
+    assert!(
+        !locs.is_empty(),
+        "same-package resolution must find the JAR-indexed R even though \
+         its whole-JAR fallback package is unknown (bare class detail)"
+    );
+    assert!(
+        locs[0].uri.as_str().contains("commonui-R.jar"),
+        "must resolve to the caller's OWN module's R (matching its real \
+         per-symbol package), not an unrelated same-named R from another \
+         module's jar — got {:?}",
+        locs[0]
+    );
+}
+
 // ── resolve_qualified (dot accessor) ────────────────────────────────────
 
 #[test]
@@ -1288,12 +1353,13 @@ fn resolve_qualified_uppercase_root_hierarchy_fallback_reaches_jar_superclass() 
 /// is JAR-promotion-aware the same way `resolve_from_class_hierarchy` is
 /// above, so it can walk into a JAR-derived superclass whose stub symbols
 /// carry the same degenerate `.range == .selection_range` (no real body
-/// span). Unlike a member *function* (found via the container-scoped
-/// `find_in_workspace_defs` check), a JAR class's own member *property* has
-/// no indexed-detail resolution path yet (`infer_field_type_raw` never reads
-/// `jar_files`, only workspace `files`) — the point of this test is that the
-/// walk still terminates with a clean `None` instead of panicking on the
-/// JAR stub's degenerate range, not that the property resolves.
+/// span). `find_field_type_in_class_impl`'s symbol-table fallback (added
+/// alongside the nested-type receiver fix, see
+/// `indexer::jar_tests::nested_type_member_access_resolves_through_outer_type`)
+/// now reads a JAR class's own member *property* straight from its indexed
+/// `detail` text — the point of this test is now that the walk resolves the
+/// inherited property AND still terminates cleanly instead of panicking on
+/// the JAR stub's degenerate range.
 #[test]
 fn catalog_field_type_supertype_walk_reaches_jar_superclass_without_panicking() {
     use crate::sidecar::SidecarSymbol;
@@ -1330,12 +1396,12 @@ fn catalog_field_type_supertype_walk_reaches_jar_superclass_without_panicking() 
 
     let result =
         crate::resolver::Resolver::field_type(&idx, "ConcreteViewModel", "uiState", &host_uri);
-    assert!(
-        result.is_none(),
-        "a JAR class's own member property has no indexed-detail resolution \
-         path today (unlike an extension property); the walk must return \
-         None gracefully instead of panicking on the JAR stub's degenerate \
-         range, got {result:?}"
+    assert_eq!(
+        result.map(|(type_name, _)| type_name).as_deref(),
+        Some("String"),
+        "walk into the JAR-derived superclass must resolve uiState's type \
+         from its indexed detail text without panicking on the JAR stub's \
+         degenerate range"
     );
 }
 

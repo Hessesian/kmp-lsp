@@ -423,11 +423,36 @@ pub(super) fn has_dot_after_first_call(rhs: &str, paren_pos: usize) -> bool {
     false
 }
 
+/// Map a JVM primitive type's Java-spelled name to the name Kotlin code
+/// actually uses for it. The sidecar's pure-Java fallback (`JavaClassVisitor`
+/// in `KotlinClassIndexer.kt`) reads a field's type straight off its ASM
+/// `Type.className` — lowercase for a primitive (`"int"`, `"boolean"`, …) —
+/// so a plain Java field like `public static int ic_account` (Android's
+/// generated `R$drawable`, but any Java class's own `int`/`boolean`/…
+/// field hits the same shape) would otherwise never pass
+/// [`extract_property_type_from_detail`]'s uppercase check below.
+fn kotlin_primitive_type_name(java_name: &str) -> Option<&'static str> {
+    Some(match java_name {
+        "int" => "Int",
+        "boolean" => "Boolean",
+        "long" => "Long",
+        "float" => "Float",
+        "double" => "Double",
+        "byte" => "Byte",
+        "short" => "Short",
+        "char" => "Char",
+        "void" => "Unit",
+        _ => return None,
+    })
+}
+
 /// Parse the declared type from a property `SymbolEntry.detail` string.
 ///
 /// `"val ViewModel.viewModelScope: CoroutineScope get() = ..."` → `"CoroutineScope"`
 /// `"val items: List<Product>"` → `"List<Product>"`
 /// `"var count: Int"` → `"Int"`
+/// `"val ic_account: int"` → `"Int"` (Java primitive field, see
+/// [`kotlin_primitive_type_name`])
 ///
 /// Finds the first `:` after the property name (skipping any receiver `Receiver.`)
 /// then uses [`extract_type_with_generics`] to grab the type token.
@@ -458,6 +483,9 @@ pub(crate) fn extract_property_type_from_detail(detail: &str) -> Option<String> 
     })?;
     let type_part = after_kw[colon_pos + 1..].trim_start();
     let type_name = extract_type_with_generics(type_part);
+    if let Some(primitive) = kotlin_primitive_type_name(&type_name) {
+        return Some(primitive.to_owned());
+    }
     if !type_name.is_empty() && type_name.starts_with_uppercase() {
         Some(type_name)
     } else {
