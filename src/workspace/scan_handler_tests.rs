@@ -321,3 +321,32 @@ fn android_jar_gate_preserves_existing_gradle_paths() {
         "gating android.jar off must not disturb the Gradle-cache paths already collected"
     );
 }
+
+#[test]
+fn module_r_class_jar_is_included_when_workspace_uses_gradle_cache() {
+    // `R.string.foo` resolves to zero candidates no matter how correct
+    // import handling is if `R.jar` is never even discovered — this proves
+    // the wiring, not just `detect_android_r_class_jars` in isolation.
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(
+        dir.path().join("settings.gradle.kts"),
+        "include(\":core:common\")\n",
+    )
+    .unwrap();
+    let r_jar_dir = dir
+        .path()
+        .join("core/common/build/intermediates/compile_r_class_jar/debug/generateDebugRFile");
+    std::fs::create_dir_all(&r_jar_dir).unwrap();
+    std::fs::write(r_jar_dir.join("R.jar"), b"fake r.jar").unwrap();
+
+    let paths = super::compiled_jar_paths_with_android_sdk(
+        Some(dir.path().to_path_buf()),
+        true,
+        Vec::new(),
+    );
+
+    assert!(
+        paths.iter().any(|p| p.ends_with("R.jar")),
+        "core/common's R.jar must be included; got {paths:?}"
+    );
+}

@@ -70,7 +70,16 @@ pub(crate) async fn run_resolution_accuracy(root: &Path) {
     // without warming the compiled-JAR index, every library type looks
     // unresolvable and member recall would be an artifact of missing setup,
     // not resolver quality. Same requirement `missing_import_poc` documents.
-    let gradle_paths = crate::indexer::jar::scan_gradle_jars(None);
+    // Also folds in each Android module's own AAPT-generated `R.jar` — never
+    // a Gradle dependency, so `scan_gradle_jars` alone can never find it —
+    // so `R.string.foo`-style references get a fair, real measurement here
+    // too, same as the live LSP's own pipeline (`compiled_jar_paths_with_android_sdk`).
+    let mut gradle_paths = crate::indexer::jar::scan_gradle_jars(None);
+    for jar in crate::workspace_json::detect_android_r_class_jars(root) {
+        if !gradle_paths.contains(&jar) {
+            gradle_paths.push(jar);
+        }
+    }
     if !gradle_paths.is_empty() {
         let mut sidecar = index.jar_sidecar.lock().unwrap_or_else(|e| e.into_inner());
         let jar_symbol_count = crate::indexer::jar::index_jars(&index, &gradle_paths, &mut sidecar);
