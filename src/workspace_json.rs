@@ -789,6 +789,18 @@ pub(crate) fn detect_android_r_class_jars(workspace_root: &Path) -> Vec<PathBuf>
 /// One module's own `R.jar`, if its project has been built — see
 /// [`detect_android_r_class_jars`]'s doc for the selection rule (prefer a
 /// "debug"-named variant, else the first one found).
+///
+/// "First found" means first in a *stable, sorted* order, not raw
+/// `std::fs::read_dir` iteration order — the standard library explicitly
+/// leaves that order unspecified, and it has been observed on this codebase's
+/// own dev machine to NOT match creation order (varies by filesystem, and can
+/// even be the reverse of insertion order). When a module has more than one
+/// variant whose name contains "debug" at once (a real product-flavor
+/// possibility, e.g. `stagingDebug` and `prodDebug` both present), or more
+/// than one non-debug fallback variant, candidate directory entries are
+/// sorted by name before picking so the same on-disk tree always yields the
+/// same `R.jar`, regardless of filesystem/platform/run-to-run enumeration
+/// order.
 fn find_r_class_jar_for_module(module_dir: &Path) -> Option<PathBuf> {
     let mut fallback: Option<PathBuf> = None;
     for task_dir_name in R_CLASS_JAR_TASK_DIRS {
@@ -796,7 +808,9 @@ fn find_r_class_jar_for_module(module_dir: &Path) -> Option<PathBuf> {
         let Ok(variant_entries) = std::fs::read_dir(&task_dir) else {
             continue;
         };
-        for variant_entry in variant_entries.filter_map(|e| e.ok()) {
+        let mut variant_entries: Vec<_> = variant_entries.filter_map(|e| e.ok()).collect();
+        variant_entries.sort_by_key(|e| e.file_name());
+        for variant_entry in variant_entries {
             if !variant_entry
                 .file_type()
                 .map(|t| t.is_dir())
@@ -807,7 +821,10 @@ fn find_r_class_jar_for_module(module_dir: &Path) -> Option<PathBuf> {
             let Ok(task_output_entries) = std::fs::read_dir(variant_entry.path()) else {
                 continue;
             };
-            for task_output_entry in task_output_entries.filter_map(|e| e.ok()) {
+            let mut task_output_entries: Vec<_> =
+                task_output_entries.filter_map(|e| e.ok()).collect();
+            task_output_entries.sort_by_key(|e| e.file_name());
+            for task_output_entry in task_output_entries {
                 let jar = task_output_entry.path().join("R.jar");
                 if !jar.is_file() {
                     continue;

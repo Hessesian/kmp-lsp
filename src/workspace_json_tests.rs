@@ -875,3 +875,85 @@ fn r_class_jar_skips_module_never_built() {
         "only the built module's R.jar should be found; got {jars:?}"
     );
 }
+
+/// Real, documented possibility: a product-flavor setup can have MORE THAN
+/// ONE variant whose name contains "debug" present simultaneously under
+/// `build/intermediates/` (e.g. both `stagingDebug` and `prodDebug` built in
+/// the same tree). `find_r_class_jar_for_module`'s own doc only promises
+/// "prefers a debug-shaped variant, else the first found" — it does NOT say
+/// which debug-shaped variant wins when there's more than one. The pick must
+/// still be the SAME every time regardless of the filesystem's `read_dir`
+/// iteration order (which the std docs explicitly leave unspecified) — not a
+/// coin flip across machines or runs.
+///
+/// This asserts the specific deterministic rule the fix establishes: sort
+/// candidate variants by directory name and take the alphabetically-first
+/// match, so `prodDebug` (p < s) always wins over `stagingDebug` no matter
+/// which order the directory entries happen to come back in.
+#[test]
+fn r_class_jar_deterministic_among_multiple_debug_shaped_variants() {
+    let dir = TempDir::new().unwrap();
+    fs::write(
+        dir.path().join("settings.gradle.kts"),
+        "include(\":app\")\n",
+    )
+    .unwrap();
+    let module_dir = dir.path().join("app");
+    write_r_jar(
+        &module_dir,
+        "compile_and_runtime_r_class_jar",
+        "prodDebug",
+        "processProdDebugResources",
+    );
+    write_r_jar(
+        &module_dir,
+        "compile_and_runtime_r_class_jar",
+        "stagingDebug",
+        "processStagingDebugResources",
+    );
+
+    let jars = detect_android_r_class_jars(dir.path());
+    assert_eq!(jars.len(), 1);
+    assert!(
+        jars[0].to_string_lossy().contains("prodDebug"),
+        "selection among tied debug-shaped variants must be deterministic \
+         (alphabetically-first variant name); got {:?}",
+        jars[0]
+    );
+}
+
+/// Same non-determinism risk applies to the non-debug fallback path: with no
+/// debug-shaped variant at all, more than one plain/custom-flavor variant
+/// can be present simultaneously, and the pick must still be stable.
+#[test]
+fn r_class_jar_deterministic_among_multiple_fallback_variants() {
+    let dir = TempDir::new().unwrap();
+    fs::write(
+        dir.path().join("settings.gradle.kts"),
+        "include(\":app\")\n",
+    )
+    .unwrap();
+    let module_dir = dir.path().join("app");
+    write_r_jar(
+        &module_dir,
+        "compile_and_runtime_r_class_jar",
+        "prod",
+        "processProdResources",
+    );
+    write_r_jar(
+        &module_dir,
+        "compile_and_runtime_r_class_jar",
+        "staging",
+        "processStagingResources",
+    );
+
+    let jars = detect_android_r_class_jars(dir.path());
+    assert_eq!(jars.len(), 1);
+    assert!(
+        jars[0].to_string_lossy().contains("prod")
+            && !jars[0].to_string_lossy().contains("staging"),
+        "selection among tied fallback variants must be deterministic \
+         (alphabetically-first variant name); got {:?}",
+        jars[0]
+    );
+}
