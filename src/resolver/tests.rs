@@ -6216,6 +6216,100 @@ fn find_definition_qualified_returns_all_overload_candidates() {
     );
 }
 
+/// Same bug class as [`find_definition_qualified_returns_all_overload_candidates`],
+/// but for a JAR-derived (compiled) class -- real, measured Moneta gap:
+/// `org.junit.Assert.fail()`/`.assertEquals(a, b)` (0-arg and 2-arg calls)
+/// resolved to nothing.
+///
+/// A JAR-derived class's synthetic `FileData` is flat: every symbol gets its
+/// own single-line `range == selection_range`, so a class's own "container"
+/// symbol range never truly *encloses* its members the way a real parsed
+/// source file's does. `find_all_names_scoped_to_container`'s primary
+/// range-containment path therefore always misses for a JAR class, falling
+/// through to `find_name_in_uri_after_line` -- which, before this fix,
+/// returned only the ONE closest same-named entry after the class's own
+/// line, silently dropping every other overload. A real call site to any
+/// overload OTHER than that one arbitrary pick always failed arity-based
+/// shape filtering downstream.
+#[test]
+fn find_definition_qualified_returns_all_jar_overload_candidates() {
+    let idx = Indexer::new();
+    let compiled = vec![
+        jar_sidecar_symbol(
+            "Assert",
+            "class",
+            "",
+            "class org.junit.Assert",
+            "org.junit",
+            false,
+        ),
+        // Deliberately list the 1-arg overload FIRST, matching real JUnit
+        // source order (`fail(String)` declared before `fail()`) -- the old
+        // "closest line after the class" fallback would pick this one and
+        // permanently shadow the 0-arg overload.
+        jar_sidecar_symbol(
+            "fail",
+            "fun",
+            "Assert",
+            "fun fail(p0: String)",
+            "org.junit",
+            false,
+        ),
+        jar_sidecar_symbol("fail", "fun", "Assert", "fun fail()", "org.junit", false),
+        jar_sidecar_symbol(
+            "assertEquals",
+            "fun",
+            "Assert",
+            "fun assertEquals(p0: Object, p1: Object, p2: Object)",
+            "org.junit",
+            false,
+        ),
+        jar_sidecar_symbol(
+            "assertEquals",
+            "fun",
+            "Assert",
+            "fun assertEquals(p0: Object, p1: Object)",
+            "org.junit",
+            false,
+        ),
+    ];
+    crate::indexer::jar::populate_from_symbols(
+        &idx,
+        "/home/test/.gradle/caches/junit-4.13.2.jar".as_ref(),
+        &compiled,
+    );
+
+    let use_uri = Url::parse("file:///app/SomeTest.kt").unwrap();
+    idx.index_content(
+        &use_uri,
+        concat!(
+            "package app\n",
+            "import org.junit.Assert\n",
+            "class SomeTest {\n",
+            "    fun t() { Assert.fail() }\n",
+            "}\n",
+        ),
+    );
+
+    let fail_locs = idx.find_definition_qualified_index_only("fail", Some("Assert"), &use_uri);
+    assert_eq!(
+        fail_locs.len(),
+        2,
+        "must return both fail() overloads from the JAR class, not collapse \
+         to the single closest-line pick; got {:?}",
+        fail_locs
+    );
+
+    let assert_eq_locs =
+        idx.find_definition_qualified_index_only("assertEquals", Some("Assert"), &use_uri);
+    assert_eq!(
+        assert_eq_locs.len(),
+        2,
+        "must return both assertEquals overloads from the JAR class; got {:?}",
+        assert_eq_locs
+    );
+}
+
 /// Primitive D (member-extension visibility): `fun Modifier.weight(...)`
 /// declared as a MEMBER of `interface ColumnScope` — the real Compose
 /// `ColumnScope`/`Modifier.weight` shape — must resolve via goto-definition

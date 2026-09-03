@@ -120,6 +120,60 @@ class IndexerTest {
     }
 
     @Test
+    @DisplayName("indexClassBytes encodes a Java method's real parameter count, not a placeholder (Assert.fail-shaped bug)")
+    fun testJavaMethodParameterCountExtraction() {
+        // Real-world motivating case: org.junit.Assert.fail()/assertEquals(String, String)
+        // -- static, Java-only methods (no Kotlin metadata). The Java fallback path
+        // used to emit a literal "fun fail(...)" placeholder for EVERY method regardless
+        // of real arity, which Rust's `params_from_detail` parses as exactly one
+        // required param ("..." has no comma) -- every JAR-derived Java method appeared
+        // to always take exactly 1 argument, so a real 0-arg or 2-arg call site was
+        // wrongly arity-filtered out downstream (`shape_filter_locations`).
+        val cw = org.objectweb.asm.ClassWriter(0)
+        cw.visit(
+            org.objectweb.asm.Opcodes.V1_8,
+            org.objectweb.asm.Opcodes.ACC_PUBLIC,
+            "org/junit/Assert",
+            null,
+            "java/lang/Object",
+            null
+        )
+        val zeroArg = cw.visitMethod(
+            org.objectweb.asm.Opcodes.ACC_PUBLIC or org.objectweb.asm.Opcodes.ACC_STATIC,
+            "fail", "()V", null, null
+        )
+        zeroArg.visitCode()
+        zeroArg.visitInsn(org.objectweb.asm.Opcodes.RETURN)
+        zeroArg.visitMaxs(0, 0)
+        zeroArg.visitEnd()
+
+        val twoArg = cw.visitMethod(
+            org.objectweb.asm.Opcodes.ACC_PUBLIC or org.objectweb.asm.Opcodes.ACC_STATIC,
+            "assertEquals", "(Ljava/lang/String;Ljava/lang/String;)V", null, null
+        )
+        twoArg.visitCode()
+        twoArg.visitInsn(org.objectweb.asm.Opcodes.RETURN)
+        twoArg.visitMaxs(0, 0)
+        twoArg.visitEnd()
+        cw.visitEnd()
+
+        val result = indexClassBytes(cw.toByteArray())
+
+        val failEntry = result.firstOrNull { it.name == "fail" && it.kind == "fun" }
+        assertTrue(failEntry != null, "should find the fail() overload; got: ${result.map { it.name }}")
+        assertFalse(
+            failEntry!!.detail.contains("..."),
+            "0-arg fail() must not encode a '...' placeholder that always parses as 1 required param; got detail=${failEntry.detail}"
+        )
+
+        val assertEqualsEntry = result.firstOrNull { it.name == "assertEquals" && it.kind == "fun" }
+        assertTrue(assertEqualsEntry != null, "should find the assertEquals overload; got: ${result.map { it.name }}")
+        val paramCount = assertEqualsEntry!!.detail.substringAfter('(').substringBeforeLast(')')
+            .split(',').count { it.isNotBlank() }
+        assertEquals(2, paramCount, "2-arg assertEquals must encode 2 real params; got detail=${assertEqualsEntry.detail}")
+    }
+
+    @Test
     @DisplayName("indexClassBytes extracts a public static final field via the Java fallback path (no Kotlin metadata)")
     fun testJavaPublicFieldExtraction() {
         // Mirrors android.jar's own motivating example: Activity.RESULT_OK is a

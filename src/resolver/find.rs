@@ -152,12 +152,16 @@ pub(crate) fn find_name_scoped_to_container(
 /// failed arity-based shape filtering for nearly every real call site, since
 /// callers overwhelmingly use the OTHER overloads.
 ///
-/// Only widens the primary range-containment path — the degenerate-range
-/// (JAR stub) fallback still returns at most one candidate, same as before;
-/// broadening overload support there needs sidecar-side changes (the JAR
-/// indexer would need to preserve each overload as a distinct symbol
-/// candidate), a separate, larger effort not needed for the real-world
-/// pure-Java-source case this was measured against.
+/// Widens both the primary range-containment path AND the degenerate-range
+/// (JAR stub) fallback — a JAR-derived class's synthetic `FileData` is flat
+/// (every symbol gets its own single-line `range == selection_range`), so a
+/// class's own range never truly *encloses* its members and the
+/// range-containment path always misses for it, falling through to the
+/// `container`-field match below. Real, measured bug this fixes: JUnit's
+/// `org.junit.Assert.fail()`/`.assertEquals(a, b)` (0-arg and 2-arg calls)
+/// resolved to nothing — the old fallback (`find_name_in_uri_after_line`)
+/// returned only the ONE closest same-named entry after the class's own
+/// synthetic line, silently dropping every other real overload.
 pub(crate) fn find_all_names_scoped_to_container(
     idx: &Indexer,
     name: &str,
@@ -195,6 +199,27 @@ pub(crate) fn find_all_names_scoped_to_container(
         .collect();
     if !contained.is_empty() {
         return contained;
+    }
+
+    // Degenerate-range (JAR stub) container: match every same-named symbol
+    // whose own `container` field (the sidecar's recorded immediate enclosing
+    // class, e.g. "Assert") names this container's bare symbol name — the
+    // one linkage JAR-derived symbols DO carry, in place of a real enclosing
+    // range.
+    let by_container: Vec<Location> = file_data
+        .symbols
+        .iter()
+        .filter(|symbol| {
+            symbol.name == name
+                && symbol.container.as_deref() == Some(container_symbol.name.as_str())
+        })
+        .map(|found| Location {
+            uri: container.uri.clone(),
+            range: found.selection_range,
+        })
+        .collect();
+    if !by_container.is_empty() {
+        return by_container;
     }
 
     find_name_in_uri_after_line(
