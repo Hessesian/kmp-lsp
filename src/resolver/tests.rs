@@ -649,6 +649,71 @@ fn module_scoped_narrowing_survives_into_default_kotlin_import_tie_break() {
     );
 }
 
+/// `import_package_tie_break` must treat a star import (`import
+/// com.example.blib.*`) as real narrowing evidence for its own exact
+/// package, same as an explicit non-star sibling import — a wildcard import
+/// is just as much proof the calling file has visibility into that package.
+/// Before this fix the function filtered `is_star` imports out entirely, so
+/// a file relying only on a wildcard import contributed zero evidence and
+/// this tie-break declined outright (`vec![]`), losing an otherwise-unique
+/// answer.
+///
+/// Calls `import_package_tie_break` directly rather than going through
+/// `resolve_symbol_index_only` end-to-end (the pattern the sibling tests
+/// above use): `resolve_chain`'s own earlier star-import step (step 4,
+/// `find_in_star_imports`) already resolves any candidate whose *own* name
+/// is directly found by scanning a star-imported package, before the
+/// ambiguity tail is ever reached — so a same-name candidate set staged via
+/// `jar_definitions` would be resolved by that earlier step regardless of
+/// this fix, making the outer test a false positive. Calling the tie-break
+/// directly isolates the exact narrowing logic under test.
+#[test]
+fn star_import_narrows_import_package_tie_break() {
+    let idx = Indexer::new();
+    let a_uri = gradle_cache_jar_uri("com.example.a", "a-lib", "1.0.0");
+    let b_uri = gradle_cache_jar_uri("com.example.b", "b-lib", "1.0.0");
+    idx.jar_files.insert(
+        a_uri.to_string(),
+        std::sync::Arc::new(crate::types::FileData {
+            package: Some("com.example.alib".to_owned()),
+            ..Default::default()
+        }),
+    );
+    idx.jar_files.insert(
+        b_uri.to_string(),
+        std::sync::Arc::new(crate::types::FileData {
+            package: Some("com.example.blib".to_owned()),
+            ..Default::default()
+        }),
+    );
+
+    // The calling file has ONLY a wildcard import of B's exact package — no
+    // explicit sibling import at all.
+    let host_uri = uri("/Host.kt");
+    idx.index_content(&host_uri, "package com.pkg\nimport com.example.blib.*\n");
+
+    let locations = vec![
+        tower_lsp::lsp_types::Location {
+            uri: a_uri,
+            range: Default::default(),
+        },
+        tower_lsp::lsp_types::Location {
+            uri: b_uri.clone(),
+            range: Default::default(),
+        },
+    ];
+    let narrowed = resolve::import_package_tie_break(&idx, &host_uri, locations);
+    assert_eq!(
+        narrowed,
+        vec![tower_lsp::lsp_types::Location {
+            uri: b_uri,
+            range: Default::default(),
+        }],
+        "a wildcard import of B's exact package should narrow the ambiguity \
+         to B, same as an explicit non-star sibling import would, got {narrowed:?}"
+    );
+}
+
 /// Same guarantee as `resolve_symbol_index_only_never_spawns_rg_or_fd`, but
 /// for a qualified lookup (`resolve_qualified`'s uppercase branch) — Copilot
 /// review on PR #274: `resolve_qualified` resolved its qualifier root via the
