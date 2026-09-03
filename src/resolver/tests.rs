@@ -556,6 +556,99 @@ fn module_scoped_narrowing_lets_import_package_tie_break_reach_a_correct_unique_
     );
 }
 
+/// Companion to the two tests above, for the NEW tie-break inserted between
+/// them: when module-scoped narrowing already excludes a candidate that
+/// happens to live in a Kotlin default-import package (an edge case — real
+/// dependency data proves it's not actually a dependency of this module,
+/// even though its package would otherwise make it the "obviously right"
+/// pick), `default_kotlin_import_tie_break` must not resurrect it from the
+/// original, unnarrowed set — same discipline as `import_package_tie_break`
+/// already has to respect.
+#[test]
+fn module_scoped_narrowing_survives_into_default_kotlin_import_tie_break() {
+    let idx = Indexer::new();
+    let a_uri = gradle_cache_jar_uri("com.example.a", "a-lib", "1.0.0");
+    let b_uri = gradle_cache_jar_uri("com.example.b", "b-lib", "1.0.0");
+    let c_uri = gradle_cache_jar_uri("com.example.c", "c-lib", "1.0.0");
+    idx.jar_definitions.insert(
+        "Foo".to_owned(),
+        vec![
+            tower_lsp::lsp_types::Location {
+                uri: a_uri.clone(),
+                range: Default::default(),
+            },
+            tower_lsp::lsp_types::Location {
+                uri: b_uri.clone(),
+                range: Default::default(),
+            },
+            tower_lsp::lsp_types::Location {
+                uri: c_uri.clone(),
+                range: Default::default(),
+            },
+        ],
+    );
+    // A lives in a real Kotlin default-import package — normally the
+    // strongest possible signal — but real dependency data below proves A
+    // is NOT a dependency of the calling module at all.
+    idx.jar_files.insert(
+        a_uri.to_string(),
+        std::sync::Arc::new(crate::types::FileData {
+            package: Some("kotlin".to_owned()),
+            ..Default::default()
+        }),
+    );
+    idx.jar_files.insert(
+        b_uri.to_string(),
+        std::sync::Arc::new(crate::types::FileData {
+            package: Some("com.example.blib".to_owned()),
+            ..Default::default()
+        }),
+    );
+    idx.jar_files.insert(
+        c_uri.to_string(),
+        std::sync::Arc::new(crate::types::FileData {
+            package: Some("com.example.clib".to_owned()),
+            ..Default::default()
+        }),
+    );
+
+    // Real Gradle dependency data for the calling file's own module: {B, C}
+    // are real dependencies, A is NOT.
+    let mut dependencies_by_content_root: std::collections::HashMap<
+        std::path::PathBuf,
+        std::collections::HashSet<crate::cli::extract_sources::GradleMeta>,
+    > = std::collections::HashMap::new();
+    dependencies_by_content_root.insert(
+        std::path::PathBuf::from("/test"),
+        std::collections::HashSet::from([
+            crate::cli::extract_sources::GradleMeta {
+                group: "com.example.b".to_owned(),
+                artifact: "b-lib".to_owned(),
+                version: "1.0.0".to_owned(),
+            },
+            crate::cli::extract_sources::GradleMeta {
+                group: "com.example.c".to_owned(),
+                artifact: "c-lib".to_owned(),
+                version: "1.0.0".to_owned(),
+            },
+        ]),
+    );
+    *idx.module_dependencies.write().unwrap() = dependencies_by_content_root;
+
+    let host_uri = uri("/Host.kt");
+    idx.index_content(&host_uri, "package com.pkg\n");
+
+    let locs = resolve_symbol_index_only(&idx, "Foo", None, &host_uri);
+    assert!(
+        !locs.iter().any(|l| l.uri == a_uri),
+        "must never resolve to A: module-scoped narrowing already proved \
+         A is not a real dependency of the calling module, so \
+         default_kotlin_import_tie_break must not be allowed to pick it \
+         back up just because its package is a Kotlin default import, \
+         got {locs:?}"
+    );
+}
+
 /// Same guarantee as `resolve_symbol_index_only_never_spawns_rg_or_fd`, but
 /// for a qualified lookup (`resolve_qualified`'s uppercase branch) — Copilot
 /// review on PR #274: `resolve_qualified` resolved its qualifier root via the
@@ -5905,6 +5998,84 @@ fn find_definition_qualified_falls_back_to_bare_lookup_for_scope_functions() {
         locs.iter().any(|l| l.uri.as_str() == jar_uri),
         "receiver-typed `apply` must fall back to the bare stdlib declaration when \
          the receiver type has no member named `apply`; got {:?}",
+        locs.iter().map(|l| l.uri.as_str()).collect::<Vec<_>>()
+    );
+}
+
+/// Real, measured Moneta collision: `apply`/`run` (Kotlin's own scope
+/// functions) collide with hundreds of unrelated same-named JVM/Android
+/// methods across a real dependency graph (`java.util.function.Function
+/// .apply`, `Runnable.run`, countless builder `.apply()` methods) — none of
+/// which are ever reachable without an explicit import, unlike `kotlin.apply`
+/// which needs none (Kotlin's own default-import list). Unlike the sibling
+/// test above (which explicitly writes `import kotlin.apply` — not
+/// representative of real code, which almost never spells out an import for
+/// an implicitly-available stdlib scope function), this reproduces the REAL
+/// shape: multiple same-named candidates, no `workspace.json` module data
+/// (Moneta's own real corpus state — confirmed no `libraries`/`dependencies`
+/// section), and no explicit import of anything relevant at all.
+#[test]
+fn find_definition_qualified_prefers_kotlin_default_import_when_ambiguous_and_unimported() {
+    use crate::types::FileData;
+    use std::sync::Arc;
+
+    let idx = Indexer::new();
+    let kotlin_jar_uri = "jar:file:///kotlin-stdlib.jar!/kotlin/StandardKt.class";
+    let decoy_jar_uri = "jar:file:///decoy-lib.jar!/com/example/Decoy.class";
+    idx.jar_definitions
+        .entry("apply".to_string())
+        .or_default()
+        .extend([
+            tower_lsp::lsp_types::Location {
+                uri: Url::parse(kotlin_jar_uri).unwrap(),
+                range: tower_lsp::lsp_types::Range::default(),
+            },
+            tower_lsp::lsp_types::Location {
+                uri: Url::parse(decoy_jar_uri).unwrap(),
+                range: tower_lsp::lsp_types::Range::default(),
+            },
+        ]);
+    idx.jar_files.insert(
+        kotlin_jar_uri.to_string(),
+        Arc::new(FileData {
+            package: Some("kotlin".to_string()),
+            ..Default::default()
+        }),
+    );
+    idx.jar_files.insert(
+        decoy_jar_uri.to_string(),
+        Arc::new(FileData {
+            package: Some("com.example".to_string()),
+            ..Default::default()
+        }),
+    );
+
+    let use_uri = Url::parse("file:///app/Show.kt").unwrap();
+    // Deliberately NO `import kotlin.apply` and no other import that would
+    // help the sibling-import-package tie-break either — matching real code,
+    // which never spells out an import for an implicit default-import.
+    idx.index_content(
+        &use_uri,
+        concat!(
+            "package app\n",
+            "class SomeBuilderResult\n",
+            "class Builder { fun build(): SomeBuilderResult = SomeBuilderResult() }\n",
+            "fun show() {\n",
+            "    Builder().build().apply { show() }\n",
+            "}\n",
+        ),
+    );
+
+    let locs = idx.find_definition_qualified("apply", Some("SomeBuilderResult"), &use_uri);
+    assert!(
+        locs.iter().any(|l| l.uri.as_str() == kotlin_jar_uri),
+        "must prefer the kotlin default-import candidate over the decoy when \
+         ambiguous and nothing is explicitly imported; got {:?}",
+        locs.iter().map(|l| l.uri.as_str()).collect::<Vec<_>>()
+    );
+    assert!(
+        !locs.iter().any(|l| l.uri.as_str() == decoy_jar_uri),
+        "must not include the decoy candidate; got {:?}",
         locs.iter().map(|l| l.uri.as_str()).collect::<Vec<_>>()
     );
 }

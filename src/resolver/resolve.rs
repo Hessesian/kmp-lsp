@@ -520,35 +520,39 @@ const DENYLISTED_PACKAGE_PREFIXES: &[&str] = &["com.android.internal."];
 /// (general bare-name resolution — diagnostics, `resolve_qualified`'s
 /// qualifier-root lookup, etc.), and `Full`'s own equivalent tail (see
 /// `resolve_chain`'s step 5.4): a unique candidate wins outright; an
-/// ambiguous set gets three narrow tie-breaks in sequence — first
+/// ambiguous set gets four narrow tie-breaks in sequence — first
 /// [`DENYLISTED_PACKAGE_PREFIXES`] (unconditional, project-wide), then
 /// [`module_scoped_tie_break`] (real per-module Gradle dependency data, when
-/// `workspace.json` provides it), then [`import_package_tie_break`] (the
-/// calling file's own already-parsed import list, always available — no
-/// external data needed, unlike module-scoping) — before still declining
-/// unless one of them leaves exactly one candidate. See the
-/// real-workspace-json-schema design doc's §5 for why denylist-first is
-/// correct: it's unconditional and needs no loaded data. Import-package
-/// narrowing runs last because it's the weakest signal of the three (a file
-/// merely importing a sibling from the right package, not the ambiguous
-/// name itself) — module-scoped narrowing, when its data is available, is
-/// strictly more precise (it's the *real* Gradle dependency graph, not an
-/// inference from unrelated imports).
+/// `workspace.json` provides it), then [`default_kotlin_import_tie_break`]
+/// (Kotlin's own hardcoded default-import package set — a language fact, not
+/// project data), then [`import_package_tie_break`] (the calling file's own
+/// already-parsed import list, always available — no external data needed) —
+/// before still declining unless one of them leaves exactly one candidate.
+/// See the real-workspace-json-schema design doc's §5 for why denylist-first
+/// is correct: it's unconditional and needs no loaded data. The remaining
+/// three run in *decreasing* certainty: module-scoped narrowing is the real
+/// Gradle dependency graph (most precise, but only as available as
+/// `workspace.json`'s own data); Kotlin's default imports are a fixed
+/// language-level fact, always available, but only relevant when a candidate
+/// actually lives in one of those packages; import-package narrowing is the
+/// weakest — a file merely importing a *sibling* from the right package, not
+/// the ambiguous name itself, so it runs last.
 ///
-/// Crucially, module-scoped narrowing's authority carries forward even when
-/// it doesn't land on a unique winner by itself: when real dependency data
-/// proves some candidates are real dependencies of the calling module and
-/// rules others out, `import_package_tie_break` is only ever handed that
-/// *proven-possible* subset, never the original, unnarrowed set — a
-/// candidate module-scoping has already disproven (its JAR isn't a
-/// dependency of the module at all) must never be resurrected by a weaker,
-/// merely-inferred signal like a coincidental sibling-import-package match.
-/// The original, unnarrowed set is only ever handed to `import_package_tie_break`
-/// when module-scoping had no dependency data to narrow with in the first
-/// place (see [`ModuleScopedOutcome`]). `origin_uri` is the real file to
-/// resolve an owning module/import-list from — the hierarchy walk's own
-/// starting file for `HierarchyAmbiguitySafe`, or simply the caller's own
-/// `from_uri` for `IndexOnly`/`Full`.
+/// Crucially, each tie-break's authority carries forward even when it
+/// doesn't land on a unique winner by itself: when module-scoped narrowing
+/// (or default-import narrowing) proves some candidates more plausible than
+/// others without reaching uniqueness, the NEXT tie-break is only ever
+/// handed that narrowed subset, never the original, unnarrowed set — a
+/// candidate an earlier, stronger tie-break has already disproven (or simply
+/// left out) must never be resurrected by a later, weaker signal. The
+/// original, unnarrowed set only ever reaches a later tie-break when the
+/// earlier one had nothing to say at all (no data, for module-scoping; no
+/// candidate in a default-import package, for Kotlin's default imports —
+/// see [`ModuleScopedOutcome`] and [`default_kotlin_import_tie_break`]'s own
+/// doc). `origin_uri` is the real file to resolve an owning module/import
+/// list from — the hierarchy walk's own starting file for
+/// `HierarchyAmbiguitySafe`, or simply the caller's own `from_uri` for
+/// `IndexOnly`/`Full`.
 fn ambiguity_safe_tail_with_denylist(
     indexer: &Indexer,
     origin_uri: &Url,
@@ -570,14 +574,70 @@ fn ambiguity_safe_tail_with_denylist(
     if filtered.len() < 2 {
         return vec![];
     }
-    match module_scoped_tie_break(indexer, origin_uri, filtered.clone()) {
-        ModuleScopedOutcome::Narrowed(narrowed) if narrowed.len() == 1 => narrowed,
-        ModuleScopedOutcome::Narrowed(narrowed) => {
-            import_package_tie_break(indexer, origin_uri, narrowed)
-        }
-        ModuleScopedOutcome::NoData | ModuleScopedOutcome::NoDependenciesSurvived => {
-            import_package_tie_break(indexer, origin_uri, filtered)
-        }
+    let after_module_scope = match module_scoped_tie_break(indexer, origin_uri, filtered.clone()) {
+        ModuleScopedOutcome::Narrowed(narrowed) if narrowed.len() == 1 => return narrowed,
+        ModuleScopedOutcome::Narrowed(narrowed) => narrowed,
+        ModuleScopedOutcome::NoData | ModuleScopedOutcome::NoDependenciesSurvived => filtered,
+    };
+    let after_default_import = default_kotlin_import_tie_break(indexer, after_module_scope);
+    if after_default_import.len() == 1 {
+        return after_default_import;
+    }
+    import_package_tie_break(indexer, origin_uri, after_default_import)
+}
+
+/// Kotlin's own default-import package set: every one of these is available
+/// on every Kotlin/JVM file with no explicit `import` ever needed, by
+/// definition of the language (Kotlin reference, "Default imports"). A
+/// hardcoded LANGUAGE fact, not project data that could be stale or
+/// incomplete — safe to trust unconditionally, the same spirit as
+/// [`DENYLISTED_PACKAGE_PREFIXES`], just a preference instead of an
+/// exclusion.
+const KOTLIN_DEFAULT_IMPORT_PACKAGES: &[&str] = &[
+    "kotlin",
+    "kotlin.annotation",
+    "kotlin.collections",
+    "kotlin.comparisons",
+    "kotlin.io",
+    "kotlin.ranges",
+    "kotlin.sequences",
+    "kotlin.text",
+    "kotlin.jvm",
+    "java.lang",
+];
+
+/// Tie-break run between [`module_scoped_tie_break`] and
+/// [`import_package_tie_break`]: when one or more candidates live in a
+/// package Kotlin implicitly imports for every file (see
+/// [`KOTLIN_DEFAULT_IMPORT_PACKAGES`]), prefer those over any candidate that
+/// would need a real import — or a real receiver-typed member match, which
+/// the caller already tried and failed, or this tail would never run — to be
+/// reachable at all. Real, measured case: `apply`/`run` (Kotlin's own scope
+/// functions, `kotlin.apply`/`kotlin.run`) collide with hundreds of
+/// unrelated same-named JVM/Android members (`java.util.function.
+/// Function.apply`, `Runnable.run`, countless builder `.apply()` methods)
+/// across a real dependency graph — none of THOSE are ever reachable
+/// without an explicit import, so a default-imported candidate is always at
+/// least as plausible, and in this fallback's context (a bare-name retry
+/// after receiver-scoped lookup already failed) is virtually always the
+/// actually-intended target.
+///
+/// Only narrows, never fully declines: when no candidate is in a
+/// default-import package, this is a no-op and the original set passes
+/// through unchanged to the next tie-break.
+fn default_kotlin_import_tie_break(indexer: &Indexer, locations: Vec<Location>) -> Vec<Location> {
+    let narrowed: Vec<Location> = locations
+        .iter()
+        .filter(|location| {
+            location_package(indexer, location)
+                .is_some_and(|pkg| KOTLIN_DEFAULT_IMPORT_PACKAGES.contains(&pkg.as_str()))
+        })
+        .cloned()
+        .collect();
+    if narrowed.is_empty() {
+        locations
+    } else {
+        narrowed
     }
 }
 
