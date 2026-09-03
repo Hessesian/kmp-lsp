@@ -533,7 +533,19 @@ const DENYLISTED_PACKAGE_PREFIXES: &[&str] = &["com.android.internal."];
 /// merely importing a sibling from the right package, not the ambiguous
 /// name itself) — module-scoped narrowing, when its data is available, is
 /// strictly more precise (it's the *real* Gradle dependency graph, not an
-/// inference from unrelated imports). `origin_uri` is the real file to
+/// inference from unrelated imports).
+///
+/// Crucially, module-scoped narrowing's authority carries forward even when
+/// it doesn't land on a unique winner by itself: when real dependency data
+/// proves some candidates are real dependencies of the calling module and
+/// rules others out, `import_package_tie_break` is only ever handed that
+/// *proven-possible* subset, never the original, unnarrowed set — a
+/// candidate module-scoping has already disproven (its JAR isn't a
+/// dependency of the module at all) must never be resurrected by a weaker,
+/// merely-inferred signal like a coincidental sibling-import-package match.
+/// The original, unnarrowed set is only ever handed to `import_package_tie_break`
+/// when module-scoping had no dependency data to narrow with in the first
+/// place (see [`ModuleScopedOutcome`]). `origin_uri` is the real file to
 /// resolve an owning module/import-list from — the hierarchy walk's own
 /// starting file for `HierarchyAmbiguitySafe`, or simply the caller's own
 /// `from_uri` for `IndexOnly`/`Full`.
@@ -558,11 +570,43 @@ fn ambiguity_safe_tail_with_denylist(
     if filtered.len() < 2 {
         return vec![];
     }
-    let module_scoped = module_scoped_tie_break(indexer, origin_uri, filtered.clone());
-    if !module_scoped.is_empty() {
-        return module_scoped;
+    match module_scoped_tie_break(indexer, origin_uri, filtered.clone()) {
+        ModuleScopedOutcome::Narrowed(narrowed) if narrowed.len() == 1 => narrowed,
+        ModuleScopedOutcome::Narrowed(narrowed) => {
+            import_package_tie_break(indexer, origin_uri, narrowed)
+        }
+        ModuleScopedOutcome::NoData | ModuleScopedOutcome::NoDependenciesSurvived => {
+            import_package_tie_break(indexer, origin_uri, filtered)
+        }
     }
-    import_package_tie_break(indexer, origin_uri, filtered)
+}
+
+/// Outcome of [`module_scoped_tie_break`] consulting real per-module Gradle
+/// dependency data for an ambiguous candidate set — three real, distinct
+/// cases the caller must not collapse into a single "declined" bucket (see
+/// [`ambiguity_safe_tail_with_denylist`]'s doc comment for why the
+/// distinction matters).
+enum ModuleScopedOutcome {
+    /// No `workspace.json` module-dependency data is available at all for
+    /// `origin_uri`'s owning module (`owning_module_dependencies` returned
+    /// `None`) — module-scoping has nothing to say, so the next tie-break
+    /// must fall back to the original, unnarrowed candidate set.
+    NoData,
+    /// Dependency data WAS available, but none of the candidates are real
+    /// dependencies of the calling module. Treated the same as `NoData`
+    /// rather than as a proof that every candidate is wrong: a workspace's
+    /// dependency data can be incomplete (see `owning_module_dependencies`'s
+    /// own doc comment), so eliminating every candidate is more likely a
+    /// data gap than a genuine "none of these are possible" result — the
+    /// next tie-break falls back to the original, unnarrowed set too.
+    NoDependenciesSurvived,
+    /// Dependency data narrowed the candidates to a real, positive,
+    /// non-empty subset — every remaining candidate is a proven dependency
+    /// of the calling module. Length 1 is a unique winner the caller returns
+    /// immediately; length > 1 is still ambiguous, but the next tie-break
+    /// must only ever choose among THESE candidates, never a candidate this
+    /// narrowing already ruled out.
+    Narrowed(Vec<Location>),
 }
 
 /// Second tie-break for [`ambiguity_safe_tail_with_denylist`]: when the
@@ -570,17 +614,16 @@ fn ambiguity_safe_tail_with_denylist(
 /// hierarchy walk's real starting file's own module's real Gradle dependency
 /// set (see `workspace_json::load_module_dependencies`) — a candidate
 /// survives only if its own JAR's `(group, artifact, version)` is a
-/// dependency of the module `hierarchy_walk_origin_uri` belongs to. Declines
-/// (returns empty), exactly as before this narrowing existed, whenever no
-/// per-module data is available for that module or the narrowing still
-/// leaves more than one candidate.
+/// dependency of the module `hierarchy_walk_origin_uri` belongs to. See
+/// [`ModuleScopedOutcome`] for the three distinct outcomes this can produce
+/// and how the caller must treat each one.
 fn module_scoped_tie_break(
     indexer: &Indexer,
     hierarchy_walk_origin_uri: &Url,
     locations: Vec<Location>,
-) -> Vec<Location> {
+) -> ModuleScopedOutcome {
     let Some(dependencies) = owning_module_dependencies(indexer, hierarchy_walk_origin_uri) else {
-        return vec![];
+        return ModuleScopedOutcome::NoData;
     };
     let narrowed: Vec<Location> = locations
         .into_iter()
@@ -588,10 +631,10 @@ fn module_scoped_tie_break(
             candidate_gradle_meta(location).is_some_and(|meta| dependencies.contains(&meta))
         })
         .collect();
-    if narrowed.len() == 1 {
-        narrowed
+    if narrowed.is_empty() {
+        ModuleScopedOutcome::NoDependenciesSurvived
     } else {
-        vec![]
+        ModuleScopedOutcome::Narrowed(narrowed)
     }
 }
 

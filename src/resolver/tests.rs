@@ -363,6 +363,199 @@ fn resolve_symbol_index_only_tail_applies_the_denylist_tie_break() {
     );
 }
 
+/// `module_scoped_tie_break` (the second tie-break in
+/// `ambiguity_safe_tail_with_denylist`) only ever returned a non-empty
+/// result when its own real-Gradle-dependency-data narrowing landed on
+/// exactly one candidate — when it narrowed a 3-way ambiguity down to a real
+/// 2-candidate subset ({A, C}, both proven dependencies of the calling
+/// module, with B proven NOT to be one), that positive narrowing was
+/// discarded entirely and the THIRD tie-break (`import_package_tie_break`)
+/// was re-run against the ORIGINAL, unnarrowed 3-candidate set. That let
+/// `import_package_tie_break` pick B — a candidate `module_scoped_tie_break`
+/// had already proven structurally impossible (its JAR isn't even a
+/// dependency of the calling module) — purely because the calling file
+/// happens to import an unrelated sibling symbol from B's own package. A
+/// structurally impossible answer must never be chosen over either
+/// declining or narrowing further among the module-scoped survivors.
+#[test]
+fn module_scoped_narrowing_survives_into_import_package_tie_break() {
+    let idx = Indexer::new();
+    let a_uri = gradle_cache_jar_uri("com.example.a", "a-lib", "1.0.0");
+    let b_uri = gradle_cache_jar_uri("com.example.b", "b-lib", "1.0.0");
+    let c_uri = gradle_cache_jar_uri("com.example.c", "c-lib", "1.0.0");
+    idx.jar_definitions.insert(
+        "Foo".to_owned(),
+        vec![
+            tower_lsp::lsp_types::Location {
+                uri: a_uri.clone(),
+                range: Default::default(),
+            },
+            tower_lsp::lsp_types::Location {
+                uri: b_uri.clone(),
+                range: Default::default(),
+            },
+            tower_lsp::lsp_types::Location {
+                uri: c_uri.clone(),
+                range: Default::default(),
+            },
+        ],
+    );
+    idx.jar_files.insert(
+        a_uri.to_string(),
+        std::sync::Arc::new(crate::types::FileData {
+            package: Some("com.example.alib".to_owned()),
+            ..Default::default()
+        }),
+    );
+    idx.jar_files.insert(
+        b_uri.to_string(),
+        std::sync::Arc::new(crate::types::FileData {
+            package: Some("com.example.blib".to_owned()),
+            ..Default::default()
+        }),
+    );
+    idx.jar_files.insert(
+        c_uri.to_string(),
+        std::sync::Arc::new(crate::types::FileData {
+            package: Some("com.example.clib".to_owned()),
+            ..Default::default()
+        }),
+    );
+
+    // Real Gradle dependency data for the calling file's own module: {A, C}
+    // are real dependencies, B is NOT.
+    let mut dependencies_by_content_root: std::collections::HashMap<
+        std::path::PathBuf,
+        std::collections::HashSet<crate::cli::extract_sources::GradleMeta>,
+    > = std::collections::HashMap::new();
+    dependencies_by_content_root.insert(
+        std::path::PathBuf::from("/test"),
+        std::collections::HashSet::from([
+            crate::cli::extract_sources::GradleMeta {
+                group: "com.example.a".to_owned(),
+                artifact: "a-lib".to_owned(),
+                version: "1.0.0".to_owned(),
+            },
+            crate::cli::extract_sources::GradleMeta {
+                group: "com.example.c".to_owned(),
+                artifact: "c-lib".to_owned(),
+                version: "1.0.0".to_owned(),
+            },
+        ]),
+    );
+    *idx.module_dependencies.write().unwrap() = dependencies_by_content_root;
+
+    // The calling file imports an unrelated sibling symbol from B's own
+    // package — the only signal `import_package_tie_break` has to go on —
+    // but never depends on B itself per the real Gradle data above.
+    let host_uri = uri("/Host.kt");
+    idx.index_content(
+        &host_uri,
+        "package com.pkg\nimport com.example.blib.SomethingElse\n",
+    );
+
+    let locs = resolve_symbol_index_only(&idx, "Foo", None, &host_uri);
+    assert!(
+        !locs.iter().any(|l| l.uri == b_uri),
+        "must never resolve to B: module-scoped narrowing already proved \
+         B is not a real dependency of the calling module, so \
+         import_package_tie_break must not be allowed to pick it back up \
+         from the original, unnarrowed candidate set, got {locs:?}"
+    );
+}
+
+/// Companion to the test above: when module-scoped narrowing leaves a real
+/// positive subset ({A, C}) and `import_package_tie_break`, run against THAT
+/// narrowed subset (not the original 3-candidate set), can itself narrow
+/// further to a unique winner, the fixed tail must actually find it — not
+/// just avoid the wrong answer, but reach the right one.
+#[test]
+fn module_scoped_narrowing_lets_import_package_tie_break_reach_a_correct_unique_answer() {
+    let idx = Indexer::new();
+    let a_uri = gradle_cache_jar_uri("com.example.a", "a-lib", "1.0.0");
+    let b_uri = gradle_cache_jar_uri("com.example.b", "b-lib", "1.0.0");
+    let c_uri = gradle_cache_jar_uri("com.example.c", "c-lib", "1.0.0");
+    idx.jar_definitions.insert(
+        "Foo".to_owned(),
+        vec![
+            tower_lsp::lsp_types::Location {
+                uri: a_uri.clone(),
+                range: Default::default(),
+            },
+            tower_lsp::lsp_types::Location {
+                uri: b_uri.clone(),
+                range: Default::default(),
+            },
+            tower_lsp::lsp_types::Location {
+                uri: c_uri.clone(),
+                range: Default::default(),
+            },
+        ],
+    );
+    idx.jar_files.insert(
+        a_uri.to_string(),
+        std::sync::Arc::new(crate::types::FileData {
+            package: Some("com.example.alib".to_owned()),
+            ..Default::default()
+        }),
+    );
+    idx.jar_files.insert(
+        b_uri.to_string(),
+        std::sync::Arc::new(crate::types::FileData {
+            package: Some("com.example.blib".to_owned()),
+            ..Default::default()
+        }),
+    );
+    idx.jar_files.insert(
+        c_uri.to_string(),
+        std::sync::Arc::new(crate::types::FileData {
+            package: Some("com.example.clib".to_owned()),
+            ..Default::default()
+        }),
+    );
+
+    let mut dependencies_by_content_root: std::collections::HashMap<
+        std::path::PathBuf,
+        std::collections::HashSet<crate::cli::extract_sources::GradleMeta>,
+    > = std::collections::HashMap::new();
+    dependencies_by_content_root.insert(
+        std::path::PathBuf::from("/test"),
+        std::collections::HashSet::from([
+            crate::cli::extract_sources::GradleMeta {
+                group: "com.example.a".to_owned(),
+                artifact: "a-lib".to_owned(),
+                version: "1.0.0".to_owned(),
+            },
+            crate::cli::extract_sources::GradleMeta {
+                group: "com.example.c".to_owned(),
+                artifact: "c-lib".to_owned(),
+                version: "1.0.0".to_owned(),
+            },
+        ]),
+    );
+    *idx.module_dependencies.write().unwrap() = dependencies_by_content_root;
+
+    // Imports a sibling symbol from C's own package only (not A's, not B's)
+    // -- among the module-scoped survivors {A, C}, only C matches.
+    let host_uri = uri("/Host.kt");
+    idx.index_content(
+        &host_uri,
+        "package com.pkg\nimport com.example.clib.SomethingElse\n",
+    );
+
+    let locs = resolve_symbol_index_only(&idx, "Foo", None, &host_uri);
+    assert_eq!(
+        locs,
+        vec![tower_lsp::lsp_types::Location {
+            uri: c_uri,
+            range: Default::default(),
+        }],
+        "expected import_package_tie_break, run against the module-scoped \
+         narrowed subset {{A, C}}, to reach the unique correct answer C, \
+         got {locs:?}"
+    );
+}
+
 /// Same guarantee as `resolve_symbol_index_only_never_spawns_rg_or_fd`, but
 /// for a qualified lookup (`resolve_qualified`'s uppercase branch) — Copilot
 /// review on PR #274: `resolve_qualified` resolved its qualifier root via the
