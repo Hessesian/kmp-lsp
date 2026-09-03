@@ -700,10 +700,10 @@ fn module_scoped_tie_break(
 
 /// Third tie-break for [`ambiguity_safe_tail_with_denylist`]: when the
 /// denylist and module-scoped narrowing still leave more than one candidate,
-/// narrow using `origin_uri`'s own explicit (non-star) imports — not of the
-/// ambiguous name itself (`resolve_via_imports` already tried that, earlier
-/// in the chain, and failed, or this tail would never have been reached) but
-/// of any OTHER symbol from the same package. A file that writes `import
+/// narrow using `origin_uri`'s own imports — not of the ambiguous name
+/// itself (`resolve_via_imports` already tried that, earlier in the chain,
+/// and failed, or this tail would never have been reached) but of any OTHER
+/// symbol from the same package. A file that writes `import
 /// kotlinx.coroutines.async` but never spells out `Deferred` (used only
 /// through inference, e.g. `scope.async { }.await()`) still tells us
 /// `kotlinx.coroutines` is a real, in-use package for this file — evidence
@@ -714,7 +714,15 @@ fn module_scoped_tie_break(
 /// needs no `workspace.json` data at all — narrows real cases that
 /// module-scoping can't when a workspace has no module-dependency data
 /// loaded (e.g. a `workspace.json` with only `sourcePaths`, no `libraries`).
-fn import_package_tie_break(
+///
+/// A star import (`import com.foo.bar.*`) counts too, as evidence for its
+/// own exact package only: `ImportEntry::full_path` for a star import is
+/// already the bare package (there's no trailing symbol segment to strip,
+/// unlike a non-star import's `full_path`), so it's used as-is rather than
+/// through [`import_package_prefix`] — passing a star import's `full_path`
+/// through that helper would wrongly strip its own last segment as if it
+/// were an imported symbol, over-widening `com.foo.bar` to `com.foo`.
+pub(super) fn import_package_tie_break(
     indexer: &Indexer,
     origin_uri: &Url,
     locations: Vec<Location>,
@@ -725,8 +733,13 @@ fn import_package_tie_break(
     let imported_packages: std::collections::HashSet<String> = file_data
         .imports
         .iter()
-        .filter(|i| !i.is_star)
-        .map(|i| import_package_prefix(&i.full_path))
+        .map(|i| {
+            if i.is_star {
+                i.full_path.clone()
+            } else {
+                import_package_prefix(&i.full_path)
+            }
+        })
         .collect();
     if imported_packages.is_empty() {
         return vec![];
