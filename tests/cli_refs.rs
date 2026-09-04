@@ -142,3 +142,29 @@ fn context_flag_adds_context_array_to_json_output() {
     assert_eq!(context[2]["line"], 3);
     assert_eq!(context[2]["text"], "val x = 1");
 }
+
+#[test]
+fn context_flag_with_huge_n_does_not_overflow() {
+    // Regression test: `result.line + n` must not panic/overflow when N is
+    // near u32::MAX (previously used plain `+` instead of `saturating_add`).
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    write_fixture(root, "workspace.json", r#"{"sourcePaths":[]}"#);
+    write_fixture(root, "src/B.kt", "// header\nclass Foo\nval x = 1\n");
+
+    let out = Command::new(BIN)
+        .args(["refs", "Foo", "--fast", "--context", "4294967295", "--root"])
+        .arg(root)
+        .output()
+        .expect("spawn");
+    assert!(
+        out.status.success(),
+        "expected clean exit with huge --context, got {:?}\nstderr: {}",
+        out.status,
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    // Context clamps to the whole (3-line) file rather than overflowing.
+    assert!(stdout.contains("// header"));
+    assert!(stdout.contains("val x = 1"));
+}

@@ -57,10 +57,13 @@ impl CliResult {
 /// (inclusive of the matched line) and attach them as `context`.
 ///
 /// Skipped for `jar:`-prefixed pseudo-paths, which aren't readable files.
-/// Caches file contents so repeated matches in the same file re-read once.
-pub(crate) fn attach_context(results: &mut [CliResult], n: u32) {
-    let mut file_lines_cache: std::collections::HashMap<String, Vec<String>> =
-        std::collections::HashMap::new();
+/// `file_lines_cache` is caller-owned so it can be shared with other passes
+/// (e.g. `refs --exclude-imports`) that also read matched files by line.
+pub(crate) fn attach_context(
+    results: &mut [CliResult],
+    n: u32,
+    file_lines_cache: &mut std::collections::HashMap<String, Vec<String>>,
+) {
     for result in results.iter_mut() {
         if result.file.starts_with("jar:") {
             continue;
@@ -76,7 +79,7 @@ pub(crate) fn attach_context(results: &mut [CliResult], n: u32) {
             continue;
         }
         let start = result.line.saturating_sub(n).max(1);
-        let end = (result.line + n).min(lines.len() as u32);
+        let end = result.line.saturating_add(n).min(lines.len() as u32);
         result.context = (start..=end)
             .filter_map(|line| {
                 lines.get((line - 1) as usize).map(|text| ContextLine {

@@ -551,9 +551,12 @@ async fn run_refs(
         }
     };
 
+    // Shared across the --exclude-imports filter and --context attachment below,
+    // so a file matched by both passes is only read from disk once.
+    let mut file_lines_cache: std::collections::HashMap<String, Vec<String>> =
+        std::collections::HashMap::new();
+
     if exclude_imports {
-        let mut file_lines_cache: std::collections::HashMap<String, Vec<String>> =
-            std::collections::HashMap::new();
         results.retain(|result| {
             // Smart-mode results may carry kind="import" directly.
             if result.kind == "import" {
@@ -579,7 +582,7 @@ async fn run_refs(
 
     exit_if_empty(&results, json, &format!("No references found for '{name}'"));
     if let Some(n) = context {
-        attach_context(&mut results, n);
+        attach_context(&mut results, n, &mut file_lines_cache);
     }
     print_results(&results, json);
 }
