@@ -33,8 +33,8 @@ use crate::StrExt;
 
 use super::fd::{fd_find_and_parse, import_package_prefix};
 use super::find::{
-    find_all_names_scoped_to_container, find_local_declaration, find_name_in_uri,
-    find_name_scoped_to_container,
+    find_all_names_scoped_to_container, find_all_names_with_container_in_uri,
+    find_local_declaration, find_name_in_uri, find_name_scoped_to_container,
 };
 use super::hierarchy::{
     walk_hierarchy, walk_hierarchy_breadth_first, MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK,
@@ -2269,7 +2269,26 @@ fn resolve_from_class_hierarchy_scoped(
         },
         12,
         MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK,
-        |index, _, class_uri, _| find_name_in_uri(index, name, class_uri),
+        // `find_name_in_uri` (used here previously) has no notion of the
+        // ancestor CLASS at all -- it returns the first same-named symbol
+        // anywhere in the file, arity-blind. That's silently wrong once a
+        // JAR packs several classes into one synthetic FileData (real bug:
+        // `NavHostController extends NavController`, both from the same
+        // `navigation-runtime` JAR, in the same file): a same-named method
+        // on an unrelated sibling class in that file could win, and even a
+        // real hit collapsed to one arbitrary overload instead of every
+        // arity `name` has on `class_name`. Prefer every overload actually
+        // tagged as belonging to `class_name`; fall back to the old
+        // whole-file behavior only when nothing is container-tagged (e.g. a
+        // degenerate fixture with no container info at all).
+        |index, class_name, class_uri, _| {
+            let scoped = find_all_names_with_container_in_uri(index, name, class_name, class_uri);
+            if !scoped.is_empty() {
+                scoped
+            } else {
+                find_name_in_uri(index, name, class_uri)
+            }
+        },
     );
     // Stable dedup via HashSet — diamond inheritance can produce the same location
     // via multiple paths; dedup_by only removes consecutive duplicates.

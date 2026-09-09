@@ -31,6 +31,44 @@ pub(crate) fn find_name_in_uri(idx: &Indexer, name: &str, file_uri: &str) -> Vec
     vec![]
 }
 
+/// Every same-named symbol tagged as declared directly inside `class_name`,
+/// within `file_uri` — for a caller that already knows the ancestor's own
+/// class NAME (a hierarchy walk's `super_name`) but not its declaration
+/// Location, so `find_all_names_scoped_to_container`'s range-containment
+/// path doesn't apply. Skips straight to the same container-tag match that
+/// function's own JAR-stub fallback uses, since JAR method/field symbols
+/// always carry a real `container` tag in place of a real enclosing range
+/// (see `find_name_in_uri_after_line`'s doc for the bug this avoids: a
+/// same-named sibling class's members leaking in purely by file position).
+///
+/// Real, measured bug this fixes: `resolve_from_class_hierarchy_scoped`'s
+/// walk used to call `find_name_in_uri` per ancestor — arity-blind (first
+/// same-named symbol in the WHOLE file, not scoped to the ancestor at all)
+/// — so a wrong-arity or unrelated same-named member could win over the
+/// real inherited overload(s) `name` actually has.
+pub(crate) fn find_all_names_with_container_in_uri(
+    idx: &Indexer,
+    name: &str,
+    class_name: &str,
+    file_uri: &str,
+) -> Vec<Location> {
+    let Ok(uri) = Url::parse(file_uri) else {
+        return vec![];
+    };
+    let Some(file_data) = ensure_file_data(idx, &uri) else {
+        return vec![];
+    };
+    file_data
+        .symbols
+        .iter()
+        .filter(|symbol| symbol.name == name && symbol.container.as_deref() == Some(class_name))
+        .map(|symbol| Location {
+            uri: uri.clone(),
+            range: symbol.selection_range,
+        })
+        .collect()
+}
+
 /// Like `find_name_in_uri` but prefers declarations at or after `after_line`.
 ///
 /// Used when we already know the qualifier class lives at `after_line` — we
@@ -38,18 +76,33 @@ pub(crate) fn find_name_in_uri(idx: &Indexer, name: &str, file_uri: &str) -> Vec
 /// different class that happens to appear earlier in the same file.
 ///
 /// Strategy:
-///   1. Symbol table — pick the symbol at or after `after_line` with the
-///      smallest line number (closest match).  Fall back to any match if none
-///      found after the hint line.
+///   1. Symbol table, container-scoped when `container_name` is known — a
+///      same-named symbol tagged with a DIFFERENT container is never
+///      returned, no matter its position (see below for why "closest by
+///      line" alone is unsound). Falls to position only when the caller
+///      doesn't know the container (e.g. resolving a top-level name).
 ///   2. Line scan — search only lines >= `after_line`.
 ///
 /// Loads `FileData` via `ensure_file_data`, which checks the in-memory
 /// index (files + jar_files) and falls back to on-demand disk parse.
+///
+/// Real bug this fixes: a compiled JAR can hold several classes in one
+/// synthetic per-JAR `FileData` (e.g. `NavHostController extends
+/// NavController`, both from the same `navigation-runtime` JAR). Position-
+/// only matching mis-attributed `NavController`'s own `navigate(...)`
+/// overloads to `NavHostController` purely because they land later in file
+/// order — there's no real body range to contain them (JAR symbol ranges
+/// are single-line stubs) — which fed `resolve_qualified` a wrong-arity
+/// "own member" instead of the correct arity-complete overload set reached
+/// via the class hierarchy walk. Every JAR-derived symbol carries a real
+/// `container` tag (its actual enclosing class), so trusting it over
+/// position is strictly more correct whenever it's available.
 pub(crate) fn find_name_in_uri_after_line(
     idx: &Indexer,
     name: &str,
     file_uri: &str,
     after_line: u32,
+    container_name: Option<&str>,
 ) -> Vec<Location> {
     let Ok(uri) = Url::parse(file_uri) else {
         return vec![];
@@ -59,26 +112,45 @@ pub(crate) fn find_name_in_uri_after_line(
         return vec![];
     };
 
-    // a) Symbol table: find the closest symbol at or after `after_line`.
-    let best = file_data
-        .symbols
-        .iter()
-        .filter(|s| s.name == name && s.selection_start() >= after_line)
-        .min_by_key(|s| s.selection_start());
+    if let Some(container_name) = container_name {
+        let same_container: Vec<Location> = file_data
+            .symbols
+            .iter()
+            .filter(|s| s.name == name && s.container.as_deref() == Some(container_name))
+            .map(|s| Location {
+                uri: uri.clone(),
+                range: s.selection_range,
+            })
+            .collect();
+        if !same_container.is_empty() {
+            return same_container;
+        }
+        // Known container, no member of it anywhere in the file — that's an
+        // authoritative "not a member here", not a hint to guess by
+        // position. Still falls through to the line scan below for names
+        // the symbol table never captures at all (e.g. constructor params).
+    } else {
+        // a) Symbol table: find the closest symbol at or after `after_line`.
+        let best = file_data
+            .symbols
+            .iter()
+            .filter(|s| s.name == name && s.selection_start() >= after_line)
+            .min_by_key(|s| s.selection_start());
 
-    if let Some(sym) = best {
-        return vec![Location {
-            uri,
-            range: sym.selection_range,
-        }];
-    }
+        if let Some(sym) = best {
+            return vec![Location {
+                uri,
+                range: sym.selection_range,
+            }];
+        }
 
-    // Fallback: any symbol with this name (different class, same file)
-    if let Some(sym) = file_data.symbols.iter().find(|s| s.name == name) {
-        return vec![Location {
-            uri,
-            range: sym.selection_range,
-        }];
+        // Fallback: any symbol with this name (different class, same file)
+        if let Some(sym) = file_data.symbols.iter().find(|s| s.name == name) {
+            return vec![Location {
+                uri,
+                range: sym.selection_range,
+            }];
+        }
     }
 
     // b) Line scan scoped to after_line first, then the whole file.
@@ -106,10 +178,12 @@ pub(crate) fn find_name_scoped_to_container(
 ) -> Option<Location> {
     let file_data = ensure_file_data(idx, &container.uri)?;
 
-    let contained = file_data
+    let container_symbol = file_data
         .symbols
         .iter()
-        .find(|symbol| symbol.selection_range == container.range)
+        .find(|symbol| symbol.selection_range == container.range);
+
+    let contained = container_symbol
         .and_then(|container_symbol| {
             file_data.symbols.iter().find(|symbol| {
                 symbol.name == name
@@ -133,6 +207,7 @@ pub(crate) fn find_name_scoped_to_container(
         name,
         container.uri.as_str(),
         container.range.start.line,
+        container_symbol.map(|symbol| symbol.name.as_str()),
     )
     .into_iter()
     .next()
@@ -181,6 +256,7 @@ pub(crate) fn find_all_names_scoped_to_container(
             name,
             container.uri.as_str(),
             container.range.start.line,
+            None,
         );
     };
 
@@ -227,6 +303,7 @@ pub(crate) fn find_all_names_scoped_to_container(
         name,
         container.uri.as_str(),
         container.range.start.line,
+        Some(container_symbol.name.as_str()),
     )
 }
 

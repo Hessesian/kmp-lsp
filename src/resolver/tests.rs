@@ -1925,6 +1925,155 @@ fn resolve_qualified_inherited_member_lookup_threads_the_real_origin_uri() {
 }
 
 #[test]
+fn resolve_qualified_inherited_member_lookup_finds_the_right_arity_overload_from_a_sibling_class_in_the_same_jar_file(
+) {
+    // Real Moneta bug: `navController.navigate(route = "...")` where
+    // `navController`'s declared type is `NavHostController`, and BOTH
+    // `NavHostController` and its supertype `NavController` (the real
+    // declarer of every `navigate` overload) come from the same compiled
+    // JAR (`androidx.navigation`) and land in ONE synthetic per-JAR
+    // `FileData` -- exactly this fixture's shape. `NavHostController`
+    // declares no `navigate` of its own.
+    //
+    // Two bugs compounded here, both fixed by this test:
+    // 1. `find_name_in_uri_after_line`'s position-only fallback could
+    //    attribute a sibling class's member to the WRONG class purely by
+    //    file order, with no notion of which class actually declares it.
+    // 2. `resolve_from_class_hierarchy_scoped`'s walk used arity-blind
+    //    `find_name_in_uri` per ancestor -- first same-named symbol in the
+    //    WHOLE file, not scoped to the ancestor class, and never more than
+    //    one candidate even when the real declaration is overloaded.
+    let indexer = Indexer::new();
+    let host_uri = uri("/app/Host.kt");
+    indexer.index_content(
+        &host_uri,
+        concat!(
+            "package com.app\n",
+            "import androidx.navigation.NavHostController\n",
+            "fun foo(navController: NavHostController) { navController.navigate(\"x\") }\n",
+        ),
+    );
+
+    let nav_uri = gradle_cache_jar_uri("androidx.navigation", "navigation-runtime", "2.9.8");
+
+    indexer.jar_definitions.insert(
+        "NavHostController".to_owned(),
+        vec![tower_lsp::lsp_types::Location {
+            uri: nav_uri.clone(),
+            range: tower_lsp::lsp_types::Range::new(
+                tower_lsp::lsp_types::Position::new(0, 0),
+                tower_lsp::lsp_types::Position::new(0, 17),
+            ),
+        }],
+    );
+    indexer.jar_definitions.insert(
+        "NavController".to_owned(),
+        vec![tower_lsp::lsp_types::Location {
+            uri: nav_uri.clone(),
+            range: tower_lsp::lsp_types::Range::new(
+                tower_lsp::lsp_types::Position::new(1, 0),
+                tower_lsp::lsp_types::Position::new(1, 13),
+            ),
+        }],
+    );
+
+    let make_symbol = |name: &str,
+                       kind: tower_lsp::lsp_types::SymbolKind,
+                       container: Option<&str>,
+                       line: u32,
+                       param_counts: (u8, u8)| {
+        crate::types::SymbolEntry {
+            name: name.to_owned(),
+            kind,
+            visibility: crate::types::Visibility::Public,
+            range: tower_lsp::lsp_types::Range::new(
+                tower_lsp::lsp_types::Position::new(line, 0),
+                tower_lsp::lsp_types::Position::new(line, name.len() as u32),
+            ),
+            selection_range: tower_lsp::lsp_types::Range::new(
+                tower_lsp::lsp_types::Position::new(line, 0),
+                tower_lsp::lsp_types::Position::new(line, name.len() as u32),
+            ),
+            detail: format!("fun {name}(...)"),
+            params: String::new(),
+            param_counts,
+            container: container.map(str::to_owned),
+            cold: None,
+            trailing_lambda: false,
+            deprecated: false,
+        }
+    };
+
+    indexer.jar_files.insert(
+        nav_uri.to_string(),
+        std::sync::Arc::new(crate::types::FileData {
+            package: Some("androidx.navigation".to_owned()),
+            supers: vec![(0, "NavController".to_owned(), Vec::new())],
+            symbols: vec![
+                make_symbol(
+                    "NavHostController",
+                    tower_lsp::lsp_types::SymbolKind::CLASS,
+                    None,
+                    0,
+                    (0, 0),
+                ),
+                make_symbol(
+                    "NavController",
+                    tower_lsp::lsp_types::SymbolKind::CLASS,
+                    None,
+                    1,
+                    (0, 0),
+                ),
+                // Wrong-arity decoy overload -- real `navigate(Int)` shape
+                // (androidx's own 0-required-arg-past-receiver overload
+                // family). Declared BEFORE the matching overload, same as
+                // real ASM-derived JAR output can produce in either order.
+                make_symbol(
+                    "navigate",
+                    tower_lsp::lsp_types::SymbolKind::METHOD,
+                    Some("NavController"),
+                    2,
+                    (0, 0),
+                ),
+                // The real target: 1-arg `navigate(String)`.
+                make_symbol(
+                    "navigate",
+                    tower_lsp::lsp_types::SymbolKind::METHOD,
+                    Some("NavController"),
+                    3,
+                    (1, 1),
+                ),
+            ],
+            ..Default::default()
+        }),
+    );
+
+    let locs = resolve_symbol(&indexer, "navigate", Some("NavHostController"), &host_uri);
+    assert_eq!(
+        locs.len(),
+        2,
+        "expected both of NavController's navigate overloads back, not just \
+         one arbitrarily chosen by file position: {locs:?}"
+    );
+    let shape = crate::indexer::CallShape {
+        arg_count: 1,
+        trailing_lambda: false,
+    };
+    let filtered = crate::indexer::shape_filter_locations(&indexer, shape, locs).resolved();
+    assert_eq!(
+        filtered.len(),
+        1,
+        "shape filtering on a 1-arg call must leave exactly the matching overload"
+    );
+    assert_eq!(
+        filtered[0].range.start.line, 3,
+        "must resolve to the 1-arg navigate(String) overload (line 3), not \
+         the 0-arg decoy (line 2) or anything mis-attributed to \
+         NavHostController by file position"
+    );
+}
+
+#[test]
 fn resolve_qualified_supertype_extension_fallback_handles_a_fully_qualified_supertype_spelling() {
     // Copilot review finding on PR #289: `walk_hierarchy` yields `super_name`
     // exactly as written in the source's own delegation-specifier text
