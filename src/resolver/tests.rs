@@ -3212,6 +3212,89 @@ fn resolve_extension_fn_on_uppercase_qualifier() {
     );
 }
 
+// ── qualified access: item-1 JAR-extension probe fallback (2026-09-09 jar-promotion-latency-budget-plan, Task 2a) ──
+
+/// Regression: `resolve_qualified`'s item-1 fallback (reached after
+/// `resolve_extension_in_scope` and the member/companion/hierarchy lookups
+/// above it all come up empty) materializes its `Location` by searching the
+/// declaring file's symbol list for the first symbol whose bare `name`
+/// matches — not the actual extension declaration. A same-named, unrelated
+/// member declared earlier in the same file previously won, returning the
+/// wrong range.
+#[test]
+fn resolve_qualified_jar_extension_probe_respects_declaration_match_not_just_name() {
+    let receiver_uri = uri("/Widget.kt");
+    let ext_uri = uri("/Styling.kt");
+    let caller_uri = uri("/Caller.kt");
+    let idx = Indexer::new();
+
+    idx.index_content(&receiver_uri, "package com.lib.widget\nobject Widget");
+    // `Other.styled()` (line 2) is an unrelated member sharing the bare name
+    // `styled` with the real extension declared later (line 4) in the same
+    // file — exactly the shape that made the old `s.name == name` match
+    // return the wrong range.
+    idx.index_content(
+        &ext_uri,
+        "package com.lib.widget\nclass Other {\n    fun styled(): Int = 0\n}\nfun Widget.styled(): Widget = this",
+    );
+    // No import of `com.lib.widget` in the caller -- `resolve_extension_in_scope`
+    // (the real in-scope check, reached first) rejects the candidate, so control
+    // falls through to the item-1 fallback under test.
+    idx.index_content(
+        &caller_uri,
+        "package com.app\nfun render() {\n    Widget.styled()\n}",
+    );
+
+    let locs = resolve_symbol(&idx, "styled", Some("Widget"), &caller_uri);
+    assert!(
+        !locs.is_empty(),
+        "JAR-extension probe fallback should still resolve `styled`"
+    );
+    assert_eq!(locs[0].uri, ext_uri);
+    assert_eq!(
+        locs[0].range.start.line, 4,
+        "must match the real extension declaration by receiver+container, not \
+         just by bare name -- got range at line {}, which is `Other.styled()`, \
+         an unrelated same-named member declared earlier in the file",
+        locs[0].range.start.line
+    );
+}
+
+/// The actual regression guard for the fix above: the item-1 fallback is a
+/// DELIBERATE fail-open (see `resolve_extension_fn_on_uppercase_qualifier`,
+/// which already depends on this), not a second in-scope check. Copies that
+/// test's fixture shape -- an extension declared in a different package, with
+/// no import at the call site -- to confirm the declaration-match fix above
+/// does NOT start requiring `extension_is_in_scope` here too. Tightening this
+/// would be the regression the original "merge into `resolve_extension_in_scope`"
+/// proposal would have shipped (see the 2026-09-09
+/// jar-promotion-latency-budget-plan, Task 2a brief).
+#[test]
+fn resolve_qualified_jar_extension_probe_stays_fail_open_when_the_in_scope_check_would_reject() {
+    let receiver_uri = uri("/Widget.kt");
+    let ext_uri = uri("/Styling.kt");
+    let caller_uri = uri("/Caller.kt");
+    let idx = Indexer::new();
+
+    idx.index_content(&receiver_uri, "package com.lib.widget\nobject Widget");
+    idx.index_content(
+        &ext_uri,
+        "package com.lib.widget\nfun Widget.styled(): Widget = this",
+    );
+    idx.index_content(
+        &caller_uri,
+        "package com.app\nfun render() {\n    Widget.styled()\n}",
+    );
+
+    let locs = resolve_symbol(&idx, "styled", Some("Widget"), &caller_uri);
+    assert!(
+        !locs.is_empty(),
+        "JAR-extension probe fallback must stay fail-open: `styled` should still \
+         resolve even though `com.app` never imports `com.lib.widget`"
+    );
+    assert_eq!(locs[0].uri, ext_uri);
+}
+
 /// Regression: `Modifier.padding()` with cursor on `padding` where `Modifier` is
 /// NOT indexed at all (e.g. external unindexed library).  After
 /// `resolve_qualified` returned empty, `resolve_symbol` fell through to

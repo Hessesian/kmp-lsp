@@ -342,15 +342,7 @@ fn resolve_chain(
         }
     } else {
         // Index-only scan (no rg fallback for unindexed files).
-        let star_pkgs: Vec<String> = match indexer.files.get(from_uri.as_str()) {
-            Some(f) => f
-                .imports
-                .iter()
-                .filter(|i| i.is_star && !is_stdlib(&i.full_path))
-                .map(|i| i.full_path.clone())
-                .collect(),
-            None => vec![],
-        };
+        let star_pkgs = star_import_packages(indexer, from_uri);
         if let Some(loc) = find_in_star_imports(indexer, name, &star_pkgs) {
             return vec![loc];
         }
@@ -969,19 +961,7 @@ fn has_explicit_import(indexer: &Indexer, name: &str, from_uri: &Url) -> bool {
 /// in these are in scope in every file without an `import`. Narrower than
 /// [`is_stdlib`] — `android`/`androidx`/most `java.*` are *not* auto-imported.
 fn is_default_import_package(pkg: &str) -> bool {
-    matches!(
-        pkg,
-        "kotlin"
-            | "kotlin.annotation"
-            | "kotlin.collections"
-            | "kotlin.comparisons"
-            | "kotlin.io"
-            | "kotlin.ranges"
-            | "kotlin.sequences"
-            | "kotlin.text"
-            | "kotlin.jvm"
-            | "java.lang"
-    )
+    KOTLIN_DEFAULT_IMPORT_PACKAGES.contains(&pkg)
 }
 
 /// Core `kotlin.*` types from the language's default imports (`kotlin`,
@@ -1131,15 +1111,7 @@ pub(crate) fn resolve_in_scope_strict(indexer: &Indexer, name: &str, from_uri: &
             return true;
         }
     }
-    let star_pkgs: Vec<String> = match indexer.files.get(from_uri.as_str()) {
-        Some(f) => f
-            .imports
-            .iter()
-            .filter(|i| i.is_star && !is_stdlib(&i.full_path))
-            .map(|i| i.full_path.clone())
-            .collect(),
-        None => vec![],
-    };
+    let star_pkgs = star_import_packages(indexer, from_uri);
     if find_in_star_imports(indexer, name, &star_pkgs).is_some() {
         return true;
     }
@@ -1603,7 +1575,14 @@ fn resolve_qualified(
                             .and_then(|fd| {
                                 fd.symbols
                                     .iter()
-                                    .find(|s| s.name == name)
+                                    .find(|s| {
+                                        crate::resolver::infer::extension_declaration_matches(
+                                            s,
+                                            name,
+                                            root_base,
+                                            entry.container.as_ref(),
+                                        )
+                                    })
                                     .map(|s| s.selection_range)
                             })
                             .unwrap_or_default();
@@ -2193,6 +2172,24 @@ pub(crate) fn find_symbol_in_package(indexer: &Indexer, name: &str, pkg: &str) -
     None
 }
 
+/// Non-stdlib star-import packages (`import com.example.*`) visible from `uri`,
+/// i.e. `ImportEntry::full_path` for every `is_star` import whose package is
+/// not `java.*`/`kotlin.*`/`android.*`/`androidx.*`. Stdlib star imports are
+/// excluded here because there is no locally-indexed source to search for
+/// them (see [`resolve_in_scope_strict`]'s separate, deliberate stdlib check).
+/// Returns an empty `Vec` when `uri` is not indexed.
+fn star_import_packages(indexer: &Indexer, uri: &Url) -> Vec<String> {
+    match indexer.files.get(uri.as_str()) {
+        Some(f) => f
+            .imports
+            .iter()
+            .filter(|i| i.is_star && !is_stdlib(&i.full_path))
+            .map(|i| i.full_path.clone())
+            .collect(),
+        None => vec![],
+    }
+}
+
 /// Step 4 — star imports: `import com.example.*`.
 ///
 /// For each star import:
@@ -2202,15 +2199,7 @@ pub(crate) fn find_symbol_in_package(indexer: &Indexer, name: &str, pkg: &str) -
 ///
 /// Stdlib packages are skipped entirely.
 fn resolve_star_imports(indexer: &Indexer, name: &str, uri: &Url) -> Vec<Location> {
-    let star_pkgs: Vec<String> = match indexer.files.get(uri.as_str()) {
-        Some(f) => f
-            .imports
-            .iter()
-            .filter(|i| i.is_star && !is_stdlib(&i.full_path))
-            .map(|i| i.full_path.clone())
-            .collect(),
-        None => return vec![],
-    };
+    let star_pkgs = star_import_packages(indexer, uri);
 
     for pkg in star_pkgs {
         // a) indexed files in this package
