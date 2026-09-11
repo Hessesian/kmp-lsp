@@ -357,11 +357,13 @@ fn denylisted_check_uses_the_real_per_symbol_package_not_the_jars_first_symbol_g
     // of two same-URI candidates survived (both share `same_jar_uri`) --
     // call the ambiguity-safe resolver directly instead, so the surviving
     // candidate's own `range` (line 1, the real one) can be asserted on.
+    let mut budget = MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK;
     let locs = super::super::resolve_symbol_hierarchy_ambiguity_safe(
         &indexer,
         "Activity",
         &bar_uri,
         Some(&bar_uri),
+        &mut budget,
     );
     assert_eq!(
         locs,
@@ -376,6 +378,59 @@ fn denylisted_check_uses_the_real_per_symbol_package_not_the_jars_first_symbol_g
          using its real per-symbol package, not the file-level first-symbol \
          guess, got {locs:?}"
     );
+}
+
+/// Task 4 (jar-promotion-latency-budget plan), Finding 5: `supertype_targets`
+/// threads its own `sidecar_budget: &mut usize` into the per-hop
+/// `ensure_jar_definitions_for(idx, &super_name, sidecar_budget)` call above,
+/// but its two calls into `resolve_symbol_hierarchy_ambiguity_safe` did not
+/// receive that budget at all -- so resolving the *supertype name itself*
+/// (not the per-hop supertype promotion, which the top-of-flat_map call
+/// already covers) silently fell through to `resolve_chain`'s internal
+/// zero-budget promote-before-read calls, even with walk budget remaining.
+///
+/// Fixture: `class Bar : Outer.Inner()` is a pure nested-type chain with no
+/// package prefix, so `supertype_targets` resolves `Outer` via the
+/// ambiguity-safe call at the "no package prefix" branch. `Outer` has a
+/// Tier-1 JAR candidate pointing at a nonexistent jar path (never
+/// cache-backed), so promoting it always fails -- but the ATTEMPT itself
+/// only happens when real budget reaches that call. `Inner` (the bare
+/// leaf, used by the per-hop promotion above) has no candidate at all, so
+/// that unrelated call spends no budget and cannot mask this.
+#[test]
+fn hierarchy_walk_shares_its_budget_with_the_ambiguity_safe_tail() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    crate::indexer::test_helpers::with_xdg_cache(tmp.path(), || {
+        let indexer = Indexer::new();
+        let jar_id = indexer
+            .jar_table
+            .intern("/nonexistent/ambiguity-safe-outer-fixture.jar");
+        indexer
+            .jar_bare_names
+            .entry("Outer".to_owned())
+            .or_default()
+            .push(jar_id);
+
+        let bar_uri = uri("/app/Bar.kt");
+        indexer.index_content(&bar_uri, "class Bar : Outer.Inner()\n");
+
+        let mut budget = MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK;
+        let _ = supertype_targets(
+            &indexer,
+            "Bar",
+            bar_uri.as_str(),
+            &mut budget,
+            bar_uri.as_str(),
+        );
+
+        assert!(
+            indexer.materialization_failed.contains(&jar_id),
+            "expected the nested-type outer resolution to spend the walk's \
+             remaining sidecar_budget attempting to promote `Outer`, but no \
+             promotion attempt was recorded -- the ambiguity-safe call is \
+             still falling through to a zero-budget promotion path"
+        );
+    });
 }
 
 // ─── Acceptance: combined 4-hop walk with a denylisted decoy at the tail ──

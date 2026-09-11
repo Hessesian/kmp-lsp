@@ -501,12 +501,23 @@ pub(crate) fn resolve_symbol_no_rg(indexer: &Indexer, name: &str, from_uri: &Url
 /// forwarded here from `supertype_targets` so the module-scoped tie-break
 /// can still find real Gradle dependency data past hop 1, where `from_uri`
 /// itself has become the previous hop's own (often `jar:`) resolved URI.
+///
+/// `sidecar_budget` is the walk's own remaining budget (see
+/// [`crate::resolver::hierarchy::walk_hierarchy`]), forwarded here so
+/// promoting `name` itself out of a cold JAR can spend it. Without this,
+/// `resolve_chain`'s own internal promote-before-read calls are all
+/// zero-budget (cache-backed only — see their "no blocking sidecar IPC
+/// here" comments), so a supertype name reachable only via this
+/// ambiguity-safe tail and living in a not-yet-materialized JAR was
+/// invisible here even mid-walk with budget remaining.
 pub(crate) fn resolve_symbol_hierarchy_ambiguity_safe(
     indexer: &Indexer,
     name: &str,
     from_uri: &Url,
     hierarchy_walk_origin_uri: Option<&Url>,
+    sidecar_budget: &mut usize,
 ) -> Vec<Location> {
+    crate::indexer::jar::ensure_jar_definitions_for(indexer, name, sidecar_budget);
     resolve_chain(
         indexer,
         name,
