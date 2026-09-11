@@ -22,20 +22,49 @@ use super::hierarchy::{
 use super::infer::{infer_field_type, infer_variable_type};
 use super::resolve::{resolve_symbol, resolve_symbol_index_only, ResolveIo};
 
-/// Step 0 — dot-qualified access.
-///
-/// Handles two families of chains:
-///
-/// **Uppercase root** (`Outer.Inner`, `A.B.C.D`): all segments are class/object
-/// names; the root identifies the file and all nested types live in the same
-/// file, so we resolve root → file and search that file for `name`.
-///
-/// **Lowercase root** (`variable.field`, `account.account.interestPlanCode`):
-/// the first segment is a variable/parameter — we infer its declared type, then
-/// traverse every subsequent lowercase segment as a field access (inferring each
-/// field's type in turn) until we have a file to search `name` in.
-/// Uppercase segments inside a lowercase chain are treated as nested class names
-/// within the current file.
+/// STAGE: parsing. What the qualifier's ROOT segment is, decided ONCE here
+/// instead of re-sniffed by `starts_with_uppercase` at four separate points of
+/// one function body. Takes no [`Indexer`] and does no IO, so its tests need no
+/// fixture at all — before this existed there was no way to test "did we read
+/// this qualifier correctly" separately from "did we find the symbol".
+#[derive(Debug, PartialEq, Eq)]
+pub(super) enum QualifierRoot<'a> {
+    /// `this.member` — current file, then its own hierarchy.
+    This,
+    /// `super.member` — hierarchy only.
+    Super,
+    /// `Foo.member` / `Outer.Inner.member` — every segment names a type.
+    TypePath {
+        root: &'a str,
+        /// The type segments after the root. Owned rather than the borrowed
+        /// slice the design sketch named, because the split has to live
+        /// somewhere and a returned value cannot borrow a local.
+        nested: Vec<&'a str>,
+    },
+    /// `variable.field.member` — the root needs type inference before anything
+    /// else can happen.
+    ValuePath { root: &'a str, rest: Vec<&'a str> },
+}
+
+/// Split a dot-qualified receiver expression into its root and the segments
+/// that follow it. See [`QualifierRoot`].
+pub(super) fn parse_qualifier(qualifier: &str) -> QualifierRoot<'_> {
+    let mut segments = qualifier.split('.');
+    // `split` on a non-empty pattern always yields at least one item; the
+    // fallback is unreachable and only avoids an `unwrap`.
+    let root = segments.next().unwrap_or(qualifier);
+    let rest: Vec<&str> = segments.collect();
+
+    // `this`/`super` win on the ROOT segment alone, exactly as before — a
+    // longer `this.field.member` still takes the keyword path.
+    match root {
+        "this" => QualifierRoot::This,
+        "super" => QualifierRoot::Super,
+        _ if root.starts_with_uppercase() => QualifierRoot::TypePath { root, nested: rest },
+        _ => QualifierRoot::ValuePath { root, rest },
+    }
+}
+
 pub(super) fn resolve_qualified(
     indexer: &Indexer,
     name: &str,
@@ -43,285 +72,449 @@ pub(super) fn resolve_qualified(
     from_uri: &Url,
     io: ResolveIo,
 ) -> Vec<Location> {
-    let segments: Vec<&str> = qualifier.split('.').collect();
-    let root = segments[0];
+    let parsed = parse_qualifier(qualifier);
 
-    // ── `this.member` — search current file and its superclass hierarchy ──────
-    if root == "this" {
-        let locs = find_name_in_uri(indexer, name, from_uri.as_str());
-        if !locs.is_empty() {
-            return locs;
+    // ── Keyword roots ────────────────────────────────────────────────────────
+    // `this`/`super` are anchored on the CALL SITE's own file, not on a
+    // resolved receiver type, so they never reach the anchor ladder below.
+    match parsed {
+        QualifierRoot::This => {
+            let locations = find_name_in_uri(indexer, name, from_uri.as_str());
+            if !locations.is_empty() {
+                return locations;
+            }
+            return resolve_from_class_hierarchy(indexer, name, from_uri);
         }
-        return resolve_from_class_hierarchy(indexer, name, from_uri);
+        QualifierRoot::Super => return resolve_from_class_hierarchy(indexer, name, from_uri),
+        _ => {}
     }
 
-    // ── `super.member` — search superclass hierarchy only ────────────────────
-    if root == "super" {
-        return resolve_from_class_hierarchy(indexer, name, from_uri);
+    // `Foo.member` with `Foo` a class name (not a variable) can only reach a
+    // companion-object member in Kotlin — never an instance member of `Foo`,
+    // even if one shares the name. Only the single-segment `Foo.member` form
+    // names the root as the qualifying class: for a multi-segment qualifier
+    // like `Outer.Inner.member`, `root` is `Outer` — not the class the member
+    // is accessed on — so probing `Outer`'s companion would mis-resolve.
+    let companion_applies =
+        matches!(&parsed, QualifierRoot::TypePath { nested, .. } if nested.is_empty());
+
+    for anchor in anchors_for(indexer, &parsed, from_uri, io) {
+        if companion_applies {
+            let companion_locations = companion_member_on(indexer, &anchor, name);
+            if !companion_locations.is_empty() {
+                return companion_locations;
+            }
+        }
+
+        let candidates = candidates_on(indexer, &anchor, name, from_uri);
+        if !candidates.is_empty() {
+            return candidates.into_precedence_ordered();
+        }
     }
 
-    if root.starts_with_uppercase() {
-        let root_base = root.last_segment();
-
-        // Extension functions take precedence over member functions,
-        // but only when they are in scope (same package or imported).
-        let ext_locs = resolve_extension_in_scope(indexer, root_base, name, from_uri);
-        if !ext_locs.is_empty() {
-            return ext_locs;
-        }
-
-        // Then check member functions (same-file). Honors the caller's IO
-        // policy — an IndexOnly caller (the resolution-accuracy benchmark's
-        // own index-only path) must not spawn rg/fd resolving the qualifier
-        // root any more than it may for a bare reference.
-        let qual_locs = if matches!(io, ResolveIo::IndexOnly) {
-            resolve_symbol_index_only(indexer, root, None, from_uri)
-        } else {
-            resolve_symbol(indexer, root, None, from_uri)
-        };
-        for qual_loc in &qual_locs {
-            // `Foo.member` with `Foo` a class name (not a variable) can only reach a
-            // companion-object member in Kotlin — never an instance member of `Foo`,
-            // even if one shares the name. Try the companion first so a same-named
-            // instance member declared earlier in the file can't shadow it.
-            //
-            // Only the single-segment `Foo.member` form names `root` as the
-            // qualifying class. For a multi-segment qualifier like
-            // `Outer.Inner.member`, `root` is `Outer` — not the class the member
-            // is accessed on — so probing `Outer`'s companion would mis-resolve;
-            // fall through to the nested-segment handling instead.
-            if segments.len() == 1 {
-                let companion_locs =
-                    resolve_companion_member(indexer, name, root, qual_loc.uri.as_str());
-                if !companion_locs.is_empty() {
-                    return companion_locs;
-                }
-            }
-
-            // Walk any remaining nested-type segments (`Event.OverdraftInput` has
-            // one: `OverdraftInput`) to that specific nested class's own scope
-            // before searching for `name`, so a same-named sibling member never
-            // shadows the actually-requested nested type's own member.
-            let mut anchor = qual_loc.clone();
-            let mut anchor_class_name = root_base;
-            let mut nested_segments_resolved = true;
-            for &nested_segment in &segments[1..] {
-                match find_name_scoped_to_container(indexer, nested_segment, &anchor) {
-                    Some(location) => {
-                        anchor = location;
-                        anchor_class_name = nested_segment;
-                    }
-                    None => {
-                        nested_segments_resolved = false;
-                        break;
-                    }
-                }
-            }
-            if !nested_segments_resolved {
-                continue;
-            }
-
-            // Every same-named candidate, not just the first match — `name`
-            // may be an overloaded Java/Kotlin function, and collapsing to
-            // one arbitrary overload here (before the caller's own
-            // arity-based shape filtering ever runs) would make nearly
-            // every real call site to a DIFFERENT overload resolve to
-            // nothing (see `find_all_names_scoped_to_container`'s doc).
-            //
-            // `anchor`'s own body may not declare `name` directly, but it may
-            // live on a superclass instead (e.g. `object Manager :
-            // AbstractManager<T>()` inheriting `requireComponent`), the same
-            // situation the `this`/`super` branches above already handle.
-            // Scoped to `anchor`'s own class and declaring file, not
-            // `from_uri` — the qualifier and the call site are commonly
-            // different files. `member_or_inherited_member` bundles both
-            // lookups so the Java-getter retry below can run the identical
-            // pair under a different name instead of duplicating it.
-            let real_member_locs =
-                member_or_inherited_member(indexer, name, &anchor, anchor_class_name, from_uri);
-            if !real_member_locs.is_empty() {
-                return real_member_locs;
-            }
-
-            // Kotlin's Java-interop synthetic-property rule: `obj.fail` may
-            // really mean `obj.getFail()`. Retry the identical member/
-            // inherited-member pair with the getter name, but ONLY when the
-            // declaring file is Java and ONLY after a real `name` member came
-            // up completely empty — a real member always wins, and a Kotlin
-            // `fun getFail()` is never exposed as `.fail` from Kotlin (the
-            // Java-file guard is load-bearing, not a nicety). `setFoo`/`isFoo`/
-            // records are deliberately out of scope for this task — see the
-            // 2026-09-09 jar-promotion-latency-budget-plan, Task 1.
-            if is_java_declaring_file(&anchor.uri) {
-                let getter_name = kotlin_getter_name(name);
-                let getter_locs = member_or_inherited_member(
-                    indexer,
-                    &getter_name,
-                    &anchor,
-                    anchor_class_name,
-                    from_uri,
-                );
-                if !getter_locs.is_empty() {
-                    return getter_locs;
-                }
-            }
-
-            // `anchor`'s own class has no member or inherited member named
-            // `name` (resolve_from_class_hierarchy_scoped's callback is a pure
-            // member lookup — it has NOT ruled out an in-scope extension on
-            // `anchor`'s own class) — check `anchor`'s ancestors for a
-            // supertype extension.
-            let supertype_ext_locs = resolve_extension_via_supertype_hierarchy(
-                indexer,
-                anchor_class_name,
-                &anchor.uri,
-                name,
-                from_uri,
-            );
-            if !supertype_ext_locs.is_empty() {
-                return supertype_ext_locs;
-            }
-        }
-        // Extension functions may live in a different file than the receiver class.
-        // Atomic promote+read (zero budget): `resolve_qualified` is on both the
-        // goto-definition and the per-call-site diagnostics path.
-        let root_base = root.last_segment();
-        let mut cache_backed_only = 0usize;
-        if let Some(entries) =
-            crate::indexer::jar::extension_entries_for(indexer, root_base, &mut cache_backed_only)
-        {
-            for entry in entries.iter() {
-                if entry.name == name {
-                    if let Ok(uri) = Url::parse(&entry.file_uri) {
-                        // Look up the symbol in the declaring file for accurate range.
-                        let range = indexer
-                            .files
-                            .get(&entry.file_uri)
-                            .or_else(|| indexer.jar_files.get(&entry.file_uri))
-                            .and_then(|fd| {
-                                fd.symbols
-                                    .iter()
-                                    .find(|s| {
-                                        crate::resolver::infer::extension_declaration_matches(
-                                            s,
-                                            name,
-                                            root_base,
-                                            entry.container.as_ref(),
-                                        )
-                                    })
-                                    .map(|s| s.selection_range)
-                            })
-                            .unwrap_or_default();
-                        return vec![Location { uri, range }];
-                    }
-                }
-            }
-        }
-        return vec![];
+    // Last resort, and only for a type root: an extension declared in a JAR
+    // whose receiver is keyed on the root's own name. Kept outside the ladder
+    // because it is keyed on the qualifier's literal root SPELLING, which is
+    // meaningful only when that spelling is itself a type name — for a value
+    // root (`account.holder`) the root is a variable name and this probe would
+    // key on nothing.
+    if let QualifierRoot::TypePath { root, .. } = parsed {
+        return jar_extension_for_type_root(indexer, root, name);
     }
+    vec![]
+}
 
-    // ── Lowercase root: variable / parameter type inference ──────────────────
-    let Some(start_type) = infer_variable_type(indexer, root, from_uri) else {
-        return vec![];
+/// STAGE: normalization output. The receiver a qualified lookup is anchored on,
+/// after the root AND every nested segment have been walked. `class_name` is
+/// the LEAF type's simple name — the extension-registry key — never the
+/// root's. Carrying the two together by construction is what makes "probe
+/// keyed on the root while the anchor has already moved to `Inner`"
+/// unrepresentable rather than merely fixed.
+#[derive(Debug, Clone)]
+pub(super) struct ReceiverAnchor {
+    /// The leaf type's own declaration `Location` (file *and* range) — `None`
+    /// only for a receiver with no indexed declaration at all (a compiler
+    /// built-in like `String`/`Int`, or a type this workspace cannot see),
+    /// which can still carry in-scope extensions.
+    ///
+    /// A full `Location` rather than a bare `Url`, because
+    /// [`find_all_names_scoped_to_container`] scopes its member search by
+    /// matching the container's own declaration RANGE, not merely its file: a
+    /// `Url` alone cannot build the own-member tier at all.
+    pub(super) declaration: Option<Location>,
+    /// Leaf type's simple name, nullability and package prefix already
+    /// stripped.
+    pub(super) class_name: String,
+}
+
+/// STAGE: normalization. Qualifier → receiver, and NOTHING else: no member
+/// lookup, no extension probe, no precedence. Both of the qualifier families
+/// (`Outer.Inner` and `variable.field`) collapse into this one function, which
+/// is what makes the ladder in [`candidates_on`] provably share ONE anchor
+/// instead of two anchors that drift apart.
+///
+/// Returns a `Vec` because a type root can resolve to several candidate
+/// declarations; hoisting that loop to the caller makes its re-entrancy cost
+/// visible in a signature instead of buried mid-body.
+pub(super) fn anchors_for(
+    indexer: &Indexer,
+    root: &QualifierRoot<'_>,
+    from_uri: &Url,
+    io: ResolveIo,
+) -> Vec<ReceiverAnchor> {
+    match root {
+        // Dispatched by `resolve_qualified` before it ever gets here.
+        QualifierRoot::This | QualifierRoot::Super => vec![],
+        QualifierRoot::TypePath { root, nested } => {
+            type_path_anchors(indexer, root, nested, from_uri, io)
+        }
+        QualifierRoot::ValuePath { root, rest } => value_path_anchor(indexer, root, rest, from_uri)
+            .into_iter()
+            .collect(),
+    }
+}
+
+/// `Outer.Inner.member`: every qualifier segment names a type, so the root
+/// resolves to one or more declarations and each nested segment walks into
+/// that declaration's own scope.
+fn type_path_anchors(
+    indexer: &Indexer,
+    root: &str,
+    nested: &[&str],
+    from_uri: &Url,
+    io: ResolveIo,
+) -> Vec<ReceiverAnchor> {
+    // Honors the caller's IO policy — an IndexOnly caller (the
+    // resolution-accuracy benchmark's own index-only path) must not spawn
+    // rg/fd resolving the qualifier root any more than it may for a bare
+    // reference.
+    let root_locations = if matches!(io, ResolveIo::IndexOnly) {
+        resolve_symbol_index_only(indexer, root, None, from_uri)
+    } else {
+        resolve_symbol(indexer, root, None, from_uri)
     };
-    // A nullable receiver resolves members from its underlying (non-null) class,
-    // so drop any trailing `?` before resolving the type to a file — otherwise
-    // `resolve_symbol("Confirmation?")` would find nothing.
+
+    let anchors: Vec<ReceiverAnchor> = root_locations
+        .iter()
+        .filter_map(|root_location| {
+            // Walk any remaining nested-type segments (`Event.OverdraftInput`
+            // has one: `OverdraftInput`) into that specific nested class's own
+            // scope, so a same-named sibling member never shadows the
+            // actually-requested nested type's own member. A segment that
+            // cannot be walked drops this candidate entirely.
+            let mut declaration = root_location.clone();
+            let mut class_name = root;
+            for &nested_segment in nested {
+                declaration = find_name_scoped_to_container(indexer, nested_segment, &declaration)?;
+                class_name = nested_segment;
+            }
+            Some(ReceiverAnchor {
+                declaration: Some(declaration),
+                class_name: class_name.to_owned(),
+            })
+        })
+        .collect();
+    if !anchors.is_empty() {
+        return anchors;
+    }
+
+    // The root names no indexed declaration (a built-in receiver, or a type
+    // this workspace cannot see) — it can still carry in-scope extensions, so
+    // hand back a declaration-less anchor rather than nothing at all. Without
+    // this, the own-type extension tier would be unreachable for exactly the
+    // receivers that have no member tier to begin with.
+    vec![ReceiverAnchor {
+        declaration: None,
+        class_name: root.to_owned(),
+    }]
+}
+
+/// `variable.field.member`: the root is a value whose declared type must be
+/// inferred first, after which each further segment is either a nested type or
+/// a field access whose own type is inferred in turn.
+fn value_path_anchor(
+    indexer: &Indexer,
+    root: &str,
+    rest: &[&str],
+    from_uri: &Url,
+) -> Option<ReceiverAnchor> {
+    let start_type = infer_variable_type(indexer, root, from_uri)?;
+    // A nullable receiver resolves members from its underlying (non-null)
+    // class, so drop any trailing `?` before resolving the type to a file —
+    // otherwise `resolve_symbol("Confirmation?")` would find nothing.
     let start_type = start_type.strip_nullable();
 
-    // `start_type` may be a dotted nested type like `Outer.Inner`.
-    // Split into outer (for file resolution) and optional inner (nested class).
+    // `start_type` may be a dotted nested type like `Outer.Inner`. Split into
+    // outer (for file resolution) and optional inner (nested class).
     let (outer_type, inner_type) = match start_type.find('.') {
         Some(dot) => (&start_type[..dot], Some(&start_type[dot + 1..])),
         None => (start_type, None),
     };
 
-    // Resolve the variable's type to its source file.
-    let type_locs = resolve_symbol(indexer, outer_type, None, from_uri);
-    let mut current_file: Option<String> = type_locs.first().map(|l| l.uri.to_string());
-    // The receiver's own base type name, tracked alongside `current_file` for
-    // the in-scope extension-function fallback below — kept even when
-    // `current_file` is `None` (a built-in/stdlib type like `String` has no
-    // indexed declaration file, but can still have in-scope extensions).
-    let mut current_type_base: String = outer_type.last_segment().to_string();
+    let mut declaration = resolve_symbol(indexer, outer_type, None, from_uri)
+        .into_iter()
+        .next();
+    // The receiver's own base type name, tracked alongside `declaration` for
+    // the in-scope extension tier — kept even when `declaration` is `None` (a
+    // built-in/stdlib type like `String` has no indexed declaration file, but
+    // can still have in-scope extensions).
+    let mut class_name = outer_type.last_segment().to_owned();
 
-    // If there's a nested type component (e.g. `Factory` in `Outer.Factory`),
-    // the members we want to search are inside that nested type.
-    // We don't need to change `current_file` because nested types live in the
-    // same file; instead we record each nested level as a trailing qualifier
-    // segment to process. A deeply-nested type like `Scenes.Confirmation` must
-    // be split per-level — searching for a literal `"Scenes.Confirmation"`
+    // A nested type component (`Factory` in `Outer.Factory`) is recorded as a
+    // trailing qualifier segment rather than a file change, since nested types
+    // live in the same file. A deeply-nested type like `Scenes.Confirmation`
+    // must be split per level — searching for a literal `"Scenes.Confirmation"`
     // symbol finds nothing, since each nested class is indexed on its own name.
     let extra_segments: Vec<&str> = inner_type
-        .map(|t| t.split('.').collect())
+        .map(|nested| nested.split('.').collect())
         .unwrap_or_default();
 
-    // Traverse remaining qualifier segments (plus any from the nested type).
-    for &seg in extra_segments.iter().chain(segments[1..].iter()) {
-        let Some(ref uri) = current_file else {
-            return vec![];
-        };
-        if seg.starts_with_uppercase() {
+    for &segment in extra_segments.iter().chain(rest.iter()) {
+        let current_uri = declaration.as_ref()?.uri.clone();
+        if segment.starts_with_uppercase() {
             // Nested class / companion object — likely in the same file.
-            // Search current file first; fall back to a global resolve.
-            let locs = find_name_in_uri(indexer, seg, uri);
-            current_file = if !locs.is_empty() {
-                locs.first().map(|l| l.uri.to_string())
+            // Search the current file first; fall back to a global resolve.
+            let in_file = find_name_in_uri(indexer, segment, current_uri.as_str());
+            declaration = if in_file.is_empty() {
+                resolve_symbol(indexer, segment, None, from_uri)
+                    .into_iter()
+                    .next()
             } else {
-                resolve_symbol(indexer, seg, None, from_uri)
-                    .first()
-                    .map(|l| l.uri.to_string())
+                in_file.into_iter().next()
             };
-            current_type_base = seg.to_string();
+            class_name = segment.to_owned();
         } else {
             // Field access: infer the declared type of this field.
-            let Some(field_type) = infer_field_type(indexer, uri, seg) else {
-                return vec![];
-            };
-            let locs = resolve_symbol(indexer, &field_type, None, from_uri);
-            current_file = locs.first().map(|l| l.uri.to_string());
-            current_type_base = field_type.strip_nullable().last_segment().to_string();
+            let field_type = infer_field_type(indexer, current_uri.as_str(), segment)?;
+            declaration = resolve_symbol(indexer, &field_type, None, from_uri)
+                .into_iter()
+                .next();
+            class_name = field_type.strip_nullable().last_segment().to_owned();
         }
     }
 
-    // Search the resolved type's file for the target member, then its
-    // superclass/interface hierarchy — Kotlin member (including inherited)
-    // resolution always shadows a same-named extension function, so both are
-    // tried before falling to the extension-in-scope lookup below.
-    if let Some(ref resolved_uri) = current_file {
-        let locs = find_name_in_uri(indexer, name, resolved_uri);
-        if !locs.is_empty() {
-            return match Url::parse(resolved_uri) {
-                Ok(parsed_uri) => with_supertype_extension_fallback(
-                    indexer,
-                    locs,
-                    &current_type_base,
-                    &parsed_uri,
-                    name,
-                    from_uri,
-                ),
-                Err(_) => locs,
-            };
-        }
-        if let Ok(parsed_uri) = Url::parse(resolved_uri) {
-            let hierarchy_locs = resolve_from_class_hierarchy(indexer, name, &parsed_uri);
-            if !hierarchy_locs.is_empty() {
-                return hierarchy_locs;
-            }
-        }
+    Some(ReceiverAnchor {
+        declaration,
+        class_name,
+    })
+}
+
+/// STAGE: aggregation. The four tiers, named and separately populated, so that
+/// "which order the branches run in" is carried by field order in one struct
+/// rather than by statement order in two drifted branches.
+pub(super) struct QualifiedCandidates {
+    /// Members declared directly inside the anchor's own body.
+    own_members: Vec<Location>,
+    /// Members reached through the anchor's superclass/interface hierarchy.
+    inherited_members: Vec<Location>,
+    /// An in-scope extension declared on the anchor's OWN leaf type.
+    own_type_extension: Option<Location>,
+    /// An in-scope extension declared on one of the anchor's ancestors.
+    supertype_extension: Option<Location>,
+}
+
+impl QualifiedCandidates {
+    fn is_empty(&self) -> bool {
+        self.own_members.is_empty()
+            && self.inherited_members.is_empty()
+            && self.own_type_extension.is_none()
+            && self.supertype_extension.is_none()
     }
 
-    // No member or inherited member named `name` on the receiver's type (this
-    // also covers built-in/stdlib receivers like `String`/`Int`, which have
-    // no indexed declaration file at all, so `current_file` is `None`) — the
-    // call may still be a same-named, receiver-scoped extension function
-    // declared elsewhere in the workspace. Without this, callers fell
-    // straight through to the receiver-blind global bare-name search, which
-    // can't distinguish `String.toViewText` from an unrelated
-    // `SomeEnum.toViewText` and simply declines when both exist — a real,
-    // measured source of ambiguous member-call resolution (see the
-    // 2026-08-26 resolution-accuracy investigation).
-    resolve_extension_in_scope(indexer, &current_type_base, name, from_uri)
+    /// `own_members` → `inherited_members` → `own_type_extension` →
+    /// `supertype_extension`: Kotlin's real member-over-extension precedence, in
+    /// ONE place, for ONE anchor.
+    fn into_precedence_ordered(self) -> Vec<Location> {
+        let mut ordered = self.own_members;
+        ordered.extend(self.inherited_members);
+        ordered.extend(self.own_type_extension);
+        ordered.extend(self.supertype_extension);
+        ordered
+    }
+}
+
+/// STAGE: business logic. Runs the whole precedence ladder against one anchor.
+///
+/// The tier ORDER is a decided behaviour, not a formality: a real member
+/// (own or inherited) always wins over a same-named extension when both are
+/// arity-compatible. The type-root family used to probe its own-type extension
+/// FIRST and return early, before its member tier was ever computed; that was
+/// the outlier and it is corrected here rather than averaged.
+pub(super) fn candidates_on(
+    indexer: &Indexer,
+    anchor: &ReceiverAnchor,
+    name: &str,
+    from_uri: &Url,
+) -> QualifiedCandidates {
+    let (own_members, inherited_members) = member_tiers(indexer, anchor, name, from_uri);
+
+    // Kotlin's Java-interop synthetic-property rule: `obj.fail` may really mean
+    // `obj.getFail()`. Retry the identical member/inherited-member pair with the
+    // getter name, but ONLY when the declaring file is Java and ONLY after a
+    // real `name` member came up completely empty — a real member always wins,
+    // and a Kotlin `fun getFail()` is never exposed as `.fail` from Kotlin (the
+    // Java-file guard is load-bearing, not a nicety). `setFoo`/`isFoo`/records
+    // are deliberately out of scope — see the 2026-09-09
+    // jar-promotion-latency-budget-plan, Task 1.
+    let declaring_file_is_java = anchor
+        .declaration
+        .as_ref()
+        .is_some_and(|declaration| is_java_declaring_file(&declaration.uri));
+    let (own_members, inherited_members) =
+        if own_members.is_empty() && inherited_members.is_empty() && declaring_file_is_java {
+            member_tiers(indexer, anchor, &kotlin_getter_name(name), from_uri)
+        } else {
+            (own_members, inherited_members)
+        };
+
+    // Member-over-extension precedence is carried by this tier's POSITION in
+    // `into_precedence_ordered`, not by refusing to compute it: a same-named
+    // member doesn't always satisfy the actual call's arity, and dropping the
+    // extension outright leaves a shape-aware caller with nothing to fall back
+    // to. Measured on the Moneta corpus: `IMockProvider.loadJSONFromAssets`
+    // (a 1-arg extension shadowed by a 2-arg member of the same name, 791 call
+    // sites) resolves to the member alone under a short-circuit, fails arity
+    // filtering, and lands in the ambiguous bucket instead of resolving. Same
+    // reasoning as `supertype_extension` below, which has always been appended
+    // alongside a winning member rather than instead of one.
+    let own_type_extension =
+        resolve_extension_in_scope(indexer, &anchor.class_name, name, from_uri)
+            .into_iter()
+            .next();
+
+    // A same-named real member doesn't always satisfy the actual call's arity
+    // (e.g. `navController.navigate(route = ...)`: a wrong-arity JVM member
+    // `NavController.navigate(Uri)` vs. the wanted KTX extension
+    // `NavController.navigate(route: String, ...)`), so this tier is appended
+    // ALONGSIDE a winning own-member tier rather than only when everything
+    // missed — members still win when arity-compatible, but a shape-aware
+    // caller now has the extension to fall back to instead of an empty result.
+    //
+    // Skipped when the inherited tier won: `resolve_from_class_hierarchy_scoped`
+    // just walked that same hierarchy and found a real MEMBER on an ancestor,
+    // which outranks an extension on an ancestor — re-walking it to append a
+    // strictly-lower-precedence candidate is pure cost on the hottest path.
+    let supertype_extension = if inherited_members.is_empty() {
+        anchor.declaration.as_ref().and_then(|declaration| {
+            resolve_extension_via_supertype_hierarchy(
+                indexer,
+                &anchor.class_name,
+                &declaration.uri,
+                name,
+                from_uri,
+            )
+            .into_iter()
+            .next()
+        })
+    } else {
+        None
+    };
+
+    QualifiedCandidates {
+        own_members,
+        inherited_members,
+        own_type_extension,
+        supertype_extension,
+    }
+}
+
+/// The direct-container then inherited-member lookup pair, as the two tiers
+/// they are. Scoped to the anchor's own class and declaring file, not to the
+/// call site — the qualifier and the call site are commonly different files.
+///
+/// Every same-named candidate, not just the first match: `name` may be an
+/// overloaded Java/Kotlin function, and collapsing to one arbitrary overload
+/// here (before the caller's own arity-based shape filtering ever runs) would
+/// make nearly every real call site to a DIFFERENT overload resolve to nothing
+/// (see `find_all_names_scoped_to_container`'s doc).
+fn member_tiers(
+    indexer: &Indexer,
+    anchor: &ReceiverAnchor,
+    name: &str,
+    from_uri: &Url,
+) -> (Vec<Location>, Vec<Location>) {
+    // A built-in receiver has no indexed declaration, so it has no member tier
+    // at all — only extensions can apply to it.
+    let Some(declaration) = anchor.declaration.as_ref() else {
+        return (vec![], vec![]);
+    };
+
+    let own_members = find_all_names_scoped_to_container(indexer, name, declaration);
+    if !own_members.is_empty() {
+        return (own_members, vec![]);
+    }
+
+    // The anchor's own body may not declare `name` directly, but a superclass
+    // may (e.g. `object Manager : AbstractManager<T>()` inheriting
+    // `requireComponent`) — the same situation the `this`/`super` roots handle.
+    let inherited_members = resolve_from_class_hierarchy_scoped(
+        indexer,
+        name,
+        &anchor.class_name,
+        &declaration.uri,
+        from_uri,
+    );
+    (vec![], inherited_members)
+}
+
+/// STAGE: business logic, kept separate because it answers a DIFFERENT
+/// question — `Foo.member` with `Foo` a class name can only ever reach a
+/// companion member. A declaration-less (built-in) anchor has no companion
+/// object to look up.
+pub(super) fn companion_member_on(
+    indexer: &Indexer,
+    anchor: &ReceiverAnchor,
+    name: &str,
+) -> Vec<Location> {
+    match anchor.declaration.as_ref() {
+        Some(declaration) => {
+            resolve_companion_member(indexer, name, &anchor.class_name, declaration.uri.as_str())
+        }
+        None => vec![],
+    }
+}
+
+/// Extension functions may live in a different file than the receiver class,
+/// including inside a JAR the workspace never parsed as source. Atomic
+/// promote+read (zero budget): `resolve_qualified` is on both the
+/// goto-definition and the per-call-site diagnostics path.
+fn jar_extension_for_type_root(indexer: &Indexer, root: &str, name: &str) -> Vec<Location> {
+    let mut cache_backed_only = 0usize;
+    let Some(entries) =
+        crate::indexer::jar::extension_entries_for(indexer, root, &mut cache_backed_only)
+    else {
+        return vec![];
+    };
+    for entry in entries.iter() {
+        if entry.name != name {
+            continue;
+        }
+        let Ok(uri) = Url::parse(&entry.file_uri) else {
+            continue;
+        };
+        // Look up the symbol in the declaring file for an accurate range.
+        let range = indexer
+            .files
+            .get(&entry.file_uri)
+            .or_else(|| indexer.jar_files.get(&entry.file_uri))
+            .and_then(|file_data| {
+                file_data
+                    .symbols
+                    .iter()
+                    .find(|symbol| {
+                        crate::resolver::infer::extension_declaration_matches(
+                            symbol,
+                            name,
+                            root,
+                            entry.container.as_ref(),
+                        )
+                    })
+                    .map(|symbol| symbol.selection_range)
+            })
+            .unwrap_or_default();
+        return vec![Location { uri, range }];
+    }
+    vec![]
 }
 
 /// Walk the superclass / interface hierarchy of the class(es) declared in
@@ -412,36 +605,6 @@ fn resolve_from_class_hierarchy_scoped(
         .collect()
 }
 
-/// The direct-container then inherited-member lookup pair every `Foo.member`
-/// qualified lookup tries before falling to extension fallbacks. Extracted
-/// into one named helper so the Java-getter synthetic-property retry
-/// (`obj.fail` -> `obj.getFail()`) can run the identical two calls under a
-/// different name, instead of duplicating the pair — and so the ordering
-/// ("real member first, synthetic getter second") reads as two sequential
-/// calls in `resolve_qualified` rather than a boolean flag threaded through
-/// one shared body.
-fn member_or_inherited_member(
-    indexer: &Indexer,
-    name: &str,
-    anchor: &Location,
-    anchor_class_name: &str,
-    from_uri: &Url,
-) -> Vec<Location> {
-    let member_locs = find_all_names_scoped_to_container(indexer, name, anchor);
-    if !member_locs.is_empty() {
-        return with_supertype_extension_fallback(
-            indexer,
-            member_locs,
-            anchor_class_name,
-            &anchor.uri,
-            name,
-            from_uri,
-        );
-    }
-
-    resolve_from_class_hierarchy_scoped(indexer, name, anchor_class_name, &anchor.uri, from_uri)
-}
-
 /// Kotlin's Java-interop synthetic-property name for a getter-style call:
 /// `fail` -> `getFail`. Deliberately the ONE direction (read, not `setFoo`)
 /// and ONE prefix (`getFoo`, not `isFoo` — Kotlin already maps `isFoo()` to
@@ -467,36 +630,6 @@ fn kotlin_getter_name(name: &str) -> String {
 fn is_java_declaring_file(uri: &Url) -> bool {
     let path = uri.as_str();
     path.ends_with(".java") || path.ends_with(".class")
-}
-
-/// A same-named real member doesn't always satisfy the actual call's arity
-/// (e.g. `navController.navigate(route = ...)`: a wrong-arity JVM member
-/// `NavController.navigate(Uri)` vs. the wanted KTX extension
-/// `NavController.navigate(route: String, ...)`). Appends the supertype-walk
-/// extension after `member_locs` rather than replacing it — members still
-/// win when arity-compatible (Kotlin's own precedence), but a shape-aware
-/// caller now has the extension to fall back to instead of an empty result.
-fn with_supertype_extension_fallback(
-    indexer: &Indexer,
-    member_locs: Vec<Location>,
-    anchor_class_name: &str,
-    anchor_uri: &Url,
-    name: &str,
-    from_uri: &Url,
-) -> Vec<Location> {
-    let supertype_ext_locs = resolve_extension_via_supertype_hierarchy(
-        indexer,
-        anchor_class_name,
-        anchor_uri,
-        name,
-        from_uri,
-    );
-    if supertype_ext_locs.is_empty() {
-        return member_locs;
-    }
-    let mut combined = member_locs;
-    combined.extend(supertype_ext_locs);
-    combined
 }
 
 /// Extension-lookup counterpart to [`resolve_from_class_hierarchy_scoped`]:

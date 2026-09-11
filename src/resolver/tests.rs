@@ -6337,12 +6337,15 @@ fn infer_type_in_lines_di_get_still_works() {
     );
 }
 
-// ── Issue 2: Extension function precedence over member functions ─────────
+// ── Issue 2: member vs. extension function precedence ────────────────────
 
-/// When an extension function is imported with the same name as a member,
-/// goto-definition should resolve to the extension, not the member.
+/// When an extension function is imported with the same name as a real
+/// member, goto-definition resolves to the MEMBER — Kotlin's own
+/// member-over-extension precedence. See the in-body note: this assertion was
+/// inverted by Task 2b, as a named correction of the type-root branch's
+/// extension-first outlier.
 #[test]
-fn resolve_imported_extension_preferred_over_member() {
+fn resolve_member_preferred_over_imported_extension() {
     let service_uri = uri("/Service.kt");
     let ext_uri = uri("/ServiceExtensions.kt");
     let caller_uri = uri("/Caller.kt");
@@ -6369,13 +6372,29 @@ fn resolve_imported_extension_preferred_over_member() {
          }",
     );
 
-    // Resolving `execute` with qualifier `Service` should find the extension,
-    // not the member.
+    // Task 2b, deliberate behaviour correction: this test previously asserted
+    // the IMPORTED EXTENSION won. That encoded the type-root branch's outlier
+    // ordering -- it probed the own-type extension before its member tier was
+    // ever computed -- and it contradicts Kotlin's actual rule, which the rest
+    // of this file already states repeatedly: a real member always shadows a
+    // same-named extension. `Service` declares its own `execute()`, so the
+    // member wins.
     let locs = resolve_symbol(&idx, "execute", Some("Service"), &caller_uri);
-    assert!(!locs.is_empty(), "extension function should be found");
+    assert!(!locs.is_empty(), "execute should be found");
     assert_eq!(
-        locs[0].uri, ext_uri,
-        "should resolve to extension function, not member"
+        locs[0].uri, service_uri,
+        "Service's own member execute() must shadow the imported extension \
+         (Kotlin member-over-extension precedence), got {:?}",
+        locs[0].uri
+    );
+    // The shadowed extension is still OFFERED, just ranked below the member:
+    // precedence is carried by candidate order, not by dropping the candidate.
+    // A same-named member doesn't always satisfy the call's arity, and a
+    // shape-aware caller needs something to fall back to when it doesn't.
+    assert_eq!(
+        locs.iter().position(|loc| loc.uri == ext_uri),
+        Some(1),
+        "the extension must remain available as the lower-precedence candidate, got {locs:?}"
     );
 }
 
@@ -9612,4 +9631,252 @@ fn resolve_kotlin_builtin_type_platform_equivalent_resolves_char_to_java_lang_ch
         "expected Char to resolve to java.lang.Character, got {locs:?}"
     );
     assert!(locs[0].uri.path().ends_with("java/lang/Character.java"));
+}
+
+// ─── Task 2b: qualifier parsing (no fixture, no IO) ──────────────────────────
+
+#[test]
+fn parse_qualifier_reads_this_and_super_as_keyword_roots() {
+    use super::qualified::{parse_qualifier, QualifierRoot};
+
+    assert_eq!(parse_qualifier("this"), QualifierRoot::This);
+    assert_eq!(parse_qualifier("super"), QualifierRoot::Super);
+    // The keyword wins on the ROOT segment alone, as it always has -- a longer
+    // `this.field` chain still takes the keyword path.
+    assert_eq!(parse_qualifier("this.field"), QualifierRoot::This);
+    assert_eq!(parse_qualifier("super.field"), QualifierRoot::Super);
+}
+
+#[test]
+fn parse_qualifier_reads_an_uppercase_root_as_a_type_path() {
+    use super::qualified::{parse_qualifier, QualifierRoot};
+
+    assert_eq!(
+        parse_qualifier("Foo"),
+        QualifierRoot::TypePath {
+            root: "Foo",
+            nested: vec![]
+        }
+    );
+    assert_eq!(
+        parse_qualifier("Outer.Inner"),
+        QualifierRoot::TypePath {
+            root: "Outer",
+            nested: vec!["Inner"]
+        }
+    );
+    assert_eq!(
+        parse_qualifier("A.B.C.D"),
+        QualifierRoot::TypePath {
+            root: "A",
+            nested: vec!["B", "C", "D"]
+        }
+    );
+}
+
+#[test]
+fn parse_qualifier_reads_a_lowercase_root_as_a_value_path() {
+    use super::qualified::{parse_qualifier, QualifierRoot};
+
+    assert_eq!(
+        parse_qualifier("account"),
+        QualifierRoot::ValuePath {
+            root: "account",
+            rest: vec![]
+        }
+    );
+    assert_eq!(
+        parse_qualifier("account.holder"),
+        QualifierRoot::ValuePath {
+            root: "account",
+            rest: vec!["holder"]
+        }
+    );
+    // A mixed chain is still a VALUE path -- the root is what needs inference,
+    // and the uppercase segment in the middle is handled during the walk.
+    assert_eq!(
+        parse_qualifier("a.b.C.d"),
+        QualifierRoot::ValuePath {
+            root: "a",
+            rest: vec!["b", "C", "d"]
+        }
+    );
+}
+
+// ─── Task 2b: receiver-anchor normalization ─────────────────────────────────
+
+#[test]
+fn anchors_for_a_nested_type_path_anchors_on_the_leaf_not_the_root() {
+    // The assertion that was impossible to write before the anchor existed:
+    // for `Outer.Inner.member` the receiver is `Inner`, so the extension
+    // registry key and the member scope must both be `Inner`'s -- not
+    // `Outer`'s, which is what a root-keyed probe would use.
+    use super::qualified::{anchors_for, parse_qualifier};
+    use super::resolve::ResolveIo;
+
+    let outer_uri = uri("/Outer.kt");
+    let caller_uri = uri("/Caller.kt");
+    let idx = Indexer::new();
+    idx.index_content(
+        &outer_uri,
+        "package com.pkg\n\
+         class Outer {\n\
+           class Inner {\n\
+             fun act() {}\n\
+           }\n\
+         }\n",
+    );
+    idx.index_content(
+        &caller_uri,
+        "package com.pkg\nfun test() { Outer.Inner.act() }\n",
+    );
+
+    let anchors = anchors_for(
+        &idx,
+        &parse_qualifier("Outer.Inner"),
+        &caller_uri,
+        ResolveIo::Full,
+    );
+    assert_eq!(
+        anchors.len(),
+        1,
+        "expected exactly one anchor, got {anchors:?}"
+    );
+    assert_eq!(
+        anchors[0].class_name, "Inner",
+        "the anchor must name the LEAF type, not the root, got {anchors:?}"
+    );
+    let declaration = anchors[0]
+        .declaration
+        .as_ref()
+        .expect("Inner has an indexed declaration");
+    assert_eq!(
+        declaration.uri, outer_uri,
+        "nested types live in the outer's file"
+    );
+    // Carrying the full `Location` (not just a `Url`) is what makes the
+    // own-member tier constructible: `find_all_names_scoped_to_container`
+    // scopes by the container's declaration RANGE.
+    assert_eq!(
+        declaration.range.start.line, 2,
+        "the anchor must carry Inner's OWN declaration range, not Outer's, got {declaration:?}"
+    );
+}
+
+#[test]
+fn anchors_for_a_value_path_anchors_on_the_inferred_receiver_type() {
+    use super::qualified::{anchors_for, parse_qualifier};
+    use super::resolve::ResolveIo;
+
+    let account_uri = uri("/Account.kt");
+    let caller_uri = uri("/Caller.kt");
+    let idx = Indexer::new();
+    idx.index_content(
+        &account_uri,
+        "package com.pkg\nclass Account {\n  fun close() {}\n}\n",
+    );
+    idx.index_content(
+        &caller_uri,
+        "package com.pkg\nfun test(account: Account) { account.close() }\n",
+    );
+
+    let anchors = anchors_for(
+        &idx,
+        &parse_qualifier("account"),
+        &caller_uri,
+        ResolveIo::Full,
+    );
+    assert_eq!(
+        anchors.len(),
+        1,
+        "expected exactly one anchor, got {anchors:?}"
+    );
+    assert_eq!(
+        anchors[0].class_name, "Account",
+        "a value root anchors on its INFERRED type, not on the variable name"
+    );
+    assert_eq!(
+        anchors[0]
+            .declaration
+            .as_ref()
+            .expect("Account has an indexed declaration")
+            .uri,
+        account_uri
+    );
+}
+
+#[test]
+fn anchors_for_an_unindexed_type_root_still_yields_a_declaration_less_anchor() {
+    // A built-in receiver (`String`, `Int`) has no indexed declaration, but it
+    // can still carry in-scope extensions -- so normalization must hand back an
+    // anchor with `declaration: None` rather than nothing at all, or the
+    // extension tier becomes unreachable for exactly the receivers that have no
+    // member tier to begin with.
+    use super::qualified::{anchors_for, parse_qualifier};
+    use super::resolve::ResolveIo;
+
+    let caller_uri = uri("/Caller.kt");
+    let idx = Indexer::new();
+    idx.index_content(&caller_uri, "package com.pkg\nfun test() { }\n");
+
+    let anchors = anchors_for(
+        &idx,
+        &parse_qualifier("Unindexed"),
+        &caller_uri,
+        ResolveIo::Full,
+    );
+    assert_eq!(
+        anchors.len(),
+        1,
+        "expected a fallback anchor, got {anchors:?}"
+    );
+    assert!(
+        anchors[0].declaration.is_none(),
+        "an unindexed root has no declaration to anchor on, got {anchors:?}"
+    );
+    assert_eq!(anchors[0].class_name, "Unindexed");
+}
+
+#[test]
+fn resolve_qualified_uppercase_receiver_own_member_now_wins_over_own_type_extension() {
+    // Task 2b's named behaviour correction, and the reason the two qualifier
+    // branches could not simply be merged as-is: the type-root branch used to
+    // probe the own-type extension FIRST and return early, before its own
+    // member tier was ever computed, while the value-root branch ran members
+    // first and reached its extension tier last. One unified precedence ladder
+    // can only encode one order, and the value-root branch's is the correct one
+    // -- Kotlin resolves a real member over a same-named extension.
+    //
+    // `object Config` is the shape that makes this observable on an UPPERCASE
+    // root: `Config.reload()` is a legal call to an object's own member (not an
+    // instance member, and not a companion member), so the companion probe
+    // misses and the member tier is what must win.
+    let config_uri = uri("/Config.kt");
+    let ext_uri = uri("/ConfigExtensions.kt");
+    let caller_uri = uri("/Caller.kt");
+    let idx = Indexer::new();
+    idx.index_content(
+        &config_uri,
+        "package com.pkg\n\
+         object Config {\n\
+           fun reload() { /* member */ }\n\
+         }\n",
+    );
+    idx.index_content(
+        &ext_uri,
+        "package com.pkg\nfun Config.reload() { /* extension */ }\n",
+    );
+    idx.index_content(
+        &caller_uri,
+        "package com.pkg\nfun test() { Config.reload() }\n",
+    );
+
+    let locs = resolve_symbol(&idx, "reload", Some("Config"), &caller_uri);
+    assert!(!locs.is_empty(), "reload should be found at all");
+    assert_eq!(
+        locs[0].uri, config_uri,
+        "Config's own member reload() must win over the same-named in-scope \
+         extension; got {:?}",
+        locs[0].uri
+    );
 }
