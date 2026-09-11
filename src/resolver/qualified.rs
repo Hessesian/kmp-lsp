@@ -218,6 +218,15 @@ fn type_path_anchors(
         return anchors;
     }
 
+    // A required nested segment failed to resolve (`Outer.Missing.member`,
+    // where `Missing` names no real nested type of `Outer`) must not fall
+    // back to anchoring on `root` — that would silently resolve `member`
+    // against `Outer` itself, as if `.Missing` had never been written. Only
+    // an UNRESOLVED ROOT gets the declaration-less fallback below.
+    if !nested.is_empty() && !root_locations.is_empty() {
+        return vec![];
+    }
+
     // The root names no indexed declaration (a built-in receiver, or a type
     // this workspace cannot see) — it can still carry in-scope extensions, so
     // hand back a declaration-less anchor rather than nothing at all. Without

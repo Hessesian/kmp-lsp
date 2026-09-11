@@ -2024,10 +2024,11 @@ fn resolve_qualified_inherited_member_lookup_finds_the_right_arity_overload_from
                     1,
                     (0, 0),
                 ),
-                // Wrong-arity decoy overload -- real `navigate(Int)` shape
-                // (androidx's own 0-required-arg-past-receiver overload
-                // family). Declared BEFORE the matching overload, same as
-                // real ASM-derived JAR output can produce in either order.
+                // Wrong-arity decoy overload -- a 0-arg `navigate()` shape,
+                // encoded via `param_counts: (0, 0)` so arity filtering has
+                // something real to reject. Declared BEFORE the matching
+                // overload, same as real ASM-derived JAR output can produce
+                // in either order.
                 make_symbol(
                     "navigate",
                     tower_lsp::lsp_types::SymbolKind::METHOD,
@@ -9766,6 +9767,48 @@ fn anchors_for_a_nested_type_path_anchors_on_the_leaf_not_the_root() {
     assert_eq!(
         declaration.range.start.line, 2,
         "the anchor must carry Inner's OWN declaration range, not Outer's, got {declaration:?}"
+    );
+}
+
+#[test]
+fn anchors_for_a_missing_nested_segment_yields_no_anchor_not_a_root_fallback() {
+    // Copilot review finding (real): `Outer.Missing.member` -- `Outer`
+    // resolves fine but `Missing` names no real nested type of it. The old
+    // code fell through to the declaration-less fallback keyed on `root`
+    // ("Outer") whenever the nested walk produced zero anchors, regardless
+    // of WHY it was empty -- so `member` could resolve against `Outer`
+    // itself as if `.Missing` had never been written. Only a genuinely
+    // UNRESOLVED ROOT (no indexed declaration at all, e.g. a built-in type)
+    // should get that fallback; a resolved root with a failed nested
+    // segment must yield no anchors.
+    use super::qualified::{anchors_for, parse_qualifier};
+    use super::resolve::ResolveIo;
+
+    let outer_uri = uri("/Outer2.kt");
+    let caller_uri = uri("/Caller2.kt");
+    let idx = Indexer::new();
+    idx.index_content(
+        &outer_uri,
+        "package com.pkg\n\
+         class Outer {\n\
+           fun act() {}\n\
+         }\n",
+    );
+    idx.index_content(
+        &caller_uri,
+        "package com.pkg\nfun test() { Outer.Missing.act() }\n",
+    );
+
+    let anchors = anchors_for(
+        &idx,
+        &parse_qualifier("Outer.Missing"),
+        &caller_uri,
+        ResolveIo::Full,
+    );
+    assert!(
+        anchors.is_empty(),
+        "Outer.Missing names no real nested type -- must yield no anchors, \
+         not silently fall back to anchoring on Outer, got {anchors:?}"
     );
 }
 
