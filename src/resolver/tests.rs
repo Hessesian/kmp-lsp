@@ -2073,6 +2073,170 @@ fn resolve_qualified_inherited_member_lookup_finds_the_right_arity_overload_from
     );
 }
 
+// ── Java getter as Kotlin synthetic property (jar-promotion-latency-budget-plan Task 1) ──
+
+#[test]
+fn resolve_qualified_java_getter_resolves_as_kotlin_property() {
+    // Real Moneta bug: `LiveApiProperty.fail` (a Java class exposing a
+    // getter, accessed from Kotlin as a synthetic property) resolved to
+    // nothing. `Holder` here is the same shape: a Java class declaring
+    // `getFail()` but no real member literally named `fail`.
+    let holder_uri = uri("/Holder.java");
+    let host_uri = uri("/Host.kt");
+    let idx = Indexer::new();
+    idx.index_content(
+        &holder_uri,
+        concat!(
+            "package com.pkg;\n",
+            "public class Holder {\n",
+            "    private Throwable mFail;\n",
+            "    public Throwable getFail() { return mFail; }\n",
+            "}\n",
+        ),
+    );
+    idx.index_content(
+        &host_uri,
+        concat!(
+            "package com.pkg\n",
+            "fun foo(holder: Holder) { holder.fail }\n",
+        ),
+    );
+
+    let locs = resolve_symbol(&idx, "fail", Some("Holder"), &host_uri);
+    assert_eq!(
+        locs.len(),
+        1,
+        "expected the Java getter getFail() to resolve as the Kotlin \
+         synthetic property .fail, got {locs:?}"
+    );
+    assert_eq!(locs[0].uri, holder_uri);
+    assert_eq!(
+        locs[0].range.start.line, 3,
+        "expected the getFail() declaration line, got {locs:?}"
+    );
+}
+
+#[test]
+fn resolve_qualified_real_member_wins_over_a_getter_of_the_same_name() {
+    // The getter tier must never outrank a real member of the exact same
+    // name — `member_or_inherited_member(name)` succeeding means the getter
+    // retry must never even run.
+    let holder_uri = uri("/Holder2.java");
+    let host_uri = uri("/Host2.kt");
+    let idx = Indexer::new();
+    idx.index_content(
+        &holder_uri,
+        concat!(
+            "package com.pkg;\n",
+            "public class Holder2 {\n",
+            "    public Throwable fail;\n",
+            "    public Throwable getFail() { return fail; }\n",
+            "}\n",
+        ),
+    );
+    idx.index_content(
+        &host_uri,
+        concat!(
+            "package com.pkg\n",
+            "fun foo(holder: Holder2) { holder.fail }\n",
+        ),
+    );
+
+    let locs = resolve_symbol(&idx, "fail", Some("Holder2"), &host_uri);
+    assert_eq!(
+        locs.len(),
+        1,
+        "the real field must win alone, the getter tier must not run: {locs:?}"
+    );
+    assert_eq!(locs[0].uri, holder_uri);
+    assert_eq!(
+        locs[0].range.start.line, 2,
+        "expected the real field's declaration line (2), not getFail's (3): {locs:?}"
+    );
+}
+
+#[test]
+fn resolve_qualified_kotlin_get_prefixed_function_is_not_a_synthetic_property() {
+    // Kotlin does NOT expose a Kotlin-declared `fun getFail()` as `.fail` —
+    // applying the getter mapping here would invent a resolution Kotlin
+    // itself rejects. The Java-file guard must block the retry entirely.
+    let klass_uri = uri("/Klass.kt");
+    let host_uri = uri("/Host3.kt");
+    let idx = Indexer::new();
+    idx.index_content(
+        &klass_uri,
+        concat!(
+            "package com.pkg\n",
+            "class Klass {\n",
+            "    fun getFail(): Throwable = TODO()\n",
+            "}\n",
+        ),
+    );
+    idx.index_content(
+        &host_uri,
+        concat!(
+            "package com.pkg\n",
+            "fun foo(klass: Klass) { klass.fail }\n",
+        ),
+    );
+
+    let locs = resolve_symbol(&idx, "fail", Some("Klass"), &host_uri);
+    assert!(
+        locs.is_empty(),
+        "a Kotlin-declared getFail() must NOT resolve as .fail: {locs:?}"
+    );
+}
+
+#[test]
+fn resolve_qualified_inherited_java_getter_resolves_as_kotlin_property() {
+    // Real Moneta bug: `IdentityManager.currentIdentity` where the getter is
+    // declared on a SUPERTYPE of the receiver, not the receiver's own class —
+    // this forces the retry through `resolve_from_class_hierarchy_scoped`
+    // (`member_or_inherited_member`'s second call), not just the direct-
+    // container lookup (its first call).
+    let base_uri = uri("/BaseIdentity.java");
+    let sub_uri = uri("/IdentityManager.java");
+    let host_uri = uri("/Host4.kt");
+    let idx = Indexer::new();
+    idx.index_content(
+        &base_uri,
+        concat!(
+            "package com.pkg;\n",
+            "public class BaseIdentity {\n",
+            "    public Identity getCurrentIdentity() { return null; }\n",
+            "}\n",
+        ),
+    );
+    idx.index_content(
+        &sub_uri,
+        concat!(
+            "package com.pkg;\n",
+            "public class IdentityManager extends BaseIdentity {\n",
+            "}\n",
+        ),
+    );
+    idx.index_content(
+        &host_uri,
+        concat!(
+            "package com.pkg\n",
+            "fun foo(manager: IdentityManager) { manager.currentIdentity }\n",
+        ),
+    );
+
+    let locs = resolve_symbol(&idx, "currentIdentity", Some("IdentityManager"), &host_uri);
+    assert_eq!(
+        locs.len(),
+        1,
+        "expected the inherited getCurrentIdentity() to resolve as the \
+         Kotlin synthetic property .currentIdentity, got {locs:?}"
+    );
+    assert_eq!(locs[0].uri, base_uri);
+    assert_eq!(
+        locs[0].range.start.line, 2,
+        "expected getCurrentIdentity's declaration line on the supertype: {locs:?}"
+    );
+}
+
 #[test]
 fn resolve_qualified_supertype_extension_fallback_handles_a_fully_qualified_supertype_spelling() {
     // Copilot review finding on PR #289: `walk_hierarchy` yields `super_name`

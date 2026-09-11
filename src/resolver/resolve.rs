@@ -1532,33 +1532,43 @@ fn resolve_qualified(
             // arity-based shape filtering ever runs) would make nearly
             // every real call site to a DIFFERENT overload resolve to
             // nothing (see `find_all_names_scoped_to_container`'s doc).
-            let member_locs = find_all_names_scoped_to_container(indexer, name, &anchor);
-            if !member_locs.is_empty() {
-                return with_supertype_extension_fallback(
-                    indexer,
-                    member_locs,
-                    anchor_class_name,
-                    &anchor.uri,
-                    name,
-                    from_uri,
-                );
+            //
+            // `anchor`'s own body may not declare `name` directly, but it may
+            // live on a superclass instead (e.g. `object Manager :
+            // AbstractManager<T>()` inheriting `requireComponent`), the same
+            // situation the `this`/`super` branches above already handle.
+            // Scoped to `anchor`'s own class and declaring file, not
+            // `from_uri` — the qualifier and the call site are commonly
+            // different files. `member_or_inherited_member` bundles both
+            // lookups so the Java-getter retry below can run the identical
+            // pair under a different name instead of duplicating it.
+            let real_member_locs =
+                member_or_inherited_member(indexer, name, &anchor, anchor_class_name, from_uri);
+            if !real_member_locs.is_empty() {
+                return real_member_locs;
             }
 
-            // `anchor`'s own body doesn't declare `name` — it may live on a
-            // superclass instead (e.g. `object Manager : AbstractManager<T>()`
-            // inheriting `requireComponent`), the same situation the `this`/
-            // `super` branches above already handle. Scoped to `anchor`'s own
-            // class and declaring file, not `from_uri` — the qualifier and the
-            // call site are commonly different files.
-            let hierarchy_locs = resolve_from_class_hierarchy_scoped(
-                indexer,
-                name,
-                anchor_class_name,
-                &anchor.uri,
-                from_uri,
-            );
-            if !hierarchy_locs.is_empty() {
-                return hierarchy_locs;
+            // Kotlin's Java-interop synthetic-property rule: `obj.fail` may
+            // really mean `obj.getFail()`. Retry the identical member/
+            // inherited-member pair with the getter name, but ONLY when the
+            // declaring file is Java and ONLY after a real `name` member came
+            // up completely empty — a real member always wins, and a Kotlin
+            // `fun getFail()` is never exposed as `.fail` from Kotlin (the
+            // Java-file guard is load-bearing, not a nicety). `setFoo`/`isFoo`/
+            // records are deliberately out of scope for this task — see the
+            // 2026-09-09 jar-promotion-latency-budget-plan, Task 1.
+            if is_java_declaring_file(&anchor.uri) {
+                let getter_name = kotlin_getter_name(name);
+                let getter_locs = member_or_inherited_member(
+                    indexer,
+                    &getter_name,
+                    &anchor,
+                    anchor_class_name,
+                    from_uri,
+                );
+                if !getter_locs.is_empty() {
+                    return getter_locs;
+                }
             }
 
             // `anchor`'s own class has no member, inherited member, or
@@ -2303,6 +2313,63 @@ fn resolve_from_class_hierarchy_scoped(
             ))
         })
         .collect()
+}
+
+/// The direct-container then inherited-member lookup pair every `Foo.member`
+/// qualified lookup tries before falling to extension fallbacks. Extracted
+/// into one named helper so the Java-getter synthetic-property retry
+/// (`obj.fail` -> `obj.getFail()`) can run the identical two calls under a
+/// different name, instead of duplicating the pair — and so the ordering
+/// ("real member first, synthetic getter second") reads as two sequential
+/// calls in `resolve_qualified` rather than a boolean flag threaded through
+/// one shared body.
+fn member_or_inherited_member(
+    indexer: &Indexer,
+    name: &str,
+    anchor: &Location,
+    anchor_class_name: &str,
+    from_uri: &Url,
+) -> Vec<Location> {
+    let member_locs = find_all_names_scoped_to_container(indexer, name, anchor);
+    if !member_locs.is_empty() {
+        return with_supertype_extension_fallback(
+            indexer,
+            member_locs,
+            anchor_class_name,
+            &anchor.uri,
+            name,
+            from_uri,
+        );
+    }
+
+    resolve_from_class_hierarchy_scoped(indexer, name, anchor_class_name, &anchor.uri, from_uri)
+}
+
+/// Kotlin's Java-interop synthetic-property name for a getter-style call:
+/// `fail` -> `getFail`. Deliberately the ONE direction (read, not `setFoo`)
+/// and ONE prefix (`getFoo`, not `isFoo` — Kotlin already maps `isFoo()` to
+/// the *identity*-named property `isFoo`) this task implements; see the
+/// jar-promotion-latency-budget-plan Task 1 brief for why the rest is out of
+/// scope.
+fn kotlin_getter_name(name: &str) -> String {
+    let mut chars = name.chars();
+    match chars.next() {
+        Some(first) => format!("get{}{}", first.to_uppercase(), chars.as_str()),
+        None => "get".to_owned(),
+    }
+}
+
+/// Whether `uri` names a Java-declared symbol: a real `.java` source file, or
+/// a JAR-derived synthetic entry compiled from a `.class` (a sidecar/sources-
+/// JAR per-entry URI ends `...!/<Entry>.class`). Derived from the URI's own
+/// extension, per [`crate::types::Language::from_path`]'s existing
+/// extension-based dispatch, rather than guessing from the symbol name — a
+/// Kotlin-declared `fun getFail()` is NOT exposed as `.fail` from Kotlin, so
+/// this guard is what stops the getter retry from inventing a resolution
+/// Kotlin itself rejects.
+fn is_java_declaring_file(uri: &Url) -> bool {
+    let path = uri.as_str();
+    path.ends_with(".java") || path.ends_with(".class")
 }
 
 /// A same-named real member doesn't always satisfy the actual call's arity
