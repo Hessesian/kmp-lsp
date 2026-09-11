@@ -9636,14 +9636,20 @@ fn resolve_kotlin_builtin_type_platform_equivalent_resolves_char_to_java_lang_ch
 // ─── Task 2b: qualifier parsing (no fixture, no IO) ──────────────────────────
 
 #[test]
-fn parse_qualifier_reads_this_and_super_as_keyword_roots() {
+fn parse_qualifier_reads_this_as_a_keyword_root() {
     use super::qualified::{parse_qualifier, QualifierRoot};
 
     assert_eq!(parse_qualifier("this"), QualifierRoot::This);
-    assert_eq!(parse_qualifier("super"), QualifierRoot::Super);
     // The keyword wins on the ROOT segment alone, as it always has -- a longer
     // `this.field` chain still takes the keyword path.
     assert_eq!(parse_qualifier("this.field"), QualifierRoot::This);
+}
+
+#[test]
+fn parse_qualifier_reads_super_as_a_keyword_root() {
+    use super::qualified::{parse_qualifier, QualifierRoot};
+
+    assert_eq!(parse_qualifier("super"), QualifierRoot::Super);
     assert_eq!(parse_qualifier("super.field"), QualifierRoot::Super);
 }
 
