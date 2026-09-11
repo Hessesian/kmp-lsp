@@ -9880,3 +9880,236 @@ fn resolve_qualified_uppercase_receiver_own_member_now_wins_over_own_type_extens
         locs[0].uri
     );
 }
+
+// ─── Task 3: own-type extension tier regression coverage ───────────────────
+//
+// The jar-promotion-latency-budget-plan's Task 3 ("close the own-type
+// extension tier") predicted that Task 2b's `candidates_on` decomposition
+// would absorb its diff: `own_type_extension` is populated once, in
+// `candidates_on`, from `anchor.class_name` -- unconditionally, for every
+// `QualifierRoot` family and every nesting depth, since both `TypePath` and
+// `ValuePath` normalize through the same `anchors_for` -> `candidates_on`
+// pipeline. These tests are that prediction's proof: every case Task 3's
+// brief asked for is exercised here against the CURRENT code with no
+// production change required.
+
+#[test]
+fn resolve_qualified_lowercase_receiver_appends_own_type_extension_alongside_wrong_arity_member() {
+    // Moneta shape (finding 10): `nav.navigate("home")` where the receiver's
+    // OWN concrete type `NavController` declares a same-named member with a
+    // DIFFERENT arity (`navigate(uri: Uri)`), and a separate file declares an
+    // in-scope extension on `NavController` itself (`navigate(route: String)`).
+    // Must return BOTH, member first -- the own-type extension tier must not
+    // be skipped just because a same-named member (of any arity) was found.
+    let nav_uri = uri("/NavController.kt");
+    let ext_uri = uri("/NavControllerExtensions.kt");
+    let host_uri = uri("/Host.kt");
+    let idx = Indexer::new();
+    idx.index_content(
+        &nav_uri,
+        "package com.pkg\nclass NavController {\n  fun navigate(uri: Uri) {}\n}\n",
+    );
+    idx.index_content(
+        &ext_uri,
+        "package com.pkg\nfun NavController.navigate(route: String) {}\n",
+    );
+    idx.index_content(
+        &host_uri,
+        "package com.pkg\nclass Host(\n  private val nav: NavController\n) {\n  \
+         fun go() { nav.navigate(\"home\") }\n}\n",
+    );
+
+    let locs = resolve_symbol(&idx, "navigate", Some("nav"), &host_uri);
+    assert_eq!(
+        locs.len(),
+        2,
+        "expected both the own-type member and the own-type extension, got {locs:?}"
+    );
+    assert_eq!(
+        locs[0].uri, nav_uri,
+        "the wrong-arity own-type member must still come first, got {:?}",
+        locs[0].uri
+    );
+    assert_eq!(
+        locs[1].uri, ext_uri,
+        "the own-type extension must be appended second, got {:?}",
+        locs[1].uri
+    );
+}
+
+#[test]
+fn resolve_qualified_uppercase_receiver_own_type_extension_unchanged() {
+    // Regression guard for the Task 2b decomposition: an uppercase
+    // (type-path) root reaching an own-type extension when its own body has
+    // no matching member at all (finding 9) must still resolve after the
+    // uppercase and lowercase branches were unified into one
+    // `candidates_on` ladder.
+    let config_uri = uri("/Config.kt");
+    let ext_uri = uri("/ConfigExtensions.kt");
+    let caller_uri = uri("/Caller.kt");
+    let idx = Indexer::new();
+    idx.index_content(
+        &config_uri,
+        "package com.pkg\nobject Config {\n  fun other() {}\n}\n",
+    );
+    idx.index_content(
+        &ext_uri,
+        "package com.pkg\nfun Config.reload() { /* extension */ }\n",
+    );
+    idx.index_content(
+        &caller_uri,
+        "package com.pkg\nfun test() { Config.reload() }\n",
+    );
+
+    let locs = resolve_symbol(&idx, "reload", Some("Config"), &caller_uri);
+    assert_eq!(
+        locs.len(),
+        1,
+        "expected exactly the own-type extension, got {locs:?}"
+    );
+    assert_eq!(locs[0].uri, ext_uri, "got {:?}", locs[0].uri);
+}
+
+#[test]
+fn resolve_qualified_own_type_extension_does_not_shadow_an_arity_compatible_member() {
+    // Both a same-named member and a same-named own-type extension exist on
+    // a lowercase (value-path) receiver; the member must come first
+    // regardless -- Kotlin's real member-over-extension precedence never
+    // inverts just because arity happens to match.
+    let account_uri = uri("/Account.kt");
+    let ext_uri = uri("/AccountExtensions.kt");
+    let host_uri = uri("/Host.kt");
+    let idx = Indexer::new();
+    idx.index_content(
+        &account_uri,
+        "package com.pkg\nclass Account {\n  fun close() { /* member */ }\n}\n",
+    );
+    idx.index_content(
+        &ext_uri,
+        "package com.pkg\nfun Account.close() { /* extension */ }\n",
+    );
+    idx.index_content(
+        &host_uri,
+        "package com.pkg\nclass Host(\n  private val account: Account\n) {\n  \
+         fun end() { account.close() }\n}\n",
+    );
+
+    let locs = resolve_symbol(&idx, "close", Some("account"), &host_uri);
+    assert!(!locs.is_empty(), "close not found at all");
+    assert_eq!(
+        locs[0].uri, account_uri,
+        "the arity-compatible member must come first, got {:?}",
+        locs[0].uri
+    );
+}
+
+#[test]
+fn resolve_qualified_supertype_extension_still_reached_when_no_own_type_extension_exists() {
+    // The own-type extension tier sits BEFORE the supertype-extension tier in
+    // `into_precedence_ordered`; when there is no own-type extension at all,
+    // the supertype extension must still be the one candidate reached, not
+    // silently swallowed by an empty own-type tier.
+    let base_uri = uri("/Base.kt");
+    let derived_uri = uri("/Derived.kt");
+    let ext_uri = uri("/BaseExtensions.kt");
+    let host_uri = uri("/Host.kt");
+    let idx = Indexer::new();
+    idx.index_content(&base_uri, "package com.pkg\nopen class Base\n");
+    idx.index_content(&derived_uri, "package com.pkg\nclass Derived : Base()\n");
+    idx.index_content(
+        &ext_uri,
+        "package com.pkg\nfun Base.describe(): String = TODO()\n",
+    );
+    idx.index_content(
+        &host_uri,
+        "package com.pkg\nclass Host(\n  private val derived: Derived\n) {\n  \
+         fun show() { derived.describe() }\n}\n",
+    );
+
+    let locs = resolve_symbol(&idx, "describe", Some("derived"), &host_uri);
+    assert_eq!(
+        locs.len(),
+        1,
+        "expected exactly the supertype extension, got {locs:?}"
+    );
+    assert_eq!(locs[0].uri, ext_uri, "got {:?}", locs[0].uri);
+}
+
+#[test]
+fn resolve_qualified_nested_type_qualifier_finds_an_extension_on_the_nested_type_itself_alongside_a_wrong_arity_member(
+) {
+    // Finding 11, first variant: `Outer.Inner.member()` where `Inner`
+    // declares a wrong-arity `member` (own_members non-empty, so the
+    // `candidates_on` exit for a found member is the one under test), and a
+    // separate file declares `fun Outer.Inner.member()` -- an extension
+    // keyed on `Inner` (the LEAF type, per `extension_receiver_from_decl`'s
+    // `rsplit('.')`), never on `Outer`. Both must come back, member first.
+    let outer_uri = uri("/Outer.kt");
+    let ext_uri = uri("/InnerExtensions.kt");
+    let caller_uri = uri("/Caller.kt");
+    let idx = Indexer::new();
+    idx.index_content(
+        &outer_uri,
+        "package com.pkg\nclass Outer {\n  class Inner {\n    fun member(x: Int) {}\n  }\n}\n",
+    );
+    idx.index_content(
+        &ext_uri,
+        "package com.pkg\nfun Outer.Inner.member() { /* extension */ }\n",
+    );
+    idx.index_content(
+        &caller_uri,
+        "package com.pkg\nfun test() { Outer.Inner.member() }\n",
+    );
+
+    let locs = resolve_symbol(&idx, "member", Some("Outer.Inner"), &caller_uri);
+    assert_eq!(
+        locs.len(),
+        2,
+        "expected both the nested type's own member and its own-type \
+         extension, got {locs:?}"
+    );
+    assert_eq!(
+        locs[0].uri, outer_uri,
+        "member must come first, got {:?}",
+        locs[0].uri
+    );
+    assert_eq!(
+        locs[1].uri, ext_uri,
+        "extension must be appended second, got {:?}",
+        locs[1].uri
+    );
+}
+
+#[test]
+fn resolve_qualified_nested_type_qualifier_finds_an_extension_on_the_nested_type_itself_when_the_nested_type_has_no_such_member(
+) {
+    // Finding 11, second variant: `Outer.Inner.member()` where `Inner`
+    // declares NO member named `member` at all -- both `own_members` AND
+    // `inherited_members` are empty, so this exercises the OTHER
+    // `candidates_on` path (no member found) than the sibling test above.
+    // The own-type extension tier is the only way this resolves.
+    let outer_uri = uri("/Outer.kt");
+    let ext_uri = uri("/InnerExtensions.kt");
+    let caller_uri = uri("/Caller.kt");
+    let idx = Indexer::new();
+    idx.index_content(
+        &outer_uri,
+        "package com.pkg\nclass Outer {\n  class Inner\n}\n",
+    );
+    idx.index_content(
+        &ext_uri,
+        "package com.pkg\nfun Outer.Inner.member() { /* extension */ }\n",
+    );
+    idx.index_content(
+        &caller_uri,
+        "package com.pkg\nfun test() { Outer.Inner.member() }\n",
+    );
+
+    let locs = resolve_symbol(&idx, "member", Some("Outer.Inner"), &caller_uri);
+    assert_eq!(
+        locs.len(),
+        1,
+        "expected exactly the nested type's own-type extension, got {locs:?}"
+    );
+    assert_eq!(locs[0].uri, ext_uri, "got {:?}", locs[0].uri);
+}
