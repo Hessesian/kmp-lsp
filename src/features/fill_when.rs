@@ -484,7 +484,7 @@ fn collect_enum_members(
             // the enum's own start line, so requiring a strictly greater line
             // found no entries at all and silently disabled the diagnostic.
             s.kind == SymbolKind::ENUM_MEMBER
-                && crate::resolver::resolve::range_encloses(enum_symbol.range, s.range)
+                && crate::resolver::container::range_encloses(enum_symbol.range, s.range)
         })
         .map(|s| WhenMember {
             name: s.name.clone(),

@@ -4,8 +4,8 @@ use tower_lsp::lsp_types::{Location, Url};
 use crate::indexer::Indexer;
 use crate::LinesExt;
 
+use super::container::range_encloses;
 use super::ensure_file_data;
-use super::resolve::range_encloses;
 
 /// Search for `name` in a specific file identified by its URI string.
 ///

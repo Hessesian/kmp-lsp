@@ -12,9 +12,10 @@ use crate::types::{CallerContext, ImportEntry, SourceSet, SymbolEntry, Visibilit
 use crate::LinesExt;
 use crate::StrExt;
 
+use super::container::range_encloses;
 use super::infer::{infer_receiver_type, infer_receiver_type_at, ReceiverKind, ReceiverType};
 use super::infer_lines::infer_callable_param_return_type;
-use super::resolve::{jar_symbol_package, range_encloses};
+use super::package::jar_symbol_package;
 use super::{
     already_imported, ensure_file_data, fqns_for_name, resolve_symbol_no_rg, walk_hierarchy,
     Resolver, MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK,

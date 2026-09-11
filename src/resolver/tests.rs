@@ -702,7 +702,7 @@ fn star_import_narrows_import_package_tie_break() {
             range: Default::default(),
         },
     ];
-    let narrowed = resolve::import_package_tie_break(&idx, &host_uri, locations);
+    let narrowed = tie_break::import_package_tie_break(&idx, &host_uri, locations);
     assert_eq!(
         narrowed,
         vec![tower_lsp::lsp_types::Location {
