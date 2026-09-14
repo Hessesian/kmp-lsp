@@ -1134,7 +1134,7 @@ fn enum_type_qualified_entries_values_valueof_resolve() {
 /// Real Moneta corpus case: `Insurance.EType.entries.firstOrNull { it.name
 /// .equals(text, ignoreCase = true) }` -- `.name` resolved to nothing.
 #[test]
-fn enum_type_qualified_name_and_ordinal_resolve() {
+fn enum_type_qualified_name_resolves() {
     let uri = uri("/Flavor.kt");
     let idx = Indexer::new();
     idx.index_content(
@@ -1151,6 +1151,22 @@ fn enum_type_qualified_name_and_ordinal_resolve() {
         !resolve_symbol(&idx, "name", Some("Flavor"), &uri).is_empty(),
         "Flavor.name (kotlin.Enum.name) did not resolve"
     );
+}
+
+#[test]
+fn enum_type_qualified_ordinal_resolves() {
+    let uri = uri("/Flavor.kt");
+    let idx = Indexer::new();
+    idx.index_content(
+        &uri,
+        concat!(
+            "package app\n",
+            "enum class Flavor {\n",
+            "  PROD, DEV\n",
+            "}\n",
+        ),
+    );
+
     assert!(
         !resolve_symbol(&idx, "ordinal", Some("Flavor"), &uri).is_empty(),
         "Flavor.ordinal (kotlin.Enum.ordinal) did not resolve"
