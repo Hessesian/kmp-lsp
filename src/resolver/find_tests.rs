@@ -69,7 +69,7 @@ fn falls_back_to_closest_after_line_when_container_symbol_is_not_found() {
     };
 
     let found = find_name_scoped_to_container(&idx, "event", &fake_container);
-    let fallback = find_name_in_uri_after_line(&idx, "event", file_uri.as_str(), 0)
+    let fallback = find_name_in_uri_after_line(&idx, "event", file_uri.as_str(), 0, None)
         .into_iter()
         .next();
     assert_eq!(found, fallback);

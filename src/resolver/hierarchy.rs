@@ -242,6 +242,7 @@ fn supertype_targets(
                             outer,
                             &uri,
                             origin_url.as_ref(),
+                            sidecar_budget,
                         )
                         .into_iter()
                         .next()
@@ -277,6 +278,7 @@ fn supertype_targets(
                 &super_leaf,
                 &uri,
                 origin_url.as_ref(),
+                sidecar_budget,
             )
             .into_iter()
             .map(move |loc| (super_leaf.clone(), loc.uri.to_string()))

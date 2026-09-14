@@ -702,7 +702,7 @@ fn star_import_narrows_import_package_tie_break() {
             range: Default::default(),
         },
     ];
-    let narrowed = resolve::import_package_tie_break(&idx, &host_uri, locations);
+    let narrowed = tie_break::import_package_tie_break(&idx, &host_uri, locations);
     assert_eq!(
         narrowed,
         vec![tower_lsp::lsp_types::Location {
@@ -1925,6 +1925,320 @@ fn resolve_qualified_inherited_member_lookup_threads_the_real_origin_uri() {
 }
 
 #[test]
+fn resolve_qualified_inherited_member_lookup_finds_the_right_arity_overload_from_a_sibling_class_in_the_same_jar_file(
+) {
+    // Real Moneta bug: `navController.navigate(route = "...")` where
+    // `navController`'s declared type is `NavHostController`, and BOTH
+    // `NavHostController` and its supertype `NavController` (the real
+    // declarer of every `navigate` overload) come from the same compiled
+    // JAR (`androidx.navigation`) and land in ONE synthetic per-JAR
+    // `FileData` -- exactly this fixture's shape. `NavHostController`
+    // declares no `navigate` of its own.
+    //
+    // Two bugs compounded here, both fixed by this test:
+    // 1. `find_name_in_uri_after_line`'s position-only fallback could
+    //    attribute a sibling class's member to the WRONG class purely by
+    //    file order, with no notion of which class actually declares it.
+    // 2. `resolve_from_class_hierarchy_scoped`'s walk used arity-blind
+    //    `find_name_in_uri` per ancestor -- first same-named symbol in the
+    //    WHOLE file, not scoped to the ancestor class, and never more than
+    //    one candidate even when the real declaration is overloaded.
+    let indexer = Indexer::new();
+    let host_uri = uri("/app/Host.kt");
+    indexer.index_content(
+        &host_uri,
+        concat!(
+            "package com.app\n",
+            "import androidx.navigation.NavHostController\n",
+            "fun foo(navController: NavHostController) { navController.navigate(\"x\") }\n",
+        ),
+    );
+
+    let nav_uri = gradle_cache_jar_uri("androidx.navigation", "navigation-runtime", "2.9.8");
+
+    indexer.jar_definitions.insert(
+        "NavHostController".to_owned(),
+        vec![tower_lsp::lsp_types::Location {
+            uri: nav_uri.clone(),
+            range: tower_lsp::lsp_types::Range::new(
+                tower_lsp::lsp_types::Position::new(0, 0),
+                tower_lsp::lsp_types::Position::new(0, 17),
+            ),
+        }],
+    );
+    indexer.jar_definitions.insert(
+        "NavController".to_owned(),
+        vec![tower_lsp::lsp_types::Location {
+            uri: nav_uri.clone(),
+            range: tower_lsp::lsp_types::Range::new(
+                tower_lsp::lsp_types::Position::new(1, 0),
+                tower_lsp::lsp_types::Position::new(1, 13),
+            ),
+        }],
+    );
+
+    let make_symbol = |name: &str,
+                       kind: tower_lsp::lsp_types::SymbolKind,
+                       container: Option<&str>,
+                       line: u32,
+                       param_counts: (u8, u8)| {
+        crate::types::SymbolEntry {
+            name: name.to_owned(),
+            kind,
+            visibility: crate::types::Visibility::Public,
+            range: tower_lsp::lsp_types::Range::new(
+                tower_lsp::lsp_types::Position::new(line, 0),
+                tower_lsp::lsp_types::Position::new(line, name.len() as u32),
+            ),
+            selection_range: tower_lsp::lsp_types::Range::new(
+                tower_lsp::lsp_types::Position::new(line, 0),
+                tower_lsp::lsp_types::Position::new(line, name.len() as u32),
+            ),
+            detail: format!("fun {name}(...)"),
+            params: String::new(),
+            param_counts,
+            container: container.map(str::to_owned),
+            cold: None,
+            trailing_lambda: false,
+            deprecated: false,
+        }
+    };
+
+    indexer.jar_files.insert(
+        nav_uri.to_string(),
+        std::sync::Arc::new(crate::types::FileData {
+            package: Some("androidx.navigation".to_owned()),
+            supers: vec![(0, "NavController".to_owned(), Vec::new())],
+            symbols: vec![
+                make_symbol(
+                    "NavHostController",
+                    tower_lsp::lsp_types::SymbolKind::CLASS,
+                    None,
+                    0,
+                    (0, 0),
+                ),
+                make_symbol(
+                    "NavController",
+                    tower_lsp::lsp_types::SymbolKind::CLASS,
+                    None,
+                    1,
+                    (0, 0),
+                ),
+                // Wrong-arity decoy overload -- a 0-arg `navigate()` shape,
+                // encoded via `param_counts: (0, 0)` so arity filtering has
+                // something real to reject. Declared BEFORE the matching
+                // overload, same as real ASM-derived JAR output can produce
+                // in either order.
+                make_symbol(
+                    "navigate",
+                    tower_lsp::lsp_types::SymbolKind::METHOD,
+                    Some("NavController"),
+                    2,
+                    (0, 0),
+                ),
+                // The real target: 1-arg `navigate(String)`.
+                make_symbol(
+                    "navigate",
+                    tower_lsp::lsp_types::SymbolKind::METHOD,
+                    Some("NavController"),
+                    3,
+                    (1, 1),
+                ),
+            ],
+            ..Default::default()
+        }),
+    );
+
+    let locs = resolve_symbol(&indexer, "navigate", Some("NavHostController"), &host_uri);
+    assert_eq!(
+        locs.len(),
+        2,
+        "expected both of NavController's navigate overloads back, not just \
+         one arbitrarily chosen by file position: {locs:?}"
+    );
+    let shape = crate::indexer::CallShape {
+        arg_count: 1,
+        trailing_lambda: false,
+    };
+    let filtered = crate::indexer::shape_filter_locations(&indexer, shape, locs).resolved();
+    assert_eq!(
+        filtered.len(),
+        1,
+        "shape filtering on a 1-arg call must leave exactly the matching overload"
+    );
+    assert_eq!(
+        filtered[0].range.start.line, 3,
+        "must resolve to the 1-arg navigate(String) overload (line 3), not \
+         the 0-arg decoy (line 2) or anything mis-attributed to \
+         NavHostController by file position"
+    );
+}
+
+// ── Java getter as Kotlin synthetic property (jar-promotion-latency-budget-plan Task 1) ──
+
+#[test]
+fn resolve_qualified_java_getter_resolves_as_kotlin_property() {
+    // Real Moneta bug: `LiveApiProperty.fail` (a Java class exposing a
+    // getter, accessed from Kotlin as a synthetic property) resolved to
+    // nothing. `Holder` here is the same shape: a Java class declaring
+    // `getFail()` but no real member literally named `fail`.
+    let holder_uri = uri("/Holder.java");
+    let host_uri = uri("/Host.kt");
+    let idx = Indexer::new();
+    idx.index_content(
+        &holder_uri,
+        concat!(
+            "package com.pkg;\n",
+            "public class Holder {\n",
+            "    private Throwable mFail;\n",
+            "    public Throwable getFail() { return mFail; }\n",
+            "}\n",
+        ),
+    );
+    idx.index_content(
+        &host_uri,
+        concat!(
+            "package com.pkg\n",
+            "fun foo(holder: Holder) { holder.fail }\n",
+        ),
+    );
+
+    let locs = resolve_symbol(&idx, "fail", Some("Holder"), &host_uri);
+    assert_eq!(
+        locs.len(),
+        1,
+        "expected the Java getter getFail() to resolve as the Kotlin \
+         synthetic property .fail, got {locs:?}"
+    );
+    assert_eq!(locs[0].uri, holder_uri);
+    assert_eq!(
+        locs[0].range.start.line, 3,
+        "expected the getFail() declaration line, got {locs:?}"
+    );
+}
+
+#[test]
+fn resolve_qualified_real_member_wins_over_a_getter_of_the_same_name() {
+    // The getter tier must never outrank a real member of the exact same
+    // name — `member_or_inherited_member(name)` succeeding means the getter
+    // retry must never even run.
+    let holder_uri = uri("/Holder2.java");
+    let host_uri = uri("/Host2.kt");
+    let idx = Indexer::new();
+    idx.index_content(
+        &holder_uri,
+        concat!(
+            "package com.pkg;\n",
+            "public class Holder2 {\n",
+            "    public Throwable fail;\n",
+            "    public Throwable getFail() { return fail; }\n",
+            "}\n",
+        ),
+    );
+    idx.index_content(
+        &host_uri,
+        concat!(
+            "package com.pkg\n",
+            "fun foo(holder: Holder2) { holder.fail }\n",
+        ),
+    );
+
+    let locs = resolve_symbol(&idx, "fail", Some("Holder2"), &host_uri);
+    assert_eq!(
+        locs.len(),
+        1,
+        "the real field must win alone, the getter tier must not run: {locs:?}"
+    );
+    assert_eq!(locs[0].uri, holder_uri);
+    assert_eq!(
+        locs[0].range.start.line, 2,
+        "expected the real field's declaration line (2), not getFail's (3): {locs:?}"
+    );
+}
+
+#[test]
+fn resolve_qualified_kotlin_get_prefixed_function_is_not_a_synthetic_property() {
+    // Kotlin does NOT expose a Kotlin-declared `fun getFail()` as `.fail` —
+    // applying the getter mapping here would invent a resolution Kotlin
+    // itself rejects. The Java-file guard must block the retry entirely.
+    let klass_uri = uri("/Klass.kt");
+    let host_uri = uri("/Host3.kt");
+    let idx = Indexer::new();
+    idx.index_content(
+        &klass_uri,
+        concat!(
+            "package com.pkg\n",
+            "class Klass {\n",
+            "    fun getFail(): Throwable = TODO()\n",
+            "}\n",
+        ),
+    );
+    idx.index_content(
+        &host_uri,
+        concat!(
+            "package com.pkg\n",
+            "fun foo(klass: Klass) { klass.fail }\n",
+        ),
+    );
+
+    let locs = resolve_symbol(&idx, "fail", Some("Klass"), &host_uri);
+    assert!(
+        locs.is_empty(),
+        "a Kotlin-declared getFail() must NOT resolve as .fail: {locs:?}"
+    );
+}
+
+#[test]
+fn resolve_qualified_inherited_java_getter_resolves_as_kotlin_property() {
+    // Real Moneta bug: `IdentityManager.currentIdentity` where the getter is
+    // declared on a SUPERTYPE of the receiver, not the receiver's own class —
+    // this forces the retry through `resolve_from_class_hierarchy_scoped`
+    // (`member_or_inherited_member`'s second call), not just the direct-
+    // container lookup (its first call).
+    let base_uri = uri("/BaseIdentity.java");
+    let sub_uri = uri("/IdentityManager.java");
+    let host_uri = uri("/Host4.kt");
+    let idx = Indexer::new();
+    idx.index_content(
+        &base_uri,
+        concat!(
+            "package com.pkg;\n",
+            "public class BaseIdentity {\n",
+            "    public Identity getCurrentIdentity() { return null; }\n",
+            "}\n",
+        ),
+    );
+    idx.index_content(
+        &sub_uri,
+        concat!(
+            "package com.pkg;\n",
+            "public class IdentityManager extends BaseIdentity {\n",
+            "}\n",
+        ),
+    );
+    idx.index_content(
+        &host_uri,
+        concat!(
+            "package com.pkg\n",
+            "fun foo(manager: IdentityManager) { manager.currentIdentity }\n",
+        ),
+    );
+
+    let locs = resolve_symbol(&idx, "currentIdentity", Some("IdentityManager"), &host_uri);
+    assert_eq!(
+        locs.len(),
+        1,
+        "expected the inherited getCurrentIdentity() to resolve as the \
+         Kotlin synthetic property .currentIdentity, got {locs:?}"
+    );
+    assert_eq!(locs[0].uri, base_uri);
+    assert_eq!(
+        locs[0].range.start.line, 2,
+        "expected getCurrentIdentity's declaration line on the supertype: {locs:?}"
+    );
+}
+
+#[test]
 fn resolve_qualified_supertype_extension_fallback_handles_a_fully_qualified_supertype_spelling() {
     // Copilot review finding on PR #289: `walk_hierarchy` yields `super_name`
     // exactly as written in the source's own delegation-specifier text
@@ -2897,6 +3211,89 @@ fn resolve_extension_fn_on_uppercase_qualifier() {
         "should point to Padding.kt where the extension function is defined, got {:?}",
         locs[0].uri
     );
+}
+
+// ── qualified access: item-1 JAR-extension probe fallback (2026-09-09 jar-promotion-latency-budget-plan, Task 2a) ──
+
+/// Regression: `resolve_qualified`'s item-1 fallback (reached after
+/// `resolve_extension_in_scope` and the member/companion/hierarchy lookups
+/// above it all come up empty) materializes its `Location` by searching the
+/// declaring file's symbol list for the first symbol whose bare `name`
+/// matches — not the actual extension declaration. A same-named, unrelated
+/// member declared earlier in the same file previously won, returning the
+/// wrong range.
+#[test]
+fn resolve_qualified_jar_extension_probe_respects_declaration_match_not_just_name() {
+    let receiver_uri = uri("/Widget.kt");
+    let ext_uri = uri("/Styling.kt");
+    let caller_uri = uri("/Caller.kt");
+    let idx = Indexer::new();
+
+    idx.index_content(&receiver_uri, "package com.lib.widget\nobject Widget");
+    // `Other.styled()` (line 2) is an unrelated member sharing the bare name
+    // `styled` with the real extension declared later (line 4) in the same
+    // file — exactly the shape that made the old `s.name == name` match
+    // return the wrong range.
+    idx.index_content(
+        &ext_uri,
+        "package com.lib.widget\nclass Other {\n    fun styled(): Int = 0\n}\nfun Widget.styled(): Widget = this",
+    );
+    // No import of `com.lib.widget` in the caller -- `resolve_extension_in_scope`
+    // (the real in-scope check, reached first) rejects the candidate, so control
+    // falls through to the item-1 fallback under test.
+    idx.index_content(
+        &caller_uri,
+        "package com.app\nfun render() {\n    Widget.styled()\n}",
+    );
+
+    let locs = resolve_symbol(&idx, "styled", Some("Widget"), &caller_uri);
+    assert!(
+        !locs.is_empty(),
+        "JAR-extension probe fallback should still resolve `styled`"
+    );
+    assert_eq!(locs[0].uri, ext_uri);
+    assert_eq!(
+        locs[0].range.start.line, 4,
+        "must match the real extension declaration by receiver+container, not \
+         just by bare name -- got range at line {}, which is `Other.styled()`, \
+         an unrelated same-named member declared earlier in the file",
+        locs[0].range.start.line
+    );
+}
+
+/// The actual regression guard for the fix above: the item-1 fallback is a
+/// DELIBERATE fail-open (see `resolve_extension_fn_on_uppercase_qualifier`,
+/// which already depends on this), not a second in-scope check. Copies that
+/// test's fixture shape -- an extension declared in a different package, with
+/// no import at the call site -- to confirm the declaration-match fix above
+/// does NOT start requiring `extension_is_in_scope` here too. Tightening this
+/// would be the regression the original "merge into `resolve_extension_in_scope`"
+/// proposal would have shipped (see the 2026-09-09
+/// jar-promotion-latency-budget-plan, Task 2a brief).
+#[test]
+fn resolve_qualified_jar_extension_probe_stays_fail_open_when_the_in_scope_check_would_reject() {
+    let receiver_uri = uri("/Widget.kt");
+    let ext_uri = uri("/Styling.kt");
+    let caller_uri = uri("/Caller.kt");
+    let idx = Indexer::new();
+
+    idx.index_content(&receiver_uri, "package com.lib.widget\nobject Widget");
+    idx.index_content(
+        &ext_uri,
+        "package com.lib.widget\nfun Widget.styled(): Widget = this",
+    );
+    idx.index_content(
+        &caller_uri,
+        "package com.app\nfun render() {\n    Widget.styled()\n}",
+    );
+
+    let locs = resolve_symbol(&idx, "styled", Some("Widget"), &caller_uri);
+    assert!(
+        !locs.is_empty(),
+        "JAR-extension probe fallback must stay fail-open: `styled` should still \
+         resolve even though `com.app` never imports `com.lib.widget`"
+    );
+    assert_eq!(locs[0].uri, ext_uri);
 }
 
 /// Regression: `Modifier.padding()` with cursor on `padding` where `Modifier` is
@@ -5941,12 +6338,15 @@ fn infer_type_in_lines_di_get_still_works() {
     );
 }
 
-// ── Issue 2: Extension function precedence over member functions ─────────
+// ── Issue 2: member vs. extension function precedence ────────────────────
 
-/// When an extension function is imported with the same name as a member,
-/// goto-definition should resolve to the extension, not the member.
+/// When an extension function is imported with the same name as a real
+/// member, goto-definition resolves to the MEMBER — Kotlin's own
+/// member-over-extension precedence. See the in-body note: this assertion was
+/// inverted by Task 2b, as a named correction of the type-root branch's
+/// extension-first outlier.
 #[test]
-fn resolve_imported_extension_preferred_over_member() {
+fn resolve_member_preferred_over_imported_extension() {
     let service_uri = uri("/Service.kt");
     let ext_uri = uri("/ServiceExtensions.kt");
     let caller_uri = uri("/Caller.kt");
@@ -5973,13 +6373,29 @@ fn resolve_imported_extension_preferred_over_member() {
          }",
     );
 
-    // Resolving `execute` with qualifier `Service` should find the extension,
-    // not the member.
+    // Task 2b, deliberate behaviour correction: this test previously asserted
+    // the IMPORTED EXTENSION won. That encoded the type-root branch's outlier
+    // ordering -- it probed the own-type extension before its member tier was
+    // ever computed -- and it contradicts Kotlin's actual rule, which the rest
+    // of this file already states repeatedly: a real member always shadows a
+    // same-named extension. `Service` declares its own `execute()`, so the
+    // member wins.
     let locs = resolve_symbol(&idx, "execute", Some("Service"), &caller_uri);
-    assert!(!locs.is_empty(), "extension function should be found");
+    assert!(!locs.is_empty(), "execute should be found");
     assert_eq!(
-        locs[0].uri, ext_uri,
-        "should resolve to extension function, not member"
+        locs[0].uri, service_uri,
+        "Service's own member execute() must shadow the imported extension \
+         (Kotlin member-over-extension precedence), got {:?}",
+        locs[0].uri
+    );
+    // The shadowed extension is still OFFERED, just ranked below the member:
+    // precedence is carried by candidate order, not by dropping the candidate.
+    // A same-named member doesn't always satisfy the call's arity, and a
+    // shape-aware caller needs something to fall back to when it doesn't.
+    assert_eq!(
+        locs.iter().position(|loc| loc.uri == ext_uri),
+        Some(1),
+        "the extension must remain available as the lower-precedence candidate, got {locs:?}"
     );
 }
 
@@ -9216,4 +9632,871 @@ fn resolve_kotlin_builtin_type_platform_equivalent_resolves_char_to_java_lang_ch
         "expected Char to resolve to java.lang.Character, got {locs:?}"
     );
     assert!(locs[0].uri.path().ends_with("java/lang/Character.java"));
+}
+
+// ─── Task 2b: qualifier parsing (no fixture, no IO) ──────────────────────────
+
+#[test]
+fn parse_qualifier_reads_this_as_a_keyword_root() {
+    use super::qualified::{parse_qualifier, QualifierRoot};
+
+    assert_eq!(parse_qualifier("this"), QualifierRoot::This);
+    // The keyword wins on the ROOT segment alone, as it always has -- a longer
+    // `this.field` chain still takes the keyword path.
+    assert_eq!(parse_qualifier("this.field"), QualifierRoot::This);
+}
+
+#[test]
+fn parse_qualifier_reads_super_as_a_keyword_root() {
+    use super::qualified::{parse_qualifier, QualifierRoot};
+
+    assert_eq!(parse_qualifier("super"), QualifierRoot::Super);
+    assert_eq!(parse_qualifier("super.field"), QualifierRoot::Super);
+}
+
+#[test]
+fn parse_qualifier_reads_an_uppercase_root_as_a_type_path() {
+    use super::qualified::{parse_qualifier, QualifierRoot};
+
+    assert_eq!(
+        parse_qualifier("Foo"),
+        QualifierRoot::TypePath {
+            root: "Foo",
+            nested: vec![]
+        }
+    );
+    assert_eq!(
+        parse_qualifier("Outer.Inner"),
+        QualifierRoot::TypePath {
+            root: "Outer",
+            nested: vec!["Inner"]
+        }
+    );
+    assert_eq!(
+        parse_qualifier("A.B.C.D"),
+        QualifierRoot::TypePath {
+            root: "A",
+            nested: vec!["B", "C", "D"]
+        }
+    );
+}
+
+#[test]
+fn parse_qualifier_reads_a_lowercase_root_as_a_value_path() {
+    use super::qualified::{parse_qualifier, QualifierRoot};
+
+    assert_eq!(
+        parse_qualifier("account"),
+        QualifierRoot::ValuePath {
+            root: "account",
+            rest: vec![]
+        }
+    );
+    assert_eq!(
+        parse_qualifier("account.holder"),
+        QualifierRoot::ValuePath {
+            root: "account",
+            rest: vec!["holder"]
+        }
+    );
+    // A mixed chain is still a VALUE path -- the root is what needs inference,
+    // and the uppercase segment in the middle is handled during the walk.
+    assert_eq!(
+        parse_qualifier("a.b.C.d"),
+        QualifierRoot::ValuePath {
+            root: "a",
+            rest: vec!["b", "C", "d"]
+        }
+    );
+}
+
+// ─── Task 2b: receiver-anchor normalization ─────────────────────────────────
+
+#[test]
+fn anchors_for_a_nested_type_path_anchors_on_the_leaf_not_the_root() {
+    // The assertion that was impossible to write before the anchor existed:
+    // for `Outer.Inner.member` the receiver is `Inner`, so the extension
+    // registry key and the member scope must both be `Inner`'s -- not
+    // `Outer`'s, which is what a root-keyed probe would use.
+    use super::qualified::{anchors_for, parse_qualifier};
+    use super::resolve::ResolveIo;
+
+    let outer_uri = uri("/Outer.kt");
+    let caller_uri = uri("/Caller.kt");
+    let idx = Indexer::new();
+    idx.index_content(
+        &outer_uri,
+        "package com.pkg\n\
+         class Outer {\n\
+           class Inner {\n\
+             fun act() {}\n\
+           }\n\
+         }\n",
+    );
+    idx.index_content(
+        &caller_uri,
+        "package com.pkg\nfun test() { Outer.Inner.act() }\n",
+    );
+
+    let anchors = anchors_for(
+        &idx,
+        &parse_qualifier("Outer.Inner"),
+        &caller_uri,
+        ResolveIo::Full,
+    );
+    assert_eq!(
+        anchors.len(),
+        1,
+        "expected exactly one anchor, got {anchors:?}"
+    );
+    assert_eq!(
+        anchors[0].class_name, "Inner",
+        "the anchor must name the LEAF type, not the root, got {anchors:?}"
+    );
+    let declaration = anchors[0]
+        .declaration
+        .as_ref()
+        .expect("Inner has an indexed declaration");
+    assert_eq!(
+        declaration.uri, outer_uri,
+        "nested types live in the outer's file"
+    );
+    // Carrying the full `Location` (not just a `Url`) is what makes the
+    // own-member tier constructible: `find_all_names_scoped_to_container`
+    // scopes by the container's declaration RANGE.
+    assert_eq!(
+        declaration.range.start.line, 2,
+        "the anchor must carry Inner's OWN declaration range, not Outer's, got {declaration:?}"
+    );
+}
+
+#[test]
+fn anchors_for_a_missing_nested_segment_yields_no_anchor_not_a_root_fallback() {
+    // Copilot review finding (real): `Outer.Missing.member` -- `Outer`
+    // resolves fine but `Missing` names no real nested type of it. The old
+    // code fell through to the declaration-less fallback keyed on `root`
+    // ("Outer") whenever the nested walk produced zero anchors, regardless
+    // of WHY it was empty -- so `member` could resolve against `Outer`
+    // itself as if `.Missing` had never been written. Only a genuinely
+    // UNRESOLVED ROOT (no indexed declaration at all, e.g. a built-in type)
+    // should get that fallback; a resolved root with a failed nested
+    // segment must yield no anchors.
+    use super::qualified::{anchors_for, parse_qualifier};
+    use super::resolve::ResolveIo;
+
+    let outer_uri = uri("/Outer2.kt");
+    let caller_uri = uri("/Caller2.kt");
+    let idx = Indexer::new();
+    idx.index_content(
+        &outer_uri,
+        "package com.pkg\n\
+         class Outer {\n\
+           fun act() {}\n\
+         }\n",
+    );
+    idx.index_content(
+        &caller_uri,
+        "package com.pkg\nfun test() { Outer.Missing.act() }\n",
+    );
+
+    let anchors = anchors_for(
+        &idx,
+        &parse_qualifier("Outer.Missing"),
+        &caller_uri,
+        ResolveIo::Full,
+    );
+    assert!(
+        anchors.is_empty(),
+        "Outer.Missing names no real nested type -- must yield no anchors, \
+         not silently fall back to anchoring on Outer, got {anchors:?}"
+    );
+}
+
+#[test]
+fn anchors_for_a_value_path_anchors_on_the_inferred_receiver_type() {
+    use super::qualified::{anchors_for, parse_qualifier};
+    use super::resolve::ResolveIo;
+
+    let account_uri = uri("/Account.kt");
+    let caller_uri = uri("/Caller.kt");
+    let idx = Indexer::new();
+    idx.index_content(
+        &account_uri,
+        "package com.pkg\nclass Account {\n  fun close() {}\n}\n",
+    );
+    idx.index_content(
+        &caller_uri,
+        "package com.pkg\nfun test(account: Account) { account.close() }\n",
+    );
+
+    let anchors = anchors_for(
+        &idx,
+        &parse_qualifier("account"),
+        &caller_uri,
+        ResolveIo::Full,
+    );
+    assert_eq!(
+        anchors.len(),
+        1,
+        "expected exactly one anchor, got {anchors:?}"
+    );
+    assert_eq!(
+        anchors[0].class_name, "Account",
+        "a value root anchors on its INFERRED type, not on the variable name"
+    );
+    assert_eq!(
+        anchors[0]
+            .declaration
+            .as_ref()
+            .expect("Account has an indexed declaration")
+            .uri,
+        account_uri
+    );
+}
+
+#[test]
+fn anchors_for_an_unindexed_type_root_still_yields_a_declaration_less_anchor() {
+    // A built-in receiver (`String`, `Int`) has no indexed declaration, but it
+    // can still carry in-scope extensions -- so normalization must hand back an
+    // anchor with `declaration: None` rather than nothing at all, or the
+    // extension tier becomes unreachable for exactly the receivers that have no
+    // member tier to begin with.
+    use super::qualified::{anchors_for, parse_qualifier};
+    use super::resolve::ResolveIo;
+
+    let caller_uri = uri("/Caller.kt");
+    let idx = Indexer::new();
+    idx.index_content(&caller_uri, "package com.pkg\nfun test() { }\n");
+
+    let anchors = anchors_for(
+        &idx,
+        &parse_qualifier("Unindexed"),
+        &caller_uri,
+        ResolveIo::Full,
+    );
+    assert_eq!(
+        anchors.len(),
+        1,
+        "expected a fallback anchor, got {anchors:?}"
+    );
+    assert!(
+        anchors[0].declaration.is_none(),
+        "an unindexed root has no declaration to anchor on, got {anchors:?}"
+    );
+    assert_eq!(anchors[0].class_name, "Unindexed");
+}
+
+#[test]
+fn resolve_qualified_uppercase_receiver_own_member_now_wins_over_own_type_extension() {
+    // Task 2b's named behaviour correction, and the reason the two qualifier
+    // branches could not simply be merged as-is: the type-root branch used to
+    // probe the own-type extension FIRST and return early, before its own
+    // member tier was ever computed, while the value-root branch ran members
+    // first and reached its extension tier last. One unified precedence ladder
+    // can only encode one order, and the value-root branch's is the correct one
+    // -- Kotlin resolves a real member over a same-named extension.
+    //
+    // `object Config` is the shape that makes this observable on an UPPERCASE
+    // root: `Config.reload()` is a legal call to an object's own member (not an
+    // instance member, and not a companion member), so the companion probe
+    // misses and the member tier is what must win.
+    let config_uri = uri("/Config.kt");
+    let ext_uri = uri("/ConfigExtensions.kt");
+    let caller_uri = uri("/Caller.kt");
+    let idx = Indexer::new();
+    idx.index_content(
+        &config_uri,
+        "package com.pkg\n\
+         object Config {\n\
+           fun reload() { /* member */ }\n\
+         }\n",
+    );
+    idx.index_content(
+        &ext_uri,
+        "package com.pkg\nfun Config.reload() { /* extension */ }\n",
+    );
+    idx.index_content(
+        &caller_uri,
+        "package com.pkg\nfun test() { Config.reload() }\n",
+    );
+
+    let locs = resolve_symbol(&idx, "reload", Some("Config"), &caller_uri);
+    assert!(!locs.is_empty(), "reload should be found at all");
+    assert_eq!(
+        locs[0].uri, config_uri,
+        "Config's own member reload() must win over the same-named in-scope \
+         extension; got {:?}",
+        locs[0].uri
+    );
+}
+
+// ─── Task 3: own-type extension tier regression coverage ───────────────────
+//
+// The jar-promotion-latency-budget-plan's Task 3 ("close the own-type
+// extension tier") predicted that Task 2b's `candidates_on` decomposition
+// would absorb its diff: `own_type_extension` is populated once, in
+// `candidates_on`, from `anchor.class_name` -- unconditionally, for every
+// `QualifierRoot` family and every nesting depth, since both `TypePath` and
+// `ValuePath` normalize through the same `anchors_for` -> `candidates_on`
+// pipeline. These tests are that prediction's proof: every case Task 3's
+// brief asked for is exercised here against the CURRENT code with no
+// production change required.
+
+#[test]
+fn resolve_qualified_lowercase_receiver_appends_own_type_extension_alongside_wrong_arity_member() {
+    // Moneta shape (finding 10): `nav.navigate("home")` where the receiver's
+    // OWN concrete type `NavController` declares a same-named member with a
+    // DIFFERENT arity (`navigate(uri: Uri)`), and a separate file declares an
+    // in-scope extension on `NavController` itself (`navigate(route: String)`).
+    // Must return BOTH, member first -- the own-type extension tier must not
+    // be skipped just because a same-named member (of any arity) was found.
+    let nav_uri = uri("/NavController.kt");
+    let ext_uri = uri("/NavControllerExtensions.kt");
+    let host_uri = uri("/Host.kt");
+    let idx = Indexer::new();
+    idx.index_content(
+        &nav_uri,
+        "package com.pkg\nclass NavController {\n  fun navigate(uri: Uri) {}\n}\n",
+    );
+    idx.index_content(
+        &ext_uri,
+        "package com.pkg\nfun NavController.navigate(route: String) {}\n",
+    );
+    idx.index_content(
+        &host_uri,
+        "package com.pkg\nclass Host(\n  private val nav: NavController\n) {\n  \
+         fun go() { nav.navigate(\"home\") }\n}\n",
+    );
+
+    let locs = resolve_symbol(&idx, "navigate", Some("nav"), &host_uri);
+    assert_eq!(
+        locs.len(),
+        2,
+        "expected both the own-type member and the own-type extension, got {locs:?}"
+    );
+    assert_eq!(
+        locs[0].uri, nav_uri,
+        "the wrong-arity own-type member must still come first, got {:?}",
+        locs[0].uri
+    );
+    assert_eq!(
+        locs[1].uri, ext_uri,
+        "the own-type extension must be appended second, got {:?}",
+        locs[1].uri
+    );
+}
+
+#[test]
+fn resolve_qualified_uppercase_receiver_own_type_extension_unchanged() {
+    // Regression guard for the Task 2b decomposition: an uppercase
+    // (type-path) root reaching an own-type extension when its own body has
+    // no matching member at all (finding 9) must still resolve after the
+    // uppercase and lowercase branches were unified into one
+    // `candidates_on` ladder.
+    let config_uri = uri("/Config.kt");
+    let ext_uri = uri("/ConfigExtensions.kt");
+    let caller_uri = uri("/Caller.kt");
+    let idx = Indexer::new();
+    idx.index_content(
+        &config_uri,
+        "package com.pkg\nobject Config {\n  fun other() {}\n}\n",
+    );
+    idx.index_content(
+        &ext_uri,
+        "package com.pkg\nfun Config.reload() { /* extension */ }\n",
+    );
+    idx.index_content(
+        &caller_uri,
+        "package com.pkg\nfun test() { Config.reload() }\n",
+    );
+
+    let locs = resolve_symbol(&idx, "reload", Some("Config"), &caller_uri);
+    assert_eq!(
+        locs.len(),
+        1,
+        "expected exactly the own-type extension, got {locs:?}"
+    );
+    assert_eq!(locs[0].uri, ext_uri, "got {:?}", locs[0].uri);
+}
+
+#[test]
+fn resolve_qualified_own_type_extension_does_not_shadow_an_arity_compatible_member() {
+    // Both a same-named member and a same-named own-type extension exist on
+    // a lowercase (value-path) receiver; the member must come first
+    // regardless -- Kotlin's real member-over-extension precedence never
+    // inverts just because arity happens to match.
+    let account_uri = uri("/Account.kt");
+    let ext_uri = uri("/AccountExtensions.kt");
+    let host_uri = uri("/Host.kt");
+    let idx = Indexer::new();
+    idx.index_content(
+        &account_uri,
+        "package com.pkg\nclass Account {\n  fun close() { /* member */ }\n}\n",
+    );
+    idx.index_content(
+        &ext_uri,
+        "package com.pkg\nfun Account.close() { /* extension */ }\n",
+    );
+    idx.index_content(
+        &host_uri,
+        "package com.pkg\nclass Host(\n  private val account: Account\n) {\n  \
+         fun end() { account.close() }\n}\n",
+    );
+
+    let locs = resolve_symbol(&idx, "close", Some("account"), &host_uri);
+    assert!(!locs.is_empty(), "close not found at all");
+    assert_eq!(
+        locs[0].uri, account_uri,
+        "the arity-compatible member must come first, got {:?}",
+        locs[0].uri
+    );
+}
+
+#[test]
+fn resolve_qualified_supertype_extension_still_reached_when_no_own_type_extension_exists() {
+    // The own-type extension tier sits BEFORE the supertype-extension tier in
+    // `into_precedence_ordered`; when there is no own-type extension at all,
+    // the supertype extension must still be the one candidate reached, not
+    // silently swallowed by an empty own-type tier.
+    let base_uri = uri("/Base.kt");
+    let derived_uri = uri("/Derived.kt");
+    let ext_uri = uri("/BaseExtensions.kt");
+    let host_uri = uri("/Host.kt");
+    let idx = Indexer::new();
+    idx.index_content(&base_uri, "package com.pkg\nopen class Base\n");
+    idx.index_content(&derived_uri, "package com.pkg\nclass Derived : Base()\n");
+    idx.index_content(
+        &ext_uri,
+        "package com.pkg\nfun Base.describe(): String = TODO()\n",
+    );
+    idx.index_content(
+        &host_uri,
+        "package com.pkg\nclass Host(\n  private val derived: Derived\n) {\n  \
+         fun show() { derived.describe() }\n}\n",
+    );
+
+    let locs = resolve_symbol(&idx, "describe", Some("derived"), &host_uri);
+    assert_eq!(
+        locs.len(),
+        1,
+        "expected exactly the supertype extension, got {locs:?}"
+    );
+    assert_eq!(locs[0].uri, ext_uri, "got {:?}", locs[0].uri);
+}
+
+#[test]
+fn resolve_qualified_nested_type_qualifier_finds_an_extension_on_the_nested_type_itself_alongside_a_wrong_arity_member(
+) {
+    // Finding 11, first variant: `Outer.Inner.member()` where `Inner`
+    // declares a wrong-arity `member` (own_members non-empty, so the
+    // `candidates_on` exit for a found member is the one under test), and a
+    // separate file declares `fun Outer.Inner.member()` -- an extension
+    // keyed on `Inner` (the LEAF type, per `extension_receiver_from_decl`'s
+    // `rsplit('.')`), never on `Outer`. Both must come back, member first.
+    let outer_uri = uri("/Outer.kt");
+    let ext_uri = uri("/InnerExtensions.kt");
+    let caller_uri = uri("/Caller.kt");
+    let idx = Indexer::new();
+    idx.index_content(
+        &outer_uri,
+        "package com.pkg\nclass Outer {\n  class Inner {\n    fun member(x: Int) {}\n  }\n}\n",
+    );
+    idx.index_content(
+        &ext_uri,
+        "package com.pkg\nfun Outer.Inner.member() { /* extension */ }\n",
+    );
+    idx.index_content(
+        &caller_uri,
+        "package com.pkg\nfun test() { Outer.Inner.member() }\n",
+    );
+
+    let locs = resolve_symbol(&idx, "member", Some("Outer.Inner"), &caller_uri);
+    assert_eq!(
+        locs.len(),
+        2,
+        "expected both the nested type's own member and its own-type \
+         extension, got {locs:?}"
+    );
+    assert_eq!(
+        locs[0].uri, outer_uri,
+        "member must come first, got {:?}",
+        locs[0].uri
+    );
+    assert_eq!(
+        locs[1].uri, ext_uri,
+        "extension must be appended second, got {:?}",
+        locs[1].uri
+    );
+}
+
+#[test]
+fn resolve_qualified_nested_type_qualifier_finds_an_extension_on_the_nested_type_itself_when_the_nested_type_has_no_such_member(
+) {
+    // Finding 11, second variant: `Outer.Inner.member()` where `Inner`
+    // declares NO member named `member` at all -- both `own_members` AND
+    // `inherited_members` are empty, so this exercises the OTHER
+    // `candidates_on` path (no member found) than the sibling test above.
+    // The own-type extension tier is the only way this resolves.
+    let outer_uri = uri("/Outer.kt");
+    let ext_uri = uri("/InnerExtensions.kt");
+    let caller_uri = uri("/Caller.kt");
+    let idx = Indexer::new();
+    idx.index_content(
+        &outer_uri,
+        "package com.pkg\nclass Outer {\n  class Inner\n}\n",
+    );
+    idx.index_content(
+        &ext_uri,
+        "package com.pkg\nfun Outer.Inner.member() { /* extension */ }\n",
+    );
+    idx.index_content(
+        &caller_uri,
+        "package com.pkg\nfun test() { Outer.Inner.member() }\n",
+    );
+
+    let locs = resolve_symbol(&idx, "member", Some("Outer.Inner"), &caller_uri);
+    assert_eq!(
+        locs.len(),
+        1,
+        "expected exactly the nested type's own-type extension, got {locs:?}"
+    );
+    assert_eq!(locs[0].uri, ext_uri, "got {:?}", locs[0].uri);
+}
+
+// ─── PR #317 Copilot review findings (suppressed comments) ─────────────────
+
+#[test]
+fn resolve_qualified_nested_type_reaches_its_own_companion_member() {
+    // Copilot review finding: `companion_applies` was gated on
+    // `nested.is_empty()`, so a nested-type qualifier (`Outer.Inner.create()`)
+    // never even attempted the companion lookup, even though `anchors_for`
+    // has already normalized the anchor down to `Inner` itself (the exact
+    // leaf `companion_member_on` probes). `Foo.member` semantics ("a member
+    // access on a TYPE name can only reach a companion member") hold at any
+    // nesting depth, not just for a single-segment qualifier.
+    let outer_uri = uri("/Outer.kt");
+    let caller_uri = uri("/Caller.kt");
+    let idx = Indexer::new();
+    idx.index_content(
+        &outer_uri,
+        concat!(
+            "package com.pkg\n",
+            "class Outer {\n",
+            "  class Inner {\n",
+            "    companion object {\n",
+            "      fun create(): Inner = Inner()\n",
+            "    }\n",
+            "  }\n",
+            "}\n",
+        ),
+    );
+    idx.index_content(
+        &caller_uri,
+        "package com.pkg\nfun test() { Outer.Inner.create() }\n",
+    );
+
+    let locs = resolve_symbol(&idx, "create", Some("Outer.Inner"), &caller_uri);
+    assert!(
+        !locs.is_empty(),
+        "Outer.Inner.create() must reach Inner's own companion member, got {locs:?}"
+    );
+    assert_eq!(locs[0].uri, outer_uri);
+    assert_eq!(
+        locs[0].range.start.line, 4,
+        "expected create()'s declaration line, got {locs:?}"
+    );
+}
+
+#[test]
+fn resolve_qualified_jar_extension_last_resort_keys_on_the_nested_leaf_not_the_root() {
+    // Copilot review finding: the last-resort `jar_extension_for_type_root`
+    // fallback in `resolve_qualified` keyed its lookup on the qualifier's
+    // literal ROOT spelling ("Outer") even for a nested qualifier like
+    // `Outer.Inner.member()`, where the extension registry
+    // (`extension_by_receiver`) keys entries by the RECEIVER's own simple
+    // name -- here "Inner", not "Outer". Constructed so the normal
+    // `own_type_extension` tier (which already keys correctly on the
+    // anchor's leaf `class_name`) does NOT find it either -- the extension is
+    // in a different package with no import, so `extension_is_in_scope`
+    // rejects it there -- isolating this last-resort fallback (which does no
+    // scope-check at all, a separate pre-existing property) as the only path
+    // that can still reach it, and confirming it now keys on "Inner".
+    let outer_uri = uri("/Outer.kt");
+    let ext_uri = uri("/OtherPkgInnerExt.kt");
+    let caller_uri = uri("/Caller.kt");
+    let idx = Indexer::new();
+    idx.index_content(
+        &outer_uri,
+        concat!(
+            "package com.pkg\n",
+            "class Outer {\n",
+            "  class Inner {\n",
+            "    fun act() {}\n",
+            "  }\n",
+            "}\n",
+        ),
+    );
+    idx.index_content(
+        &ext_uri,
+        "package com.other\nfun Inner.member() { /* extension */ }\n",
+    );
+    idx.index_content(
+        &caller_uri,
+        "package com.pkg\nfun test() { Outer.Inner.member() }\n",
+    );
+
+    let locs = resolve_symbol(&idx, "member", Some("Outer.Inner"), &caller_uri);
+    assert_eq!(
+        locs.len(),
+        1,
+        "expected the last-resort fallback to find the leaf-keyed extension, \
+         got {locs:?}"
+    );
+    assert_eq!(locs[0].uri, ext_uri, "got {:?}", locs[0].uri);
+}
+
+#[test]
+fn resolve_qualified_supertype_extension_survives_a_wrong_arity_inherited_member() {
+    // Copilot review finding, the same shape `own_type_extension` was
+    // already fixed for (see
+    // `resolve_qualified_lowercase_receiver_appends_own_type_extension_alongside_wrong_arity_member`
+    // above), on its sibling field: `supertype_extension` used to be skipped
+    // entirely whenever `inherited_members` was non-empty, with no regard
+    // for whether that inherited member's arity actually matches the call.
+    // A wrong-arity inherited member must not make a shape-aware caller lose
+    // the supertype extension it could otherwise fall back to.
+    let base_uri = uri("/BaseNav.kt");
+    let nav_uri = uri("/NavController.kt");
+    let ext_uri = uri("/BaseNavExtensions.kt");
+    let host_uri = uri("/Host.kt");
+    let idx = Indexer::new();
+    idx.index_content(
+        &base_uri,
+        "package com.pkg\nopen class BaseNav {\n  fun navigate(uri: Uri) {}\n}\n",
+    );
+    idx.index_content(
+        &nav_uri,
+        "package com.pkg\nclass NavController : BaseNav()\n",
+    );
+    idx.index_content(
+        &ext_uri,
+        "package com.pkg\nfun BaseNav.navigate(route: String) {}\n",
+    );
+    idx.index_content(
+        &host_uri,
+        "package com.pkg\nclass Host(\n  private val nav: NavController\n) {\n  \
+         fun go() { nav.navigate(\"home\") }\n}\n",
+    );
+
+    let locs = resolve_symbol(&idx, "navigate", Some("nav"), &host_uri);
+    assert_eq!(
+        locs.len(),
+        2,
+        "expected both the wrong-arity inherited member and the supertype \
+         extension, got {locs:?}"
+    );
+    assert_eq!(
+        locs[0].uri, base_uri,
+        "the inherited member must still come first, got {:?}",
+        locs[0].uri
+    );
+    assert_eq!(
+        locs[1].uri, ext_uri,
+        "the supertype extension must be appended second, got {:?}",
+        locs[1].uri
+    );
+}
+
+#[test]
+fn resolve_qualified_java_getter_retry_reaches_an_ancestor_declared_in_java() {
+    // Copilot review finding: the getter-retry guard checked the RECEIVER's
+    // own declaring file's language (`anchor.declaration.uri`), not the
+    // getter candidate's own declaring file -- so a Kotlin-declared class
+    // inheriting `getFail()` from a JAVA ancestor was rejected outright,
+    // since the receiver's own `.kt` file made the upfront gate false and
+    // the retry never even ran. The candidate the retry actually finds is
+    // what must be checked: the inherited `getFail()` lives in a `.java`
+    // file, so it must still resolve as the synthetic `.fail` property.
+    let java_base_uri = uri("/JavaBase.java");
+    let kotlin_foo_uri = uri("/KotlinFoo.kt");
+    let host_uri = uri("/Host5.kt");
+    let idx = Indexer::new();
+    idx.index_content(
+        &java_base_uri,
+        concat!(
+            "package com.pkg;\n",
+            "public class JavaBase {\n",
+            "    public String getFail() { return null; }\n",
+            "}\n",
+        ),
+    );
+    idx.index_content(
+        &kotlin_foo_uri,
+        "package com.pkg\nclass KotlinFoo : JavaBase()\n",
+    );
+    idx.index_content(
+        &host_uri,
+        "package com.pkg\nfun test(k: KotlinFoo) { k.fail }\n",
+    );
+
+    let locs = resolve_symbol(&idx, "fail", Some("k"), &host_uri);
+    assert_eq!(
+        locs.len(),
+        1,
+        "expected the Java ancestor's getFail() to resolve as .fail even \
+         though the receiver's own class (KotlinFoo) is Kotlin-declared, \
+         got {locs:?}"
+    );
+    assert_eq!(locs[0].uri, java_base_uri);
+    assert_eq!(
+        locs[0].range.start.line, 2,
+        "expected getFail's declaration line on the Java ancestor: {locs:?}"
+    );
+}
+
+#[test]
+fn resolve_from_class_hierarchy_scoped_does_not_leak_a_sibling_class_member_on_an_ancestor_miss() {
+    // Copilot review finding: the hierarchy-walk closure fell through to an
+    // unscoped `find_name_in_uri` whenever `find_all_names_with_container_in_uri`
+    // came up empty for an ancestor -- but an empty result there usually just
+    // means "this specific ancestor has no member of this name", the normal
+    // case while walking up a multi-level hierarchy, NOT "this file has no
+    // container metadata". Reintroduces the exact cross-container leak the
+    // container-tag scoping exists to prevent: a JAR-style synthetic file
+    // holding two unrelated classes, walking from a receiver whose real
+    // ancestor has no `target` member, must NOT pick up an unrelated
+    // sibling class's same-named `target` purely by file position.
+    use super::qualified::resolve_from_class_hierarchy_scoped;
+
+    let lib_uri = uri("/lib.kt");
+    let idx = Indexer::new();
+    // One synthetic file holding two unrelated classes -- mirrors a JAR's
+    // flat per-file symbol table. `Sibling` is declared FIRST so a
+    // position-based fallback would find its `target` before ever reaching
+    // (or failing to reach) `Base`'s own members.
+    idx.index_content(
+        &lib_uri,
+        concat!(
+            "package com.pkg\n",
+            "class Sibling {\n",
+            "  val target: Int = 0\n",
+            "}\n",
+            "open class Base {\n",
+            "  fun act() {}\n",
+            "}\n",
+        ),
+    );
+
+    let locs = resolve_from_class_hierarchy_scoped(&idx, "target", "Base", &lib_uri, &lib_uri);
+    assert!(
+        locs.is_empty(),
+        "Base declares no `target` -- must not leak Sibling's unrelated \
+         same-named field, got {locs:?}"
+    );
+}
+
+#[test]
+fn denylist_matches_the_bare_prefix_package_itself_not_only_its_descendants() {
+    // Copilot review finding: `DENYLISTED_PACKAGE_PREFIXES` entries carry a
+    // trailing dot ("com.android.internal."), so `starts_with` only ever
+    // matched a DESCENDANT package (`com.android.internal.widget`) -- never
+    // the base package itself, with no trailing segment at all
+    // (`com.android.internal`), which survived the denylist entirely.
+    let idx = Indexer::new();
+    let decoy_uri = Url::parse("jar:file:///decoy.jar").unwrap();
+    let real_uri = Url::parse("jar:file:///real-stdlib.jar").unwrap();
+    idx.jar_definitions.insert(
+        "Thing".to_owned(),
+        vec![
+            tower_lsp::lsp_types::Location {
+                uri: decoy_uri.clone(),
+                range: Default::default(),
+            },
+            tower_lsp::lsp_types::Location {
+                uri: real_uri.clone(),
+                range: Default::default(),
+            },
+        ],
+    );
+    idx.jar_files.insert(
+        decoy_uri.to_string(),
+        std::sync::Arc::new(crate::types::FileData {
+            // The bare denylisted package itself -- no trailing segment.
+            package: Some("com.android.internal".to_owned()),
+            ..Default::default()
+        }),
+    );
+    idx.jar_files.insert(
+        real_uri.to_string(),
+        std::sync::Arc::new(crate::types::FileData {
+            package: Some("kotlin".to_owned()),
+            ..Default::default()
+        }),
+    );
+
+    let host_uri = uri("/Host.kt");
+    idx.index_content(&host_uri, "package com.pkg\n");
+
+    let locs = resolve_symbol_index_only(&idx, "Thing", None, &host_uri);
+    assert_eq!(
+        locs,
+        vec![tower_lsp::lsp_types::Location {
+            uri: real_uri,
+            range: Default::default(),
+        }],
+        "expected the bare com.android.internal decoy to be excluded too, \
+         got {locs:?}"
+    );
+}
+
+#[test]
+fn kotlin_default_import_tie_break_does_not_apply_from_a_java_origin_file() {
+    // Copilot review finding: `default_kotlin_import_tie_break` applied
+    // Kotlin's own default-import package set regardless of the calling
+    // file's language -- a Java file never implicitly imports `kotlin.*`,
+    // so on an ambiguous `java.util.List` vs. `kotlin.collections.List`
+    // decoy pair, narrowing to the Kotlin candidate from a JAVA origin file
+    // would prefer a candidate the Java call site could never actually
+    // reach. From a Java origin, this tie-break must be a no-op, leaving
+    // the ambiguity for the next (import-based) tie-break to decline.
+    let idx = Indexer::new();
+    let kotlin_uri = Url::parse("jar:file:///kotlin-stdlib.jar").unwrap();
+    let java_uri = Url::parse("jar:file:///java-base.jar").unwrap();
+    idx.jar_definitions.insert(
+        "List".to_owned(),
+        vec![
+            tower_lsp::lsp_types::Location {
+                uri: kotlin_uri.clone(),
+                range: Default::default(),
+            },
+            tower_lsp::lsp_types::Location {
+                uri: java_uri.clone(),
+                range: Default::default(),
+            },
+        ],
+    );
+    idx.jar_files.insert(
+        kotlin_uri.to_string(),
+        std::sync::Arc::new(crate::types::FileData {
+            package: Some("kotlin.collections".to_owned()),
+            ..Default::default()
+        }),
+    );
+    idx.jar_files.insert(
+        java_uri.to_string(),
+        std::sync::Arc::new(crate::types::FileData {
+            package: Some("java.util".to_owned()),
+            ..Default::default()
+        }),
+    );
+
+    let host_uri = uri("/Host.java");
+    idx.index_content(&host_uri, "package com.pkg;\n");
+
+    let locs = resolve_symbol_index_only(&idx, "List", None, &host_uri);
+    assert!(
+        locs.is_empty(),
+        "a Java origin must not let the Kotlin-default-import narrowing \
+         resolve this ambiguity, got {locs:?}"
+    );
 }
