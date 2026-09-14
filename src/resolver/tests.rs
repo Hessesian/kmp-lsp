@@ -1124,6 +1124,55 @@ fn enum_type_qualified_entries_values_valueof_resolve() {
     );
 }
 
+/// `.name`/`.ordinal` are `kotlin.Enum` instance members, compiler-generated
+/// on every enum class exactly like `.entries`/`values()`/`valueOf()` above
+/// -- but `synthesize_enum_members`'s own doc comment claimed they were "a
+/// separate, already-handled concern", pointing at `Indexer::find_field_type`
+/// (indexer.rs)'s `synthetic_enum_field`. That helper only feeds TYPE
+/// INFERENCE (hover/inlay chain propagation) -- it never gives `.name`/
+/// `.ordinal` a real go-to-def `Location`, so qualified resolution dead-ended.
+/// Real Moneta corpus case: `Insurance.EType.entries.firstOrNull { it.name
+/// .equals(text, ignoreCase = true) }` -- `.name` resolved to nothing.
+#[test]
+fn enum_type_qualified_name_resolves() {
+    let uri = uri("/Flavor.kt");
+    let idx = Indexer::new();
+    idx.index_content(
+        &uri,
+        concat!(
+            "package app\n",
+            "enum class Flavor {\n",
+            "  PROD, DEV\n",
+            "}\n",
+        ),
+    );
+
+    assert!(
+        !resolve_symbol(&idx, "name", Some("Flavor"), &uri).is_empty(),
+        "Flavor.name (kotlin.Enum.name) did not resolve"
+    );
+}
+
+#[test]
+fn enum_type_qualified_ordinal_resolves() {
+    let uri = uri("/Flavor.kt");
+    let idx = Indexer::new();
+    idx.index_content(
+        &uri,
+        concat!(
+            "package app\n",
+            "enum class Flavor {\n",
+            "  PROD, DEV\n",
+            "}\n",
+        ),
+    );
+
+    assert!(
+        !resolve_symbol(&idx, "ordinal", Some("Flavor"), &uri).is_empty(),
+        "Flavor.ordinal (kotlin.Enum.ordinal) did not resolve"
+    );
+}
+
 #[test]
 fn resolve_qualified_class_name_prefers_named_companion_member() {
     // Same as above but with an explicitly named companion (`companion object

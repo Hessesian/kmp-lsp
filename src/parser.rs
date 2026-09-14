@@ -475,16 +475,20 @@ fn synthesize_data_class_copy(root: Node, bytes: &[u8], symbols: &mut Vec<Symbol
     }
 }
 
-/// Synthesize the three compiler-generated static members every `enum class`
-/// gets: `entries` (a `EnumEntries<T>` property, Kotlin 1.9+), `values()`
-/// (`Array<T>`), and `valueOf(name: String)` (`T`). None of these ever
-/// appears as a literal declared symbol in the source text — the compiler
-/// generates them — so without this, `Flavor.entries`/
-/// `TransactionAction.valueOf(it.name)` resolve to zero candidates no matter
-/// how correct qualified-member lookup otherwise is. Same synthesis shape as
-/// [`synthesize_data_class_copy`] just above; instance members inherited
-/// from `kotlin.Enum` (`.name`, `.ordinal`) are a separate, already-handled
-/// concern and not touched here.
+/// Synthesize the five compiler-generated members every `enum class` gets:
+/// the static `entries` (a `EnumEntries<T>` property, Kotlin 1.9+),
+/// `values()` (`Array<T>`), `valueOf(name: String)` (`T`), and the
+/// `kotlin.Enum` instance members `name` (`String`) and `ordinal` (`Int`).
+/// None of these ever appears as a literal declared symbol in the source
+/// text — the compiler generates them — so without this, `Flavor.entries`/
+/// `TransactionAction.valueOf(it.name)`/`it.name` (on an enum-typed `it`)
+/// resolve to zero candidates no matter how correct qualified-member lookup
+/// otherwise is. Same synthesis shape as [`synthesize_data_class_copy`] just
+/// above. `name`/`ordinal` were previously believed to be "already handled"
+/// by `Indexer::find_field_type`'s `synthetic_enum_field` — that helper only
+/// feeds type inference (hover/inlay chain propagation), never a real
+/// go-to-def `Location`, so qualified resolution of `.name`/`.ordinal`
+/// dead-ended until they got a real synthesized symbol here too.
 fn synthesize_enum_members(symbols: &mut Vec<SymbolEntry>) {
     let enum_classes: Vec<SymbolEntry> = symbols
         .iter()
@@ -539,6 +543,34 @@ fn synthesize_enum_members(symbols: &mut Vec<SymbolEntry>) {
             detail: format!("fun valueOf(value: String): {}", cls.name),
             params: "value: String".to_owned(),
             param_counts: (1, 1),
+            container: Some(cls.name.clone()),
+            cold: None,
+            trailing_lambda: false,
+            deprecated: false,
+        });
+        symbols.push(SymbolEntry {
+            name: "name".to_owned(),
+            kind: SymbolKind::PROPERTY,
+            visibility: cls.visibility,
+            range: cls.selection_range,
+            selection_range: cls.selection_range,
+            detail: "val name: String".to_owned(),
+            params: String::new(),
+            param_counts: (0, 0),
+            container: Some(cls.name.clone()),
+            cold: None,
+            trailing_lambda: false,
+            deprecated: false,
+        });
+        symbols.push(SymbolEntry {
+            name: "ordinal".to_owned(),
+            kind: SymbolKind::PROPERTY,
+            visibility: cls.visibility,
+            range: cls.selection_range,
+            selection_range: cls.selection_range,
+            detail: "val ordinal: Int".to_owned(),
+            params: String::new(),
+            param_counts: (0, 0),
             container: Some(cls.name),
             cold: None,
             trailing_lambda: false,
