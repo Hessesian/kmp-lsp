@@ -210,6 +210,36 @@ fn resolve_callee_chain_does_not_corrupt_receiver_when_final_method_is_indexed_a
     );
 }
 
+/// `fun <T> T?.required(field: String): T` -- the extension's own type
+/// param IS the whole receiver type, not nested inside a `<...>` type
+/// argument. `StrategyOutcome::finalize`'s `ReceiverDerived` arm only tried
+/// `build_type_arg_subst` (receiver's own class type params, extracted from
+/// its `<...>`), which is empty for a plain `String` receiver, so `raw_return`
+/// ("T") stayed unsubstituted. Real Moneta corpus case:
+/// `textModel.required("textModel").title` needs `.required(...)` to resolve
+/// to `String`, not the literal `"T"`.
+#[test]
+fn resolve_call_expr_type_substitutes_extension_receiver_as_the_whole_type_param() {
+    use super::chain::resolve_call_expr_type;
+
+    let uri = test_url("/Required.kt");
+    let deps = super::deps::TestDeps::new()
+        .with_var(uri.as_str(), "textModel", "String")
+        .with_method_return_for_type("String", "required", "T")
+        .with_callable_info("required", &["T"], "T?");
+    let doc = live_doc_for("fun f() { textModel.required(\"textModel\") }\n");
+    let call = find_first_node_of_kind(doc.tree.root_node(), crate::queries::KIND_CALL_EXPR)
+        .expect("call expr node");
+
+    let result = resolve_call_expr_type(call, &doc.bytes, &deps, &uri);
+    assert_eq!(
+        result.as_deref(),
+        Some("String"),
+        "required()'s return type param T must substitute to the receiver's \
+         own type (String), not stay the literal \"T\" -- got {result:?}"
+    );
+}
+
 /// Unknown ROOT decoy: `resolve_root_node_type` falls back to `Some(name)`
 /// for an unresolvable root ident; combined with a leaking walk this used to
 /// be able to resolve a nav to the literal root string. The strict nav arm

@@ -16,8 +16,9 @@ use super::lambda::{
     GENERIC_FACTORY_FNS, LAMBDA_RESULT_FNS, NUMERIC_CONVERSION_FNS, SCOPE_FUNCTIONS,
 };
 use super::type_subst::{
-    apply_simple_subst, build_fn_subst, build_type_arg_subst, capitalize_first_char,
-    first_type_arg_raw, is_generic_param, split_top_level_commas, type_args_inner,
+    apply_simple_subst, build_ext_fn_type_subst, build_fn_subst, build_type_arg_subst,
+    capitalize_first_char, first_type_arg_raw, is_generic_param, split_top_level_commas,
+    type_args_inner,
 };
 
 /// A segment in a navigation chain: either a root identifier or a suffix member.
@@ -604,7 +605,28 @@ impl StrategyOutcome {
                 effective_type,
                 receiver_type,
             } => {
-                let subst = build_type_arg_subst(ctx.deps, &effective_type, &receiver_type);
+                let mut subst = build_type_arg_subst(ctx.deps, &effective_type, &receiver_type);
+                // `build_type_arg_subst` only covers a type param NESTED inside
+                // the receiver's own type argument (`List<T>`'s `T`). It misses
+                // the shape where the extension's OWN type parameter IS the
+                // whole receiver (`fun <T> T?.required(field: String): T`) --
+                // `effective_type` (e.g. "String") declares no class type
+                // params, so that map comes back empty and `raw_return` ("T")
+                // is left unsubstituted. Fill the gap from the extension's own
+                // declared-vs-concrete receiver shape, without overriding any
+                // key `build_type_arg_subst` already resolved.
+                if let Some(info) = ctx.deps.find_fun_callable_info(ctx.fn_name, ctx.uri) {
+                    if !info.extension_receiver_type.is_empty() && !info.type_params.is_empty() {
+                        let ext_subst = build_ext_fn_type_subst(
+                            &info.extension_receiver_type,
+                            &receiver_type,
+                            &info.type_params,
+                        );
+                        for (param, concrete) in ext_subst {
+                            subst.entry(param).or_insert(concrete);
+                        }
+                    }
+                }
                 let substituted = crate::indexer::apply_type_subst(&raw_return, &subst);
                 apply_call_site_type_args(substituted, ctx)
             }

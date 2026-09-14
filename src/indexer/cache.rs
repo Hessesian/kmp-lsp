@@ -31,7 +31,7 @@ use crate::types::{FileData, FileIndexResult, Visibility};
 /// v31: `parse_kotlin` now synthesizes `entries`/`values`/`valueOf` symbols
 ///      for every enum class — a cached pre-v31 file's symbol list lacks
 ///      them, so older caches must be rejected and rescanned.
-pub(crate) const CACHE_VERSION: u32 = 31;
+pub(crate) const CACHE_VERSION: u32 = 32;
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
