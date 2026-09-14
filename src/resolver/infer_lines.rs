@@ -677,10 +677,17 @@ pub(crate) enum SmartCast {
 /// 1. `when (var) { is Type -> … }` — cursor inside the `is Type` branch
 /// 2. `when (var) { Obj -> … }` — cursor inside an object-equality branch
 /// 3. `if (var is Type)` / `else if (var is Type)` — cursor inside that block
+///
+/// `col` is the cursor's UTF-16 column on `line`, when known — only used to
+/// bound the same-line `if` case (`if (x is Y) x.member()`): a brace-less
+/// `if` covers exactly one statement, so a member access AFTER a `;` that
+/// ends that statement (`if (x is Y) x.use(); x.other()`) must not inherit
+/// the cast. `None` skips that bound (matches the pre-column behavior).
 pub(crate) fn smart_cast_type_at_line(
     lines: &[String],
     var_name: &str,
     line: u32,
+    col: Option<u32>,
 ) -> Option<SmartCast> {
     let line_idx = line as usize;
     if line_idx >= lines.len() {
@@ -688,7 +695,7 @@ pub(crate) fn smart_cast_type_at_line(
     }
 
     when_branch_smart_cast(lines, var_name, line_idx)
-        .or_else(|| if_is_smart_cast(lines, var_name, line_idx).map(SmartCast::TypeTest))
+        .or_else(|| if_is_smart_cast(lines, var_name, line_idx, col).map(SmartCast::TypeTest))
 }
 
 /// Check if cursor is inside a `when (var_name)` block and read the narrowing
@@ -757,7 +764,12 @@ fn when_branch_smart_cast(lines: &[String], var_name: &str, line_idx: usize) -> 
 }
 
 /// Check if cursor is inside an `if (var is Type)` or `else if (var is Type)` block.
-fn if_is_smart_cast(lines: &[String], var_name: &str, line_idx: usize) -> Option<String> {
+fn if_is_smart_cast(
+    lines: &[String],
+    var_name: &str,
+    line_idx: usize,
+    col: Option<u32>,
+) -> Option<String> {
     let start = line_idx.saturating_sub(SMART_CAST_SCAN_LINES);
 
     // Scan backward for `if (var_name is Type` or `} else if (var_name is Type`
@@ -774,7 +786,24 @@ fn if_is_smart_cast(lines: &[String], var_name: &str, line_idx: usize) -> Option
                 let opens = trimmed.chars().filter(|&c| c == '{').count();
                 let closes = trimmed.chars().filter(|&c| c == '}').count();
                 if opens == 0 || opens != closes {
-                    return Some(type_name);
+                    // A brace-less `if` on the CURSOR's own line covers only
+                    // ONE statement, ending at the first top-level `;` — an
+                    // access after that `;` on the same physical line
+                    // belongs to a later, unguarded statement (Copilot
+                    // review finding). Only checked for this exact shape:
+                    // multi-line bodies and earlier lines are already
+                    // correctly scoped by the brace-depth tracking below.
+                    let same_line_access_past_semicolon = i == line_idx
+                        && opens == 0
+                        && col.is_some_and(|col| {
+                            lines[i].find(';').is_some_and(|byte_pos| {
+                                let semi_col = lines[i][..byte_pos].encode_utf16().count() as u32;
+                                col > semi_col
+                            })
+                        });
+                    if !same_line_access_past_semicolon {
+                        return Some(type_name);
+                    }
                 }
             }
             if (trimmed.ends_with('{') || trimmed == "{") && i > start {

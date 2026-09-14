@@ -317,15 +317,28 @@ fn infer_prefix_expr_type(node: Node<'_>, bytes: &[u8]) -> Option<String> {
 }
 
 /// `x as Type` / `x as? Type`: the cast's own target type IS the expression's
-/// type, verbatim — the one type Kotlin lets source text state outright
-/// without any inference at all. The target type is always the LAST named
-/// child (`as_expression`'s only other named child is the base expression
-/// being cast), so this doesn't need to distinguish `as` from `as?` by
-/// scanning for the keyword token.
+/// type, stated outright without any inference — except that Kotlin's safe
+/// cast (`as?`) always yields a NULLABLE result (`Type?`) regardless of
+/// whether `Type` itself carries a `?` in source (Copilot review finding:
+/// an earlier version of this function ignored the distinction entirely).
+/// The target type is always the LAST named child (`as_expression`'s only
+/// other named child is the base expression being cast); the operator
+/// itself (`"as"` or `"as?"`) is an unnamed token among the direct children,
+/// found by its own text rather than a fixed index since the base
+/// expression's own child count can vary.
 fn infer_as_expr_type(node: Node<'_>, bytes: &[u8]) -> Option<String> {
     let count = node.named_child_count() as u32;
     let type_node = node.named_child(count.checked_sub(1)?)?;
-    type_node.utf8_text_owned(bytes)
+    let type_text = type_node.utf8_text_owned(bytes)?;
+
+    let is_safe_cast = (0..node.child_count() as u32)
+        .filter_map(|i| node.child(i))
+        .any(|child| child.utf8_text(bytes) == Ok("as?"));
+    if is_safe_cast && !type_text.ends_with('?') {
+        Some(format!("{type_text}?"))
+    } else {
+        Some(type_text)
+    }
 }
 
 /// For `if (cond) <then> else <else>`: emit a type hint only when both

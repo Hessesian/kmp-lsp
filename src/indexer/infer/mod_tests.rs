@@ -68,9 +68,11 @@ fn cst_query_expr_type_resolves_as_cast() {
 
 #[test]
 fn cst_query_expr_type_resolves_safe_as_cast() {
-    // `as?` (safe cast) uses the same `as_expression` grammar node as `as` --
-    // confirm the target type extraction doesn't accidentally depend on
-    // scanning for the literal `as` keyword text.
+    // `as?` (safe cast) uses the same `as_expression` grammar node as `as`,
+    // but ALWAYS yields a nullable result -- `x as? Activity` is `Activity?`,
+    // never bare `Activity`, regardless of whether the target type itself
+    // carries a `?` in source (Copilot review finding on an earlier version
+    // of this fix, which returned "Activity" here).
     let source = "fun f(x: Any) = x as? Activity\n";
     let live_doc = live_doc_for(source);
     let as_expr_node = first_expr_in_fun(&live_doc.tree).expect("expr node");
@@ -79,12 +81,12 @@ fn cst_query_expr_type_resolves_safe_as_cast() {
     let uri = test_url("/AsSafeCast.kt");
     indexer.index_content(&uri, source);
 
-    let resolved = CstQuery::new(as_expr_node, &live_doc, &indexer, &uri)
-        .expr_type()
-        .resolved();
-    assert_eq!(
-        resolved.map(|t| t.as_type_str().to_owned()).as_deref(),
-        Some("Activity")
+    let resolution = CstQuery::new(as_expr_node, &live_doc, &indexer, &uri).expr_type();
+    let resolved = resolution.resolved().expect("as? Activity should resolve");
+    assert_eq!(resolved.as_type_str(), "Activity?");
+    assert!(
+        resolved.is_nullable(),
+        "a safe cast's result must be nullable"
     );
 }
 
