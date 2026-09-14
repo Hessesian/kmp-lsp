@@ -144,3 +144,75 @@ Gotchas:
 - After bumping a cache version, the first warm run re-scans all jars (slow, minutes).
 - `definitions["remember"]` etc. is only populated after `index_sources_jars` — omit it and
   type-inference bugs won't reproduce.
+
+## Addendum (2026-09-14): root cause #2 recurred independently, in a second registry
+
+A `resolution-accuracy` Gap-cluster investigation (real Android corpus,
+`/home/ocel/Work/Moneta/android`) found the *identical* "collapses overloads" defect this
+doc named as root cause #2 — but in a completely separate registry this doc never
+mentions: `extension_by_receiver: DashMap<String, Vec<ExtensionEntry>>` and its readers in
+`src/resolver/extension.rs` and `src/resolver/qualified.rs`. The map's own value type is
+already `Vec<ExtensionEntry>` — plural, correct — but every consumer function that reads it
+still narrows to one candidate before returning, by construction:
+
+- `resolve_extension_in_scope` (`extension.rs:69`) — `return vec![Location{..}]` on the
+  *first* in-scope entry, inside the loop, despite a `-> Vec<Location>` signature that
+  promises otherwise.
+- `jar_extension_for_type_root` (`qualified.rs:505-542`) — the identical pattern, on the
+  last-resort path taken for exactly the built-in/uncompiled receivers this bug class hits
+  hardest.
+- `implicit_receiver_extension_match` (`extension.rs:144-168`) — same first-match narrowing,
+  on a third, separate call path.
+- `QualifiedCandidates`'s own fields (`qualified.rs`) — `own_type_extension` /
+  `supertype_extension` were typed `Option<Location>`, so even a caller that *did* get
+  several locations from one of the functions above had nowhere to put more than one.
+
+**Why this doc's target architecture (`Vec<ResolvedSymbol>` core) didn't already prevent
+it:** it was never built here. The CST-resolution-unification effort
+(`docs/superpowers/specs/2026-06-30-cst-resolution-unification-design.md`) that *did* land
+explicitly scoped this territory OUT: *"String path (`resolver/resolve.rs`, `complete.rs`,
+string `infer_*`)... intentionally heuristic; NOT unified (deep-analysis later)."*
+`extension.rs` and `qualified.rs` are string-path resolver code — the exact files that
+"later" never reached. A subsequent, narrower pass into the same file
+(`docs/superpowers/specs/2026-08-24-qualified-resolution-unification-design.md`, "5 instances
+of a same-named-sibling-leak bug") fixed a *different* defect sitting in the same file and
+stopped there. And **PR #304** (2026-09-02, `find_all_names_scoped_to_container` returns
+every same-name candidate instead of `.find()`'s first) fixed this *exact* defect shape for
+the **member** tier only — the fix was never swept to its structural sibling, the extension
+tier, which has now been shown to carry the identical bug in at least four places.
+
+**The pattern to take from this for any future sweep:**
+
+1. **A root cause named once is not fixed once it's fixed in one place.** When a defect
+   shape is found and fixed (PR #304's member-tier fix), the correct follow-up is not "close
+   the ticket" but "grep every sibling function solving the same kind of problem and check
+   each one individually" — `resolve_extension_in_scope`, `jar_extension_for_type_root`, and
+   `implicit_receiver_extension_match` all do the conceptual job "given a name and a
+   receiver-ish key, return every matching declaration" and all three independently got it
+   wrong the same way, undetected, for over a month. A checklist item ("does this function's
+   return type promise more than one candidate, and does its body ever actually produce
+   more than one?") applied to every `-> Vec<T>`-returning resolution function would have
+   caught all four sites in one pass instead of one Gap-cluster investigation at a time.
+2. **A "scoped out for now" boundary needs an expiry, not just a label.** The CST-unification
+   doc's exclusion of the string path was reasonable in June (a real architectural
+   decision — heuristic resolution has to work cold, without a synced project, which the CST
+   path can't do). But "deep-analysis later" with no owner and no date is how a real,
+   root-cause-named defect survives three subsequent unification passes that all worked in
+   adjacent code without ever being pointed at it.
+3. **Independently-derived registry keys drift.** A second, smaller instance of the same
+   underlying problem (no single chokepoint) turned up in the same investigation: the
+   `extension_by_receiver` key is computed independently at 3+ sites — source-side
+   (`parser::extension_receiver_from_decl`) and JAR-side (`jar.rs`, twice, Tier 1 and Tier
+   2) — each hand-rolling its own generics/nullability/package-prefix stripping, with no
+   shared function forcing agreement. They now disagree (source strips a trailing `?`, JAR
+   doesn't), and nothing short of manually diffing all derivation sites would have surfaced
+   it. Any registry with more than one writer needs its key-derivation logic to live in
+   exactly one function, called by every writer — not independently reimplemented per
+   writer "because they're slightly different call sites."
+
+None of this changes root cause #2's original prescription (`Vec<ResolvedSymbol>`
+everywhere, one core) — if anything it's a second, independent data point for it. It *does*
+mean the migration plan above should not assume "the parts we haven't unified yet are just
+old code we haven't gotten to" — some of them are old code a design doc *deliberately*
+routed around, and that routing decision is exactly where a structurally-identical bug will
+keep re-appearing until the boundary itself is revisited, not just patched from outside it.
