@@ -761,9 +761,12 @@ fn if_is_smart_cast(lines: &[String], var_name: &str, line_idx: usize) -> Option
     let start = line_idx.saturating_sub(SMART_CAST_SCAN_LINES);
 
     // Scan backward for `if (var_name is Type` or `} else if (var_name is Type`
-    // while staying at the cursor's nesting level.
+    // while staying at the cursor's nesting level. INCLUSIVE of `line_idx`
+    // itself: `if (x is Y) x.member()` puts the test and the member access
+    // on the same physical line, so a range exclusive of the cursor's own
+    // line never even looked at it.
     let mut brace_depth: usize = 0;
-    for i in (start..line_idx).rev() {
+    for i in (start..=line_idx).rev() {
         let trimmed = lines[i].trim();
 
         if brace_depth == 0 {

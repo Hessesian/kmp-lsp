@@ -44,6 +44,51 @@ fn cst_query_expr_type_resolves_int_literal() {
 }
 
 #[test]
+fn cst_query_expr_type_resolves_as_cast() {
+    // Real Moneta gap: `val activity = LocalContext.current as Activity` --
+    // no code path extracted the RHS type from an `as`/`as?` cast at all, so
+    // `activity`'s type (and every member access on it, e.g.
+    // `activity.finishAffinity()`) never resolved.
+    let source = "fun f(x: Any) = x as Activity\n";
+    let live_doc = live_doc_for(source);
+    let as_expr_node = first_expr_in_fun(&live_doc.tree).expect("expr node");
+
+    let indexer = Indexer::new();
+    let uri = test_url("/AsCast.kt");
+    indexer.index_content(&uri, source);
+
+    let resolved = CstQuery::new(as_expr_node, &live_doc, &indexer, &uri)
+        .expr_type()
+        .resolved();
+    assert_eq!(
+        resolved.map(|t| t.as_type_str().to_owned()).as_deref(),
+        Some("Activity")
+    );
+}
+
+#[test]
+fn cst_query_expr_type_resolves_safe_as_cast() {
+    // `as?` (safe cast) uses the same `as_expression` grammar node as `as` --
+    // confirm the target type extraction doesn't accidentally depend on
+    // scanning for the literal `as` keyword text.
+    let source = "fun f(x: Any) = x as? Activity\n";
+    let live_doc = live_doc_for(source);
+    let as_expr_node = first_expr_in_fun(&live_doc.tree).expect("expr node");
+
+    let indexer = Indexer::new();
+    let uri = test_url("/AsSafeCast.kt");
+    indexer.index_content(&uri, source);
+
+    let resolved = CstQuery::new(as_expr_node, &live_doc, &indexer, &uri)
+        .expr_type()
+        .resolved();
+    assert_eq!(
+        resolved.map(|t| t.as_type_str().to_owned()).as_deref(),
+        Some("Activity")
+    );
+}
+
+#[test]
 fn cst_query_expr_type_unresolved_for_unknown_nav() {
     let source = "fun f() = list.size\n";
     let live_doc = live_doc_for(source);
@@ -237,6 +282,32 @@ fn resolve_call_expr_type_substitutes_extension_receiver_as_the_whole_type_param
         Some("String"),
         "required()'s return type param T must substitute to the receiver's \
          own type (String), not stay the literal \"T\" -- got {result:?}"
+    );
+}
+
+/// Real Moneta gap (`fragmentArguments`/`fragmentBundle`): a nested-class
+/// constructor call like `CaliforniaActivity.Builder(...)` must report the
+/// full qualified type name, not just the bare leaf "Builder" --
+/// `constructor_fallback` used to report only `ctx.fn_name` (`call_fn_name`'s
+/// bare leaf), discarding the "CaliforniaActivity." qualifier and colliding
+/// with every other unrelated same-named nested class once that bare name
+/// reached a global lookup downstream.
+#[test]
+fn resolve_call_expr_type_keeps_the_outer_qualifier_for_a_nested_class_constructor() {
+    use super::chain::resolve_call_expr_type;
+
+    let uri = test_url("/Ctor.kt");
+    let deps = super::deps::TestDeps::new();
+    let doc = live_doc_for("fun f() { CaliforniaActivity.Builder(x) }\n");
+    let call = find_first_node_of_kind(doc.tree.root_node(), crate::queries::KIND_CALL_EXPR)
+        .expect("call expr node");
+
+    let result = resolve_call_expr_type(call, &doc.bytes, &deps, &uri);
+    assert_eq!(
+        result.as_deref(),
+        Some("CaliforniaActivity.Builder"),
+        "a nested-class constructor call must report the full qualified \
+         type, not just the bare leaf name -- got {result:?}"
     );
 }
 
