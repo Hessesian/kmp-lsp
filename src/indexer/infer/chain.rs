@@ -844,19 +844,45 @@ fn constructor_fallback<D: InferDeps>(ctx: &CallCtx<'_, D>) -> StrategyVerdict {
     // every other unrelated same-named class once this type name reaches a
     // global bare-name lookup downstream (real Moneta bug: `Builder` is an
     // extremely common nested-class name across the corpus). Use the
-    // callee's own full dotted text instead, which is exactly the qualified
-    // type name `resolve_symbol`'s `name.contains('.')` branch already knows
-    // how to walk (root segment → file, then each nested segment scoped to
-    // its own enclosing type).
+    // callee's own full dotted type name instead (built from clean identifier
+    // segments, not the raw span -- see `qualified_type_path_name`), which is
+    // exactly what `resolve_symbol`'s `name.contains('.')` branch already
+    // knows how to walk (root segment → file, then each nested segment
+    // scoped to its own enclosing type).
     let type_name = if ctx.callee.kind() == KIND_NAV_EXPR {
-        ctx.callee
-            .utf8_text(ctx.bytes)
-            .map(str::to_owned)
-            .unwrap_or_else(|_| ctx.fn_name.to_owned())
+        qualified_type_path_name(ctx.callee, ctx.bytes).unwrap_or_else(|| ctx.fn_name.to_owned())
     } else {
         ctx.fn_name.to_owned()
     };
     StrategyVerdict::Terminal(Some(StrategyOutcome::Final(type_name)))
+}
+
+/// Build a clean, whitespace-free dotted type name from a navigation_expression
+/// callee (`Outer.Builder`, or a spaced `Outer . Builder` -- Copilot review
+/// finding: joining from clean identifier segments instead of using the raw
+/// span avoids embedding stray whitespace around the dots). `None` when this
+/// isn't a type path at all: the chain's root isn't itself a type (lowercase,
+/// a value-qualified call like `factory.Builder(...)` -- a second Copilot
+/// review finding, since the original version of this fix fired for every
+/// `KIND_NAV_EXPR` regardless of whether its root was a value or a type), or
+/// the chain has an intermediate call (`a().Builder(...)`).
+fn qualified_type_path_name(callee: tree_sitter::Node<'_>, bytes: &[u8]) -> Option<String> {
+    let segments = collect_nav_segments(callee, bytes);
+    let mut parts = Vec::with_capacity(segments.len());
+    for segment in &segments {
+        match segment {
+            NavSegment::Root(node) => {
+                let text = node.utf8_text(bytes).ok()?;
+                if !text.starts_with_uppercase() {
+                    return None;
+                }
+                parts.push(text.to_owned());
+            }
+            NavSegment::Suffix { name, .. } => parts.push(name.clone()),
+            NavSegment::CallExpr(_) => return None,
+        }
+    }
+    Some(parts.join("."))
 }
 
 pub(super) fn resolve_call_expr_type<D: InferDeps>(

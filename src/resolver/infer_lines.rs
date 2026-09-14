@@ -678,16 +678,17 @@ pub(crate) enum SmartCast {
 /// 2. `when (var) { Obj -> … }` — cursor inside an object-equality branch
 /// 3. `if (var is Type)` / `else if (var is Type)` — cursor inside that block
 ///
-/// `col` is the cursor's UTF-16 column on `line`, when known — only used to
-/// bound the same-line `if` case (`if (x is Y) x.member()`): a brace-less
-/// `if` covers exactly one statement, so a member access AFTER a `;` that
-/// ends that statement (`if (x is Y) x.use(); x.other()`) must not inherit
-/// the cast. `None` skips that bound (matches the pre-column behavior).
+/// `column` is the cursor's UTF-16 column on `line`, when known — only used
+/// to bound the same-line `if` case (`if (x is Y) x.member()`): a
+/// brace-less `if` covers exactly one statement, so a member access AFTER
+/// a `;` that ends that statement (`if (x is Y) x.use(); x.other()`) must
+/// not inherit the cast. `None` skips that bound (matches the
+/// pre-column behavior).
 pub(crate) fn smart_cast_type_at_line(
     lines: &[String],
     var_name: &str,
     line: u32,
-    col: Option<u32>,
+    column: Option<u32>,
 ) -> Option<SmartCast> {
     let line_idx = line as usize;
     if line_idx >= lines.len() {
@@ -695,7 +696,7 @@ pub(crate) fn smart_cast_type_at_line(
     }
 
     when_branch_smart_cast(lines, var_name, line_idx)
-        .or_else(|| if_is_smart_cast(lines, var_name, line_idx, col).map(SmartCast::TypeTest))
+        .or_else(|| if_is_smart_cast(lines, var_name, line_idx, column).map(SmartCast::TypeTest))
 }
 
 /// Check if cursor is inside a `when (var_name)` block and read the narrowing
@@ -768,7 +769,7 @@ fn if_is_smart_cast(
     lines: &[String],
     var_name: &str,
     line_idx: usize,
-    col: Option<u32>,
+    column: Option<u32>,
 ) -> Option<String> {
     let start = line_idx.saturating_sub(SMART_CAST_SCAN_LINES);
 
@@ -782,32 +783,39 @@ fn if_is_smart_cast(
         let trimmed = lines[i].trim();
 
         if brace_depth == 0 {
-            if let Some(type_name) = extract_if_is_type(trimmed, var_name) {
-                let opens = trimmed.chars().filter(|&c| c == '{').count();
-                let closes = trimmed.chars().filter(|&c| c == '}').count();
-                if opens == 0 || opens != closes {
-                    // A brace-less `if` on the CURSOR's own line covers only
-                    // ONE statement, ending at the first top-level `;` — an
-                    // access after that `;` on the same physical line
-                    // belongs to a later, unguarded statement (Copilot
-                    // review finding). Only checked for this exact shape:
-                    // multi-line bodies and earlier lines are already
-                    // correctly scoped by the brace-depth tracking below.
-                    let same_line_access_past_semicolon = i == line_idx
-                        && opens == 0
-                        && col.is_some_and(|col| {
-                            lines[i].find(';').is_some_and(|byte_pos| {
-                                let semi_col = lines[i][..byte_pos].encode_utf16().count() as u32;
-                                col > semi_col
-                            })
-                        });
-                    if !same_line_access_past_semicolon {
+            if let Some((type_name, match_end)) = extract_if_is_type(trimmed, var_name) {
+                if i == line_idx {
+                    // Same physical line as the cursor: a brace-less `if`
+                    // covers exactly ONE statement. Bound the match to that
+                    // statement's own span, starting the search right after
+                    // the if-condition's own `)` (never from the start of
+                    // the line — an EARLIER statement's `;`, e.g.
+                    // `foo(); if (x is Y) x.use()`, must never be mistaken
+                    // for this if's own terminator) and depth-tracking
+                    // braces too, so a trailing lambda on the same line
+                    // (`if (x is Y) x.use { }`) stays part of the SAME
+                    // guarded statement instead of looking like an
+                    // unrelated block (both Copilot review findings).
+                    let leading_ws = lines[i].len() - lines[i].trim_start().len();
+                    let covers = match column {
+                        None => true,
+                        Some(column) => {
+                            column <= same_line_statement_end_col(&lines[i], leading_ws + match_end)
+                        }
+                    };
+                    if covers {
+                        return Some(type_name);
+                    }
+                } else {
+                    let opens = trimmed.chars().filter(|&c| c == '{').count();
+                    let closes = trimmed.chars().filter(|&c| c == '}').count();
+                    if opens == 0 || opens != closes {
                         return Some(type_name);
                     }
                 }
             }
             if (trimmed.ends_with('{') || trimmed == "{") && i > start {
-                if let Some(type_name) = extract_if_is_type(lines[i - 1].trim(), var_name) {
+                if let Some((type_name, _)) = extract_if_is_type(lines[i - 1].trim(), var_name) {
                     return Some(type_name);
                 }
             }
@@ -926,8 +934,35 @@ fn is_when_subject(trimmed: &str, var_name: &str) -> bool {
     false
 }
 
-/// Extract type from `if (var_name is Type)` or `else if (var_name is Type)`
-fn extract_if_is_type(trimmed: &str, var_name: &str) -> Option<String> {
+/// For a brace-less `if`'s guarded statement beginning at `stmt_start_byte`
+/// in `line` (the byte right after the if-condition's own `)`), the UTF-16
+/// column of the statement's own end: the first top-level
+/// (paren/bracket/brace-depth 0) `;`, or `line`'s own length when the
+/// statement runs to end of line with no such terminator. Depth-tracking
+/// braces means a trailing lambda's `{ }` never terminates the statement —
+/// only a `;` that isn't nested inside anything does.
+fn same_line_statement_end_col(line: &str, stmt_start_byte: usize) -> u32 {
+    let mut depth: i32 = 0;
+    for (byte_idx, ch) in line[stmt_start_byte..].char_indices() {
+        match ch {
+            '(' | '[' | '{' => depth += 1,
+            ')' | ']' | '}' => depth -= 1,
+            ';' if depth == 0 => {
+                return line[..stmt_start_byte + byte_idx].encode_utf16().count() as u32;
+            }
+            _ => {}
+        }
+    }
+    line.encode_utf16().count() as u32
+}
+
+/// Extract type from `if (var_name is Type)` or `else if (var_name is Type)`.
+///
+/// The second element of the returned pair is the byte offset in `trimmed`
+/// of the position right after the match's own closing delimiter (normally
+/// the if-condition's `)`) — where the guarded statement begins. Callers
+/// that only need the type name (not the span) can discard it.
+fn extract_if_is_type(trimmed: &str, var_name: &str) -> Option<(String, usize)> {
     let is_pattern = format!("{var_name} is ");
     let is_identifier_char = |c: char| c.is_alphanumeric() || c == '_';
     let mut search_from = 0usize;
@@ -950,9 +985,12 @@ fn extract_if_is_type(trimmed: &str, var_name: &str) -> Option<String> {
         return None;
     }
 
-    let after = &trimmed[pos + is_pattern.len()..];
+    let after_start = pos + is_pattern.len();
+    let after = &trimmed[after_start..];
     let mut type_str = String::new();
     let mut generic_depth = 0usize;
+    let mut consumed = 0usize;
+    let mut match_end = after.len();
     let mut chars = after.chars().peekable();
     while let Some(ch) = chars.next() {
         match ch {
@@ -964,17 +1002,24 @@ fn extract_if_is_type(trimmed: &str, var_name: &str) -> Option<String> {
                 generic_depth = generic_depth.saturating_sub(1);
                 type_str.push(ch);
             }
-            ',' | ')' | '{' if generic_depth == 0 => break,
-            '&' | '|' if generic_depth == 0 && chars.peek() == Some(&ch) => break,
+            ',' | ')' | '{' if generic_depth == 0 => {
+                match_end = consumed + ch.len_utf8();
+                break;
+            }
+            '&' | '|' if generic_depth == 0 && chars.peek() == Some(&ch) => {
+                match_end = consumed;
+                break;
+            }
             _ => type_str.push(ch),
         }
+        consumed += ch.len_utf8();
     }
 
     let type_str = type_str.trim().trim_end_matches('.');
     if type_str.is_empty() || !type_str.starts_with(|c: char| c.is_uppercase()) {
         return None;
     }
-    Some(type_str.to_string())
+    Some((type_str.to_string(), after_start + match_end))
 }
 
 // ─── Callable parameter return type ──────────────────────────────────────────

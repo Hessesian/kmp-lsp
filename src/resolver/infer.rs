@@ -256,7 +256,7 @@ fn smart_cast_narrowed_type(
     name: &str,
     uri: &Url,
     line: u32,
-    col: Option<u32>,
+    column: Option<u32>,
 ) -> Option<String> {
     use super::infer_lines::SmartCast;
 
@@ -265,7 +265,7 @@ fn smart_cast_narrowed_type(
         .get(uri.as_str())
         .map(|ll| (*ll).clone())
         .or_else(|| indexer.files.get(uri.as_str()).map(|d| d.lines.clone()))?;
-    match super::infer_lines::smart_cast_type_at_line(&lines, name, line, col)? {
+    match super::infer_lines::smart_cast_type_at_line(&lines, name, line, column)? {
         SmartCast::TypeTest(type_name) => Some(type_name),
         // Only an object's own name is also a type; an enum entry or a
         // constant matches by value and leaves the subject's type alone.

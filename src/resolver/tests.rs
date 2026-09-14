@@ -5235,6 +5235,51 @@ fn smart_cast_if_is_same_line_does_not_leak_past_a_semicolon() {
 }
 
 #[test]
+fn smart_cast_if_is_same_line_ignores_an_earlier_statements_semicolon() {
+    // Copilot review finding: the semicolon search must start AFTER the
+    // if-condition's own closing `)`, not from the start of the line --
+    // `foo(); if (value is Target) value.use()` has an earlier, unrelated
+    // semicolon from a PRECEDING statement. Searching from line start would
+    // find that one and wrongly decline to narrow `value.use()`, even
+    // though it's the if's own (and only) guarded statement.
+    let lines: Vec<String> = vec![
+        "fun handle(value: Any) {".to_owned(),
+        "    foo(); if (value is Target) value.use()".to_owned(),
+        "}".to_owned(),
+    ];
+
+    let result = infer_lines::smart_cast_type_at_line(&lines, "value", 1, Some(32));
+    assert_eq!(
+        result,
+        Some(infer_lines::SmartCast::TypeTest("Target".to_owned())),
+        "an earlier, unrelated statement's semicolon must not suppress \
+         this if's own guarded statement"
+    );
+}
+
+#[test]
+fn smart_cast_if_is_same_line_trailing_lambda_still_narrows() {
+    // Copilot review finding: `if (value is Target) value.use { }` has
+    // balanced braces from a trailing lambda, not an if-block -- the access
+    // inside `.use { }` is still the if's single guarded statement and must
+    // narrow. Depth-tracking braces (not just `;`) is what keeps the
+    // trailing lambda's `{ }` from looking like an unrelated block boundary.
+    let lines: Vec<String> = vec![
+        "fun handle(value: Any) {".to_owned(),
+        "    if (value is Target) value.use { }".to_owned(),
+        "}".to_owned(),
+    ];
+
+    let result = infer_lines::smart_cast_type_at_line(&lines, "value", 1, Some(25));
+    assert_eq!(
+        result,
+        Some(infer_lines::SmartCast::TypeTest("Target".to_owned())),
+        "a trailing lambda on the same line must not be mistaken for an \
+         unrelated block, got {result:?}"
+    );
+}
+
+#[test]
 fn smart_cast_no_match_wrong_var() {
     let lines: Vec<String> = vec![
         "fun handle(event: Event) {",

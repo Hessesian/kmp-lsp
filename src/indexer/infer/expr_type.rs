@@ -334,10 +334,23 @@ fn infer_as_expr_type(node: Node<'_>, bytes: &[u8]) -> Option<String> {
     let is_safe_cast = (0..node.child_count() as u32)
         .filter_map(|i| node.child(i))
         .any(|child| child.utf8_text(bytes) == Ok("as?"));
-    if is_safe_cast && !type_text.ends_with('?') {
-        Some(format!("{type_text}?"))
+    if !is_safe_cast || type_text.is_nullable() {
+        return Some(type_text);
+    }
+    // `x as? (String) -> Int`: the safe cast's nullability applies to the
+    // WHOLE function type, not its return type — appending `?` directly
+    // (Copilot review finding on an earlier version of this fix) misrenders
+    // it as `(String) -> Int?` (a nullable RETURN) instead of the correct
+    // `((String) -> Int)?` (a nullable function VALUE). A bare function
+    // type is the only Kotlin type-annotation shape that starts with `(`
+    // (a plain type never does), so that's a sufficient, simple signal —
+    // no need to depth-track `->` and risk confusing a nested function type
+    // inside an unrelated generic argument (`Map<String, () -> Int>`, which
+    // starts with `Map`, not `(`) for the whole cast target.
+    if type_text.starts_with('(') {
+        Some(format!("({type_text})?"))
     } else {
-        Some(type_text)
+        Some(format!("{type_text}?"))
     }
 }
 
