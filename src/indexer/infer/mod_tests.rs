@@ -68,9 +68,11 @@ fn cst_query_expr_type_resolves_as_cast() {
 
 #[test]
 fn cst_query_expr_type_resolves_safe_as_cast() {
-    // `as?` (safe cast) uses the same `as_expression` grammar node as `as` --
-    // confirm the target type extraction doesn't accidentally depend on
-    // scanning for the literal `as` keyword text.
+    // `as?` (safe cast) uses the same `as_expression` grammar node as `as`,
+    // but ALWAYS yields a nullable result -- `x as? Activity` is `Activity?`,
+    // never bare `Activity`, regardless of whether the target type itself
+    // carries a `?` in source (Copilot review finding on an earlier version
+    // of this fix, which returned "Activity" here).
     let source = "fun f(x: Any) = x as? Activity\n";
     let live_doc = live_doc_for(source);
     let as_expr_node = first_expr_in_fun(&live_doc.tree).expect("expr node");
@@ -79,13 +81,34 @@ fn cst_query_expr_type_resolves_safe_as_cast() {
     let uri = test_url("/AsSafeCast.kt");
     indexer.index_content(&uri, source);
 
-    let resolved = CstQuery::new(as_expr_node, &live_doc, &indexer, &uri)
-        .expr_type()
-        .resolved();
-    assert_eq!(
-        resolved.map(|t| t.as_type_str().to_owned()).as_deref(),
-        Some("Activity")
+    let resolution = CstQuery::new(as_expr_node, &live_doc, &indexer, &uri).expr_type();
+    let resolved = resolution.resolved().expect("as? Activity should resolve");
+    assert_eq!(resolved.as_type_str(), "Activity?");
+    assert!(
+        resolved.is_nullable(),
+        "a safe cast's result must be nullable"
     );
+}
+
+#[test]
+fn cst_query_expr_type_resolves_safe_as_cast_to_a_function_type() {
+    // Copilot review finding: appending `?` directly to a function type's
+    // raw text misrenders `x as? (String) -> Int` as `(String) -> Int?`
+    // (nullable RETURN type) instead of `((String) -> Int)?` (nullable
+    // function VALUE, the actually-correct meaning of the safe cast here).
+    let source = "fun f(x: Any) = x as? (String) -> Int\n";
+    let live_doc = live_doc_for(source);
+    let as_expr_node = first_expr_in_fun(&live_doc.tree).expect("expr node");
+
+    let indexer = Indexer::new();
+    let uri = test_url("/AsFnType.kt");
+    indexer.index_content(&uri, source);
+
+    let resolution = CstQuery::new(as_expr_node, &live_doc, &indexer, &uri).expr_type();
+    let resolved = resolution
+        .resolved()
+        .expect("as? (String) -> Int should resolve");
+    assert_eq!(resolved.as_type_str(), "((String) -> Int)?");
 }
 
 #[test]
@@ -308,6 +331,51 @@ fn resolve_call_expr_type_keeps_the_outer_qualifier_for_a_nested_class_construct
         Some("CaliforniaActivity.Builder"),
         "a nested-class constructor call must report the full qualified \
          type, not just the bare leaf name -- got {result:?}"
+    );
+}
+
+/// Copilot review finding on the nested-class-constructor fix above: the
+/// callee's raw span preserves source whitespace, so a legally-spaced
+/// qualifier (`Outer . Builder(x)`) must not leak stray spaces into the
+/// segments the dotted resolver splits on.
+#[test]
+fn resolve_call_expr_type_normalizes_a_spaced_qualifier_for_a_nested_class_constructor() {
+    use super::chain::resolve_call_expr_type;
+
+    let uri = test_url("/SpacedCtor.kt");
+    let deps = super::deps::TestDeps::new();
+    let doc = live_doc_for("fun f() { CaliforniaActivity . Builder(x) }\n");
+    let call = find_first_node_of_kind(doc.tree.root_node(), crate::queries::KIND_CALL_EXPR)
+        .expect("call expr node");
+
+    let result = resolve_call_expr_type(call, &doc.bytes, &deps, &uri);
+    assert_eq!(
+        result.as_deref(),
+        Some("CaliforniaActivity.Builder"),
+        "a spaced qualifier must normalize to a clean dotted name, got {result:?}"
+    );
+}
+
+/// Copilot review finding on the nested-class-constructor fix above: the old
+/// version fired for EVERY `KIND_NAV_EXPR` callee, including a
+/// value-qualified call whose root is a lowercase VARIABLE, not a type
+/// (`factory.Builder(...)`) -- misclassifying a value path as a type path.
+#[test]
+fn resolve_call_expr_type_does_not_treat_a_value_qualified_call_as_a_type_path() {
+    use super::chain::resolve_call_expr_type;
+
+    let uri = test_url("/ValueQualifiedCall.kt");
+    let deps = super::deps::TestDeps::new();
+    let doc = live_doc_for("fun f() { factory.Builder(x) }\n");
+    let call = find_first_node_of_kind(doc.tree.root_node(), crate::queries::KIND_CALL_EXPR)
+        .expect("call expr node");
+
+    let result = resolve_call_expr_type(call, &doc.bytes, &deps, &uri);
+    assert_eq!(
+        result.as_deref(),
+        Some("Builder"),
+        "a lowercase (value) root must not be treated as a type-qualified \
+         constructor path -- got {result:?}"
     );
 }
 

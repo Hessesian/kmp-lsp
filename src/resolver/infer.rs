@@ -189,9 +189,9 @@ pub(crate) fn infer_field_chain_type(
         let root = segments.first()?;
         let declared_type = match cst_point {
             Some((point, source)) => resolve_declared_type_from_cst(point, root, source)
-                .or_else(|| smart_cast_narrowed_type(indexer, root, uri, line))
+                .or_else(|| smart_cast_narrowed_type(indexer, root, uri, line, None))
                 .or_else(|| infer_variable_type(indexer, root, uri))?,
-            None => smart_cast_narrowed_type(indexer, root, uri, line)
+            None => smart_cast_narrowed_type(indexer, root, uri, line, None)
                 .or_else(|| infer_variable_type(indexer, root, uri))?,
         };
         (1, declared_type)
@@ -235,7 +235,9 @@ pub(crate) fn infer_receiver_type_at(
     uri: &Url,
     position: Position,
 ) -> Option<ReceiverType> {
-    if let Some(narrowed) = smart_cast_narrowed_type(indexer, name, uri, position.line) {
+    if let Some(narrowed) =
+        smart_cast_narrowed_type(indexer, name, uri, position.line, Some(position.character))
+    {
         return Some(ReceiverType::from_raw(narrowed));
     }
     // Fallback to normal inference
@@ -249,7 +251,13 @@ pub(crate) fn infer_receiver_type_at(
 /// instead risk a far more collision-prone bare-name class lookup downstream
 /// (a common sealed-interface name like `Event` can match dozens of unrelated
 /// classes workspace-wide; the narrowed subtype name rarely does).
-fn smart_cast_narrowed_type(indexer: &Indexer, name: &str, uri: &Url, line: u32) -> Option<String> {
+fn smart_cast_narrowed_type(
+    indexer: &Indexer,
+    name: &str,
+    uri: &Url,
+    line: u32,
+    column: Option<u32>,
+) -> Option<String> {
     use super::infer_lines::SmartCast;
 
     let lines = indexer
@@ -257,7 +265,7 @@ fn smart_cast_narrowed_type(indexer: &Indexer, name: &str, uri: &Url, line: u32)
         .get(uri.as_str())
         .map(|ll| (*ll).clone())
         .or_else(|| indexer.files.get(uri.as_str()).map(|d| d.lines.clone()))?;
-    match super::infer_lines::smart_cast_type_at_line(&lines, name, line)? {
+    match super::infer_lines::smart_cast_type_at_line(&lines, name, line, column)? {
         SmartCast::TypeTest(type_name) => Some(type_name),
         // Only an object's own name is also a type; an enum entry or a
         // constant matches by value and leaves the subject's type alone.

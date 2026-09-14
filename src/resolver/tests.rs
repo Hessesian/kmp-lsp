@@ -5132,7 +5132,7 @@ fn smart_cast_when_branch() {
     .collect();
 
     // Line 3 is inside `is Event.OnClick` branch
-    let result = infer_lines::smart_cast_type_at_line(&lines, "event", 3);
+    let result = infer_lines::smart_cast_type_at_line(&lines, "event", 3, None);
     assert_eq!(
         result,
         Some(infer_lines::SmartCast::TypeTest("Event.OnClick".to_owned()))
@@ -5153,7 +5153,7 @@ fn smart_cast_when_branch_same_line() {
     .collect();
 
     // Cursor on the branch line itself
-    let result = infer_lines::smart_cast_type_at_line(&lines, "event", 2);
+    let result = infer_lines::smart_cast_type_at_line(&lines, "event", 2, None);
     assert_eq!(
         result,
         Some(infer_lines::SmartCast::TypeTest("Event.OnClick".to_owned()))
@@ -5173,7 +5173,7 @@ fn smart_cast_if_is() {
     .map(String::from)
     .collect();
 
-    let result = infer_lines::smart_cast_type_at_line(&lines, "event", 2);
+    let result = infer_lines::smart_cast_type_at_line(&lines, "event", 2, None);
     assert_eq!(
         result,
         Some(infer_lines::SmartCast::TypeTest("Event.OnInput".to_owned()))
@@ -5196,10 +5196,86 @@ fn smart_cast_if_is_same_line_as_the_member_access() {
     .map(String::from)
     .collect();
 
-    let result = infer_lines::smart_cast_type_at_line(&lines, "drawable", 1);
+    let result = infer_lines::smart_cast_type_at_line(&lines, "drawable", 1, None);
     assert_eq!(
         result,
         Some(infer_lines::SmartCast::TypeTest("Animatable".to_owned()))
+    );
+}
+
+#[test]
+fn smart_cast_if_is_same_line_does_not_leak_past_a_semicolon() {
+    // Copilot review finding: making the same-line scan inclusive (above)
+    // covers the whole line regardless of column -- a brace-less `if` only
+    // guards ONE statement, ending at the first top-level `;`. For
+    // `if (value is Target) value.use(); value.other()`, the access inside
+    // `.use()` (col 25, before the `;` at col 36) is guarded; the access
+    // inside `.other()` (col 38, after the `;`) belongs to a separate,
+    // unguarded statement and must NOT inherit the cast.
+    let lines: Vec<String> = vec![
+        "fun handle(value: Any) {".to_owned(),
+        "    if (value is Target) value.use(); value.other()".to_owned(),
+        "}".to_owned(),
+    ];
+
+    let guarded = infer_lines::smart_cast_type_at_line(&lines, "value", 1, Some(25));
+    assert_eq!(
+        guarded,
+        Some(infer_lines::SmartCast::TypeTest("Target".to_owned())),
+        "the access before the semicolon is inside the if's guarded \
+         statement and must still narrow"
+    );
+
+    let unguarded = infer_lines::smart_cast_type_at_line(&lines, "value", 1, Some(38));
+    assert_eq!(
+        unguarded, None,
+        "the access after the semicolon is a separate, unguarded \
+         statement and must NOT narrow"
+    );
+}
+
+#[test]
+fn smart_cast_if_is_same_line_ignores_an_earlier_statements_semicolon() {
+    // Copilot review finding: the semicolon search must start AFTER the
+    // if-condition's own closing `)`, not from the start of the line --
+    // `foo(); if (value is Target) value.use()` has an earlier, unrelated
+    // semicolon from a PRECEDING statement. Searching from line start would
+    // find that one and wrongly decline to narrow `value.use()`, even
+    // though it's the if's own (and only) guarded statement.
+    let lines: Vec<String> = vec![
+        "fun handle(value: Any) {".to_owned(),
+        "    foo(); if (value is Target) value.use()".to_owned(),
+        "}".to_owned(),
+    ];
+
+    let result = infer_lines::smart_cast_type_at_line(&lines, "value", 1, Some(32));
+    assert_eq!(
+        result,
+        Some(infer_lines::SmartCast::TypeTest("Target".to_owned())),
+        "an earlier, unrelated statement's semicolon must not suppress \
+         this if's own guarded statement"
+    );
+}
+
+#[test]
+fn smart_cast_if_is_same_line_trailing_lambda_still_narrows() {
+    // Copilot review finding: `if (value is Target) value.use { }` has
+    // balanced braces from a trailing lambda, not an if-block -- the access
+    // inside `.use { }` is still the if's single guarded statement and must
+    // narrow. Depth-tracking braces (not just `;`) is what keeps the
+    // trailing lambda's `{ }` from looking like an unrelated block boundary.
+    let lines: Vec<String> = vec![
+        "fun handle(value: Any) {".to_owned(),
+        "    if (value is Target) value.use { }".to_owned(),
+        "}".to_owned(),
+    ];
+
+    let result = infer_lines::smart_cast_type_at_line(&lines, "value", 1, Some(25));
+    assert_eq!(
+        result,
+        Some(infer_lines::SmartCast::TypeTest("Target".to_owned())),
+        "a trailing lambda on the same line must not be mistaken for an \
+         unrelated block, got {result:?}"
     );
 }
 
@@ -5219,7 +5295,7 @@ fn smart_cast_no_match_wrong_var() {
     .collect();
 
     // "other" is not the when subject
-    let result = infer_lines::smart_cast_type_at_line(&lines, "other", 3);
+    let result = infer_lines::smart_cast_type_at_line(&lines, "other", 3, None);
     assert_eq!(result, None);
 }
 
@@ -5239,7 +5315,7 @@ fn smart_cast_when_no_subject_outside_branch() {
     .collect();
 
     // Line 5 is outside the when block
-    let result = infer_lines::smart_cast_type_at_line(&lines, "event", 5);
+    let result = infer_lines::smart_cast_type_at_line(&lines, "event", 5, None);
     assert_eq!(result, None);
 }
 
@@ -5259,7 +5335,7 @@ fn smart_cast_if_does_not_leak_from_closed_nested_block() {
     .map(String::from)
     .collect();
 
-    let result = infer_lines::smart_cast_type_at_line(&lines, "event", 5);
+    let result = infer_lines::smart_cast_type_at_line(&lines, "event", 5, None);
     assert_eq!(
         result,
         Some(infer_lines::SmartCast::TypeTest("Event.OnInput".to_owned()))
@@ -5279,7 +5355,7 @@ fn smart_cast_if_requires_whole_word_variable_match() {
     .map(String::from)
     .collect();
 
-    let result = infer_lines::smart_cast_type_at_line(&lines, "event", 2);
+    let result = infer_lines::smart_cast_type_at_line(&lines, "event", 2, None);
     assert_eq!(result, None);
 }
 
@@ -5296,7 +5372,7 @@ fn smart_cast_if_preserves_generic_types_with_commas() {
     .map(String::from)
     .collect();
 
-    let result = infer_lines::smart_cast_type_at_line(&lines, "value", 2);
+    let result = infer_lines::smart_cast_type_at_line(&lines, "value", 2, None);
     assert_eq!(
         result,
         Some(infer_lines::SmartCast::TypeTest(
@@ -5322,7 +5398,7 @@ fn smart_cast_nested_when_on_same_line() {
     .collect();
 
     // event.events on line 4 should be narrowed to SalespointInputEvent.OnCloseClick
-    let result = infer_lines::smart_cast_type_at_line(&lines, "event.events", 4);
+    let result = infer_lines::smart_cast_type_at_line(&lines, "event.events", 4, None);
     assert_eq!(
         result,
         Some(infer_lines::SmartCast::TypeTest(
@@ -5331,7 +5407,7 @@ fn smart_cast_nested_when_on_same_line() {
     );
 
     // event on line 4 should be narrowed to Banner (from outer when)
-    let result2 = infer_lines::smart_cast_type_at_line(&lines, "event", 4);
+    let result2 = infer_lines::smart_cast_type_at_line(&lines, "event", 4, None);
     assert_eq!(
         result2,
         Some(infer_lines::SmartCast::TypeTest("Banner".to_owned()))
