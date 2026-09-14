@@ -213,6 +213,24 @@ pub(crate) fn find_name_scoped_to_container(
     .next()
 }
 
+/// Whether `file_uri`'s symbol table carries container tags on ANY symbol at
+/// all. Distinguishes "this specific ancestor genuinely has no member named
+/// X" (an authoritative negative — a container-tagged file's empty
+/// `find_all_names_with_container_in_uri` result means exactly that, so a
+/// caller must NOT widen the search) from "this file has no container
+/// metadata to consult in the first place" (the only case an unscoped,
+/// whole-file fallback search is safe). See callers for the real cross-
+/// container leak this guards against.
+pub(crate) fn file_has_container_metadata(idx: &Indexer, file_uri: &str) -> bool {
+    let Ok(uri) = Url::parse(file_uri) else {
+        return false;
+    };
+    let Some(file_data) = ensure_file_data(idx, &uri) else {
+        return false;
+    };
+    file_data.symbols.iter().any(|s| s.container.is_some())
+}
+
 /// Like [`find_name_scoped_to_container`], but returns EVERY same-named
 /// symbol declared directly inside `container`'s own body, not just the
 /// first match — for a caller that needs to hand an overloaded name's full

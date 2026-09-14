@@ -98,7 +98,8 @@ pub(super) fn ambiguity_safe_tail_with_denylist(
         ModuleScopedOutcome::Narrowed(narrowed) => narrowed,
         ModuleScopedOutcome::NoData | ModuleScopedOutcome::NoDependenciesSurvived => filtered,
     };
-    let after_default_import = default_kotlin_import_tie_break(indexer, after_module_scope);
+    let after_default_import =
+        default_kotlin_import_tie_break(indexer, origin_uri, after_module_scope);
     if after_default_import.len() == 1 {
         return after_default_import;
     }
@@ -124,7 +125,21 @@ pub(super) fn ambiguity_safe_tail_with_denylist(
 /// Only narrows, never fully declines: when no candidate is in a
 /// default-import package, this is a no-op and the original set passes
 /// through unchanged to the next tie-break.
-fn default_kotlin_import_tie_break(indexer: &Indexer, locations: Vec<Location>) -> Vec<Location> {
+///
+/// Gated on `origin_uri`'s own language: Kotlin's default-import set is a
+/// fact about KOTLIN source files specifically — a Java file never
+/// implicitly imports `kotlin.*`, so on a Java (or Swift) origin this
+/// narrowing must not run at all, or an ambiguous `java.util.List` vs.
+/// `kotlin.collections.List` could wrongly prefer the Kotlin candidate on a
+/// call site that could never actually reach it (Copilot review finding).
+fn default_kotlin_import_tie_break(
+    indexer: &Indexer,
+    origin_uri: &Url,
+    locations: Vec<Location>,
+) -> Vec<Location> {
+    if crate::Language::from_path(origin_uri.as_str()) != crate::Language::Kotlin {
+        return locations;
+    }
     let narrowed: Vec<Location> = locations
         .iter()
         .filter(|location| {
@@ -298,25 +313,24 @@ fn candidate_gradle_meta(location: &Location) -> Option<crate::cli::extract_sour
 }
 
 /// Whether `location` has a package matching one of
-/// [`DENYLISTED_PACKAGE_PREFIXES`]. Tries [`jar_symbol_package`] first — a
-/// real compiled JAR spans many packages across its symbols, so `location`'s
-/// own accurate per-symbol package (the `jar_symbol_packages` side table) is
-/// checked before `indexer.jar_files`' single `FileData.package`, which
-/// `build_jar_file_data` derives from only the FIRST class-like symbol it
-/// happens to find and is therefore not necessarily `location`'s own real
-/// package. Falls back to `indexer.files` (regular source files, always
-/// exactly one package each, so no per-symbol ambiguity exists) and then
-/// `indexer.jar_files` (compiled-only entries pre-dating the per-symbol
-/// cache, or files this side table has no entry for at all) — same two-map
-/// lookup order as [`crate::indexer::infer::sig::collect_params_from_file`].
-/// Locations with no known package anywhere are never treated as
-/// denylisted — the tie-break must only ever remove a candidate it can
-/// positively prove is denylisted.
+/// [`DENYLISTED_PACKAGE_PREFIXES`] — see [`location_package`]'s own doc for
+/// how a candidate's package is looked up. Locations with no known package
+/// anywhere are never treated as denylisted — the tie-break must only ever
+/// remove a candidate it can positively prove is denylisted.
+///
+/// Matches the prefix itself as a package, not just as an ancestor: each
+/// prefix carries a trailing dot (`"com.android.internal."`) so it only
+/// matches a DESCENDANT package (`com.android.internal.widget`) via
+/// `starts_with`, never the base package itself (`com.android.internal`,
+/// with no trailing segment) — Copilot review finding. Comparing against the
+/// dot-trimmed prefix for equality closes that gap without weakening the
+/// dot boundary `starts_with` already gives descendants (so
+/// `com.android.internalfoo` still doesn't match).
 fn is_denylisted_package_prefix(indexer: &Indexer, location: &Location) -> bool {
     let Some(package) = location_package(indexer, location) else {
         return false;
     };
     DENYLISTED_PACKAGE_PREFIXES
         .iter()
-        .any(|prefix| package.starts_with(prefix))
+        .any(|prefix| package == prefix.trim_end_matches('.') || package.starts_with(prefix))
 }

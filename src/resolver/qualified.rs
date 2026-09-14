@@ -13,8 +13,8 @@ use crate::StrExt;
 use super::container::resolve_companion_member;
 use super::extension::resolve_extension_in_scope;
 use super::find::{
-    find_all_names_scoped_to_container, find_all_names_with_container_in_uri, find_name_in_uri,
-    find_name_scoped_to_container,
+    file_has_container_metadata, find_all_names_scoped_to_container,
+    find_all_names_with_container_in_uri, find_name_in_uri, find_name_scoped_to_container,
 };
 use super::hierarchy::{
     walk_hierarchy, walk_hierarchy_breadth_first, MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK,
@@ -91,12 +91,14 @@ pub(super) fn resolve_qualified(
 
     // `Foo.member` with `Foo` a class name (not a variable) can only reach a
     // companion-object member in Kotlin — never an instance member of `Foo`,
-    // even if one shares the name. Only the single-segment `Foo.member` form
-    // names the root as the qualifying class: for a multi-segment qualifier
-    // like `Outer.Inner.member`, `root` is `Outer` — not the class the member
-    // is accessed on — so probing `Outer`'s companion would mis-resolve.
-    let companion_applies =
-        matches!(&parsed, QualifierRoot::TypePath { nested, .. } if nested.is_empty());
+    // even if one shares the name. Applies for ANY TypePath, not just a
+    // single-segment one: `Outer.Inner.member` is still "member accessed on a
+    // TYPE name", and `anchors_for` has already walked the anchor down to
+    // `Inner` itself (the leaf `class_name`/`declaration` the loop below
+    // probes) — `companion_member_on` looks up the companion of THAT leaf, so
+    // gating on `nested.is_empty()` only skipped a nested type's own valid
+    // companion-member access rather than protecting anything.
+    let companion_applies = matches!(&parsed, QualifierRoot::TypePath { .. });
 
     for anchor in anchors_for(indexer, &parsed, from_uri, io) {
         if companion_applies {
@@ -113,13 +115,17 @@ pub(super) fn resolve_qualified(
     }
 
     // Last resort, and only for a type root: an extension declared in a JAR
-    // whose receiver is keyed on the root's own name. Kept outside the ladder
-    // because it is keyed on the qualifier's literal root SPELLING, which is
-    // meaningful only when that spelling is itself a type name — for a value
-    // root (`account.holder`) the root is a variable name and this probe would
-    // key on nothing.
-    if let QualifierRoot::TypePath { root, .. } = parsed {
-        return jar_extension_for_type_root(indexer, root, name);
+    // whose receiver is keyed on the qualifier's LEAF type name. Kept outside
+    // the ladder because it keys the JAR extension registry directly by
+    // spelling rather than by a resolved anchor — meaningful only when that
+    // spelling is itself a type name, so a value root (`account.holder`,
+    // where the root is a variable name) never reaches this branch. For
+    // `Outer.Inner.member` the leaf is `Inner` (the last nested segment), not
+    // `root` ("Outer") — `Inner` is the type the member is actually accessed
+    // on, exactly as `anchors_for` already normalizes for the ladder above.
+    if let QualifierRoot::TypePath { root, nested } = parsed {
+        let leaf = nested.last().copied().unwrap_or(root);
+        return jar_extension_for_type_root(indexer, leaf, name);
     }
     vec![]
 }
@@ -359,22 +365,27 @@ pub(super) fn candidates_on(
 
     // Kotlin's Java-interop synthetic-property rule: `obj.fail` may really mean
     // `obj.getFail()`. Retry the identical member/inherited-member pair with the
-    // getter name, but ONLY when the declaring file is Java and ONLY after a
-    // real `name` member came up completely empty — a real member always wins,
-    // and a Kotlin `fun getFail()` is never exposed as `.fail` from Kotlin (the
-    // Java-file guard is load-bearing, not a nicety). `setFoo`/`isFoo`/records
-    // are deliberately out of scope — see the 2026-09-09
-    // jar-promotion-latency-budget-plan, Task 1.
-    let declaring_file_is_java = anchor
-        .declaration
-        .as_ref()
-        .is_some_and(|declaration| is_java_declaring_file(&declaration.uri));
-    let (own_members, inherited_members) =
-        if own_members.is_empty() && inherited_members.is_empty() && declaring_file_is_java {
-            member_tiers(indexer, anchor, &kotlin_getter_name(name), from_uri)
-        } else {
-            (own_members, inherited_members)
-        };
+    // getter name, but ONLY after a real `name` member came up completely
+    // empty — a real member always wins. A Kotlin `fun getFail()` is never
+    // exposed as `.fail` from Kotlin, so every getter candidate the retry
+    // finds is filtered by ITS OWN declaring file's language, not the
+    // receiver's: gating on `anchor.declaration`'s language (the earlier
+    // shape) rejected a getter genuinely inherited from a Java ANCESTOR
+    // whenever the receiver's own class happens to be Kotlin-declared — real
+    // shape, e.g. `class KotlinFoo : JavaBase()` where only `JavaBase`
+    // declares `getFail()`. `setFoo`/`isFoo`/records are deliberately out of
+    // scope — see the 2026-09-09 jar-promotion-latency-budget-plan, Task 1.
+    let (own_members, inherited_members) = if own_members.is_empty() && inherited_members.is_empty()
+    {
+        let (getter_own, getter_inherited) =
+            member_tiers(indexer, anchor, &kotlin_getter_name(name), from_uri);
+        (
+            retain_java_declared(getter_own),
+            retain_java_declared(getter_inherited),
+        )
+    } else {
+        (own_members, inherited_members)
+    };
 
     // Member-over-extension precedence is carried by this tier's POSITION in
     // `into_precedence_ordered`, not by refusing to compute it: a same-named
@@ -399,25 +410,29 @@ pub(super) fn candidates_on(
     // missed — members still win when arity-compatible, but a shape-aware
     // caller now has the extension to fall back to instead of an empty result.
     //
-    // Skipped when the inherited tier won: `resolve_from_class_hierarchy_scoped`
-    // just walked that same hierarchy and found a real MEMBER on an ancestor,
-    // which outranks an extension on an ancestor — re-walking it to append a
-    // strictly-lower-precedence candidate is pure cost on the hottest path.
-    let supertype_extension = if inherited_members.is_empty() {
-        anchor.declaration.as_ref().and_then(|declaration| {
-            resolve_extension_via_supertype_hierarchy(
-                indexer,
-                &anchor.class_name,
-                &declaration.uri,
-                name,
-                from_uri,
-            )
-            .into_iter()
-            .next()
-        })
-    } else {
-        None
-    };
+    // Computed unconditionally, same as `own_type_extension` above and for
+    // the identical reason (Copilot review finding on this PR, matching the
+    // exact shape `own_type_extension` was already fixed for): an inherited
+    // member with the WRONG arity used to make this branch skip the walk
+    // entirely, so a shape-aware caller lost the supertype extension it could
+    // have fallen back to — e.g. `derived.foo()` where the inherited `foo`
+    // only exists at a different arity and the applicable overload is really
+    // `fun Base.foo()`. The extra hierarchy walk is not doubled cost:
+    // `resolve_extension_via_supertype_hierarchy`'s own doc notes
+    // `promote_candidates_bounded` memoizes per-JAR materialization, so an
+    // ancestor `resolve_from_class_hierarchy_scoped` already visited is a
+    // free set lookup here.
+    let supertype_extension = anchor.declaration.as_ref().and_then(|declaration| {
+        resolve_extension_via_supertype_hierarchy(
+            indexer,
+            &anchor.class_name,
+            &declaration.uri,
+            name,
+            from_uri,
+        )
+        .into_iter()
+        .next()
+    });
 
     QualifiedCandidates {
         own_members,
@@ -557,7 +572,7 @@ pub(super) fn resolve_from_class_hierarchy(
 /// [`resolve_from_class_hierarchy`]'s callers (`this`/`super`, always resolved
 /// from inside their own file) but not for [`resolve_qualified`]'s
 /// `Foo.member()` callers, where `start_uri` is `Foo`'s own declaring file.
-fn resolve_from_class_hierarchy_scoped(
+pub(super) fn resolve_from_class_hierarchy_scoped(
     indexer: &Indexer,
     name: &str,
     start_class: &str,
@@ -590,10 +605,22 @@ fn resolve_from_class_hierarchy_scoped(
         // tagged as belonging to `class_name`; fall back to the old
         // whole-file behavior only when nothing is container-tagged (e.g. a
         // degenerate fixture with no container info at all).
+        //
+        // Copilot review finding (real): an empty `scoped` does NOT mean "no
+        // container data" -- it commonly means "this specific ancestor has
+        // no member named `name`", which is the normal, expected outcome
+        // while walking UP a multi-level hierarchy. Falling through to an
+        // unscoped `find_name_in_uri` on every such miss reintroduces the
+        // exact cross-container leak `find_all_names_with_container_in_uri`
+        // exists to prevent (a same-named sibling class sharing the JAR's
+        // synthetic per-file symbol table wins by pure file position). Only
+        // fall back when the file carries NO container tags at all.
         |index, class_name, class_uri, _| {
             let scoped = find_all_names_with_container_in_uri(index, name, class_name, class_uri);
             if !scoped.is_empty() {
                 scoped
+            } else if file_has_container_metadata(index, class_uri) {
+                vec![]
             } else {
                 find_name_in_uri(index, name, class_uri)
             }
@@ -639,6 +666,16 @@ fn kotlin_getter_name(name: &str) -> String {
 fn is_java_declaring_file(uri: &Url) -> bool {
     let path = uri.as_str();
     path.ends_with(".java") || path.ends_with(".class")
+}
+
+/// Keep only the getter-retry candidates actually declared in a Java file —
+/// see [`candidates_on`]'s doc comment for why this checks each candidate's
+/// OWN declaring `Location`, not the receiver's.
+fn retain_java_declared(locations: Vec<Location>) -> Vec<Location> {
+    locations
+        .into_iter()
+        .filter(|location| is_java_declaring_file(&location.uri))
+        .collect()
 }
 
 /// Extension-lookup counterpart to [`resolve_from_class_hierarchy_scoped`]:

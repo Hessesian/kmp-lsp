@@ -10162,3 +10162,341 @@ fn resolve_qualified_nested_type_qualifier_finds_an_extension_on_the_nested_type
     );
     assert_eq!(locs[0].uri, ext_uri, "got {:?}", locs[0].uri);
 }
+
+// ─── PR #317 Copilot review findings (suppressed comments) ─────────────────
+
+#[test]
+fn resolve_qualified_nested_type_reaches_its_own_companion_member() {
+    // Copilot review finding: `companion_applies` was gated on
+    // `nested.is_empty()`, so a nested-type qualifier (`Outer.Inner.create()`)
+    // never even attempted the companion lookup, even though `anchors_for`
+    // has already normalized the anchor down to `Inner` itself (the exact
+    // leaf `companion_member_on` probes). `Foo.member` semantics ("a member
+    // access on a TYPE name can only reach a companion member") hold at any
+    // nesting depth, not just for a single-segment qualifier.
+    let outer_uri = uri("/Outer.kt");
+    let caller_uri = uri("/Caller.kt");
+    let idx = Indexer::new();
+    idx.index_content(
+        &outer_uri,
+        concat!(
+            "package com.pkg\n",
+            "class Outer {\n",
+            "  class Inner {\n",
+            "    companion object {\n",
+            "      fun create(): Inner = Inner()\n",
+            "    }\n",
+            "  }\n",
+            "}\n",
+        ),
+    );
+    idx.index_content(
+        &caller_uri,
+        "package com.pkg\nfun test() { Outer.Inner.create() }\n",
+    );
+
+    let locs = resolve_symbol(&idx, "create", Some("Outer.Inner"), &caller_uri);
+    assert!(
+        !locs.is_empty(),
+        "Outer.Inner.create() must reach Inner's own companion member, got {locs:?}"
+    );
+    assert_eq!(locs[0].uri, outer_uri);
+    assert_eq!(
+        locs[0].range.start.line, 4,
+        "expected create()'s declaration line, got {locs:?}"
+    );
+}
+
+#[test]
+fn resolve_qualified_jar_extension_last_resort_keys_on_the_nested_leaf_not_the_root() {
+    // Copilot review finding: the last-resort `jar_extension_for_type_root`
+    // fallback in `resolve_qualified` keyed its lookup on the qualifier's
+    // literal ROOT spelling ("Outer") even for a nested qualifier like
+    // `Outer.Inner.member()`, where the extension registry
+    // (`extension_by_receiver`) keys entries by the RECEIVER's own simple
+    // name -- here "Inner", not "Outer". Constructed so the normal
+    // `own_type_extension` tier (which already keys correctly on the
+    // anchor's leaf `class_name`) does NOT find it either -- the extension is
+    // in a different package with no import, so `extension_is_in_scope`
+    // rejects it there -- isolating this last-resort fallback (which does no
+    // scope-check at all, a separate pre-existing property) as the only path
+    // that can still reach it, and confirming it now keys on "Inner".
+    let outer_uri = uri("/Outer.kt");
+    let ext_uri = uri("/OtherPkgInnerExt.kt");
+    let caller_uri = uri("/Caller.kt");
+    let idx = Indexer::new();
+    idx.index_content(
+        &outer_uri,
+        concat!(
+            "package com.pkg\n",
+            "class Outer {\n",
+            "  class Inner {\n",
+            "    fun act() {}\n",
+            "  }\n",
+            "}\n",
+        ),
+    );
+    idx.index_content(
+        &ext_uri,
+        "package com.other\nfun Inner.member() { /* extension */ }\n",
+    );
+    idx.index_content(
+        &caller_uri,
+        "package com.pkg\nfun test() { Outer.Inner.member() }\n",
+    );
+
+    let locs = resolve_symbol(&idx, "member", Some("Outer.Inner"), &caller_uri);
+    assert_eq!(
+        locs.len(),
+        1,
+        "expected the last-resort fallback to find the leaf-keyed extension, \
+         got {locs:?}"
+    );
+    assert_eq!(locs[0].uri, ext_uri, "got {:?}", locs[0].uri);
+}
+
+#[test]
+fn resolve_qualified_supertype_extension_survives_a_wrong_arity_inherited_member() {
+    // Copilot review finding, the same shape `own_type_extension` was
+    // already fixed for (see
+    // `resolve_qualified_lowercase_receiver_appends_own_type_extension_alongside_wrong_arity_member`
+    // above), on its sibling field: `supertype_extension` used to be skipped
+    // entirely whenever `inherited_members` was non-empty, with no regard
+    // for whether that inherited member's arity actually matches the call.
+    // A wrong-arity inherited member must not make a shape-aware caller lose
+    // the supertype extension it could otherwise fall back to.
+    let base_uri = uri("/BaseNav.kt");
+    let nav_uri = uri("/NavController.kt");
+    let ext_uri = uri("/BaseNavExtensions.kt");
+    let host_uri = uri("/Host.kt");
+    let idx = Indexer::new();
+    idx.index_content(
+        &base_uri,
+        "package com.pkg\nopen class BaseNav {\n  fun navigate(uri: Uri) {}\n}\n",
+    );
+    idx.index_content(
+        &nav_uri,
+        "package com.pkg\nclass NavController : BaseNav()\n",
+    );
+    idx.index_content(
+        &ext_uri,
+        "package com.pkg\nfun BaseNav.navigate(route: String) {}\n",
+    );
+    idx.index_content(
+        &host_uri,
+        "package com.pkg\nclass Host(\n  private val nav: NavController\n) {\n  \
+         fun go() { nav.navigate(\"home\") }\n}\n",
+    );
+
+    let locs = resolve_symbol(&idx, "navigate", Some("nav"), &host_uri);
+    assert_eq!(
+        locs.len(),
+        2,
+        "expected both the wrong-arity inherited member and the supertype \
+         extension, got {locs:?}"
+    );
+    assert_eq!(
+        locs[0].uri, base_uri,
+        "the inherited member must still come first, got {:?}",
+        locs[0].uri
+    );
+    assert_eq!(
+        locs[1].uri, ext_uri,
+        "the supertype extension must be appended second, got {:?}",
+        locs[1].uri
+    );
+}
+
+#[test]
+fn resolve_qualified_java_getter_retry_reaches_an_ancestor_declared_in_java() {
+    // Copilot review finding: the getter-retry guard checked the RECEIVER's
+    // own declaring file's language (`anchor.declaration.uri`), not the
+    // getter candidate's own declaring file -- so a Kotlin-declared class
+    // inheriting `getFail()` from a JAVA ancestor was rejected outright,
+    // since the receiver's own `.kt` file made the upfront gate false and
+    // the retry never even ran. The candidate the retry actually finds is
+    // what must be checked: the inherited `getFail()` lives in a `.java`
+    // file, so it must still resolve as the synthetic `.fail` property.
+    let java_base_uri = uri("/JavaBase.java");
+    let kotlin_foo_uri = uri("/KotlinFoo.kt");
+    let host_uri = uri("/Host5.kt");
+    let idx = Indexer::new();
+    idx.index_content(
+        &java_base_uri,
+        concat!(
+            "package com.pkg;\n",
+            "public class JavaBase {\n",
+            "    public String getFail() { return null; }\n",
+            "}\n",
+        ),
+    );
+    idx.index_content(
+        &kotlin_foo_uri,
+        "package com.pkg\nclass KotlinFoo : JavaBase()\n",
+    );
+    idx.index_content(
+        &host_uri,
+        "package com.pkg\nfun test(k: KotlinFoo) { k.fail }\n",
+    );
+
+    let locs = resolve_symbol(&idx, "fail", Some("k"), &host_uri);
+    assert_eq!(
+        locs.len(),
+        1,
+        "expected the Java ancestor's getFail() to resolve as .fail even \
+         though the receiver's own class (KotlinFoo) is Kotlin-declared, \
+         got {locs:?}"
+    );
+    assert_eq!(locs[0].uri, java_base_uri);
+    assert_eq!(
+        locs[0].range.start.line, 2,
+        "expected getFail's declaration line on the Java ancestor: {locs:?}"
+    );
+}
+
+#[test]
+fn resolve_from_class_hierarchy_scoped_does_not_leak_a_sibling_class_member_on_an_ancestor_miss() {
+    // Copilot review finding: the hierarchy-walk closure fell through to an
+    // unscoped `find_name_in_uri` whenever `find_all_names_with_container_in_uri`
+    // came up empty for an ancestor -- but an empty result there usually just
+    // means "this specific ancestor has no member of this name", the normal
+    // case while walking up a multi-level hierarchy, NOT "this file has no
+    // container metadata". Reintroduces the exact cross-container leak the
+    // container-tag scoping exists to prevent: a JAR-style synthetic file
+    // holding two unrelated classes, walking from a receiver whose real
+    // ancestor has no `target` member, must NOT pick up an unrelated
+    // sibling class's same-named `target` purely by file position.
+    use super::qualified::resolve_from_class_hierarchy_scoped;
+
+    let lib_uri = uri("/lib.kt");
+    let idx = Indexer::new();
+    // One synthetic file holding two unrelated classes -- mirrors a JAR's
+    // flat per-file symbol table. `Sibling` is declared FIRST so a
+    // position-based fallback would find its `target` before ever reaching
+    // (or failing to reach) `Base`'s own members.
+    idx.index_content(
+        &lib_uri,
+        concat!(
+            "package com.pkg\n",
+            "class Sibling {\n",
+            "  val target: Int = 0\n",
+            "}\n",
+            "open class Base {\n",
+            "  fun act() {}\n",
+            "}\n",
+        ),
+    );
+
+    let locs = resolve_from_class_hierarchy_scoped(&idx, "target", "Base", &lib_uri, &lib_uri);
+    assert!(
+        locs.is_empty(),
+        "Base declares no `target` -- must not leak Sibling's unrelated \
+         same-named field, got {locs:?}"
+    );
+}
+
+#[test]
+fn denylist_matches_the_bare_prefix_package_itself_not_only_its_descendants() {
+    // Copilot review finding: `DENYLISTED_PACKAGE_PREFIXES` entries carry a
+    // trailing dot ("com.android.internal."), so `starts_with` only ever
+    // matched a DESCENDANT package (`com.android.internal.widget`) -- never
+    // the base package itself, with no trailing segment at all
+    // (`com.android.internal`), which survived the denylist entirely.
+    let idx = Indexer::new();
+    let decoy_uri = Url::parse("jar:file:///decoy.jar").unwrap();
+    let real_uri = Url::parse("jar:file:///real-stdlib.jar").unwrap();
+    idx.jar_definitions.insert(
+        "Thing".to_owned(),
+        vec![
+            tower_lsp::lsp_types::Location {
+                uri: decoy_uri.clone(),
+                range: Default::default(),
+            },
+            tower_lsp::lsp_types::Location {
+                uri: real_uri.clone(),
+                range: Default::default(),
+            },
+        ],
+    );
+    idx.jar_files.insert(
+        decoy_uri.to_string(),
+        std::sync::Arc::new(crate::types::FileData {
+            // The bare denylisted package itself -- no trailing segment.
+            package: Some("com.android.internal".to_owned()),
+            ..Default::default()
+        }),
+    );
+    idx.jar_files.insert(
+        real_uri.to_string(),
+        std::sync::Arc::new(crate::types::FileData {
+            package: Some("kotlin".to_owned()),
+            ..Default::default()
+        }),
+    );
+
+    let host_uri = uri("/Host.kt");
+    idx.index_content(&host_uri, "package com.pkg\n");
+
+    let locs = resolve_symbol_index_only(&idx, "Thing", None, &host_uri);
+    assert_eq!(
+        locs,
+        vec![tower_lsp::lsp_types::Location {
+            uri: real_uri,
+            range: Default::default(),
+        }],
+        "expected the bare com.android.internal decoy to be excluded too, \
+         got {locs:?}"
+    );
+}
+
+#[test]
+fn kotlin_default_import_tie_break_does_not_apply_from_a_java_origin_file() {
+    // Copilot review finding: `default_kotlin_import_tie_break` applied
+    // Kotlin's own default-import package set regardless of the calling
+    // file's language -- a Java file never implicitly imports `kotlin.*`,
+    // so on an ambiguous `java.util.List` vs. `kotlin.collections.List`
+    // decoy pair, narrowing to the Kotlin candidate from a JAVA origin file
+    // would prefer a candidate the Java call site could never actually
+    // reach. From a Java origin, this tie-break must be a no-op, leaving
+    // the ambiguity for the next (import-based) tie-break to decline.
+    let idx = Indexer::new();
+    let kotlin_uri = Url::parse("jar:file:///kotlin-stdlib.jar").unwrap();
+    let java_uri = Url::parse("jar:file:///java-base.jar").unwrap();
+    idx.jar_definitions.insert(
+        "List".to_owned(),
+        vec![
+            tower_lsp::lsp_types::Location {
+                uri: kotlin_uri.clone(),
+                range: Default::default(),
+            },
+            tower_lsp::lsp_types::Location {
+                uri: java_uri.clone(),
+                range: Default::default(),
+            },
+        ],
+    );
+    idx.jar_files.insert(
+        kotlin_uri.to_string(),
+        std::sync::Arc::new(crate::types::FileData {
+            package: Some("kotlin.collections".to_owned()),
+            ..Default::default()
+        }),
+    );
+    idx.jar_files.insert(
+        java_uri.to_string(),
+        std::sync::Arc::new(crate::types::FileData {
+            package: Some("java.util".to_owned()),
+            ..Default::default()
+        }),
+    );
+
+    let host_uri = uri("/Host.java");
+    idx.index_content(&host_uri, "package com.pkg;\n");
+
+    let locs = resolve_symbol_index_only(&idx, "List", None, &host_uri);
+    assert!(
+        locs.is_empty(),
+        "a Java origin must not let the Kotlin-default-import narrowing \
+         resolve this ambiguity, got {locs:?}"
+    );
+}

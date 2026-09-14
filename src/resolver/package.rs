@@ -16,6 +16,16 @@ use super::fd::import_package_prefix;
 /// compiled-only JAR entry's first-symbol-derived package). Shared by every
 /// tie-break in [`ambiguity_safe_tail_with_denylist`] that needs to compare
 /// a candidate's package against something else.
+///
+/// A Copilot review pass on this PR flagged the third (coarse, whole-JAR)
+/// tier as imprecise for a multi-package JAR — true in the abstract, but
+/// dropping it (tried and reverted here) broke three real, already-passing
+/// tests that specifically exercise `default_kotlin_import_tie_break` and
+/// `import_package_tie_break` against the exact shape this codebase's own
+/// JAR tests build: a compiled-JAR-derived candidate with package data
+/// available ONLY at the whole-file level (no `jar_symbol_packages` entry).
+/// That shape is the common case for a single-package-per-artifact JAR, not
+/// the rare one — keeping the fallback is the tested, intentional trade-off.
 pub(super) fn location_package(indexer: &Indexer, location: &Location) -> Option<String> {
     jar_symbol_package(indexer, location)
         .or_else(|| {
