@@ -19,6 +19,7 @@
 //! | `prefix_expression` (`!`) | `Boolean`              |
 //! | `if_expression`           | type when both branches agree |
 //! | `range_expression` (int)  | `IntRange`             |
+//! | `as_expression` (`as`/`as?`) | the cast's own target type |
 //! | `simple_identifier`       | variable type from index |
 //! | `type_identifier`         | variable type from index |
 //! | `navigation_expression`   | field/method return type from index |
@@ -34,7 +35,7 @@ use tree_sitter::Node;
 
 use crate::indexer::NodeExt;
 use crate::queries::{
-    KIND_ADDITIVE_EXPR, KIND_BOOLEAN_LITERAL, KIND_CALL_EXPR, KIND_CHARACTER_LITERAL,
+    KIND_ADDITIVE_EXPR, KIND_AS_EXPR, KIND_BOOLEAN_LITERAL, KIND_CALL_EXPR, KIND_CHARACTER_LITERAL,
     KIND_CHECK_EXPR, KIND_COMPARISON_EXPR, KIND_CONJUNCTION_EXPR, KIND_CONTROL_STRUCTURE_BODY,
     KIND_DISJUNCTION_EXPR, KIND_ELSE, KIND_IF_EXPR, KIND_INTEGER_LITERAL, KIND_LONG_LITERAL,
     KIND_MULTILINE_STRING_LITERAL, KIND_MULTIPLICATIVE_EXPR, KIND_NAV_EXPR, KIND_NAV_SUFFIX,
@@ -122,6 +123,9 @@ fn infer_expr_type_at_depth(
         }
         k if k == KIND_PREFIX_EXPR => {
             infer_prefix_expr_type(node, bytes).map(|type_name| (type_name, uri.clone()))
+        }
+        k if k == KIND_AS_EXPR => {
+            infer_as_expr_type(node, bytes).map(|type_name| (type_name, uri.clone()))
         }
         k if k == KIND_IF_EXPR => infer_if_expr_type(node, bytes, deps, uri, depth)
             .map(|type_name| (type_name, uri.clone())),
@@ -310,6 +314,18 @@ fn infer_prefix_expr_type(node: Node<'_>, bytes: &[u8]) -> Option<String> {
     } else {
         None
     }
+}
+
+/// `x as Type` / `x as? Type`: the cast's own target type IS the expression's
+/// type, verbatim — the one type Kotlin lets source text state outright
+/// without any inference at all. The target type is always the LAST named
+/// child (`as_expression`'s only other named child is the base expression
+/// being cast), so this doesn't need to distinguish `as` from `as?` by
+/// scanning for the keyword token.
+fn infer_as_expr_type(node: Node<'_>, bytes: &[u8]) -> Option<String> {
+    let count = node.named_child_count() as u32;
+    let type_node = node.named_child(count.checked_sub(1)?)?;
+    type_node.utf8_text_owned(bytes)
 }
 
 /// For `if (cond) <then> else <else>`: emit a type hint only when both

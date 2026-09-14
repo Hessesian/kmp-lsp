@@ -5181,6 +5181,29 @@ fn smart_cast_if_is() {
 }
 
 #[test]
+fn smart_cast_if_is_same_line_as_the_member_access() {
+    // Real Moneta gap: `if (drawable is Animatable) drawable.start()` -- the
+    // `is` test and the member access are on the SAME line, not `if (x is Y)
+    // { x.member() }` across separate lines. `if_is_smart_cast`'s backward
+    // scan was `(start..line_idx).rev()`, exclusive of `line_idx` itself, so
+    // it never even looked at the cursor's own line.
+    let lines: Vec<String> = vec![
+        "fun handle(drawable: Drawable) {",
+        "    if (drawable is Animatable) drawable.start()",
+        "}",
+    ]
+    .into_iter()
+    .map(String::from)
+    .collect();
+
+    let result = infer_lines::smart_cast_type_at_line(&lines, "drawable", 1);
+    assert_eq!(
+        result,
+        Some(infer_lines::SmartCast::TypeTest("Animatable".to_owned()))
+    );
+}
+
+#[test]
 fn smart_cast_no_match_wrong_var() {
     let lines: Vec<String> = vec![
         "fun handle(event: Event) {",

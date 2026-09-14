@@ -837,7 +837,26 @@ fn constructor_fallback<D: InferDeps>(ctx: &CallCtx<'_, D>) -> StrategyVerdict {
     if !ctx.fn_name.starts_with_uppercase() || !is_bare_or_dotted_ident {
         return StrategyVerdict::NotApplicable;
     }
-    StrategyVerdict::Terminal(Some(StrategyOutcome::Final(ctx.fn_name.to_owned())))
+    // For a nested-class constructor call (`Outer.Builder(...)`), `ctx.callee`
+    // is a navigation_expression and `ctx.fn_name` (from `call_fn_name`) is
+    // only its bare leaf ("Builder") -- reporting that alone as the
+    // constructed type discards the qualifying "Outer." and collides with
+    // every other unrelated same-named class once this type name reaches a
+    // global bare-name lookup downstream (real Moneta bug: `Builder` is an
+    // extremely common nested-class name across the corpus). Use the
+    // callee's own full dotted text instead, which is exactly the qualified
+    // type name `resolve_symbol`'s `name.contains('.')` branch already knows
+    // how to walk (root segment → file, then each nested segment scoped to
+    // its own enclosing type).
+    let type_name = if ctx.callee.kind() == KIND_NAV_EXPR {
+        ctx.callee
+            .utf8_text(ctx.bytes)
+            .map(str::to_owned)
+            .unwrap_or_else(|_| ctx.fn_name.to_owned())
+    } else {
+        ctx.fn_name.to_owned()
+    };
+    StrategyVerdict::Terminal(Some(StrategyOutcome::Final(type_name)))
 }
 
 pub(super) fn resolve_call_expr_type<D: InferDeps>(
