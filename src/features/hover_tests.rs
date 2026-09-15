@@ -403,3 +403,57 @@ fn hover_on_ambiguous_qualified_reference_without_call_declines_rather_than_gues
         hover.map(|h| hover_text(&h))
     );
 }
+
+/// The reversal of the hover regression that PR #304's own extension-registry
+/// fix introduced (see `ambiguous_member_extension_name_collision_returns_
+/// the_whole_candidate_set` in `src/resolver/tests.rs`, Task 4 of the
+/// 2026-09-14 extension-registry-overload-collapse plan): two unrelated
+/// interfaces each declare a same-arity member extension named `weight` on
+/// `Modifier`. Resolution now correctly surfaces both as a candidate set
+/// instead of collapsing to one arbitrary match, but since both candidates
+/// share the same name and the same declared arity, hover must still render
+/// (using the first) rather than declining outright.
+#[test]
+fn hover_renders_for_a_same_arity_extension_collision() {
+    let idx = Indexer::new();
+    let first_uri = Url::parse("file:///compose/ColumnScope.kt").unwrap();
+    idx.index_content(
+        &first_uri,
+        concat!(
+            "package androidx.compose.foundation.layout\n",
+            "interface ColumnScope {\n",
+            "    fun Modifier.weight(weight: Float): Modifier\n",
+            "}\n",
+        ),
+    );
+    let second_uri = Url::parse("file:///lib/UnrelatedScope.kt").unwrap();
+    idx.index_content(
+        &second_uri,
+        concat!(
+            "package com.example.lib\n",
+            "interface UnrelatedScope {\n",
+            "    fun Modifier.weight(weight: Float): Modifier\n",
+            "}\n",
+        ),
+    );
+
+    let use_uri = Url::parse("file:///app/Screen.kt").unwrap();
+    let src = "package app\n\
+               fun screen() {\n\
+                   Modifier.weight(1f)\n\
+               }\n";
+    idx.index_content(&use_uri, src);
+    idx.store_live_tree(&use_uri, src);
+
+    let col = src.lines().nth(2).unwrap().find("weight").unwrap() as u32;
+    let position = Position::new(2, col);
+    let ctx = CursorContext::build(&idx, &use_uri, position).unwrap();
+
+    let hover = compute_hover(&idx, &ctx, &use_uri, position);
+    assert!(
+        hover.is_some(),
+        "a same-arity extension-function collision (the Modifier.weight \
+         shape) must still render hover using the first candidate, not \
+         decline outright"
+    );
+}
