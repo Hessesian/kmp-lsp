@@ -30,7 +30,12 @@ use serde::{Deserialize, Serialize};
 /// detect that on its own).
 /// v2 → v3: sidecar's `JavaClassVisitor` now emits public field symbols
 ///          (`val`/`var`) in addition to classes/methods.
-const JAR_MANIFEST_CACHE_VERSION: u32 = 3;
+/// v3 → v4: `extension_receiver` is now normalized through
+///          `jar::extension_receiver_key` (strip nullable `?`, reduce to the
+///          dotted leaf) instead of a bare `split('<').next()` — a v3
+///          manifest's `extension_receiver` values are keyed differently and
+///          would silently mismatch `extension_by_receiver`'s new keys.
+const JAR_MANIFEST_CACHE_VERSION: u32 = 4;
 
 #[derive(Serialize, Deserialize)]
 struct JarManifestCache {
@@ -65,15 +70,16 @@ pub(crate) struct JarManifestName {
     /// what lets Task 6 build real FQNs into `jar_qualified` without ever
     /// touching the full per-JAR symbol cache.
     pub package: Option<String>,
-    /// The extension's receiver leaf type name (generics stripped), e.g.
-    /// "ViewModel" for `val ViewModel.viewModelScope: CoroutineScope`.
-    /// `None` for non-extension symbols. Mirrors `SidecarSymbol::
-    /// extension_receiver_type` (leaf-stripped the same way Tier 2's
-    /// `build_jar_file_data` derives its `extension_by_receiver` key) — this
-    /// is what lets Tier 1 know a JAR defines an extension on a given
-    /// receiver type WITHOUT materializing it, closing the gap where
-    /// extension completion (e.g. `viewModelScope`) silently disappeared for
-    /// any not-yet-materialized JAR.
+    /// The extension's receiver leaf type name (generics and nullable `?`
+    /// stripped), e.g. "ViewModel" for `val ViewModel.viewModelScope:
+    /// CoroutineScope`. `None` for non-extension symbols. Mirrors
+    /// `SidecarSymbol::extension_receiver_type`, normalized through
+    /// `jar::extension_receiver_key` — the same key Tier 2's
+    /// `build_jar_file_data` derives for `extension_by_receiver` — this is
+    /// what lets Tier 1 know a JAR defines an extension on a given receiver
+    /// type WITHOUT materializing it, closing the gap where extension
+    /// completion (e.g. `viewModelScope`) silently disappeared for any
+    /// not-yet-materialized JAR.
     pub extension_receiver: Option<String>,
 }
 
