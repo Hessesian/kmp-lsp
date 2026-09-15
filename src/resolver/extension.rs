@@ -1,7 +1,7 @@
 //! Extension-function-in-scope lookup and the implicit-receiver callee ladder
 //! (member vs. extension, arity-filtered).
 
-use tower_lsp::lsp_types::{Location, Url};
+use tower_lsp::lsp_types::{Location, Range, Url};
 
 use crate::indexer::{CallShape, Indexer};
 use crate::types::FileData;
@@ -10,13 +10,62 @@ use super::resolve::resolve_symbol;
 
 // ─── step implementations ────────────────────────────────────────────────────
 
-/// Look up an extension function by receiver base name, filtering by scope
+/// Select the `Range` of the declaring symbol for one extension registry
+/// `entry` inside its declaring file's already-parsed symbol table.
+///
+/// Shared by [`resolve_extension_in_scope`] and
+/// [`super::qualified::jar_extension_for_type_root`]: both now return every
+/// same-named registry entry rather than the first, so both need this exact
+/// two-step selection — a file may declare several overloads of the same
+/// extension (same name, same receiver, same container), and
+/// `extension_declaration_matches` alone can't tell them apart. Prefer the
+/// declaring symbol whose `detail` (full signature text) exactly matches this
+/// entry's own `detail`; when nothing matches exactly (e.g. the registry
+/// entry's detail was computed slightly differently than the symbol table's,
+/// or the file has since drifted), fall back to the first declaration with a
+/// matching name/receiver/container shape rather than returning no range at
+/// all.
+pub(super) fn select_extension_symbol_range(
+    file_data: &FileData,
+    name: &str,
+    receiver_base: &str,
+    container: Option<&String>,
+    detail: &str,
+) -> Range {
+    let declaring_symbols: Vec<_> = file_data
+        .symbols
+        .iter()
+        .filter(|symbol| {
+            crate::resolver::infer::extension_declaration_matches(
+                symbol,
+                name,
+                receiver_base,
+                container,
+            )
+        })
+        .collect();
+    let exact_signature_match = declaring_symbols
+        .iter()
+        .find(|symbol| symbol.detail == detail);
+    let selected = exact_signature_match.or_else(|| declaring_symbols.first());
+    selected
+        .map(|symbol| symbol.selection_range)
+        .unwrap_or_default()
+}
+
+/// Look up every in-scope extension function matching `receiver_base`/`name`
 /// (same package or explicitly imported in the caller's file).
 ///
 /// Checks `extension_by_receiver` for matching entries, then verifies each
 /// candidate is visible from `from_uri` by checking same-package or import
-/// coverage. Returns the first matching extension's `Location` with an accurate
-/// `selection_range`, or an empty `Vec` if none is in scope.
+/// coverage. Returns every in-scope match with an accurate `selection_range`,
+/// not just the first — `name` may be overloaded (e.g. stdlib's
+/// `firstOrNull()` vs. `firstOrNull(predicate)`), and collapsing to one
+/// arbitrary overload here, before the caller's own arity-based shape
+/// filtering ever runs, silently drops every real call site to a DIFFERENT
+/// overload (same reasoning as `member_tiers`'s own doc comment on this same
+/// file-local principle, and the PR #304 precedent for qualified member
+/// lookups).
 pub(super) fn resolve_extension_in_scope(
     indexer: &Indexer,
     receiver_base: &str,
@@ -34,6 +83,7 @@ pub(super) fn resolve_extension_in_scope(
     };
     let caller_file_data = indexer.files.get(from_uri.as_str());
     let caller_file_data_ref: Option<&FileData> = caller_file_data.as_deref().map(|v| v.as_ref());
+    let mut matches = Vec::new();
     for entry in entries.iter() {
         if entry.name != name {
             continue;
@@ -46,31 +96,29 @@ pub(super) fn resolve_extension_in_scope(
             entry.file_uri == from_uri.as_str(),
             caller_file_data_ref,
         );
-        if in_scope {
-            if let Ok(uri) = Url::parse(&entry.file_uri) {
-                let range = indexer
-                    .files
-                    .get(&entry.file_uri)
-                    .or_else(|| indexer.jar_files.get(&entry.file_uri))
-                    .and_then(|fd| {
-                        fd.symbols
-                            .iter()
-                            .find(|s| {
-                                crate::resolver::infer::extension_declaration_matches(
-                                    s,
-                                    name,
-                                    receiver_base,
-                                    entry.container.as_ref(),
-                                )
-                            })
-                            .map(|s| s.selection_range)
-                    })
-                    .unwrap_or_default();
-                return vec![Location { uri, range }];
-            }
+        if !in_scope {
+            continue;
         }
+        let Ok(uri) = Url::parse(&entry.file_uri) else {
+            continue;
+        };
+        let range = indexer
+            .files
+            .get(&entry.file_uri)
+            .or_else(|| indexer.jar_files.get(&entry.file_uri))
+            .map(|fd| {
+                select_extension_symbol_range(
+                    &fd,
+                    name,
+                    receiver_base,
+                    entry.container.as_ref(),
+                    &entry.detail,
+                )
+            })
+            .unwrap_or_default();
+        matches.push(Location { uri, range });
     }
-    vec![]
+    matches
 }
 
 /// Resolve `name(...)` as an implicit `this.name(...)` against `receiver_base`

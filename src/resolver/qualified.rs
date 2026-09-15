@@ -11,7 +11,7 @@ use crate::types::CallerContext;
 use crate::StrExt;
 
 use super::container::resolve_companion_member;
-use super::extension::resolve_extension_in_scope;
+use super::extension::{resolve_extension_in_scope, select_extension_symbol_range};
 use super::find::{
     file_has_container_metadata, find_all_names_scoped_to_container,
     find_all_names_with_container_in_uri, find_name_in_uri, find_name_scoped_to_container,
@@ -322,18 +322,21 @@ pub(super) struct QualifiedCandidates {
     own_members: Vec<Location>,
     /// Members reached through the anchor's superclass/interface hierarchy.
     inherited_members: Vec<Location>,
-    /// An in-scope extension declared on the anchor's OWN leaf type.
-    own_type_extension: Option<Location>,
-    /// An in-scope extension declared on one of the anchor's ancestors.
-    supertype_extension: Option<Location>,
+    /// Every in-scope extension overload declared on the anchor's OWN leaf
+    /// type — not just one: `name` may be overloaded, and the caller's own
+    /// arity-based shape filter, not this tier, is what picks the right one.
+    own_type_extension: Vec<Location>,
+    /// Every in-scope extension overload declared on one of the anchor's
+    /// ancestors — same overload-set reasoning as `own_type_extension`.
+    supertype_extension: Vec<Location>,
 }
 
 impl QualifiedCandidates {
     fn is_empty(&self) -> bool {
         self.own_members.is_empty()
             && self.inherited_members.is_empty()
-            && self.own_type_extension.is_none()
-            && self.supertype_extension.is_none()
+            && self.own_type_extension.is_empty()
+            && self.supertype_extension.is_empty()
     }
 
     /// `own_members` → `inherited_members` → `own_type_extension` →
@@ -398,9 +401,7 @@ pub(super) fn candidates_on(
     // reasoning as `supertype_extension` below, which has always been appended
     // alongside a winning member rather than instead of one.
     let own_type_extension =
-        resolve_extension_in_scope(indexer, &anchor.class_name, name, from_uri)
-            .into_iter()
-            .next();
+        resolve_extension_in_scope(indexer, &anchor.class_name, name, from_uri);
 
     // A same-named real member doesn't always satisfy the actual call's arity
     // (e.g. `navController.navigate(route = ...)`: a wrong-arity JVM member
@@ -422,17 +423,19 @@ pub(super) fn candidates_on(
     // `promote_candidates_bounded` memoizes per-JAR materialization, so an
     // ancestor `resolve_from_class_hierarchy_scoped` already visited is a
     // free set lookup here.
-    let supertype_extension = anchor.declaration.as_ref().and_then(|declaration| {
-        resolve_extension_via_supertype_hierarchy(
-            indexer,
-            &anchor.class_name,
-            &declaration.uri,
-            name,
-            from_uri,
-        )
-        .into_iter()
-        .next()
-    });
+    let supertype_extension = anchor
+        .declaration
+        .as_ref()
+        .map(|declaration| {
+            resolve_extension_via_supertype_hierarchy(
+                indexer,
+                &anchor.class_name,
+                &declaration.uri,
+                name,
+                from_uri,
+            )
+        })
+        .unwrap_or_default();
 
     QualifiedCandidates {
         own_members,
@@ -502,13 +505,23 @@ pub(super) fn companion_member_on(
 /// including inside a JAR the workspace never parsed as source. Atomic
 /// promote+read (zero budget): `resolve_qualified` is on both the
 /// goto-definition and the per-call-site diagnostics path.
-fn jar_extension_for_type_root(indexer: &Indexer, root: &str, name: &str) -> Vec<Location> {
+///
+/// Returns every same-named registry entry, not just the first — the
+/// last-resort JAR-keyed path shares the overload-collapse problem
+/// `resolve_extension_in_scope` had, and this task fixes it there too (see
+/// `select_extension_symbol_range`'s own doc comment).
+pub(super) fn jar_extension_for_type_root(
+    indexer: &Indexer,
+    root: &str,
+    name: &str,
+) -> Vec<Location> {
     let mut cache_backed_only = 0usize;
     let Some(entries) =
         crate::indexer::jar::extension_entries_for(indexer, root, &mut cache_backed_only)
     else {
         return vec![];
     };
+    let mut matches = Vec::new();
     for entry in entries.iter() {
         if entry.name != name {
             continue;
@@ -521,24 +534,19 @@ fn jar_extension_for_type_root(indexer: &Indexer, root: &str, name: &str) -> Vec
             .files
             .get(&entry.file_uri)
             .or_else(|| indexer.jar_files.get(&entry.file_uri))
-            .and_then(|file_data| {
-                file_data
-                    .symbols
-                    .iter()
-                    .find(|symbol| {
-                        crate::resolver::infer::extension_declaration_matches(
-                            symbol,
-                            name,
-                            root,
-                            entry.container.as_ref(),
-                        )
-                    })
-                    .map(|symbol| symbol.selection_range)
+            .map(|file_data| {
+                select_extension_symbol_range(
+                    &file_data,
+                    name,
+                    root,
+                    entry.container.as_ref(),
+                    &entry.detail,
+                )
             })
             .unwrap_or_default();
-        return vec![Location { uri, range }];
+        matches.push(Location { uri, range });
     }
-    vec![]
+    matches
 }
 
 /// Walk the superclass / interface hierarchy of the class(es) declared in
@@ -731,10 +739,17 @@ fn resolve_extension_via_supertype_hierarchy(
         // (`class Str : com.other.Seq`) before yielding it.
         |idx, super_name, _, _| resolve_extension_in_scope(idx, super_name, name, origin_uri),
     );
-    // The breadth-first walk already stops at the nearest level with any
-    // match, but two SIBLING supertypes at that same level could both have
-    // one (a genuine tie Kotlin itself would flag as a compile error) —
-    // take just the first, matching this function's single-location
-    // contract rather than surfacing a spurious multi-candidate ambiguity.
-    matches.into_iter().next().into_iter().collect()
+    // Every overload from the nearest matching level, not just one: `name`
+    // may be an overloaded ancestor extension (the same reasoning
+    // `resolve_extension_in_scope` documents for its own tier — PR #304's
+    // qualified-member-tier precedent applied here too). The breadth-first
+    // walk's own nearest-level stop (`walk_hierarchy_breadth_first`,
+    // `if !found.is_empty() { return found; }`) still prevents a farther
+    // ancestor's extension from outranking a nearer one; only the
+    // one-of-many narrowing within that nearest level is gone. Two SIBLING
+    // supertypes at that same level could each contribute a same-named
+    // extension (a genuine tie Kotlin itself would flag as a compile
+    // error) — both are returned rather than arbitrarily dropped, since the
+    // caller's own shape filter, not this walk, is what disambiguates.
+    matches
 }
