@@ -7273,13 +7273,18 @@ fn member_extension_in_unimported_package_is_in_scope_via_container_short_circui
     );
 }
 
-/// Decoy 2 (documented pre-existing limitation, not a regression): two
-/// unrelated interfaces both declaring a member extension named `weight` on
-/// the same receiver type. This primitive inherits the same "first match
-/// wins, no overload-set semantics" limitation `resolve_extension_in_scope`
-/// already has for ordinary top-level extensions — not a new gap.
+/// Decoy 2, still a genuine Compose-shaped decoy worth keeping: two unrelated
+/// interfaces both declaring a member extension named `weight` on the same
+/// receiver type. Colliding same-arity member extensions are now surfaced as
+/// a candidate SET rather than collapsed to an arbitrary first match — the
+/// PR #304 precedent (qualified member lookups return every overload, not
+/// just `.find()`'s first) applied to extensions by this task.
+/// `pick_unambiguous_location` consequently declines to render hover for
+/// this exact shape, since more than one location comes back; see Task 4 of
+/// the 2026-09-14 extension-registry-overload-collapse plan for whether that
+/// hover loss needs its own reversal.
 #[test]
-fn ambiguous_member_extension_name_collision_first_match_wins() {
+fn ambiguous_member_extension_name_collision_returns_the_whole_candidate_set() {
     let idx = Indexer::new();
     let first_uri = Url::parse("file:///compose/ColumnScope.kt").unwrap();
     idx.index_content(
@@ -7316,10 +7321,24 @@ fn ambiguous_member_extension_name_collision_first_match_wins() {
     let locs = idx.find_definition_qualified("weight", Some("Modifier"), &use_uri);
     assert_eq!(
         locs.len(),
-        1,
-        "colliding same-named member extensions resolve to a single first \\
-         match, not an overload set -- a pre-existing, unchanged limitation; \\
-         got {:?}",
+        2,
+        "colliding same-arity member extensions must surface as a candidate \\
+         set, not collapse to a single first match; got {:?}",
+        locs.iter().map(|l| l.uri.as_str()).collect::<Vec<_>>()
+    );
+    // Declaration order (ColumnScope before UnrelatedScope), so this test
+    // still fails if a future change reorders tiers or reintroduces
+    // arbitrary narrowing.
+    assert_eq!(
+        locs[0].uri.as_str(),
+        first_uri.as_str(),
+        "expected ColumnScope.kt's declaration first; got {:?}",
+        locs.iter().map(|l| l.uri.as_str()).collect::<Vec<_>>()
+    );
+    assert_eq!(
+        locs[1].uri.as_str(),
+        second_uri.as_str(),
+        "expected UnrelatedScope.kt's declaration second; got {:?}",
         locs.iter().map(|l| l.uri.as_str()).collect::<Vec<_>>()
     );
 }
@@ -9568,6 +9587,413 @@ fn resolve_kotlin_builtin_type_platform_equivalent_surfaces_iterable_extensions_
     assert!(
         labels.contains(&"secondOrNull"),
         "expected the Iterable extension to appear for a List receiver, got: {labels:?}"
+    );
+}
+
+// ─── extension-registry overload collapse (2026-09-14 plan, Task 1) ──────────
+//
+// `resolve_extension_in_scope`, `jar_extension_for_type_root`, and
+// `QualifiedCandidates`'s two extension tiers used to collapse a real
+// overload set down to one arbitrary candidate (`.into_iter().next()` /
+// an early `return` inside the registry-entry loop) before the caller's own
+// arity/shape filter ever got a chance to pick the right one. These tests
+// prove every same-named registry entry now survives to that filter.
+
+/// The own-type extension tier (`resolve_extension_in_scope`, reached from
+/// `candidates_on`'s `own_type_extension` field) must return every same-named
+/// overload, not just the first declared. A real indexed file declaring both
+/// overloads, not a hand-pushed `ExtensionEntry` pointing at a phantom URI —
+/// see this section's fixture-trap note above `write_fake_android_sdk_source`
+/// for why a phantom `file_uri` would make every candidate collapse to range
+/// `0:0` and pass "two distinct ranges" for the wrong reason.
+#[test]
+fn own_type_extension_tier_returns_every_overload_not_just_the_first() {
+    let idx = Indexer::new();
+
+    let ext_uri = Url::parse("file:///app/ListExtensions.kt").unwrap();
+    idx.index_content(
+        &ext_uri,
+        concat!(
+            "package app\n",
+            "fun <T> List<T>.firstOrNull(): T? = null\n",
+            "fun <T> List<T>.firstOrNull(predicate: (T) -> Boolean): T? = null\n",
+        ),
+    );
+
+    let caller_uri = Url::parse("file:///app/Caller.kt").unwrap();
+    idx.index_content(
+        &caller_uri,
+        "package app\nfun use(items: List<Int>) { items }\n",
+    );
+
+    let locations =
+        idx.find_definition_qualified_index_only("firstOrNull", Some("List"), &caller_uri);
+    assert_eq!(
+        locations.len(),
+        2,
+        "expected both firstOrNull overloads from the own-type extension \
+         tier, got {:?}",
+        locations
+    );
+    assert_ne!(
+        locations[0].range, locations[1].range,
+        "expected two distinct declaration ranges (one per overload), got \
+         {:?}",
+        locations
+    );
+}
+
+/// The supertype extension tier (`resolve_extension_via_supertype_hierarchy`,
+/// reached from `candidates_on`'s `supertype_extension` field) must lift the
+/// same fix: both overloads declared on `Iterable`, reached from a `List`
+/// receiver through the real `List → Collection → Iterable` chain, not just
+/// the first one the breadth-first walk's nearest level finds.
+///
+/// Unlike the own-type-tier test above, this one needs `List` to carry a
+/// real indexed declaration (not a declaration-less anchor) so
+/// `candidates_on` has a `declaration.uri` to start the hierarchy walk from
+/// — the `java/util/List.java` → `java/util/Collection.java` →
+/// `java/lang/Iterable.java` chain via `write_fake_android_sdk_source`.
+#[test]
+fn supertype_extension_tier_returns_every_overload_not_just_the_first() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    write_fake_android_sdk_source(
+        root,
+        "java/util/List.java",
+        "package java.util;\npublic interface List<E> extends Collection<E> {\n}\n",
+    );
+    write_fake_android_sdk_source(
+        root,
+        "java/util/Collection.java",
+        "package java.util;\npublic interface Collection<E> extends Iterable<E> {\n}\n",
+    );
+    write_fake_android_sdk_source(
+        root,
+        "java/lang/Iterable.java",
+        "package java.lang;\npublic interface Iterable<T> {\n}\n",
+    );
+
+    let idx = Indexer::new();
+    idx.workspace_root.set(root.to_path_buf());
+
+    let ext_uri = Url::parse("file:///app/IterableExtensions.kt").unwrap();
+    idx.index_content(
+        &ext_uri,
+        concat!(
+            "package app\n",
+            "fun <T> Iterable<T>.firstOrNull(): T? = null\n",
+            "fun <T> Iterable<T>.firstOrNull(predicate: (T) -> Boolean): T? = null\n",
+        ),
+    );
+
+    let caller_src = "package app\nfun use(items: List<Int>) { items }\n";
+    let caller_path = root.join("Caller.kt");
+    std::fs::write(&caller_path, caller_src).unwrap();
+    let caller_uri = Url::from_file_path(&caller_path).unwrap();
+    idx.index_content(&caller_uri, caller_src);
+
+    let locations =
+        idx.find_definition_qualified_index_only("firstOrNull", Some("List"), &caller_uri);
+    assert_eq!(
+        locations.len(),
+        2,
+        "expected both firstOrNull overloads via the List → Collection → \
+         Iterable supertype walk, got {:?}",
+        locations
+    );
+    assert_ne!(
+        locations[0].range, locations[1].range,
+        "expected two distinct declaration ranges (one per overload), got \
+         {:?}",
+        locations
+    );
+}
+
+/// The real Moneta shape end to end: a trailing-lambda call must resolve to
+/// the PREDICATE overload, not the 0-arg one — driven through the actual
+/// benchmark code path (`classify_cursor` + `resolve_identity_with_io(...,
+/// index_only = true)`), with the 0-arg overload keyed `"List"` (own-type
+/// tier) and the 1-arg keyed `"Iterable"` (supertype tier), matching the
+/// corpus layout this task exists to fix.
+///
+/// This cannot pass trivially: `candidates_on` computes both tiers
+/// unconditionally, `into_precedence_ordered` yields `[0-arg, 1-arg]`, and
+/// `shape_filter_locations` (driven by the trailing lambda's `CallShape`)
+/// narrows the combined set down to the 1-arg one — impossible before this
+/// fix, when `supertype_extension` (and `own_type_extension`) were each a
+/// single `Option<Location>`.
+#[test]
+fn trailing_lambda_call_resolves_the_predicate_overload_of_a_stdlib_extension() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    write_fake_android_sdk_source(
+        root,
+        "java/util/List.java",
+        "package java.util;\npublic interface List<E> extends Collection<E> {\n}\n",
+    );
+    write_fake_android_sdk_source(
+        root,
+        "java/util/Collection.java",
+        "package java.util;\npublic interface Collection<E> extends Iterable<E> {\n}\n",
+    );
+    write_fake_android_sdk_source(
+        root,
+        "java/lang/Iterable.java",
+        "package java.lang;\npublic interface Iterable<T> {\n}\n",
+    );
+
+    let idx = Indexer::new();
+    idx.workspace_root.set(root.to_path_buf());
+
+    let zero_arg_uri = Url::parse("file:///app/ListExtensions.kt").unwrap();
+    idx.index_content(
+        &zero_arg_uri,
+        "package app\nfun <T> List<T>.firstOrNull(): T? = null\n",
+    );
+    let one_arg_uri = Url::parse("file:///app/IterableExtensions.kt").unwrap();
+    idx.index_content(
+        &one_arg_uri,
+        concat!(
+            "package app\n",
+            // Decoy, declared FIRST: a same-named, wrong-arity overload on the
+            // SAME "Iterable" tier as the real predicate overload below. Without
+            // this, both tiers happen to hold exactly one candidate each in
+            // this fixture, so the pre-fix `.into_iter().next()` collapse
+            // reproduces the right two-element combined list by sheer
+            // structural accident and this test passes even before the fix
+            // (verified: it did). With the decoy present, the pre-fix collapse
+            // on the Iterable tier picks THIS wrong-arity entry instead of the
+            // real predicate one, both candidates get shape-filtered out, and
+            // resolution correctly goes red (`NameScan([])`).
+            "fun <T> Iterable<T>.firstOrNull(a: (T) -> Boolean, b: (T) -> Boolean): T? = null\n",
+            "fun <T> Iterable<T>.firstOrNull(predicate: (T) -> Boolean): T? = null\n",
+        ),
+    );
+
+    let caller_src = concat!(
+        "package app\n",
+        "class CodeItem(val code: String)\n",
+        "fun use(countries: List<CodeItem>) {\n",
+        "    countries.firstOrNull { it.code == \"x\" }\n",
+        "}\n",
+    );
+    let caller_path = root.join("Caller.kt");
+    std::fs::write(&caller_path, caller_src).unwrap();
+    let caller_uri = Url::from_file_path(&caller_path).unwrap();
+    idx.index_content(&caller_uri, caller_src);
+
+    // Pre-warm the on-demand builtin-type fallback for "List": `classify_cursor`
+    // gates a receiver's type on `has_type_definition`, which only consults
+    // already-indexed definitions and has no fallback of its own — mirroring
+    // an LSP session where `List` was already resolved by an earlier request.
+    let _ = resolve_kotlin_builtin_type_platform_equivalent(&idx, "List");
+
+    let position = tower_lsp::lsp_types::Position {
+        line: 3,
+        character: 16,
+    };
+    let symbol = crate::indexer::classify_cursor(&idx, &caller_uri, position)
+        .expect("cursor lands on the firstOrNull identifier");
+    let identity = crate::indexer::resolve_identity_with_io(&symbol, &idx, &caller_uri, true);
+    match identity {
+        crate::indexer::NavigationSource::CstResolved(defs) => {
+            assert_eq!(
+                defs.len(),
+                1,
+                "expected the trailing-lambda call shape to narrow the \
+                 combined overload set down to exactly the predicate \
+                 overload, got {:?}",
+                &*defs
+            );
+            assert_eq!(
+                defs[0].uri.as_str(),
+                one_arg_uri.as_str(),
+                "expected the resolved location to be the 1-arg predicate \
+                 overload declared in IterableExtensions.kt, got {:?}",
+                &*defs
+            );
+        }
+        other => panic!("expected CstResolved, got {other:?}"),
+    }
+}
+
+/// Decoy guard, confirmed by the critique to pass both before and after this
+/// fix: a real, arity-compatible member always outranks a same-named
+/// extension overload set — `into_precedence_ordered`'s member-tiers-first
+/// ordering is untouched by this task.
+#[test]
+fn a_real_member_still_outranks_an_extension_overload_set() {
+    let idx = Indexer::new();
+
+    let receiver_uri = Url::parse("file:///app/Widget.kt").unwrap();
+    idx.index_content(
+        &receiver_uri,
+        concat!(
+            "package app\n",
+            "class Widget {\n",
+            "    fun paint() {}\n",
+            "}\n",
+        ),
+    );
+
+    let ext_uri = Url::parse("file:///app/WidgetExtensions.kt").unwrap();
+    idx.index_content(
+        &ext_uri,
+        concat!(
+            "package app\n",
+            "fun Widget.paint(color: Int) {}\n",
+            "fun Widget.paint(color: Int, alpha: Float) {}\n",
+        ),
+    );
+
+    let caller_uri = Url::parse("file:///app/Caller.kt").unwrap();
+    idx.index_content(
+        &caller_uri,
+        "package app\nfun use(widget: Widget) { widget.paint() }\n",
+    );
+
+    let locations = idx.find_definition_qualified_index_only("paint", Some("Widget"), &caller_uri);
+    assert!(
+        !locations.is_empty(),
+        "expected at least the real member to resolve"
+    );
+    assert_eq!(
+        locations[0].uri.as_str(),
+        receiver_uri.as_str(),
+        "the real member must still be ranked ahead of the extension \
+         overload set, got {:?}",
+        locations
+    );
+}
+
+/// The last-resort JAR-keyed path (`jar_extension_for_type_root`), in
+/// isolation from the rest of the ladder: a type root with no indexed
+/// declaration and two same-named JAR-keyed overloads must return both, with
+/// distinct ranges.
+#[test]
+fn jar_extension_for_type_root_returns_every_overload() {
+    use crate::types::{ExtensionEntry, FileData, SourceSet, SymbolEntry, Visibility};
+    use std::sync::Arc;
+    use tower_lsp::lsp_types::{Position, Range, SymbolKind};
+
+    let idx = Indexer::new();
+    let jar_uri = "jar:file:///fake-stdlib.jar!/kotlin/collections/CollectionsKt.class".to_owned();
+
+    let zero_arg_range = Range {
+        start: Position {
+            line: 0,
+            character: 0,
+        },
+        end: Position {
+            line: 0,
+            character: 11,
+        },
+    };
+    let one_arg_range = Range {
+        start: Position {
+            line: 1,
+            character: 0,
+        },
+        end: Position {
+            line: 1,
+            character: 11,
+        },
+    };
+    let zero_arg_detail = "fun <T> List<T>.firstOrNull(): T?".to_owned();
+    let one_arg_detail = "fun <T> List<T>.firstOrNull(predicate: (T) -> Boolean): T?".to_owned();
+
+    let zero_arg_symbol = SymbolEntry {
+        name: "firstOrNull".to_owned(),
+        kind: SymbolKind::FUNCTION,
+        visibility: Visibility::Public,
+        range: zero_arg_range,
+        selection_range: zero_arg_range,
+        detail: zero_arg_detail.clone(),
+        container: None,
+        params: String::new(),
+        param_counts: (0, 0),
+        cold: crate::types::pack_cold_fields(
+            vec![],
+            "List".to_owned(),
+            String::new(),
+            String::new(),
+        ),
+        trailing_lambda: false,
+        deprecated: false,
+    };
+    let one_arg_symbol = SymbolEntry {
+        name: "firstOrNull".to_owned(),
+        kind: SymbolKind::FUNCTION,
+        visibility: Visibility::Public,
+        range: one_arg_range,
+        selection_range: one_arg_range,
+        detail: one_arg_detail.clone(),
+        container: None,
+        params: "predicate: (T) -> Boolean".to_owned(),
+        param_counts: (1, 1),
+        cold: crate::types::pack_cold_fields(
+            vec![],
+            "List".to_owned(),
+            String::new(),
+            String::new(),
+        ),
+        trailing_lambda: true,
+        deprecated: false,
+    };
+
+    idx.jar_files.insert(
+        jar_uri.clone(),
+        Arc::new(FileData {
+            symbols: vec![zero_arg_symbol, one_arg_symbol],
+            source_set: SourceSet::Library,
+            package: Some("kotlin.collections".to_owned()),
+            lines: Arc::new(vec![]),
+            ..Default::default()
+        }),
+    );
+
+    idx.extension_by_receiver
+        .entry("List".to_owned())
+        .or_default()
+        .extend([
+            ExtensionEntry {
+                file_uri: jar_uri.clone(),
+                name: "firstOrNull".to_owned(),
+                kind: SymbolKind::FUNCTION,
+                detail: zero_arg_detail,
+                visibility: Visibility::Public,
+                package: Some("kotlin.collections".to_owned()),
+                trailing_lambda: false,
+                deprecated: false,
+                container: None,
+            },
+            ExtensionEntry {
+                file_uri: jar_uri,
+                name: "firstOrNull".to_owned(),
+                kind: SymbolKind::FUNCTION,
+                detail: one_arg_detail,
+                visibility: Visibility::Public,
+                package: Some("kotlin.collections".to_owned()),
+                trailing_lambda: true,
+                deprecated: false,
+                container: None,
+            },
+        ]);
+
+    let locations =
+        crate::resolver::qualified::jar_extension_for_type_root(&idx, "List", "firstOrNull");
+    assert_eq!(
+        locations.len(),
+        2,
+        "expected both JAR-keyed overloads, got {:?}",
+        locations
+    );
+    assert_ne!(
+        locations[0].range, locations[1].range,
+        "expected two distinct declaration ranges (one per overload), got \
+         {:?}",
+        locations
     );
 }
 
