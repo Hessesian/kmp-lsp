@@ -124,24 +124,58 @@ fn call_shape_ctx<'a, W: WorkspaceRead>(
 ///
 /// When `shape_ctx` is `Some` (the cursor sits on an actual call's callee),
 /// candidates are first arity-filtered via `shape_filter_locations` — the
-/// same filtering `resolve_identity_with_io` applies for goto-definition.
-/// Whether or not a shape was available, more than one candidate surviving
-/// means the reference is genuinely ambiguous (a bare reference to an
-/// overloaded name, or two overloads sharing an arity) — showing no hover is
-/// more honest than picking an arbitrary overload's docs. See PR #304, which
-/// stopped `resolve_qualified`'s member-lookup step from collapsing overloads
-/// to one arbitrary candidate before this point ever got a look at them.
+/// same filtering `resolve_identity_with_io` applies for goto-definition. If
+/// more than one candidate still survives *and* they all share the same name
+/// and declared arity (the `Modifier.weight` shape: two unrelated same-arity
+/// extensions colliding on one receiver, see
+/// `ambiguous_member_extension_name_collision_returns_the_whole_candidate_set`
+/// in `src/resolver/tests.rs`), any one of them has the same signature, so
+/// the first is rendered rather than declined. Otherwise — no shape was
+/// available, or the survivors genuinely differ — the reference is
+/// ambiguous and showing no hover is more honest than picking an arbitrary
+/// overload's docs. See PR #304, which stopped `resolve_qualified`'s
+/// member-lookup step from collapsing overloads to one arbitrary candidate
+/// before this point ever got a look at them.
 fn pick_unambiguous_location(
     shape_ctx: Option<(&crate::indexer::Indexer, crate::indexer::CallShape)>,
     mut locations: Vec<Location>,
 ) -> Option<Location> {
     if let Some((indexer, shape)) = shape_ctx {
         locations = crate::indexer::shape_filter_locations(indexer, shape, locations).resolved();
+        if locations.len() > 1 && locations_share_call_signature(indexer, &locations) {
+            return locations.into_iter().next();
+        }
     }
     if locations.len() > 1 {
         return None;
     }
     locations.into_iter().next()
+}
+
+/// Whether every location in `locations` resolves to a symbol with the same
+/// name and the same declared arity — the check that lets
+/// `pick_unambiguous_location` render the first candidate instead of
+/// declining for a same-arity collision.
+fn locations_share_call_signature(
+    indexer: &crate::indexer::Indexer,
+    locations: &[Location],
+) -> bool {
+    let mut shapes = locations.iter().map(|location| {
+        indexer
+            .files
+            .get(location.uri.as_str())
+            .or_else(|| indexer.jar_files.get(location.uri.as_str()))
+            .and_then(|fd| {
+                fd.symbols
+                    .iter()
+                    .find(|s| s.selection_range == location.range)
+                    .map(|s| (s.name.clone(), s.arity_for_call_shape_check()))
+            })
+    });
+    let Some(Some(first)) = shapes.next() else {
+        return false;
+    };
+    shapes.all(|shape| shape.as_ref() == Some(&first))
 }
 
 fn regular_symbol_hover<W: WorkspaceRead>(
