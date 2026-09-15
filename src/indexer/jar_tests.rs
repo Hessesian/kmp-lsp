@@ -3034,6 +3034,167 @@ fn extension_entries_accessor_promotes_before_reading() {
     });
 }
 
+/// A JAR-compiled extension on a nullable receiver (`fun String?.orEmpty()`)
+/// must key into `extension_by_receiver` under the BASE type `"String"`, the
+/// same key the parser (source side) already uses for a source-defined
+/// `fun String?.foo()` — every lookup site (`resolve_extension_in_scope`,
+/// completion, nullable-call diagnostics) asks for the base type, never the
+/// `?`-suffixed spelling. Before the fix, the JAR indexer keyed this on the
+/// raw `"String?"` string instead, so the extension was indexed but never
+/// found.
+#[test]
+fn jar_nullable_receiver_extension_is_keyed_on_the_base_type() {
+    let indexer = idx();
+    let symbols = vec![make_sidecar_extension(
+        "orEmpty",
+        "String?",
+        "fun String?.orEmpty(): String",
+    )];
+    populate_from_symbols(
+        &indexer,
+        "/gradle/caches/kotlin-stdlib.jar".as_ref(),
+        &symbols,
+    );
+
+    assert!(
+        indexer
+            .extension_by_receiver
+            .get("String")
+            .is_some_and(|entries| entries.iter().any(|e| e.name == "orEmpty")),
+        "a nullable-receiver JAR extension must key on the base type \"String\""
+    );
+    assert!(
+        indexer.extension_by_receiver.get("String?").is_none(),
+        "the raw \"String?\" key must never appear — no lookup site asks for it"
+    );
+}
+
+/// A JAR-compiled extension on a nested-type receiver (`fun Outer.Inner
+/// .foo()`) must key on the LEAF type `"Inner"`, matching every lookup site
+/// (which resolves a receiver expression down to its own leaf type name).
+/// The sidecar's `KmType.render` does `substringAfterLast('/')`, which strips
+/// the package but keeps dot-separated nesting (`"Outer.Inner"`) — before the
+/// fix, the JAR indexer kept that whole dotted string as the key instead of
+/// reducing it to `"Inner"`.
+#[test]
+fn jar_nested_type_receiver_extension_is_keyed_on_the_leaf_type() {
+    let indexer = idx();
+    let symbols = vec![make_sidecar_extension(
+        "leaf",
+        "Outer.Inner",
+        "fun Outer.Inner.leaf(): Unit",
+    )];
+    populate_from_symbols(
+        &indexer,
+        "/gradle/caches/nested-types.jar".as_ref(),
+        &symbols,
+    );
+
+    assert!(
+        indexer
+            .extension_by_receiver
+            .get("Inner")
+            .is_some_and(|entries| entries.iter().any(|e| e.name == "leaf")),
+        "a nested-type-receiver JAR extension must key on the leaf type \"Inner\""
+    );
+    assert!(
+        indexer.extension_by_receiver.get("Outer.Inner").is_none(),
+        "the raw dotted \"Outer.Inner\" key must never appear"
+    );
+}
+
+/// The Tier-1 manifest path (`populate_tier1_from_manifest` /
+/// `jar_extension_receivers`) must key extensions identically to the Tier-2
+/// path above — `jar::extension_receiver_key` is the single shared helper
+/// both call sites (`build_jar_file_data` and the sidecar-batch loop in
+/// `build_jar_manifest`) use, so this pins the second call site's contract
+/// directly rather than trusting by inspection that it stayed in sync.
+#[test]
+fn jar_manifest_tier1_receiver_key_matches_tier2() {
+    let indexer = idx();
+    let jar_id = indexer.jar_table.intern("/gradle/caches/kotlin-stdlib.jar");
+    let names = vec![
+        crate::indexer::jar_manifest_cache::JarManifestName {
+            name: "orEmpty".to_owned(),
+            kind: "fun".to_owned(),
+            container: None,
+            package: None,
+            extension_receiver: Some(crate::indexer::jar::extension_receiver_key("String?")),
+        },
+        crate::indexer::jar_manifest_cache::JarManifestName {
+            name: "leaf".to_owned(),
+            kind: "fun".to_owned(),
+            container: None,
+            package: None,
+            extension_receiver: Some(crate::indexer::jar::extension_receiver_key("Outer.Inner")),
+        },
+    ];
+    crate::indexer::jar::populate_tier1_from_manifest(&indexer, jar_id, &names);
+
+    assert!(
+        indexer.jar_extension_receivers.contains_key("String"),
+        "Tier 1 must key the nullable-receiver extension on \"String\""
+    );
+    assert!(
+        indexer.jar_extension_receivers.contains_key("Inner"),
+        "Tier 1 must key the nested-type-receiver extension on \"Inner\""
+    );
+    assert!(
+        !indexer.jar_extension_receivers.contains_key("String?"),
+        "Tier 1 must never key on the raw \"String?\" spelling"
+    );
+    assert!(
+        !indexer.jar_extension_receivers.contains_key("Outer.Inner"),
+        "Tier 1 must never key on the raw dotted \"Outer.Inner\" spelling"
+    );
+}
+
+/// Pins the fix for this task's schema-meaning change: `extension_receiver`
+/// entries written by a pre-fix build are keyed on the OLD (buggy)
+/// derivation, not `jar::extension_receiver_key`'s. Neither a JAR's own
+/// (mtime, size) fingerprint nor an unbumped version constant would notice
+/// that, so a user upgrading kmp-lsp would silently keep serving stale,
+/// wrongly-keyed Tier-1 extension data forever. `3` is deliberately
+/// hardcoded (matching the sibling `..._ignores_a_stale_pre_field_extraction_
+/// version` test's own rationale for hardcoding `2`): it is the exact
+/// version this manifest cache shipped with immediately before this fix.
+#[test]
+fn jar_manifest_cache_ignores_a_stale_v3_version() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    crate::indexer::test_helpers::with_xdg_cache(tmp.path(), || {
+        let mut stale_entries: std::collections::HashMap<
+            String,
+            crate::indexer::jar_manifest_cache::JarManifestEntry,
+        > = std::collections::HashMap::new();
+        stale_entries.insert(
+            "/gradle/caches/kotlin-stdlib.jar".to_owned(),
+            crate::indexer::jar_manifest_cache::JarManifestEntry {
+                mtime_secs: 1_700_000_000,
+                mtime_nanos: 0,
+                file_size: 999,
+                names: vec![crate::indexer::jar_manifest_cache::JarManifestName {
+                    name: "orEmpty".to_owned(),
+                    kind: "fun".to_owned(),
+                    container: None,
+                    package: None,
+                    extension_receiver: Some("String?".to_owned()),
+                }],
+            },
+        );
+        crate::indexer::jar_manifest_cache::write_versioned_manifest_cache_for_test(
+            3,
+            &stale_entries,
+        );
+
+        let loaded = crate::indexer::jar_manifest_cache::load_jar_manifest_cache();
+        assert!(
+            loaded.is_empty(),
+            "a manifest cache written by the pre-key-fix version (3) must be ignored, \
+             not served stale — the version constant must have been bumped past 3"
+        );
+    });
+}
+
 /// PR3 regression test (unwired Tier-2 reads): `resolve_via_imports` read
 /// `jar_definitions` with NO preceding promotion, so an explicitly imported
 /// symbol whose JAR was Tier-1-only (manifest known, Tier-2 cache-backed but

@@ -24,6 +24,7 @@ use tower_lsp::lsp_types::Url;
 use super::FileContributions;
 use crate::cli::extract_sources::{default_gradle_home, parse_jar_meta, version_key};
 use crate::sidecar::SidecarHandle;
+use crate::str_ext::StrExt;
 use crate::types::{
     pack_cold_fields, ExtensionEntry, FileData, FileIndexResult, SourceSet, SymbolEntry, Visibility,
 };
@@ -905,6 +906,25 @@ pub(crate) fn params_from_detail(detail: &str) -> (String, (u8, u8)) {
     (inner.to_owned(), (required, total))
 }
 
+/// Derive the `extension_by_receiver` / `jar_extension_receivers` key for a
+/// JAR extension's receiver type string, matching how the parser (source
+/// side) already normalizes a receiver: strip generics, strip the Kotlin `?`
+/// nullable marker, then reduce to the trailing dot-separated leaf — so a
+/// nullable receiver (`"String?"`) keys as `"String"` and a nested-type
+/// receiver (`"Outer.Inner"`) keys as `"Inner"`, the same key a source-side
+/// `fun Outer.Inner.foo()` / `fun String?.foo()` would produce. Without this,
+/// a JAR-compiled extension on a nullable or nested-type receiver gets filed
+/// under a key no lookup site ever asks for and is never found.
+pub(crate) fn extension_receiver_key(receiver_type: &str) -> String {
+    receiver_type
+        .split('<')
+        .next()
+        .unwrap_or("")
+        .strip_nullable()
+        .last_segment()
+        .to_owned()
+}
+
 /// Build `FileData` + definition entries for one JAR and insert them into the index.
 fn build_jar_file_data(
     indexer: &crate::indexer::Indexer,
@@ -929,12 +949,7 @@ fn build_jar_file_data(
                 character: sym.name.len() as u32,
             },
         };
-        let extension_receiver = sym
-            .extension_receiver_type
-            .split('<')
-            .next()
-            .unwrap_or("")
-            .to_owned();
+        let extension_receiver = extension_receiver_key(&sym.extension_receiver_type);
         // The sidecar doesn't emit parameter counts, but its `detail` is the full
         // signature — parse counts from it so JAR functions get real arities.
         // Without this every JAR function looks 0-arg, producing call-arg false
@@ -1489,22 +1504,16 @@ pub(crate) fn build_jar_manifest(
                                 // FQNs) — carry it through so Tier 1 can build
                                 // real FQNs too, not just short names.
                                 package: (!s.pkg.is_empty()).then(|| s.pkg.clone()),
-                                // Leaf-strip the same way Tier 2's
-                                // `build_jar_file_data` derives its
-                                // `extension_by_receiver` key (`sym
-                                // .extension_receiver_type.split('<').next()`)
-                                // — carrying this through lets Tier 1 know
-                                // this JAR defines an extension on a given
-                                // receiver type without materializing it.
-                                extension_receiver: (!s.extension_receiver_type.is_empty()).then(
-                                    || {
-                                        s.extension_receiver_type
-                                            .split('<')
-                                            .next()
-                                            .unwrap_or("")
-                                            .to_owned()
-                                    },
-                                ),
+                                // Same `extension_receiver_key` helper Tier 2's
+                                // `build_jar_file_data` uses to derive its
+                                // `extension_by_receiver` key — carrying this
+                                // through lets Tier 1 know this JAR defines an
+                                // extension on a given receiver type without
+                                // materializing it, keyed identically to Tier 2
+                                // so a promotion driven by this index finds the
+                                // entries it promotes.
+                                extension_receiver: (!s.extension_receiver_type.is_empty())
+                                    .then(|| extension_receiver_key(&s.extension_receiver_type)),
                             })
                             .collect();
                         total_names += populate_tier1_from_manifest(indexer, jar_id, &names);
