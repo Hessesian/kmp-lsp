@@ -23,7 +23,8 @@ use tower_lsp::lsp_types::Url;
 
 use super::FileContributions;
 use crate::cli::extract_sources::{default_gradle_home, parse_jar_meta, version_key};
-use crate::sidecar::SidecarHandle;
+use crate::sidecar::{SidecarHandle, SidecarSymbol};
+use crate::str_ext::StrExt;
 use crate::types::{
     pack_cold_fields, ExtensionEntry, FileData, FileIndexResult, SourceSet, SymbolEntry, Visibility,
 };
@@ -905,6 +906,25 @@ pub(crate) fn params_from_detail(detail: &str) -> (String, (u8, u8)) {
     (inner.to_owned(), (required, total))
 }
 
+/// Derive the `extension_by_receiver` / `jar_extension_receivers` key for a
+/// JAR extension's receiver type string, matching how the parser (source
+/// side) already normalizes a receiver: strip generics, strip the Kotlin `?`
+/// nullable marker, then reduce to the trailing dot-separated leaf — so a
+/// nullable receiver (`"String?"`) keys as `"String"` and a nested-type
+/// receiver (`"Outer.Inner"`) keys as `"Inner"`, the same key a source-side
+/// `fun Outer.Inner.foo()` / `fun String?.foo()` would produce. Without this,
+/// a JAR-compiled extension on a nullable or nested-type receiver gets filed
+/// under a key no lookup site ever asks for and is never found.
+pub(crate) fn extension_receiver_key(receiver_type: &str) -> String {
+    receiver_type
+        .split('<')
+        .next()
+        .unwrap_or("")
+        .strip_nullable()
+        .last_segment()
+        .to_owned()
+}
+
 /// Build `FileData` + definition entries for one JAR and insert them into the index.
 fn build_jar_file_data(
     indexer: &crate::indexer::Indexer,
@@ -929,12 +949,7 @@ fn build_jar_file_data(
                 character: sym.name.len() as u32,
             },
         };
-        let extension_receiver = sym
-            .extension_receiver_type
-            .split('<')
-            .next()
-            .unwrap_or("")
-            .to_owned();
+        let extension_receiver = extension_receiver_key(&sym.extension_receiver_type);
         // The sidecar doesn't emit parameter counts, but its `detail` is the full
         // signature — parse counts from it so JAR functions get real arities.
         // Without this every JAR function looks 0-arg, producing call-arg false
@@ -1443,6 +1458,38 @@ fn jar_symbol_cache_is_fresh_for(
 /// Tier 2 are separate maps by design (§Tier 1); a consumer must call
 /// `materialize_jar_on_demand` separately to get full data for a JAR this
 /// function has manifested.
+/// Map a sidecar batch-index response onto the Tier-1 manifest's own record
+/// shape. Pulled out of `build_jar_manifest`'s sidecar-response loop as its
+/// own function so a unit test can exercise this exact mapping — including
+/// `extension_receiver_key`'s normalization — without a real `SidecarHandle`,
+/// rather than only being able to test `populate_tier1_from_manifest` with an
+/// already-normalized `JarManifestName` built by the test itself.
+pub(crate) fn sidecar_symbols_to_manifest_names(
+    symbols: &[SidecarSymbol],
+) -> Vec<super::jar_manifest_cache::JarManifestName> {
+    symbols
+        .iter()
+        .map(|s| super::jar_manifest_cache::JarManifestName {
+            name: s.name.clone(),
+            kind: s.kind.clone(),
+            container: (!s.container.is_empty()).then(|| s.container.clone()),
+            // `s.pkg` is the sidecar's real per-symbol package (same field
+            // `jar.rs`'s Tier-2 path already uses to build `indexer.qualified`
+            // FQNs) — carry it through so Tier 1 can build real FQNs too, not
+            // just short names.
+            package: (!s.pkg.is_empty()).then(|| s.pkg.clone()),
+            // Same `extension_receiver_key` helper Tier 2's `build_jar_file_data`
+            // uses to derive its `extension_by_receiver` key — carrying this
+            // through lets Tier 1 know this JAR defines an extension on a given
+            // receiver type without materializing it, keyed identically to
+            // Tier 2 so a promotion driven by this index finds the entries it
+            // promotes.
+            extension_receiver: (!s.extension_receiver_type.is_empty())
+                .then(|| extension_receiver_key(&s.extension_receiver_type)),
+        })
+        .collect()
+}
+
 pub(crate) fn build_jar_manifest(
     indexer: &crate::indexer::Indexer,
     paths: &[PathBuf],
@@ -1477,36 +1524,7 @@ pub(crate) fn build_jar_manifest(
                 Ok(results) => {
                     for ((path, path_key), symbols) in missed.into_iter().zip(results) {
                         let jar_id = indexer.jar_table.intern(&path_key);
-                        let names: Vec<super::jar_manifest_cache::JarManifestName> = symbols
-                            .iter()
-                            .map(|s| super::jar_manifest_cache::JarManifestName {
-                                name: s.name.clone(),
-                                kind: s.kind.clone(),
-                                container: (!s.container.is_empty()).then(|| s.container.clone()),
-                                // `s.pkg` is the sidecar's real per-symbol
-                                // package (same field `jar.rs`'s Tier-2 path
-                                // already uses to build `indexer.qualified`
-                                // FQNs) — carry it through so Tier 1 can build
-                                // real FQNs too, not just short names.
-                                package: (!s.pkg.is_empty()).then(|| s.pkg.clone()),
-                                // Leaf-strip the same way Tier 2's
-                                // `build_jar_file_data` derives its
-                                // `extension_by_receiver` key (`sym
-                                // .extension_receiver_type.split('<').next()`)
-                                // — carrying this through lets Tier 1 know
-                                // this JAR defines an extension on a given
-                                // receiver type without materializing it.
-                                extension_receiver: (!s.extension_receiver_type.is_empty()).then(
-                                    || {
-                                        s.extension_receiver_type
-                                            .split('<')
-                                            .next()
-                                            .unwrap_or("")
-                                            .to_owned()
-                                    },
-                                ),
-                            })
-                            .collect();
+                        let names = sidecar_symbols_to_manifest_names(&symbols);
                         total_names += populate_tier1_from_manifest(indexer, jar_id, &names);
                         if let Some(entry) = make_manifest_entry(&path, names) {
                             manifest_cache.insert(path_key, entry);
