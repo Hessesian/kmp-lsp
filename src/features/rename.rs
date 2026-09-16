@@ -112,6 +112,15 @@ pub(crate) async fn rename_impl(
     // an LSP error is surfaced as a toast with no navigation affordance -- so a
     // real disambiguation UX needs a client-side picker this server has no
     // protocol hook for. Reviewed and kept as-is, 2026-09-16.
+    //
+    // The 2026-09-16 extension-registry-follow-ups cluster raised how OFTEN
+    // this fires, not whether it should: its Task 2 widened extension-scope
+    // recognition (default-import packages now count), so more real
+    // candidates reach `resolve_extension_in_scope` per receiver, and a
+    // real-corpus measurement across that whole cluster showed FilteredCandidate
+    // rising by 449 (see that plan's final review) -- some fraction of which
+    // is this refusal firing on receivers it previously never reached at all.
+    // The reasoning above still holds; only its frequency changed.
     if definitions.len() != 1 {
         return Err(refusal(
             "identity is ambiguous — matches more than one definition",
