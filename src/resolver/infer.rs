@@ -1998,22 +1998,34 @@ fn find_extension_fn_return_type_scoped(
         // `extension_by_receiver` already had it, which — per the comment
         // above `entries` — only happens once Tier-2 materialization has
         // already populated `jar_files` for this same jar.
-        let file_data = indexer
+        //
+        // Neither lookup below may abort the whole search with `?`: an entry
+        // whose declaring file isn't loaded, or whose declaration can't be
+        // matched, must be skipped so later entries in `entries` still get a
+        // chance — one unusable entry must not hide every usable one behind
+        // it in iteration order.
+        let Some(file_data) = indexer
             .files
             .get(&entry.file_uri)
-            .or_else(|| indexer.jar_files.get(&entry.file_uri))?;
-        let start_line = file_data
-            .symbols
-            .iter()
-            .find(|s| {
-                extension_declaration_matches(
-                    s,
-                    method_name,
-                    receiver_base,
-                    entry.container.as_ref(),
-                )
-            })?
-            .selection_start() as usize;
+            .or_else(|| indexer.jar_files.get(&entry.file_uri))
+        else {
+            continue;
+        };
+        // PR #321's `select_extension_symbol` (see its doc comment in
+        // `resolver::extension`) prefers the declaration whose full `detail`
+        // exactly matches this registry entry's own, so a second overload's
+        // return type is reachable through this fallback too — not just the
+        // first declaration matching (name, receiver, container).
+        let Some(declaring_symbol) = crate::resolver::extension::select_extension_symbol(
+            &file_data,
+            method_name,
+            receiver_base,
+            entry.container.as_ref(),
+            &entry.detail,
+        ) else {
+            continue;
+        };
+        let start_line = declaring_symbol.selection_start() as usize;
         let full_sig = file_data.lines.collect_signature(start_line);
         if let Some(ret) = extract_return_type_from_detail(&full_sig) {
             return Some(ret);
@@ -2022,6 +2034,15 @@ fn find_extension_fn_return_type_scoped(
     None
 }
 
+// Part 0.4: this function has no `ExtensionEntry` and no `detail` to match
+// against (it walks `file_data.symbols` directly), so the two-step
+// `select_extension_symbol` disambiguation above does not apply here — and it
+// doesn't need to, since `Indexer::find_method_return_type_for_type` always
+// passes `Some(uri)`, so this fallback is not reachable on a production path.
+// Decision D4: giving either function arity-aware overload selection needs a
+// `CallShape` threaded through `Resolver::method_return_type`; 482 registry
+// groups on the Moneta corpus have differing-return overloads, so that is
+// real but is its own plan, not this one.
 fn find_extension_fn_return_type_global(
     indexer: &Indexer,
     receiver_base: &str,

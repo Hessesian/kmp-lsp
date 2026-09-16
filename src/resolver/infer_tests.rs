@@ -730,6 +730,122 @@ fn extension_fn_return_type_scoped_resolves_member_extension_via_truncated_detai
     );
 }
 
+/// The truncated-`detail` fallback picked the FIRST declaration in the
+/// declaring file matching (name, receiver, container) -- a predicate
+/// identical across every overload -- so a second overload's return type was
+/// unreachable through it, no matter which registry entry the loop was on.
+/// PR #321's `select_extension_symbol` already solves exactly this
+/// disambiguation by preferring the declaration whose full signature text
+/// equals the registry entry's own.
+///
+/// Both overloads are made long enough that `detail` truncates past the
+/// return type (`MAX_DETAIL_CHARS`, `src/parser.rs:1219`), forcing the
+/// `collect_signature` fallback -- the only path carrying the bug -- while
+/// still differing inside the first 120 characters (`alpha` vs `beta`) so the
+/// two truncated details remain distinguishable.
+#[test]
+fn extension_fn_return_type_scoped_selects_the_overload_the_entry_names() {
+    use super::find_extension_fn_return_type;
+    use crate::indexer::Indexer;
+    use tower_lsp::lsp_types::Url;
+
+    fn uri(path: &str) -> Url {
+        Url::parse(&format!("file://{path}")).unwrap()
+    }
+
+    let indexer = Indexer::new();
+    let declaring_uri = uri("/app/Extensions.kt");
+    let long_parameter = "w".repeat(150);
+    indexer.index_content(
+        &declaring_uri,
+        &format!(
+            "package app\n\
+             class Foo\n\
+             fun Foo.describe(alpha: Int, {long_parameter}: Int): String = \"\"\n\
+             fun Foo.describe(beta: Int, {long_parameter}: Int): Boolean = true\n"
+        ),
+    );
+
+    let caller_uri = uri("/app/Caller.kt");
+    indexer.index_content(&caller_uri, "package app\nfun use() {}\n");
+
+    // `find_extension_fn_return_type` returns on the first entry that yields
+    // a return type, so the first entry's (correct) answer would mask the
+    // bug. Drop it and the SECOND entry has to stand on its own -- which is
+    // exactly what it cannot do today.
+    indexer
+        .extension_by_receiver
+        .entry("Foo".to_owned())
+        .or_default()
+        .remove(0);
+
+    assert_eq!(
+        find_extension_fn_return_type(&indexer, "Foo", "describe", Some(&caller_uri)),
+        Some("Boolean".to_owned()),
+        "the remaining entry names the SECOND overload, so its return type \
+         must be Boolean, not the first declaration's String"
+    );
+}
+
+/// An entry whose declaring file is not loaded must skip to the next entry,
+/// not abort the whole search: both `indexer.files.get(...)?`
+/// (`infer.rs:1958`) and `.find(...)?` (`:1969`) returned `None` from the
+/// FUNCTION rather than continuing the loop, so one unusable entry hid every
+/// usable one behind it.
+///
+/// This entry is hand-built on purpose -- it must point at a file that is
+/// deliberately never indexed, which `index_content` cannot produce -- and it
+/// is `insert`ed ahead of the auto-registered real one so it is reached first.
+/// Its `detail` carries no return type, so the loop falls past the
+/// `extract_return_type_from_detail` shortcut to the file lookup that aborts.
+#[test]
+fn extension_fn_return_type_scoped_skips_an_entry_whose_file_is_missing() {
+    use super::find_extension_fn_return_type;
+    use crate::indexer::Indexer;
+    use crate::types::{ExtensionEntry, Visibility};
+    use tower_lsp::lsp_types::{SymbolKind, Url};
+
+    fn uri(path: &str) -> Url {
+        Url::parse(&format!("file://{path}")).unwrap()
+    }
+
+    let indexer = Indexer::new();
+    let declaring_uri = uri("/app/Extensions.kt");
+    indexer.index_content(
+        &declaring_uri,
+        "package app\nclass Foo\nfun Foo.describe(): String = \"\"\n",
+    );
+
+    indexer
+        .extension_by_receiver
+        .entry("Foo".to_owned())
+        .or_default()
+        .insert(
+            0,
+            ExtensionEntry {
+                file_uri: "file:///app/NeverIndexed.kt".to_owned(),
+                name: "describe".to_owned(),
+                kind: SymbolKind::FUNCTION,
+                detail: "fun Foo.describe(".to_owned(),
+                visibility: Visibility::Public,
+                package: Some("app".to_owned()),
+                trailing_lambda: false,
+                deprecated: false,
+                container: None,
+            },
+        );
+
+    let caller_uri = uri("/app/Caller.kt");
+    indexer.index_content(&caller_uri, "package app\nfun use() {}\n");
+
+    assert_eq!(
+        find_extension_fn_return_type(&indexer, "Foo", "describe", Some(&caller_uri)),
+        Some("String".to_owned()),
+        "an entry pointing at an unindexed file must be skipped, not abort \
+         the search over the remaining entries"
+    );
+}
+
 /// `Resolver::function_return_type` is the import-aware catalog entry: it binds
 /// through the scope chain first, then falls back to a workspace-wide by-name
 /// lookup, returning a self-documenting [`ReturnType`]. This asserts the
