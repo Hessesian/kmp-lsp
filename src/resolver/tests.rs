@@ -9275,9 +9275,12 @@ fn the_initializer_search_survives_a_pathologically_deep_file() {
 // compiled `.class` file anywhere in kotlin-stdlib's JAR (verified via
 // `unzip -l kotlin-stdlib-*.jar | grep String.class` -> no output — see
 // docs/superpowers/specs/2026-08-27-kotlin-builtin-type-platform-mapping-design.md).
-// `resolve_kotlin_builtin_type_platform_equivalent` is the last-resort
-// fallback that indexes the real platform declaration from the Android SDK
-// sources bundle on demand.
+// `resolve_kotlin_builtin_type_platform_equivalent` indexes the real platform
+// declaration from the Android SDK sources bundle on demand, and `resolve_chain`
+// tries it in its tail *ahead of* the global-definitions lookup, not behind it:
+// for every name in `KOTLIN_BUILTIN_TYPE_PLATFORM_EQUIVALENTS`, a same-named
+// index/JAR candidate is always a decoy, so it must not get a chance to win
+// first.
 
 /// Builds a fake Android SDK layout (`local.properties` + `sdk/sources/
 /// android-<api>/<relative_java_path>`) under `root`, matching the exact
@@ -9587,6 +9590,179 @@ fn resolve_kotlin_builtin_type_platform_equivalent_surfaces_iterable_extensions_
     assert!(
         labels.contains(&"secondOrNull"),
         "expected the Iterable extension to appear for a List receiver, got: {labels:?}"
+    );
+}
+
+/// Part 0.1's real corpus mechanism, in miniature: bare `List` has MANY
+/// same-named index candidates, `ambiguity_safe_tail_with_denylist` survives
+/// the denylist and module-scope stages, and then
+/// `default_kotlin_import_tie_break` narrows to the single
+/// `kotlin.collections`-packaged one -- a kotlin-stdlib decoy with no
+/// compiled body and no supertypes. The real `java.util.List` must win
+/// instead, or `type_path_anchors` anchors every `List` receiver on a
+/// declaration with no walkable supertype chain.
+#[test]
+fn a_builtin_type_name_prefers_the_platform_declaration_over_a_default_imported_decoy() {
+    use crate::types::FileData;
+    use std::sync::Arc;
+
+    let directory = tempfile::tempdir().unwrap();
+    let root = directory.path();
+    write_fake_android_sdk_source(
+        root,
+        "java/util/List.java",
+        "package java.util;\npublic interface List<E> extends Collection<E> {\n}\n",
+    );
+
+    let indexer = Indexer::new();
+    indexer.workspace_root.set(root.to_path_buf());
+
+    let stdlib_decoy_uri = "jar:file:///kotlin-stdlib.jar!/kotlin/collections/List.class";
+    let unrelated_decoy_uri = "jar:file:///unrelated.jar!/com/example/List.class";
+    for decoy_uri in [stdlib_decoy_uri, unrelated_decoy_uri] {
+        indexer
+            .jar_definitions
+            .entry("List".to_owned())
+            .or_default()
+            .push(tower_lsp::lsp_types::Location {
+                uri: Url::parse(decoy_uri).unwrap(),
+                range: Default::default(),
+            });
+    }
+    indexer.jar_files.insert(
+        stdlib_decoy_uri.to_owned(),
+        Arc::new(FileData {
+            package: Some("kotlin.collections".to_owned()),
+            ..Default::default()
+        }),
+    );
+    indexer.jar_files.insert(
+        unrelated_decoy_uri.to_owned(),
+        Arc::new(FileData {
+            package: Some("com.example".to_owned()),
+            ..Default::default()
+        }),
+    );
+
+    let caller_source = "package app\nfun use(items: List<String>) { }\n";
+    let caller_path = root.join("Caller.kt");
+    std::fs::write(&caller_path, caller_source).unwrap();
+    let caller_uri = Url::from_file_path(&caller_path).unwrap();
+    indexer.index_content(&caller_uri, caller_source);
+
+    let locations = resolve_symbol_index_only(&indexer, "List", None, &caller_uri);
+    assert_eq!(
+        locations.len(),
+        1,
+        "expected exactly the platform declaration, got {locations:?}"
+    );
+    assert!(
+        locations[0].uri.path().ends_with("java/util/List.java"),
+        "expected the real java.util.List, got {:?}",
+        locations[0].uri
+    );
+}
+
+/// The second, different failure shape from Part 0.2: `MutableSet` and its
+/// four `Mutable*` siblings have exactly ONE same-named index candidate (a
+/// kotlin-gradle-plugin decoy), so they never reach a tie-break at all --
+/// the unique-match arm returns the decoy outright. The platform equivalent
+/// must still win, and note the target's simple name differs from the
+/// Kotlin one (`MutableSet` -> `java.util.Set`).
+#[test]
+fn a_mutable_builtin_type_name_prefers_the_platform_declaration_over_a_unique_decoy() {
+    use crate::types::FileData;
+    use std::sync::Arc;
+
+    let directory = tempfile::tempdir().unwrap();
+    let root = directory.path();
+    write_fake_android_sdk_source(
+        root,
+        "java/util/Set.java",
+        "package java.util;\npublic interface Set<E> extends Collection<E> {\n}\n",
+    );
+
+    let indexer = Indexer::new();
+    indexer.workspace_root.set(root.to_path_buf());
+
+    let decoy_uri = "jar:file:///kotlin-gradle-plugin.jar!/kotlin/collections/MutableSet.class";
+    indexer.jar_definitions.insert(
+        "MutableSet".to_owned(),
+        vec![tower_lsp::lsp_types::Location {
+            uri: Url::parse(decoy_uri).unwrap(),
+            range: Default::default(),
+        }],
+    );
+    indexer.jar_files.insert(
+        decoy_uri.to_owned(),
+        Arc::new(FileData {
+            package: Some("kotlin.collections".to_owned()),
+            ..Default::default()
+        }),
+    );
+
+    let caller_source = "package app\nfun use(items: MutableSet<String>) { }\n";
+    let caller_path = root.join("Caller.kt");
+    std::fs::write(&caller_path, caller_source).unwrap();
+    let caller_uri = Url::from_file_path(&caller_path).unwrap();
+    indexer.index_content(&caller_uri, caller_source);
+
+    let locations = resolve_symbol_index_only(&indexer, "MutableSet", None, &caller_uri);
+    assert_eq!(
+        locations.len(),
+        1,
+        "expected exactly the platform declaration, got {locations:?}"
+    );
+    assert!(
+        locations[0].uri.path().ends_with("java/util/Set.java"),
+        "expected the real java.util.Set, got {:?}",
+        locations[0].uri
+    );
+}
+
+/// Decoy guard, expected GREEN both before and after: the reorder lives in
+/// `resolve_chain`'s TAIL, below steps 1-4.5, so a workspace file that really
+/// declares its own `Double` must still win for a caller in its own package.
+/// (Not purely hypothetical: the Moneta corpus declares a `Double` at
+/// feature/credit_card/clip/.../InitUseCase.kt:73, though as a NESTED data
+/// class rather than a top-level one. This fixture uses a top-level
+/// declaration, which is the shape the tail ordering actually has to respect.)
+#[test]
+fn a_workspace_declaration_still_outranks_the_builtin_platform_equivalent() {
+    let directory = tempfile::tempdir().unwrap();
+    let root = directory.path();
+    write_fake_android_sdk_source(
+        root,
+        "java/lang/Double.java",
+        "package java.lang;\npublic final class Double extends Number {\n}\n",
+    );
+
+    let indexer = Indexer::new();
+    indexer.workspace_root.set(root.to_path_buf());
+
+    let declaration_source = "package app\nclass Double(val value: String)\n";
+    let declaration_path = root.join("Double.kt");
+    std::fs::write(&declaration_path, declaration_source).unwrap();
+    let declaration_uri = Url::from_file_path(&declaration_path).unwrap();
+    indexer.index_content(&declaration_uri, declaration_source);
+
+    let caller_source = "package app\nfun use(value: Double) { }\n";
+    let caller_path = root.join("Caller.kt");
+    std::fs::write(&caller_path, caller_source).unwrap();
+    let caller_uri = Url::from_file_path(&caller_path).unwrap();
+    indexer.index_content(&caller_uri, caller_source);
+
+    let locations = resolve_symbol_index_only(&indexer, "Double", None, &caller_uri);
+    assert_eq!(
+        locations,
+        vec![tower_lsp::lsp_types::Location {
+            uri: declaration_uri,
+            range: locations
+                .first()
+                .map(|location| location.range)
+                .unwrap_or_default(),
+        }],
+        "the same-package workspace declaration must still win, got {locations:?}"
     );
 }
 

@@ -1,6 +1,9 @@
 //! Kotlin/Swift stdlib package detection and the built-in-type → JVM-platform-type
 //! fallback (see `docs/superpowers/specs/2026-08-27-kotlin-builtin-type-platform-mapping-design.md`).
 
+use std::path::{Path, PathBuf};
+use std::sync::Mutex;
+
 use tower_lsp::lsp_types::{Location, Url};
 
 use crate::indexer::Indexer;
@@ -85,12 +88,21 @@ const KOTLIN_BUILTIN_TYPE_PLATFORM_EQUIVALENTS: &[(&str, &str)] = &[
     ("Char", "java.lang.Character"),
 ];
 
-/// Last-resort fallback for a Kotlin compiler-intrinsic built-in type name
-/// (see [`KOTLIN_BUILTIN_TYPE_PLATFORM_EQUIVALENTS`]): every normal
-/// resolution step already failed by the time any tail fallback calls this,
-/// since a built-in type is never locally declared, explicitly imported, or
-/// present in the workspace's own source tree — so this can only ever turn
-/// an existing decline into a correct resolve, never introduce a wrong one.
+/// Fallback for a Kotlin compiler-intrinsic built-in type name (see
+/// [`KOTLIN_BUILTIN_TYPE_PLATFORM_EQUIVALENTS`]), tried in `resolve_chain`'s
+/// tail *ahead of* the global-definitions lookup, not behind it: for the ~22
+/// names in that table, the real platform declaration outranks any
+/// same-named index/JAR candidate, because those names have no compiled
+/// `.class` anywhere and every same-named candidate is therefore a decoy —
+/// verified on the Moneta corpus, e.g. bare `List` has 32 same-named
+/// candidates and the tie-break machinery picks a body-less
+/// `kotlin.collections` decoy from among them, and `MutableSet` has exactly
+/// one same-named candidate (a `kotlin-gradle-plugin` decoy) that wins
+/// outright as a unique match. Steps 1–4.5 (local declaration, explicit
+/// imports, same package, star imports, class hierarchy) still run first, so
+/// a workspace file that genuinely declares its own `class Double` is
+/// unaffected — this fallback only ever fires once those have already
+/// declined.
 ///
 /// Re-derives the Android SDK sources root via the already-existing
 /// [`crate::workspace_json::detect_android_sdk_source_paths`] (no new
@@ -129,7 +141,7 @@ pub(crate) fn resolve_kotlin_builtin_type_platform_equivalent(
         return vec![];
     };
     let relative_path = platform_fqn.replace('.', "/") + ".java";
-    for sdk_source_root in crate::workspace_json::detect_android_sdk_source_paths(&workspace_root) {
+    for sdk_source_root in android_sdk_source_roots(&workspace_root) {
         let file_path = sdk_source_root.join(&relative_path);
         let Ok(file_uri) = Url::from_file_path(&file_path) else {
             continue;
@@ -147,4 +159,35 @@ pub(crate) fn resolve_kotlin_builtin_type_platform_equivalent(
         }
     }
     vec![]
+}
+
+/// Memoized [`crate::workspace_json::detect_android_sdk_source_paths`], keyed
+/// on the workspace root it was computed for.
+///
+/// That function does real filesystem work on every call — a
+/// `local.properties` read, an `is_dir`, and a `read_dir` of `sdk/sources/` —
+/// plus a `log::info!` on every success. Harmless while the built-in-type
+/// fallback only ran after the whole resolution chain had already declined;
+/// not harmless now that it runs ahead of the tail for every name in
+/// [`KOTLIN_BUILTIN_TYPE_PLATFORM_EQUIVALENTS`], which is the hottest name
+/// class in a Kotlin corpus and sits on the hover/inlay path.
+///
+/// Keyed on the root path rather than cached once, because
+/// `WorkspaceRoot::set` can change the root mid-session. An SDK installed
+/// *after* the first probe is not picked up until the root changes — the same
+/// staleness the workspace scan already has, since it reads these paths once
+/// at startup (`src/workspace/mod.rs:133`, `src/cli/run.rs:284`).
+fn android_sdk_source_roots(workspace_root: &Path) -> Vec<PathBuf> {
+    static DETECTED_ROOTS: Mutex<Option<(PathBuf, Vec<PathBuf>)>> = Mutex::new(None);
+    let Ok(mut detected) = DETECTED_ROOTS.lock() else {
+        return crate::workspace_json::detect_android_sdk_source_paths(workspace_root);
+    };
+    if let Some((cached_root, cached_paths)) = detected.as_ref() {
+        if cached_root == workspace_root {
+            return cached_paths.clone();
+        }
+    }
+    let paths = crate::workspace_json::detect_android_sdk_source_paths(workspace_root);
+    *detected = Some((workspace_root.to_path_buf(), paths.clone()));
+    paths
 }
