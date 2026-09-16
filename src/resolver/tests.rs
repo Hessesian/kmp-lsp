@@ -11471,3 +11471,62 @@ fn a_default_import_packaged_extension_return_type_is_inferable_without_an_impor
          kotlin.collections extension's return type"
     );
 }
+
+/// PR #321's overload-collapse family, on the implicit-receiver entry point
+/// (`resolve_implicit_receiver_callee` -> `implicit_receiver_extension_match`).
+/// The registry correctly holds one entry per overload, but for EVERY entry
+/// the loop re-ran the same `extension_declaration_matches` `.find(...)` over
+/// the declaring file -- and that predicate compares only
+/// (name, receiver, container), identical across overloads -- so every
+/// iteration shape-checked the FIRST-declared overload and a differently
+/// shaped call was rejected on all of them. The 1-arg overload was
+/// unreachable through this entry point entirely.
+#[test]
+fn an_implicit_receiver_call_reaches_the_arity_matching_extension_overload() {
+    use crate::indexer::CallShape;
+
+    let indexer = Indexer::new();
+    let extensions_uri = uri("/app/Extensions.kt");
+    indexer.index_content(
+        &extensions_uri,
+        concat!(
+            "package app\n",
+            "fun Foo.describe(): String = \"\"\n",
+            "fun Foo.describe(prefix: String): String = prefix\n",
+        ),
+    );
+    let caller_uri = uri("/app/Caller.kt");
+    indexer.index_content(
+        &caller_uri,
+        concat!(
+            "package app\n",
+            "class Foo\n",
+            "fun Foo.use() {\n",
+            "    describe(\"x\")\n",
+            "}\n",
+        ),
+    );
+
+    let shape = CallShape {
+        arg_count: 1,
+        trailing_lambda: false,
+    };
+    let locations = crate::resolver::resolve_implicit_receiver_callee(
+        &indexer,
+        "Foo",
+        "describe",
+        &caller_uri,
+        shape,
+    );
+    assert_eq!(
+        locations.len(),
+        1,
+        "expected the 1-arg overload, got {locations:?}"
+    );
+    assert_eq!(
+        locations[0].range.start.line, 2,
+        "expected the SECOND declaration (the 1-arg overload, line index 2), \
+         got {:?}",
+        locations[0].range
+    );
+}

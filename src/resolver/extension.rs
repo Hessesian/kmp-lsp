@@ -4,18 +4,19 @@
 use tower_lsp::lsp_types::{Location, Range, Url};
 
 use crate::indexer::{CallShape, Indexer};
-use crate::types::FileData;
+use crate::types::{FileData, SymbolEntry};
 
 use super::resolve::resolve_symbol;
 
 // ─── step implementations ────────────────────────────────────────────────────
 
-/// Select the `Range` of the declaring symbol for one extension registry
-/// `entry` inside its declaring file's already-parsed symbol table.
+/// Select the declaring symbol for one extension registry `entry` inside its
+/// declaring file's already-parsed symbol table.
 ///
-/// Shared by [`resolve_extension_in_scope`] and
-/// [`super::qualified::jar_extension_for_type_root`]: both now return every
-/// same-named registry entry rather than the first, so both need this exact
+/// Shared by [`resolve_extension_in_scope`],
+/// [`super::qualified::jar_extension_for_type_root`], and
+/// `implicit_receiver_extension_match`: all now consider every same-named
+/// registry entry rather than just the first, so all three need this exact
 /// two-step selection — a file may declare several overloads of the same
 /// extension (same name, same receiver, same container), and
 /// `extension_declaration_matches` alone can't tell them apart. Prefer the
@@ -23,15 +24,15 @@ use super::resolve::resolve_symbol;
 /// entry's own `detail`; when nothing matches exactly (e.g. the registry
 /// entry's detail was computed slightly differently than the symbol table's,
 /// or the file has since drifted), fall back to the first declaration with a
-/// matching name/receiver/container shape rather than returning no range at
+/// matching name/receiver/container shape rather than returning nothing at
 /// all.
-pub(super) fn select_extension_symbol_range(
-    file_data: &FileData,
+pub(super) fn select_extension_symbol<'file_data>(
+    file_data: &'file_data FileData,
     name: &str,
     receiver_base: &str,
     container: Option<&String>,
     detail: &str,
-) -> Range {
+) -> Option<&'file_data SymbolEntry> {
     let declaring_symbols: Vec<_> = file_data
         .symbols
         .iter()
@@ -47,8 +48,21 @@ pub(super) fn select_extension_symbol_range(
     let exact_signature_match = declaring_symbols
         .iter()
         .find(|symbol| symbol.detail == detail);
-    let selected = exact_signature_match.or_else(|| declaring_symbols.first());
-    selected
+    exact_signature_match
+        .or_else(|| declaring_symbols.first())
+        .copied()
+}
+
+/// The `Range` half of [`select_extension_symbol`], for callers that only
+/// need the location and not the rest of the symbol (params/arity).
+pub(super) fn select_extension_symbol_range(
+    file_data: &FileData,
+    name: &str,
+    receiver_base: &str,
+    container: Option<&String>,
+    detail: &str,
+) -> Range {
+    select_extension_symbol(file_data, name, receiver_base, container, detail)
         .map(|symbol| symbol.selection_range)
         .unwrap_or_default()
 }
@@ -185,18 +199,15 @@ fn implicit_receiver_extension_match(
             .files
             .get(&entry.file_uri)
             .or_else(|| indexer.jar_files.get(&entry.file_uri))
-            .and_then(|fd| {
-                fd.symbols
-                    .iter()
-                    .find(|s| {
-                        crate::resolver::infer::extension_declaration_matches(
-                            s,
-                            name,
-                            receiver_base,
-                            entry.container.as_ref(),
-                        )
-                    })
-                    .cloned()
+            .and_then(|file_data| {
+                select_extension_symbol(
+                    &file_data,
+                    name,
+                    receiver_base,
+                    entry.container.as_ref(),
+                    &entry.detail,
+                )
+                .cloned()
             });
         let Some(symbol) = symbol else { continue };
         let is_vararg = symbol.params.contains("vararg ") || symbol.params.contains("vararg\t");

@@ -103,6 +103,15 @@ pub(crate) async fn rename_impl(
             "identity is ambiguous — could not resolve a single definition",
         ));
     };
+    // A same-arity extension collision (two unrelated `Modifier.weight`
+    // declarations, say) reaches this refusal BY DESIGN since PR #321:
+    // `resolve_identity` correctly returns the whole overload set rather than
+    // one arbitrary member of it, and silently renaming an arbitrarily chosen
+    // one of two genuinely distinct declarations is the unsound behaviour that
+    // PR replaced. Listing both candidates in the message would not help --
+    // an LSP error is surfaced as a toast with no navigation affordance -- so a
+    // real disambiguation UX needs a client-side picker this server has no
+    // protocol hook for. Reviewed and kept as-is, 2026-09-16.
     if definitions.len() != 1 {
         return Err(refusal(
             "identity is ambiguous — matches more than one definition",
