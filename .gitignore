@@ -20,3 +20,5 @@ java-sidecar/build/
 META-INF/
 kotlinx/
 >>>>>>> feature/lambda-resolution-types
+
+.worktrees/
