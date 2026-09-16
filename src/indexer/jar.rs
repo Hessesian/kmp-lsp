@@ -23,7 +23,7 @@ use tower_lsp::lsp_types::Url;
 
 use super::FileContributions;
 use crate::cli::extract_sources::{default_gradle_home, parse_jar_meta, version_key};
-use crate::sidecar::SidecarHandle;
+use crate::sidecar::{SidecarHandle, SidecarSymbol};
 use crate::str_ext::StrExt;
 use crate::types::{
     pack_cold_fields, ExtensionEntry, FileData, FileIndexResult, SourceSet, SymbolEntry, Visibility,
@@ -1458,6 +1458,38 @@ fn jar_symbol_cache_is_fresh_for(
 /// Tier 2 are separate maps by design (§Tier 1); a consumer must call
 /// `materialize_jar_on_demand` separately to get full data for a JAR this
 /// function has manifested.
+/// Map a sidecar batch-index response onto the Tier-1 manifest's own record
+/// shape. Pulled out of `build_jar_manifest`'s sidecar-response loop as its
+/// own function so a unit test can exercise this exact mapping — including
+/// `extension_receiver_key`'s normalization — without a real `SidecarHandle`,
+/// rather than only being able to test `populate_tier1_from_manifest` with an
+/// already-normalized `JarManifestName` built by the test itself.
+pub(crate) fn sidecar_symbols_to_manifest_names(
+    symbols: &[SidecarSymbol],
+) -> Vec<super::jar_manifest_cache::JarManifestName> {
+    symbols
+        .iter()
+        .map(|s| super::jar_manifest_cache::JarManifestName {
+            name: s.name.clone(),
+            kind: s.kind.clone(),
+            container: (!s.container.is_empty()).then(|| s.container.clone()),
+            // `s.pkg` is the sidecar's real per-symbol package (same field
+            // `jar.rs`'s Tier-2 path already uses to build `indexer.qualified`
+            // FQNs) — carry it through so Tier 1 can build real FQNs too, not
+            // just short names.
+            package: (!s.pkg.is_empty()).then(|| s.pkg.clone()),
+            // Same `extension_receiver_key` helper Tier 2's `build_jar_file_data`
+            // uses to derive its `extension_by_receiver` key — carrying this
+            // through lets Tier 1 know this JAR defines an extension on a given
+            // receiver type without materializing it, keyed identically to
+            // Tier 2 so a promotion driven by this index finds the entries it
+            // promotes.
+            extension_receiver: (!s.extension_receiver_type.is_empty())
+                .then(|| extension_receiver_key(&s.extension_receiver_type)),
+        })
+        .collect()
+}
+
 pub(crate) fn build_jar_manifest(
     indexer: &crate::indexer::Indexer,
     paths: &[PathBuf],
@@ -1492,30 +1524,7 @@ pub(crate) fn build_jar_manifest(
                 Ok(results) => {
                     for ((path, path_key), symbols) in missed.into_iter().zip(results) {
                         let jar_id = indexer.jar_table.intern(&path_key);
-                        let names: Vec<super::jar_manifest_cache::JarManifestName> = symbols
-                            .iter()
-                            .map(|s| super::jar_manifest_cache::JarManifestName {
-                                name: s.name.clone(),
-                                kind: s.kind.clone(),
-                                container: (!s.container.is_empty()).then(|| s.container.clone()),
-                                // `s.pkg` is the sidecar's real per-symbol
-                                // package (same field `jar.rs`'s Tier-2 path
-                                // already uses to build `indexer.qualified`
-                                // FQNs) — carry it through so Tier 1 can build
-                                // real FQNs too, not just short names.
-                                package: (!s.pkg.is_empty()).then(|| s.pkg.clone()),
-                                // Same `extension_receiver_key` helper Tier 2's
-                                // `build_jar_file_data` uses to derive its
-                                // `extension_by_receiver` key — carrying this
-                                // through lets Tier 1 know this JAR defines an
-                                // extension on a given receiver type without
-                                // materializing it, keyed identically to Tier 2
-                                // so a promotion driven by this index finds the
-                                // entries it promotes.
-                                extension_receiver: (!s.extension_receiver_type.is_empty())
-                                    .then(|| extension_receiver_key(&s.extension_receiver_type)),
-                            })
-                            .collect();
+                        let names = sidecar_symbols_to_manifest_names(&symbols);
                         total_names += populate_tier1_from_manifest(indexer, jar_id, &names);
                         if let Some(entry) = make_manifest_entry(&path, names) {
                             manifest_cache.insert(path_key, entry);

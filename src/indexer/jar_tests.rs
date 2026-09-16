@@ -3106,29 +3106,29 @@ fn jar_nested_type_receiver_extension_is_keyed_on_the_leaf_type() {
 /// The Tier-1 manifest path (`populate_tier1_from_manifest` /
 /// `jar_extension_receivers`) must key extensions identically to the Tier-2
 /// path above — `jar::extension_receiver_key` is the single shared helper
-/// both call sites (`build_jar_file_data` and the sidecar-batch loop in
-/// `build_jar_manifest`) use, so this pins the second call site's contract
-/// directly rather than trusting by inspection that it stayed in sync.
+/// both call sites (`build_jar_file_data` and
+/// `sidecar_symbols_to_manifest_names`, which `build_jar_manifest`'s
+/// sidecar-batch loop delegates to) use, so this pins the second call site's
+/// contract directly.
+///
+/// Goes through `sidecar_symbols_to_manifest_names` itself — the exact
+/// mapping `build_jar_manifest` wires to its real sidecar response — rather
+/// than building an already-normalized `JarManifestName` by calling
+/// `extension_receiver_key` in the test (review finding: that shape can
+/// never fail even if the production call site's own normalization were
+/// reverted, since the test would have pre-normalized either way). Feeding
+/// raw `SidecarSymbol`s (the sidecar's own un-normalized wire shape, same as
+/// Tier 2's fixtures above) through the real mapping function is what makes
+/// this test able to catch a regression in that call site.
 #[test]
 fn jar_manifest_tier1_receiver_key_matches_tier2() {
     let indexer = idx();
     let jar_id = indexer.jar_table.intern("/gradle/caches/kotlin-stdlib.jar");
-    let names = vec![
-        crate::indexer::jar_manifest_cache::JarManifestName {
-            name: "orEmpty".to_owned(),
-            kind: "fun".to_owned(),
-            container: None,
-            package: None,
-            extension_receiver: Some(crate::indexer::jar::extension_receiver_key("String?")),
-        },
-        crate::indexer::jar_manifest_cache::JarManifestName {
-            name: "leaf".to_owned(),
-            kind: "fun".to_owned(),
-            container: None,
-            package: None,
-            extension_receiver: Some(crate::indexer::jar::extension_receiver_key("Outer.Inner")),
-        },
+    let symbols = vec![
+        make_sidecar_extension("orEmpty", "String?", "fun String?.orEmpty(): String"),
+        make_sidecar_extension("leaf", "Outer.Inner", "fun Outer.Inner.leaf(): Unit"),
     ];
+    let names = crate::indexer::jar::sidecar_symbols_to_manifest_names(&symbols);
     crate::indexer::jar::populate_tier1_from_manifest(&indexer, jar_id, &names);
 
     assert!(

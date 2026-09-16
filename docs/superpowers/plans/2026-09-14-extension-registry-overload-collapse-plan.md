@@ -330,6 +330,15 @@ This is invisible to `resolution-accuracy` and must not be discovered by a user.
   resolution. This is deliberately *not* bundled into Task 1: it is an unmeasured hover-behaviour
   change, and mixing it into a resolver PR would make the measurement ambiguous. It is Task 4.
 
+**Outcome (this PR):** Task 1's own Step 7 could not literally observe the trade through the
+`kmp-lsp hover` CLI (it doesn't call `compute_hover`/`pick_unambiguous_location` — only the real
+LSP server's `textDocument/hover` handler does), but the regression was confirmed real at the
+code+unit-test level, so the controller ruled to proceed with the pre-designed reversal rather
+than leave it "unmeasured." Task 4 shipped in this PR: `locations_share_call_signature`
+(`src/features/hover.rs`) restores hover for the same-name-and-arity case, confined to that one
+file, with its own test (`hover_renders_for_a_same_arity_extension_collision`). The reversal
+described above is implemented, not merely designed — see the SDD ledger for the full ruling.
+
 ### Fix 2 — Align JAR extension-receiver keys with the parser's normalization
 
 One helper in `src/indexer/jar.rs`, used at both derivation sites so the two can never drift.
@@ -456,7 +465,7 @@ cache bump.
 `Option<Location>` to `Vec<Location>`; the struct is `pub(super)` with private fields, so nothing
 outside `qualified.rs` sees it.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Add to `src/resolver/tests.rs`.
 
@@ -504,7 +513,7 @@ Add to `src/resolver/tests.rs`.
    root with **no** indexed declaration and two same-named JAR-keyed overloads. Assert both come back
    with distinct ranges. *(New in draft 2, covers fix 2.)*
 
-- [ ] **Step 2: Rewrite the pinned first-match test — decision B1**
+- [x] **Step 2: Rewrite the pinned first-match test — decision B1**
 
 Rewrite `ambiguous_member_extension_name_collision_first_match_wins`
 (`src/resolver/tests.rs:7282`, assertion at `:7317`) as
@@ -520,7 +529,7 @@ Rewrite `ambiguous_member_extension_name_collision_first_match_wins`
 
 Do not delete the test. Its fixture is a genuine Compose-shaped decoy and is worth keeping.
 
-- [ ] **Step 3: Verify the tests fail (and only the expected ones)**
+- [x] **Step 3: Verify the tests fail (and only the expected ones)**
 
 ```
 cargo test --bin kmp-lsp own_type_extension_tier_returns_every_overload        # FAIL: 1 location
@@ -538,7 +547,7 @@ cargo test --bin kmp-lsp ambiguous_member_extension_name_collision             #
 > it fails. **Do not** apply the draft-1 version of this rule to a test the critique already proved is
 > green-before-fix — see Task 2's note.
 
-- [ ] **Step 4: Implement — `resolve_extension_in_scope` and `jar_extension_for_type_root`**
+- [x] **Step 4: Implement — `resolve_extension_in_scope` and `jar_extension_for_type_root`**
 
 In `src/resolver/extension.rs`, replace the early `return vec![Location { uri, range }]` inside the
 entry loop with accumulation into a `Vec<Location>` returned after the loop. Apply the identical
@@ -558,7 +567,7 @@ let selected = exact_signature_match.or_else(|| declaring_symbols.first());
 
 Keep `extension_declaration_matches` itself untouched.
 
-- [ ] **Step 5: Implement — `qualified.rs` tiers**
+- [x] **Step 5: Implement — `qualified.rs` tiers**
 
 Change `QualifiedCandidates::own_type_extension` and `::supertype_extension` to `Vec<Location>`;
 update `is_empty()` to use `.is_empty()` on both; `into_precedence_ordered` keeps its two `extend`
@@ -570,7 +579,7 @@ what still prevents a farther ancestor outranking a nearer one; only the one-of-
 gone, because a same-name ancestor extension set is an **overload set** the caller's shape filter must
 see in full. Cite PR #304's member-tier precedent.
 
-- [ ] **Step 6: Verify**
+- [x] **Step 6: Verify**
 
 ```
 cargo test --bin kmp-lsp   # expect: 1945 pre-existing green + 5 new + 1 rewritten = all green
@@ -581,7 +590,7 @@ cargo fmt --check
 Run the suite **after both Step 4 and Step 5 are applied**, not after each — the combined state is
 what B1's rewritten expectation was reasoned about.
 
-- [ ] **Step 7: Verify the predicted hover change — decision S3**
+- [x] **Step 7: Verify the predicted hover change — decision S3**
 
 Explicitly observe, don't assume:
 
@@ -597,7 +606,7 @@ kmp-lsp hover core/common/src/main/java/cz/moneta/smartbanka/common/extensions/P
 Record both outcomes in the PR description. If case 1's loss is judged unacceptable, do **not** patch
 it here — open Task 4.
 
-- [ ] **Step 8: Measure on the real corpus**
+- [x] **Step 8: Measure on the real corpus**
 
 ```
 cargo build --release
@@ -616,7 +625,7 @@ survives. The collect closure's element type must become e.g. `(String, Location
 `walk_hierarchy_breadth_first` caller's generics adjusted. **Budget half a day for this contingency;
 do not attempt it under measurement pressure.**
 
-- [ ] **Step 9: Commit and open a PR**
+- [x] **Step 9: Commit and open a PR**
 
 The PR description must state, in its own words: (a) the overload-set change, (b) that
 `ambiguous_member_extension_name_collision_*` was rewritten because it pinned the bug, (c) the hover
@@ -643,7 +652,7 @@ measurement is the larger one.
 
 **Interfaces:** internal to `src/indexer/`. No resolver change.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 In `src/indexer/jar_tests.rs`, next to the existing `extension_entries_for` fixture at `:3023`.
 
@@ -677,7 +686,7 @@ In `src/indexer/jar_tests.rs`, next to the existing `extension_entries_for` fixt
 > would have burned real time hunting a phantom fixture leak. Test 2 above replaces it with a shape
 > that is genuinely red.
 
-- [ ] **Step 2: Verify they fail**
+- [x] **Step 2: Verify they fail**
 
 ```
 cargo test --bin kmp-lsp jar_nullable_receiver_extension_is_keyed        # FAIL: key is "String?"
@@ -686,7 +695,7 @@ cargo test --bin kmp-lsp jar_manifest_tier1_receiver_key_matches_tier2   # FAIL
 cargo test --bin kmp-lsp jar_manifest_cache_ignores_a_stale_v3_version   # FAIL until the bump
 ```
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 Add `extension_receiver_key` to `src/indexer/jar.rs` exactly as specified in the design (reusing
 `StrExt::strip_nullable` and the dotted-leaf helper, with the `use crate::str_ext::StrExt;` import at
@@ -696,7 +705,7 @@ both call sites — the Tier-1 site is in a different module scope). Call it at 
 Do **not** touch `src/parser.rs` — the source side already normalizes correctly, and duplicating the
 helper there would create the drift this task exists to prevent.
 
-- [ ] **Step 4: Verify**
+- [x] **Step 4: Verify**
 
 ```
 cargo test --bin kmp-lsp
@@ -704,7 +713,7 @@ cargo clippy -- -D warnings
 cargo fmt --check
 ```
 
-- [ ] **Step 5: Measure on the real corpus**
+- [x] **Step 5: Measure on the real corpus**
 
 Rebuild release and re-run `resolution-accuracy`.
 
@@ -723,18 +732,30 @@ Success criterion: **`orEmpty` leaves the member-ref Gap top-20.** As a cheap in
 re-probe the count of nullable-suffixed `extension_by_receiver` keys — **54** before the fix, **0**
 after.
 
-- [ ] **Step 6: Commit and open a PR**
+- [x] **Step 6: Commit and open a PR**
 
 ```bash
 git commit -m "fix(jar): normalize JAR extension-receiver keys like the parser does
 
-Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
-Claude-Session: https://claude.ai/code/session_01L7ZonwYUh94VsuQphiHykF"
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 ```
 
 ---
 
 ### Task 3: Diagnose (do not fix) the `String` → `CharSequence` supertype-extension dead-end
+
+**Outcome (this PR): diagnosis complete, no production code shipped, as scoped.** Both leading
+hypotheses below (Step 2's ambiguous-decline of `CharSequence`; Step 3's sidecar-budget
+exhaustion) were **refuted** with direct traced evidence — the hierarchy walk resolves
+`String → CharSequence` cleanly. The real dead-end is a **third, previously-undocumented cause**:
+`extension_is_in_scope` (`src/resolver/infer.rs:1791`) has no Kotlin-default-import-package
+awareness (unlike `tie_break.rs`'s `default_kotlin_import_tie_break`), so it rejects the
+`kotlin.text`-packaged `isNotEmpty` extension as "out of scope" for every real call site —
+compounded by `jar_extension_for_type_root` (`qualified.rs:513`) being scope-blind and
+leaf-keyed-only. Recommended fix (NOT implemented here, future plan): make
+`extension_is_in_scope` default-import-aware, mirroring `default_kotlin_import_tie_break`. See
+the SDD ledger's Task 3 entry for the full traced evidence. Below is the original diagnosis
+brief, kept for the record; its evidence and leading hypotheses did not hold.
 
 **This task ships no production code.** The failure is verified real but its cause is not isolated,
 and this project's own process lesson is that implementing against an un-isolated cause is how the
@@ -764,7 +785,7 @@ receiver inferred as `CardRight` where `Card.rights` is really a Java `List<Cont
 because a *sibling* function's `vararg rights: CardRight` parameter shadowed it. Whether that is a
 scope bug or a `List`-receiver walk bug is exactly the kind of thing this diagnosis should separate.
 
-- [ ] **Step 1: Instrument one hop at a time**
+- [x] **Step 1: Instrument one hop at a time**
 
 Add temporary `eprintln!` tracing (deleted before the task ends) inside `supertype_targets`
 (`src/resolver/hierarchy.rs:176`) reporting, per hop: `class_name`, `class_uri`, the
@@ -777,7 +798,7 @@ against `java.lang.String` / `"isNotEmpty"`.
 > with `run_hover` temporarily switched to the benchmark's index setup (`build_index(root, true)` plus
 > `index_jars` + `JarPhase::Ready`). Re-create it, then delete it.
 
-- [ ] **Step 2: Confirm or refute the leading hypothesis**
+- [x] **Step 2: Confirm or refute the leading hypothesis**
 
 Leading hypothesis: `resolve_symbol_hierarchy_ambiguity_safe` **declines** `"CharSequence"` at hop 1
 because the corpus has both `java/lang/CharSequence.java` and kotlin-stdlib's own `CharSequence`, and
@@ -786,7 +807,7 @@ the fix is a tie-break question in `ambiguity_safe_tail_with_denylist` — which
 for **three** IO arms (`src/resolver/resolve.rs:411`, `:471`, `:483`) and moves far more than this
 cluster. It belongs in its own plan with its own measurement, **not** here.
 
-- [ ] **Step 3: Check the sidecar budget as the alternative cause**
+- [x] **Step 3: Check the sidecar budget as the alternative cause**
 
 `MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK` is spent by `ensure_jar_definitions_for` once per super
 name; `java.lang.String` has **five** direct supers and `CharSequence` is third. Confirm the budget is
@@ -794,7 +815,7 @@ not exhausted before the `CharSequence` hop is attempted. This is a known-shape 
 as "Task 4: Close the `hierarchy.rs` budget leak" in
 `docs/superpowers/plans/2026-09-09-jar-promotion-latency-budget-plan.md`.
 
-- [ ] **Step 4: Write up, delete the tracing, stop**
+- [x] **Step 4: Write up, delete the tracing, stop**
 
 Produce a short findings note naming the exact dead-end line and which hypothesis held. **Do not
 implement a fix in this task.** Confirm `git status` is clean before finishing.
