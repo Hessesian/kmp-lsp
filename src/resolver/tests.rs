@@ -11250,3 +11250,224 @@ fn kotlin_default_import_tie_break_does_not_apply_from_a_java_origin_file() {
          resolve this ambiguity, got {locs:?}"
     );
 }
+
+/// Builds an indexer whose registry holds one `kotlin.text`-packaged
+/// extension on `CharSequence`, plus a caller file in an unrelated package
+/// with no imports at all -- the shape of every real Kotlin call site, since
+/// nobody writes `import kotlin.text.isNotEmpty`.
+fn indexer_with_a_default_imported_extension(caller_path: &str) -> (Indexer, Url) {
+    use crate::types::{ExtensionEntry, FileData, SourceSet, SymbolEntry, Visibility};
+    use std::sync::Arc;
+    use tower_lsp::lsp_types::{Position, Range, SymbolKind};
+
+    let indexer = Indexer::new();
+    let jar_uri = "jar:file:///kotlin-stdlib.jar!/kotlin/text/StringsKt.class".to_owned();
+    let declaration_range = Range {
+        start: Position {
+            line: 7,
+            character: 0,
+        },
+        end: Position {
+            line: 7,
+            character: 10,
+        },
+    };
+    let detail = "fun CharSequence.isNotEmpty(): Boolean".to_owned();
+
+    indexer.jar_files.insert(
+        jar_uri.clone(),
+        Arc::new(FileData {
+            symbols: vec![SymbolEntry {
+                name: "isNotEmpty".to_owned(),
+                kind: SymbolKind::FUNCTION,
+                visibility: Visibility::Public,
+                range: declaration_range,
+                selection_range: declaration_range,
+                detail: detail.clone(),
+                container: None,
+                params: String::new(),
+                param_counts: (0, 0),
+                cold: crate::types::pack_cold_fields(
+                    vec![],
+                    "CharSequence".to_owned(),
+                    String::new(),
+                    String::new(),
+                ),
+                trailing_lambda: false,
+                deprecated: false,
+            }],
+            source_set: SourceSet::Library,
+            package: Some("kotlin.text".to_owned()),
+            lines: Arc::new(vec![]),
+            ..Default::default()
+        }),
+    );
+    indexer
+        .extension_by_receiver
+        .entry("CharSequence".to_owned())
+        .or_default()
+        .push(ExtensionEntry {
+            file_uri: jar_uri,
+            name: "isNotEmpty".to_owned(),
+            kind: SymbolKind::FUNCTION,
+            detail,
+            visibility: Visibility::Public,
+            package: Some("kotlin.text".to_owned()),
+            trailing_lambda: false,
+            deprecated: false,
+            container: None,
+        });
+
+    let caller_uri = uri(caller_path);
+    indexer.index_content(&caller_uri, "package app\nclass Caller\n");
+    (indexer, caller_uri)
+}
+
+/// Kotlin's default-import packages (`kotlin`, `kotlin.text`,
+/// `kotlin.collections`, `java.lang`, ...) are in scope in every Kotlin file
+/// with no `import` line -- and no real file writes one. Before this fix
+/// `extension_is_in_scope` knew only about same-package and explicit
+/// imports, so it rejected all 3638 top-level default-import-packaged
+/// registry entries for every caller on the Moneta corpus.
+#[test]
+fn a_default_import_packaged_extension_is_in_scope_without_an_explicit_import() {
+    let (indexer, caller_uri) = indexer_with_a_default_imported_extension("/app/Caller.kt");
+
+    let locations = super::extension::resolve_extension_in_scope(
+        &indexer,
+        "CharSequence",
+        "isNotEmpty",
+        &caller_uri,
+    );
+    assert_eq!(
+        locations.len(),
+        1,
+        "kotlin.text.isNotEmpty must be in scope for an unimporting Kotlin \
+         caller, got {locations:?}"
+    );
+    assert_eq!(
+        locations[0].range.start.line, 7,
+        "expected the real declaration range, got {:?}",
+        locations[0].range
+    );
+}
+
+/// Decision D2's guard: `resolve_qualified` runs over indexed `.java` files
+/// too (the resolution-accuracy benchmark scans both `.kt` and `.java`), and
+/// a Java file never implicitly imports `kotlin.*`. Same reasoning, and the
+/// same Copilot review finding, that already gates
+/// `default_kotlin_import_tie_break` on the origin file's language.
+#[test]
+fn a_default_import_packaged_extension_stays_out_of_scope_for_a_java_caller() {
+    let (indexer, caller_uri) = indexer_with_a_default_imported_extension("/app/Caller.java");
+
+    let locations = super::extension::resolve_extension_in_scope(
+        &indexer,
+        "CharSequence",
+        "isNotEmpty",
+        &caller_uri,
+    );
+    assert!(
+        locations.is_empty(),
+        "a Java origin must not pick up Kotlin's default imports, got {locations:?}"
+    );
+}
+
+/// The new rule must NOT leak to a package that merely starts with a
+/// default-import prefix: `kotlin.text.regex` is not `kotlin.text`, and
+/// `is_default_import_package` is an exact-membership check, not a prefix
+/// match. Guard against a future "fix" that swaps it for `starts_with`.
+///
+/// Targets `extension_entry_is_in_scope`, NOT `extension_is_in_scope` — the
+/// latter is the function this task deliberately leaves untouched (Part 0.3),
+/// so a guard aimed at it would be green before and after by construction and
+/// pin nothing.
+#[test]
+fn a_package_below_a_default_import_package_is_still_out_of_scope() {
+    use crate::resolver::infer::extension_entry_is_in_scope;
+    use crate::types::{ExtensionEntry, Visibility};
+    use tower_lsp::lsp_types::SymbolKind;
+
+    let indexer = Indexer::new();
+    let caller_uri = uri("/app/Caller.kt");
+    indexer.index_content(&caller_uri, "package app\nclass Caller\n");
+    let caller_file_data = indexer.files.get(caller_uri.as_str());
+
+    let entry = ExtensionEntry {
+        file_uri: "jar:file:///kotlin-stdlib.jar!/kotlin/text/regex/RegexKt.class".to_owned(),
+        name: "someExtension".to_owned(),
+        kind: SymbolKind::FUNCTION,
+        detail: "fun CharSequence.someExtension(): Boolean".to_owned(),
+        visibility: Visibility::Public,
+        package: Some("kotlin.text.regex".to_owned()),
+        trailing_lambda: false,
+        deprecated: false,
+        container: None,
+    };
+    assert!(
+        !extension_entry_is_in_scope(
+            &entry,
+            &caller_uri,
+            caller_file_data.as_deref().map(|value| value.as_ref()),
+        ),
+        "kotlin.text.regex is not one of Kotlin's default-import packages"
+    );
+}
+
+/// The third call site, on the type-inference side: an unimporting Kotlin
+/// caller must now be able to infer a `kotlin.collections` extension's
+/// return type, which `find_extension_fn_return_type_scoped`'s own
+/// in-scope check rejected before this fix.
+#[test]
+fn a_default_import_packaged_extension_return_type_is_inferable_without_an_import() {
+    use crate::types::{ExtensionEntry, FileData, SourceSet, Visibility};
+    use std::sync::Arc;
+    use tower_lsp::lsp_types::SymbolKind;
+
+    let indexer = Indexer::new();
+    let jar_uri =
+        "jar:file:///kotlin-stdlib.jar!/kotlin/collections/CollectionsKt.class".to_owned();
+    indexer.jar_files.insert(
+        jar_uri.clone(),
+        Arc::new(FileData {
+            source_set: SourceSet::Library,
+            package: Some("kotlin.collections".to_owned()),
+            lines: Arc::new(vec![]),
+            ..Default::default()
+        }),
+    );
+    indexer
+        .extension_by_receiver
+        .entry("List".to_owned())
+        .or_default()
+        .push(ExtensionEntry {
+            file_uri: jar_uri,
+            name: "firstOrNull".to_owned(),
+            kind: SymbolKind::FUNCTION,
+            detail: "fun <T> List<T>.firstOrNull(): T?".to_owned(),
+            visibility: Visibility::Public,
+            package: Some("kotlin.collections".to_owned()),
+            trailing_lambda: false,
+            deprecated: false,
+            container: None,
+        });
+
+    let caller_uri = uri("/app/Caller.kt");
+    indexer.index_content(&caller_uri, "package app\nclass Caller\n");
+
+    assert_eq!(
+        crate::resolver::infer::find_extension_fn_return_type(
+            &indexer,
+            "List",
+            "firstOrNull",
+            Some(&caller_uri),
+        ),
+        // Not `Some("T?")`: `extract_return_type_from_detail` strips a
+        // trailing `?` intentionally, same as `return_type_nullable_stripped`
+        // pins for the non-extension path -- unrelated to this task's scope
+        // fix, which is what actually turned this from `None` into `Some`.
+        Some("T".to_owned()),
+        "an unimporting Kotlin caller must be able to infer a \
+         kotlin.collections extension's return type"
+    );
+}

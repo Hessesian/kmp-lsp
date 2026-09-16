@@ -88,15 +88,11 @@ pub(super) fn resolve_extension_in_scope(
         if entry.name != name {
             continue;
         }
-        let in_scope = crate::resolver::infer::extension_is_in_scope(
-            entry.package.as_ref(),
-            &entry.name,
-            entry.container.as_ref(),
-            entry.visibility,
-            entry.file_uri == from_uri.as_str(),
+        if !crate::resolver::infer::extension_entry_is_in_scope(
+            entry,
+            from_uri,
             caller_file_data_ref,
-        );
-        if !in_scope {
+        ) {
             continue;
         }
         let Ok(uri) = Url::parse(&entry.file_uri) else {
@@ -175,15 +171,11 @@ fn implicit_receiver_extension_match(
         if entry.name != name {
             continue;
         }
-        let in_scope = crate::resolver::infer::extension_is_in_scope(
-            entry.package.as_ref(),
-            &entry.name,
-            entry.container.as_ref(),
-            entry.visibility,
-            entry.file_uri == from_uri.as_str(),
+        if !crate::resolver::infer::extension_entry_is_in_scope(
+            entry,
+            from_uri,
             caller_file_data_ref,
-        );
-        if !in_scope {
+        ) {
             continue;
         }
         let Ok(uri) = Url::parse(&entry.file_uri) else {

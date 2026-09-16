@@ -1788,6 +1788,11 @@ pub(crate) fn find_method_return_type(
 /// `Some`, `entry_visibility` and `is_same_file` gate `private`/`protected`
 /// member extensions, which — unlike the package/import checks below — are
 /// otherwise skipped entirely for a member extension (see the branch itself).
+///
+/// An extension-registry consumer should generally call
+/// [`extension_entry_is_in_scope`] instead — it wraps this function with
+/// Kotlin's default-import package rule, which this function alone does not
+/// know about.
 pub(crate) fn extension_is_in_scope(
     entry_package: Option<&String>,
     entry_name: &str,
@@ -1847,6 +1852,54 @@ pub(crate) fn extension_is_in_scope(
                 || entry_package.is_none() && imp.local_name == entry_name
         })
     })
+}
+
+/// Whether extension registry `entry` is callable from the file at `from_uri`.
+///
+/// [`extension_is_in_scope`]'s package/import rules, plus the one rule they
+/// cannot express: a Kotlin file implicitly imports every name declared
+/// directly in Kotlin's own default-import packages (see
+/// [`crate::resolver::imports::KOTLIN_DEFAULT_IMPORT_PACKAGES`]), so
+/// `kotlin.text`'s `isNotEmpty` or `kotlin.collections`'s `firstOrNull` is in
+/// scope at every call site with no `import` line anywhere — and no real file
+/// ever writes one.
+///
+/// Gated on the CALLING file's language, for the same reason
+/// [`crate::resolver::tie_break`]'s `default_kotlin_import_tie_break` gates
+/// its own use of the same set: Kotlin's default imports are a fact about
+/// Kotlin source files, and `resolve_qualified` runs over indexed `.java` and
+/// `.swift` files too.
+///
+/// Measured on the Moneta corpus: the registry holds 24897 entries across 2360
+/// receiver buckets; 3641 of those entries live in a default-import package,
+/// 3638 of them top-level, and every one was rejected here for every caller.
+///
+/// Deliberately NOT folded into [`extension_is_in_scope`] itself: four of that
+/// function's six callers are not about extensions at all
+/// (`candidate_declaration_is_reachable`, `Indexer::jar_candidate_is_reachable`
+/// and `nullable_call_diagnostics`' stricter own rule), and widening the shared
+/// predicate would change bare-name JAR candidate preference corpus-wide.
+pub(crate) fn extension_entry_is_in_scope(
+    entry: &crate::types::ExtensionEntry,
+    from_uri: &Url,
+    caller_file_data: Option<&FileData>,
+) -> bool {
+    if extension_is_in_scope(
+        entry.package.as_ref(),
+        &entry.name,
+        entry.container.as_ref(),
+        entry.visibility,
+        entry.file_uri == from_uri.as_str(),
+        caller_file_data,
+    ) {
+        return true;
+    }
+    let caller_is_kotlin = crate::Language::from_path(from_uri.as_str()) == crate::Language::Kotlin;
+    let entry_is_default_imported = entry
+        .package
+        .as_ref()
+        .is_some_and(|package| crate::resolver::imports::is_default_import_package(package));
+    caller_is_kotlin && entry_is_default_imported
 }
 
 /// Whether `SymbolEntry` `symbol` is the actual declaration a matched extension
@@ -1933,14 +1986,7 @@ fn find_extension_fn_return_type_scoped(
         if !matches!(entry.kind, SymbolKind::FUNCTION | SymbolKind::METHOD) {
             continue;
         }
-        if !extension_is_in_scope(
-            entry.package.as_ref(),
-            &entry.name,
-            entry.container.as_ref(),
-            entry.visibility,
-            entry.file_uri == from_uri.as_str(),
-            caller_file_data_ref,
-        ) {
+        if !extension_entry_is_in_scope(entry, from_uri, caller_file_data_ref) {
             continue;
         }
         // Try detail first; fall back to source lines when detail is truncated.
