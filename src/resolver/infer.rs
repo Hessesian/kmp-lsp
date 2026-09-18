@@ -1874,11 +1874,14 @@ pub(crate) fn extension_is_in_scope(
 /// receiver buckets; 3641 of those entries live in a default-import package,
 /// 3638 of them top-level, and every one was rejected here for every caller.
 ///
-/// Deliberately NOT folded into [`extension_is_in_scope`] itself: four of that
-/// function's six callers are not about extensions at all
-/// (`candidate_declaration_is_reachable`, `Indexer::jar_candidate_is_reachable`
-/// and `nullable_call_diagnostics`' stricter own rule), and widening the shared
-/// predicate would change bare-name JAR candidate preference corpus-wide.
+/// Deliberately NOT folded into [`extension_is_in_scope`] itself. Of its other
+/// three direct callers: `candidate_declaration_is_reachable` and
+/// `Indexer::jar_candidate_is_reachable` are receiver-less by-name fallbacks
+/// with no `ExtensionEntry` at all, so widening the shared predicate would
+/// change bare-name JAR candidate preference corpus-wide for callers this
+/// rule was never about. `nullable_call_diagnostics`'s `extension_in_scope_here`
+/// IS extension-registry-shaped but layers its own stricter member-extension
+/// rule on top — a different contract, kept on the original predicate.
 pub(crate) fn extension_entry_is_in_scope(
     entry: &crate::types::ExtensionEntry,
     from_uri: &Url,

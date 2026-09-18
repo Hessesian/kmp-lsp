@@ -33,24 +33,26 @@ pub(super) fn select_extension_symbol<'file_data>(
     container: Option<&String>,
     detail: &str,
 ) -> Option<&'file_data SymbolEntry> {
-    let declaring_symbols: Vec<_> = file_data
+    let is_declaring_symbol = |symbol: &&SymbolEntry| {
+        crate::resolver::infer::extension_declaration_matches(
+            symbol,
+            name,
+            receiver_base,
+            container,
+        )
+    };
+    // Two non-allocating passes instead of collecting every shape-matching
+    // declaration into a `Vec` first: this is called once per registry entry
+    // by `implicit_receiver_extension_match`'s own per-entry loop, so an
+    // allocation and a full re-scan of every overload on every entry (the
+    // `Vec` version's cost even when the very first declaration is an exact
+    // match) is real, measurable overhead the old single-entry-point
+    // `.find(extension_declaration_matches)` never paid.
+    file_data
         .symbols
         .iter()
-        .filter(|symbol| {
-            crate::resolver::infer::extension_declaration_matches(
-                symbol,
-                name,
-                receiver_base,
-                container,
-            )
-        })
-        .collect();
-    let exact_signature_match = declaring_symbols
-        .iter()
-        .find(|symbol| symbol.detail == detail);
-    exact_signature_match
-        .or_else(|| declaring_symbols.first())
-        .copied()
+        .find(|symbol| is_declaring_symbol(symbol) && symbol.detail == detail)
+        .or_else(|| file_data.symbols.iter().find(is_declaring_symbol))
 }
 
 /// The `Range` half of [`select_extension_symbol`], for callers that only
