@@ -43,7 +43,7 @@ pub(super) const KOTLIN_DEFAULT_IMPORT_PACKAGES: &[&str] = &[
 /// Kotlin's implicit default-import packages (JVM target): names declared directly
 /// in these are in scope in every file without an `import`. Narrower than
 /// [`is_stdlib`] — `android`/`androidx`/most `java.*` are *not* auto-imported.
-fn is_default_import_package(pkg: &str) -> bool {
+pub(super) fn is_default_import_package(pkg: &str) -> bool {
     KOTLIN_DEFAULT_IMPORT_PACKAGES.contains(&pkg)
 }
 

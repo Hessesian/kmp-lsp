@@ -1788,6 +1788,11 @@ pub(crate) fn find_method_return_type(
 /// `Some`, `entry_visibility` and `is_same_file` gate `private`/`protected`
 /// member extensions, which — unlike the package/import checks below — are
 /// otherwise skipped entirely for a member extension (see the branch itself).
+///
+/// An extension-registry consumer should generally call
+/// [`extension_entry_is_in_scope`] instead — it wraps this function with
+/// Kotlin's default-import package rule, which this function alone does not
+/// know about.
 pub(crate) fn extension_is_in_scope(
     entry_package: Option<&String>,
     entry_name: &str,
@@ -1847,6 +1852,57 @@ pub(crate) fn extension_is_in_scope(
                 || entry_package.is_none() && imp.local_name == entry_name
         })
     })
+}
+
+/// Whether extension registry `entry` is callable from the file at `from_uri`.
+///
+/// [`extension_is_in_scope`]'s package/import rules, plus the one rule they
+/// cannot express: a Kotlin file implicitly imports every name declared
+/// directly in Kotlin's own default-import packages (see
+/// [`crate::resolver::imports::KOTLIN_DEFAULT_IMPORT_PACKAGES`]), so
+/// `kotlin.text`'s `isNotEmpty` or `kotlin.collections`'s `firstOrNull` is in
+/// scope at every call site with no `import` line anywhere — and no real file
+/// ever writes one.
+///
+/// Gated on the CALLING file's language, for the same reason
+/// [`crate::resolver::tie_break`]'s `default_kotlin_import_tie_break` gates
+/// its own use of the same set: Kotlin's default imports are a fact about
+/// Kotlin source files, and `resolve_qualified` runs over indexed `.java` and
+/// `.swift` files too.
+///
+/// Measured on the Moneta corpus: the registry holds 24897 entries across 2360
+/// receiver buckets; 3641 of those entries live in a default-import package,
+/// 3638 of them top-level, and every one was rejected here for every caller.
+///
+/// Deliberately NOT folded into [`extension_is_in_scope`] itself. Of its other
+/// three direct callers: `candidate_declaration_is_reachable` and
+/// `Indexer::jar_candidate_is_reachable` are receiver-less by-name fallbacks
+/// with no `ExtensionEntry` at all, so widening the shared predicate would
+/// change bare-name JAR candidate preference corpus-wide for callers this
+/// rule was never about. `nullable_call_diagnostics`'s `extension_in_scope_here`
+/// IS extension-registry-shaped but layers its own stricter member-extension
+/// rule on top — a different contract, kept on the original predicate.
+pub(crate) fn extension_entry_is_in_scope(
+    entry: &crate::types::ExtensionEntry,
+    from_uri: &Url,
+    caller_file_data: Option<&FileData>,
+) -> bool {
+    if extension_is_in_scope(
+        entry.package.as_ref(),
+        &entry.name,
+        entry.container.as_ref(),
+        entry.visibility,
+        entry.file_uri == from_uri.as_str(),
+        caller_file_data,
+    ) {
+        return true;
+    }
+    let caller_is_kotlin = crate::Language::from_path(from_uri.as_str()) == crate::Language::Kotlin;
+    let entry_is_default_imported = entry
+        .package
+        .as_ref()
+        .is_some_and(|package| crate::resolver::imports::is_default_import_package(package));
+    caller_is_kotlin && entry_is_default_imported
 }
 
 /// Whether `SymbolEntry` `symbol` is the actual declaration a matched extension
@@ -1933,14 +1989,7 @@ fn find_extension_fn_return_type_scoped(
         if !matches!(entry.kind, SymbolKind::FUNCTION | SymbolKind::METHOD) {
             continue;
         }
-        if !extension_is_in_scope(
-            entry.package.as_ref(),
-            &entry.name,
-            entry.container.as_ref(),
-            entry.visibility,
-            entry.file_uri == from_uri.as_str(),
-            caller_file_data_ref,
-        ) {
+        if !extension_entry_is_in_scope(entry, from_uri, caller_file_data_ref) {
             continue;
         }
         // Try detail first; fall back to source lines when detail is truncated.
@@ -1952,22 +2001,34 @@ fn find_extension_fn_return_type_scoped(
         // `extension_by_receiver` already had it, which — per the comment
         // above `entries` — only happens once Tier-2 materialization has
         // already populated `jar_files` for this same jar.
-        let file_data = indexer
+        //
+        // Neither lookup below may abort the whole search with `?`: an entry
+        // whose declaring file isn't loaded, or whose declaration can't be
+        // matched, must be skipped so later entries in `entries` still get a
+        // chance — one unusable entry must not hide every usable one behind
+        // it in iteration order.
+        let Some(file_data) = indexer
             .files
             .get(&entry.file_uri)
-            .or_else(|| indexer.jar_files.get(&entry.file_uri))?;
-        let start_line = file_data
-            .symbols
-            .iter()
-            .find(|s| {
-                extension_declaration_matches(
-                    s,
-                    method_name,
-                    receiver_base,
-                    entry.container.as_ref(),
-                )
-            })?
-            .selection_start() as usize;
+            .or_else(|| indexer.jar_files.get(&entry.file_uri))
+        else {
+            continue;
+        };
+        // PR #321's `select_extension_symbol` (see its doc comment in
+        // `resolver::extension`) prefers the declaration whose full `detail`
+        // exactly matches this registry entry's own, so a second overload's
+        // return type is reachable through this fallback too — not just the
+        // first declaration matching (name, receiver, container).
+        let Some(declaring_symbol) = crate::resolver::extension::select_extension_symbol(
+            &file_data,
+            method_name,
+            receiver_base,
+            entry.container.as_ref(),
+            &entry.detail,
+        ) else {
+            continue;
+        };
+        let start_line = declaring_symbol.selection_start() as usize;
         let full_sig = file_data.lines.collect_signature(start_line);
         if let Some(ret) = extract_return_type_from_detail(&full_sig) {
             return Some(ret);
@@ -1976,6 +2037,15 @@ fn find_extension_fn_return_type_scoped(
     None
 }
 
+// Part 0.4: this function has no `ExtensionEntry` and no `detail` to match
+// against (it walks `file_data.symbols` directly), so the two-step
+// `select_extension_symbol` disambiguation above does not apply here — and it
+// doesn't need to, since `Indexer::find_method_return_type_for_type` always
+// passes `Some(uri)`, so this fallback is not reachable on a production path.
+// Decision D4: giving either function arity-aware overload selection needs a
+// `CallShape` threaded through `Resolver::method_return_type`; 482 registry
+// groups on the Moneta corpus have differing-return overloads, so that is
+// real but is its own plan, not this one.
 fn find_extension_fn_return_type_global(
     indexer: &Indexer,
     receiver_base: &str,

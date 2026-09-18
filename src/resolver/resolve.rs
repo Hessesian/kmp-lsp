@@ -386,7 +386,21 @@ fn resolve_chain(
         if !rg_result.is_empty() {
             return rg_result;
         }
-        // 5.4 ── global definitions index (includes JAR symbols) ───────────────
+        // 5.4 ── Kotlin built-in-type platform equivalent ──────────────────────
+        // Ahead of the global definitions tail, not behind it: for the ~22
+        // compiler-intrinsic mapped types in
+        // KOTLIN_BUILTIN_TYPE_PLATFORM_EQUIVALENTS there is no compiled `.class`
+        // anywhere, so every same-named index/JAR candidate is a decoy -- and a
+        // decoy wins today, either outright (MutableSet: one candidate) or via
+        // default_kotlin_import_tie_break, which prefers the `kotlin.collections`
+        // decoy out of `List`'s 32 candidates. Anchoring `List` on a body-less
+        // decoy leaves it with no walkable supertype chain, so no member or
+        // extension lookup downstream can ever reach `Iterable`.
+        let platform_equivalent = resolve_kotlin_builtin_type_platform_equivalent(indexer, name);
+        if !platform_equivalent.is_empty() {
+            return platform_equivalent;
+        }
+        // 5.5 ── global definitions index (includes JAR symbols) ───────────────
         // `rg`/`fd` only search the *workspace's own* source tree, so a type
         // used purely through inference and never explicitly imported (Kotlin
         // doesn't require an import for that) — e.g. `scope.async { }.await()`,
@@ -408,20 +422,12 @@ fn resolve_chain(
                 .collect(),
             None => jar_tail_candidates,
         };
-        let jar_tail = ambiguity_safe_tail_with_denylist(indexer, from_uri, jar_tail_candidates);
-        if !jar_tail.is_empty() {
-            return jar_tail;
-        }
-        // 5.5 ── Kotlin built-in-type platform equivalent (last resort) ────────
-        // `rg`/`fd` search the *workspace's own* source tree and can never find
-        // `String`/`CharSequence`: those are compiler intrinsics with no
-        // compiled `.class` file in kotlin-stdlib's JAR at all, and no
-        // in-workspace source either -- see
-        // docs/superpowers/specs/2026-08-27-kotlin-builtin-type-platform-mapping-design.md.
-        return resolve_kotlin_builtin_type_platform_equivalent(indexer, name);
+        return ambiguity_safe_tail_with_denylist(indexer, from_uri, jar_tail_candidates);
     }
 
-    // Tail fallback — global definitions index (includes JAR symbols).
+    // Tail fallback — Kotlin built-in-type platform equivalent first (see the
+    // 5.4 comment above the `Full`/rg branch), then the global definitions
+    // index (includes JAR symbols).
     //  - NoRg: first match.
     //  - ScopedOnly: no tail at all (empty) -- see the variant's doc comment.
     //  - IndexOnly / HierarchyAmbiguitySafe: unique match wins outright, else
@@ -433,52 +439,55 @@ fn resolve_chain(
     //    on the Moneta corpus (13 candidates for bare `String`, including a
     //    `com.android.internal.*`-packaged one) when it used the older,
     //    plain unique-match-only rule.
-    //  - Full: never reached — it has its own equivalent tail (5.4 above,
-    //    same `ambiguity_safe_tail_with_denylist` call) inside the rg branch,
-    //    since Full always returns from within that `if full_io` block.
+    //  - Full: never reached — it has its own equivalent tail (5.4/5.5 above,
+    //    same platform-equivalent-first order, same
+    //    `ambiguity_safe_tail_with_denylist` call) inside the rg branch, since
+    //    Full always returns from within that `if full_io` block.
     //
-    // Each non-`ScopedOnly` arm falls through to
-    // `resolve_kotlin_builtin_type_platform_equivalent` when its own lookup
-    // comes up empty -- see the 5.5 comment above the `Full`/rg branch.
-    // `ScopedOnly` is deliberately excluded: "no tail at all" is its own
-    // documented contract (its callers already have their own downstream
-    // fallback), so it must not gain one here.
+    // Each non-`ScopedOnly` arm tries
+    // `resolve_kotlin_builtin_type_platform_equivalent` FIRST, ahead of its own
+    // global-definitions lookup -- see the 5.4 comment above the `Full`/rg
+    // branch for why: for the built-in-type table, every same-named
+    // index/JAR candidate is a decoy, so it must not get a chance to win
+    // before the platform equivalent does. `ScopedOnly` is deliberately
+    // excluded: "no tail at all" is its own documented contract (its callers
+    // already have their own downstream fallback), so it must not gain one
+    // here.
     match io {
         ResolveIo::Full => vec![],
         ResolveIo::ScopedOnly => vec![],
         ResolveIo::NoRg => {
-            let found = indexer
+            let platform_equivalent =
+                resolve_kotlin_builtin_type_platform_equivalent(indexer, name);
+            if !platform_equivalent.is_empty() {
+                return platform_equivalent;
+            }
+            indexer
                 .lookup_definitions(name)
                 .into_iter()
                 .next()
                 .map(|loc| vec![loc])
-                .unwrap_or_default();
-            if !found.is_empty() {
-                return found;
-            }
-            resolve_kotlin_builtin_type_platform_equivalent(indexer, name)
+                .unwrap_or_default()
         }
         ResolveIo::IndexOnly => {
-            let found = ambiguity_safe_tail_with_denylist(
-                indexer,
-                from_uri,
-                indexer.lookup_definitions(name),
-            );
-            if !found.is_empty() {
-                return found;
+            let platform_equivalent =
+                resolve_kotlin_builtin_type_platform_equivalent(indexer, name);
+            if !platform_equivalent.is_empty() {
+                return platform_equivalent;
             }
-            resolve_kotlin_builtin_type_platform_equivalent(indexer, name)
+            ambiguity_safe_tail_with_denylist(indexer, from_uri, indexer.lookup_definitions(name))
         }
         ResolveIo::HierarchyAmbiguitySafe => {
-            let found = ambiguity_safe_tail_with_denylist(
+            let platform_equivalent =
+                resolve_kotlin_builtin_type_platform_equivalent(indexer, name);
+            if !platform_equivalent.is_empty() {
+                return platform_equivalent;
+            }
+            ambiguity_safe_tail_with_denylist(
                 indexer,
                 hierarchy_walk_origin_uri.unwrap_or(from_uri),
                 indexer.lookup_definitions(name),
-            );
-            if !found.is_empty() {
-                return found;
-            }
-            resolve_kotlin_builtin_type_platform_equivalent(indexer, name)
+            )
         }
     }
 }
