@@ -8,6 +8,7 @@ use tower_lsp::Client;
 
 use crate::backend::helpers::syntax_diagnostics;
 use crate::features::call_arg_diagnostics::call_arg_diagnostics;
+use crate::features::code_actions::missing_package_diagnostic;
 use crate::features::fill_when::when_diagnostics;
 use crate::features::missing_import_diagnostics::missing_import_diagnostics;
 use crate::features::nullable_call_diagnostics::nullable_dot_call_diagnostics;
@@ -187,29 +188,12 @@ impl FileChangeHandler {
                 let indexer = Arc::clone(&diag_indexer);
                 let uri = diagnostics_uri.clone();
                 move || {
-                    // Parse tree from the exact same text that was just indexed —
-                    // this guarantees CST and indexed data are consistent.
-                    let live_doc = lang_for_path(uri.path())
-                        .and_then(|lang| parse_live(&diagnostics_text, lang));
-                    let mut diagnostics = when_diagnostics(&indexer, &uri);
-                    if let Some(ref doc) = live_doc {
-                        let arg_diags = call_arg_diagnostics(&indexer, &uri, doc);
-                        log::debug!(
-                            "diag[gen={}]: call_arg_diagnostics returned {} items",
-                            my_generation,
-                            arg_diags.len(),
-                        );
-                        diagnostics.extend(arg_diags);
-                        diagnostics.extend(nullable_dot_call_diagnostics(&indexer, &uri, doc));
-                        diagnostics.extend(missing_import_diagnostics(&indexer, &uri, doc));
-                        diagnostics.extend(unused_import_diagnostics(doc));
-                    } else {
-                        log::debug!(
-                            "diag[gen={}]: live_doc is None — no call-arg diagnostics",
-                            my_generation,
-                        );
-                    }
-                    diagnostics
+                    compute_debounced_semantic_diagnostics(
+                        &indexer,
+                        &uri,
+                        &diagnostics_text,
+                        my_generation,
+                    )
                 }
             })
             .await;
@@ -266,6 +250,48 @@ impl FileChangeHandler {
             let _ = handle.await;
         }
     }
+}
+
+/// The full semantic-diagnostics set for one debounced didChange publish.
+///
+/// Named and pulled out of the `spawn_blocking` closure it used to be
+/// inline in so it can be unit-tested directly — see
+/// `debounced_diagnostics_flag_a_deleted_package_declaration` in the test
+/// module for the regression this shape exists to catch: this function's
+/// own list of diagnostic calls had silently drifted from
+/// `DocumentHandler`'s two call sites (`handle_file_opened`,
+/// `republish_open_file_diagnostics`) since the day this file was first
+/// extracted from the workspace actor (`refactor(workspace): extract actor
+/// handlers (w5b)`, before the missing-package diagnostic even existed) —
+/// both of those call `missing_package_diagnostic`, this one never did.
+fn compute_debounced_semantic_diagnostics(
+    indexer: &Indexer,
+    uri: &Url,
+    diagnostics_text: &str,
+    generation: u64,
+) -> Vec<tower_lsp::lsp_types::Diagnostic> {
+    // Parse tree from the exact same text that was just indexed — this
+    // guarantees CST and indexed data are consistent.
+    let live_doc = lang_for_path(uri.path()).and_then(|lang| parse_live(diagnostics_text, lang));
+    let mut diagnostics = when_diagnostics(indexer, uri);
+    if let Some(ref doc) = live_doc {
+        let arg_diags = call_arg_diagnostics(indexer, uri, doc);
+        log::debug!(
+            "diag[gen={generation}]: call_arg_diagnostics returned {} items",
+            arg_diags.len(),
+        );
+        diagnostics.extend(arg_diags);
+        diagnostics.extend(nullable_dot_call_diagnostics(indexer, uri, doc));
+        diagnostics.extend(missing_import_diagnostics(indexer, uri, doc));
+        diagnostics.extend(unused_import_diagnostics(doc));
+    } else {
+        log::debug!("diag[gen={generation}]: live_doc is None — no call-arg diagnostics");
+    }
+    let text_lines: Vec<String> = diagnostics_text.lines().map(str::to_owned).collect();
+    if let Some(pkg_diag) = missing_package_diagnostic(&text_lines, uri) {
+        diagnostics.push(pkg_diag);
+    }
+    diagnostics
 }
 
 #[cfg(test)]

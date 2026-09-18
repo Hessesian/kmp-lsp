@@ -174,3 +174,58 @@ async fn live_added_nested_val_reaches_member_completion() {
     let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
     assert!(labels.contains(&"zload"), "zload missing: {labels:?}");
 }
+
+/// Regression: deleting a file's `package` declaration via a live edit must
+/// still surface the "Missing package declaration" warning. `DocumentHandler`
+/// computes this correctly on `textDocument/didOpen` and on republish, but the
+/// debounced `textDocument/didChange` path this test exercises independently
+/// builds its own diagnostics list — and never called
+/// `missing_package_diagnostic` at all, since the file this list lives in was
+/// extracted from the old monolithic actor before the missing-package
+/// diagnostic was ever added, and nothing kept the two lists in sync.
+#[tokio::test]
+async fn debounced_diagnostics_flag_a_deleted_package_declaration() {
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::write(tmp.path().join("workspace.json"), r#"{"sourcePaths":[]}"#).unwrap();
+    let file_path = tmp.path().join("src/main/kotlin/com/example/app/Foo.kt");
+    std::fs::create_dir_all(file_path.parent().unwrap()).unwrap();
+
+    let indexer = Arc::new(Indexer::new());
+    indexer.workspace_root.set(tmp.path().to_path_buf());
+    let uri = Url::from_file_path(&file_path).unwrap();
+
+    let mut handler = FileChangeHandler::new(Arc::clone(&indexer), None);
+
+    // Step 1: open with a package declaration present — no diagnostic yet.
+    let with_package = "package com.example.app\n\nclass Foo\n";
+    handler
+        .handle_file_changed(uri.clone(), change(with_package))
+        .await;
+    handler.wait_for_pending_reindex(&uri).await;
+
+    let diags_before =
+        super::compute_debounced_semantic_diagnostics(&indexer, &uri, with_package, 0);
+    assert!(
+        !diags_before
+            .iter()
+            .any(|d| d.message.contains("Missing package declaration")),
+        "step1: package is present, should not warn"
+    );
+
+    // Step 2: delete the package line via a live edit.
+    let without_package = "class Foo\n";
+    handler
+        .handle_file_changed(uri.clone(), change(without_package))
+        .await;
+    handler.wait_for_pending_reindex(&uri).await;
+
+    let diags_after =
+        super::compute_debounced_semantic_diagnostics(&indexer, &uri, without_package, 1);
+    assert!(
+        diags_after
+            .iter()
+            .any(|d| d.message.contains("Missing package declaration")),
+        "step2: package line was deleted via a live edit, expected a \
+         missing-package warning, got: {diags_after:?}"
+    );
+}
