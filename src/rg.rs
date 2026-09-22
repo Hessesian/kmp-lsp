@@ -1020,11 +1020,19 @@ fn parent_scoped_reference_locations(
     // provenance tracking is needed here — `verify_candidates` remains the
     // backstop, same as every other hop-2 widening in this module. See
     // `ProducerExpansion` for the degrade-to-hop-1 floor.
-    if let Some(parent) = request.parent_class {
-        if let ProducerExpansion::Found(producer_files) =
-            producer_scoped_candidate_files(request, matcher, parent, &candidate_files)
-        {
-            extend_unique_files(&mut candidate_files, producer_files);
+    //
+    // Only runs for lowercase names (methods/properties): for an uppercase
+    // nested type, `Step 5` is a bare-name pass, and a nested type can never
+    // be referenced bare without an explicit import (see the same-package
+    // exclusion above) — so any file this hop finds could only ever burn
+    // `verify_candidates`'s IO budget, never produce a real match.
+    if !is_uppercase_nested {
+        if let Some(parent) = request.parent_class {
+            if let ProducerExpansion::Found(producer_files) =
+                producer_scoped_candidate_files(request, matcher, parent, &candidate_files)
+            {
+                extend_unique_files(&mut candidate_files, producer_files);
+            }
         }
     }
 
@@ -1290,8 +1298,14 @@ fn take_type_token(text: &str) -> &str {
 }
 
 /// Returns `true` when `type_text` is exactly `owner_class` (optionally
-/// nullable, `Body?`) or a single-level generic wrapper around it
-/// (`List<Body>`, `Optional<Body>`).
+/// nullable, `Body?`), a single-level generic wrapper around it
+/// (`List<Body>`, `Optional<Body>`), a dotted nested-type reference whose
+/// first segment is `owner_class` (`Reducer.Factory` when owner is
+/// `Reducer` — a member returning a type nested inside the owner), or a
+/// dotted fully-qualified reference whose last segment is `owner_class`
+/// (`a.Body` when owner is `Body`). All four are still explicit, unambiguous
+/// textual mentions of the owner class in the declared type — this widens
+/// recognition of the same signal, not the signal itself.
 fn type_annotation_matches_owner(type_text: &str, owner_class: &str) -> bool {
     let trimmed = type_text.trim().trim_end_matches('?');
     if trimmed == owner_class {
@@ -1300,6 +1314,15 @@ fn type_annotation_matches_owner(type_text: &str, owner_class: &str) -> bool {
     if let (Some(open), true) = (trimmed.find('<'), trimmed.ends_with('>')) {
         let inner = trimmed[open + 1..trimmed.len() - 1].trim();
         return inner.trim_end_matches('?') == owner_class;
+    }
+    if trimmed.contains('.') {
+        let mut segments = trimmed.split('.');
+        if segments.next() == Some(owner_class) {
+            return true;
+        }
+        if trimmed.rsplit('.').next() == Some(owner_class) {
+            return true;
+        }
     }
     false
 }
@@ -1427,6 +1450,14 @@ fn producer_scoped_candidate_files(
             continue;
         };
         for line in content.lines() {
+            // Cheap pre-filter before the shape-specific parsing below: a line
+            // that doesn't even mention `owner_class` can never declare a
+            // member returning it. Skips the vast majority of lines in a
+            // hop-1 file without running `declared_member_name_returning`'s
+            // three parsers over them.
+            if !line.contains(owner_class) {
+                continue;
+            }
             if let Some(member_name) = declared_member_name_returning(line, owner_class) {
                 if !producer_member_names.contains(&member_name) {
                     producer_member_names.push(member_name);
@@ -1442,16 +1473,19 @@ fn producer_scoped_candidate_files(
         return ProducerExpansion::SkippedTooBroad;
     }
 
-    let mut candidate_files: Vec<String> = Vec::new();
-    for member_name in &producer_member_names {
-        let safe_member_name = regex_escape(member_name);
-        let files = rg_files_with_matches_scoped(
-            &format!(r"\b{safe_member_name}\b"),
-            request.source_paths,
-            request.search_root.as_ref(),
-        );
-        extend_unique_files(&mut candidate_files, files);
-    }
+    // One scoped `rg` call over an alternation of every producer name, rather
+    // than one whole-scoped call per name — `MAX_OWNER_PRODUCING_MEMBER_NAMES`
+    // already bounds the alternation to at most 8 names.
+    let alternation = producer_member_names
+        .iter()
+        .map(|name| regex_escape(name))
+        .collect::<Vec<_>>()
+        .join("|");
+    let candidate_files = rg_files_with_matches_scoped(
+        &format!(r"\b(?:{alternation})\b"),
+        request.source_paths,
+        request.search_root.as_ref(),
+    );
 
     if candidate_files.len() > MAX_PRODUCER_CANDIDATE_FILES {
         return ProducerExpansion::SkippedTooBroad;

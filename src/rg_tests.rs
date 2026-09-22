@@ -1095,3 +1095,155 @@ fn declared_member_name_returning_rejects_inferred_local_val() {
          annotation) must not be treated as a producer declaration"
     );
 }
+
+// ─── type_annotation_matches_owner ─────────────────────────────────────────────
+
+#[test]
+fn type_annotation_matches_owner_accepts_nested_type_shape() {
+    use crate::rg::type_annotation_matches_owner;
+    assert!(
+        type_annotation_matches_owner("Reducer.Factory", "Reducer"),
+        "a member declared to return `Owner.Nested` explicitly mentions `Owner` \
+         as its first segment and must count as a producer of `Owner`"
+    );
+}
+
+#[test]
+fn type_annotation_matches_owner_accepts_fully_qualified_shape() {
+    use crate::rg::type_annotation_matches_owner;
+    assert!(
+        type_annotation_matches_owner("a.Body", "Body"),
+        "a member declared to return a fully-qualified `pkg.Owner` explicitly \
+         mentions `Owner` as its last segment and must count as a producer of `Owner`"
+    );
+}
+
+#[test]
+fn type_annotation_matches_owner_rejects_unrelated_dotted_type() {
+    use crate::rg::type_annotation_matches_owner;
+    assert!(
+        !type_annotation_matches_owner("a.Other", "Body"),
+        "a dotted type whose segments do not include `Body` at all must not match"
+    );
+}
+
+// ─── producer-scoped hop 2 gating (uppercase nested types) ────────────────────
+
+/// Regression for the hop-2 "producer" widening in `parent_scoped_reference_locations`:
+/// it must not run for uppercase nested-type searches. An uppercase nested type can
+/// never be referenced bare without an explicit import (same reasoning as the
+/// same-package exclusion), so widening the bare-name candidate set for one can only
+/// ever surface an unrelated textual coincidence in a hop-2-discovered file, never a
+/// real reference.
+///
+/// `IntroContract` self-produces via its own `create(): IntroContract` companion
+/// factory method — mirroring the exact shape that made the analogous owner-scoped
+/// fix's test fixture accidentally self-producing. `Caller.kt` never imports or
+/// mentions `IntroContract`/`Event` as code, calls the generically-named `create()`
+/// producer of an unrelated type, and only contains the word `Event` inside a comment.
+/// Without the gate, hop 2 would still add `Caller.kt` as a bare-name candidate (the
+/// producer name `create` is searched project-wide) and its comment's bare `Event`
+/// would leak through — there's no dot-qualifier for `has_wrong_qualifier_at_col` to
+/// reject.
+#[test]
+fn parent_scoped_reference_locations_does_not_widen_via_hop_two_for_uppercase_name() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+
+    let contract = "package com.example.intro\ninterface IntroContract {\n    \
+                     sealed class Event\n    companion object {\n        \
+                     fun create(): IntroContract = TODO()\n    }\n}\n";
+    let caller = "package com.other\n\nfun use() {\n    \
+                   val instance = SomeUnrelatedFactory().create()\n    \
+                   // Event: coincidental word, no relation to IntroContract.\n}\n";
+
+    let contract_path = write_temp(root, "IntroContract.kt", contract);
+    write_temp(root, "Caller.kt", caller);
+
+    let contract_uri = Url::from_file_path(&contract_path).unwrap();
+    let decl_files = vec![contract_path.clone()];
+
+    let request = RgSearchRequest::new(
+        "Event",
+        Some("IntroContract"),
+        Some("com.example.intro"),
+        Some(root),
+        false,
+        &contract_uri,
+        &decl_files,
+    );
+
+    let locs = rg_find_references(&request, None);
+    let paths: Vec<String> = locs
+        .iter()
+        .filter_map(|l| {
+            l.uri
+                .to_file_path()
+                .ok()
+                .and_then(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()))
+        })
+        .collect();
+
+    assert!(
+        !paths.iter().any(|p| p == "Caller.kt"),
+        "a file reached only through hop 2's producer widening must not surface a \
+         coincidental bare-word match for an uppercase nested type; got: {paths:?}"
+    );
+}
+
+/// Regression for the hop-2 file-discovery call in `producer_scoped_candidate_files`:
+/// it must issue a single scoped `rg` call over an alternation of every producer
+/// name, not one call per name — and every name's callers must still be found.
+#[test]
+fn producer_scoped_candidate_files_finds_callers_of_every_producer_name() {
+    use crate::rg::{producer_scoped_candidate_files, ProducerExpansion};
+
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+
+    let hop1_src = "package a\n\nclass Hop1 {\n    fun produceOne(): Owner = TODO()\n    \
+                     fun produceTwo(): Owner = TODO()\n}\n";
+    let caller_one_src = "package b\n\nfun use(hop1: Hop1) {\n    hop1.produceOne()\n}\n";
+    let caller_two_src = "package b\n\nfun use(hop1: Hop1) {\n    hop1.produceTwo()\n}\n";
+
+    let hop1_path = write_temp(root, "Hop1.kt", hop1_src);
+    write_temp(root, "CallerOne.kt", caller_one_src);
+    write_temp(root, "CallerTwo.kt", caller_two_src);
+
+    let dummy_uri = Url::from_file_path(&hop1_path).unwrap();
+    let decl_files: Vec<String> = vec![];
+    let request = RgSearchRequest::new(
+        "produceOne",
+        None,
+        None,
+        Some(root),
+        false,
+        &dummy_uri,
+        &decl_files,
+    );
+
+    let hop1_files = vec![hop1_path];
+    let result = producer_scoped_candidate_files(&request, None, "Owner", &hop1_files);
+
+    let ProducerExpansion::Found(files) = result else {
+        panic!(
+            "expected ProducerExpansion::Found with two producer names, got a different variant"
+        );
+    };
+    let names: Vec<String> = files
+        .iter()
+        .filter_map(|f| {
+            std::path::Path::new(f)
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+        })
+        .collect();
+    assert!(
+        names.contains(&"CallerOne.kt".to_string()),
+        "caller of the first producer name must be found; got: {names:?}"
+    );
+    assert!(
+        names.contains(&"CallerTwo.kt".to_string()),
+        "caller of the second producer name must be found; got: {names:?}"
+    );
+}

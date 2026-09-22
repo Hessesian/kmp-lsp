@@ -2384,8 +2384,13 @@ async fn owner_scoped_method_reference_found_through_inferred_receiver_type() {
     let root = dir.path();
     std::fs::write(root.join("workspace.json"), r#"{"sourcePaths":[]}"#).unwrap();
 
+    // `create` deliberately does NOT return `Reducer`: if it did, Reducer.kt
+    // would itself be an (accidental) producer of `Reducer` via the same
+    // member name being searched for, masking whether hop 2 actually reaches
+    // `Caller.kt` through `Module.kt`'s `Reducer.Factory`-typed producer —
+    // the real-world shape this test exists to cover.
     let reducer_src = "package a\n\nclass Reducer {\n    interface Factory {\n        \
-                        fun create(): Reducer\n    }\n}\n";
+                        fun create(): Any\n    }\n}\n";
     let module_src =
         "package a\n\nclass Module {\n    fun provideFactory(): Reducer.Factory = TODO()\n}\n";
     let caller_src = "package b\n\nimport a.Module\n\nfun use(module: Module) {\n    \
