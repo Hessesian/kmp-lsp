@@ -8,6 +8,7 @@ use tower_lsp::Client;
 
 use crate::backend::helpers::syntax_diagnostics;
 use crate::features::call_arg_diagnostics::call_arg_diagnostics;
+use crate::features::code_actions::missing_package_diagnostic;
 use crate::features::fill_when::when_diagnostics;
 use crate::features::missing_import_diagnostics::missing_import_diagnostics;
 use crate::features::nullable_call_diagnostics::nullable_dot_call_diagnostics;
@@ -161,6 +162,7 @@ impl FileChangeHandler {
                     )
                 });
             }
+            let index_content_join_succeeded = result.is_ok();
             let (index_result, diagnostics_text) = result.unwrap_or_else(|_| (None, String::new()));
             let index_hit_cache = index_result.is_none();
             log::debug!(
@@ -182,34 +184,29 @@ impl FileChangeHandler {
                     .unwrap_or_default(),
             };
 
-            // Move all CPU-bound diagnostic work off the async thread.
+            // Move all CPU-bound diagnostic work off the async thread. This
+            // closure is now a thin one-line call into
+            // `compute_debounced_semantic_diagnostics` specifically so there
+            // is no logic left here to drift from what the tests below
+            // exercise — but a test calling that function directly still
+            // cannot prove this closure keeps calling it (removing the call
+            // here would still compile). Closing that gap needs a real or
+            // fake `tower_lsp::Client` capturing what actually gets
+            // published; no such test harness exists anywhere in this
+            // codebase yet, and building one is a bigger investment than
+            // this bug fix — left as a known, named gap rather than silently
+            // dropped.
             let semantic_diags = tokio::task::spawn_blocking({
                 let indexer = Arc::clone(&diag_indexer);
                 let uri = diagnostics_uri.clone();
                 move || {
-                    // Parse tree from the exact same text that was just indexed —
-                    // this guarantees CST and indexed data are consistent.
-                    let live_doc = lang_for_path(uri.path())
-                        .and_then(|lang| parse_live(&diagnostics_text, lang));
-                    let mut diagnostics = when_diagnostics(&indexer, &uri);
-                    if let Some(ref doc) = live_doc {
-                        let arg_diags = call_arg_diagnostics(&indexer, &uri, doc);
-                        log::debug!(
-                            "diag[gen={}]: call_arg_diagnostics returned {} items",
-                            my_generation,
-                            arg_diags.len(),
-                        );
-                        diagnostics.extend(arg_diags);
-                        diagnostics.extend(nullable_dot_call_diagnostics(&indexer, &uri, doc));
-                        diagnostics.extend(missing_import_diagnostics(&indexer, &uri, doc));
-                        diagnostics.extend(unused_import_diagnostics(doc));
-                    } else {
-                        log::debug!(
-                            "diag[gen={}]: live_doc is None — no call-arg diagnostics",
-                            my_generation,
-                        );
-                    }
-                    diagnostics
+                    compute_debounced_semantic_diagnostics(
+                        &indexer,
+                        &uri,
+                        &diagnostics_text,
+                        index_content_join_succeeded,
+                        my_generation,
+                    )
                 }
             })
             .await;
@@ -266,6 +263,67 @@ impl FileChangeHandler {
             let _ = handle.await;
         }
     }
+}
+
+/// The full semantic-diagnostics set for one debounced didChange publish.
+///
+/// Named and pulled out of the `spawn_blocking` closure it used to be
+/// inline in so it can be unit-tested directly — see
+/// `debounced_diagnostics_flag_a_deleted_package_declaration` in the test
+/// module for the regression this shape exists to catch: this function's
+/// own list of diagnostic calls had silently drifted from
+/// `DocumentHandler`'s two call sites (`handle_file_opened`,
+/// `republish_open_file_diagnostics`) since the day this file was first
+/// extracted from the workspace actor (`refactor(workspace): extract actor
+/// handlers (w5b)`, before the missing-package diagnostic even existed) —
+/// both of those call `missing_package_diagnostic`, this one never did.
+///
+/// `diagnostics_text_is_current` must be `false` whenever `diagnostics_text`
+/// is a fallback placeholder rather than the real just-indexed content (the
+/// caller's `index_content` `spawn_blocking` task panicked, so the real text
+/// is unknown) — review finding: the other diagnostics here degrade
+/// gracefully on an empty/fabricated string (an empty file simply has no
+/// call args, no nullable dots, no imports to flag), but
+/// `missing_package_diagnostic` does not — an empty string genuinely has no
+/// `package` line, so it would publish a real, false "Missing package
+/// declaration" warning for a file whose content was never actually re-read.
+fn compute_debounced_semantic_diagnostics(
+    indexer: &Indexer,
+    uri: &Url,
+    diagnostics_text: &str,
+    diagnostics_text_is_current: bool,
+    generation: u64,
+) -> Vec<tower_lsp::lsp_types::Diagnostic> {
+    // Parse tree from the exact same text that was just indexed — this
+    // guarantees CST and indexed data are consistent.
+    let live_doc = lang_for_path(uri.path()).and_then(|lang| parse_live(diagnostics_text, lang));
+    let mut diagnostics = when_diagnostics(indexer, uri);
+    if let Some(ref doc) = live_doc {
+        let arg_diags = call_arg_diagnostics(indexer, uri, doc);
+        log::debug!(
+            "diag[gen={generation}]: call_arg_diagnostics returned {} items",
+            arg_diags.len(),
+        );
+        diagnostics.extend(arg_diags);
+        diagnostics.extend(nullable_dot_call_diagnostics(indexer, uri, doc));
+        diagnostics.extend(missing_import_diagnostics(indexer, uri, doc));
+        diagnostics.extend(unused_import_diagnostics(doc));
+    } else {
+        log::debug!("diag[gen={generation}]: live_doc is None — no call-arg diagnostics");
+    }
+    if diagnostics_text_is_current {
+        let text_lines: Vec<String> = diagnostics_text.lines().map(str::to_owned).collect();
+        if let Some(package_diagnostic) = missing_package_diagnostic(&text_lines, uri) {
+            diagnostics.push(package_diagnostic);
+        }
+    } else {
+        log::debug!(
+            "diag[gen={generation}]: diagnostics_text is not current (index_content join \
+             failed) — skipping missing_package_diagnostic to avoid a false positive on \
+             fabricated empty content"
+        );
+    }
+    diagnostics
 }
 
 #[cfg(test)]
