@@ -2402,13 +2402,25 @@ async fn owner_scoped_method_reference_found_through_inferred_receiver_type() {
                              fun use() {\n        overviewMapperFactory.create()\n    }\n}\n";
 
     let (_, reducer_uri) = write(root, "Reducer.kt", reducer_src);
-    write(root, "Module.kt", module_src);
-    write(root, "Caller.kt", caller_src);
-    write(root, "OtherCaller.kt", other_caller_src);
+    let (_, module_uri) = write(root, "Module.kt", module_src);
+    let (_, caller_uri) = write(root, "Caller.kt", caller_src);
+    let (_, other_caller_uri) = write(root, "OtherCaller.kt", other_caller_src);
 
     let idx = Arc::new(Indexer::new());
     idx.workspace_root.set(root.to_path_buf());
-    idx.index_content(&reducer_uri, reducer_src);
+    // Every file gets indexed, mirroring a real workspace scan — including
+    // `Module.kt`, the hop-1 producer file: producer-widening now reads
+    // `SymbolEntry::detail` from the `Indexer` (not the filesystem directly),
+    // so an unindexed producer file would safely degrade to hop-1-only
+    // behavior, which is not what this test exists to cover.
+    for (uri, src) in [
+        (&reducer_uri, reducer_src),
+        (&module_uri, module_src),
+        (&caller_uri, caller_src),
+        (&other_caller_uri, other_caller_src),
+    ] {
+        idx.index_content(uri, src);
+    }
 
     // Cursor on `create` in `fun create(): Reducer` — line 4 (0-based).
     let declaration_line = 4u32;
@@ -2468,13 +2480,25 @@ async fn interface_method_reference_found_without_importing_the_interface() {
                           fun useOther(other: OtherThing) {\n    other.openBody()\n}\n";
 
     let (_, repo_uri) = write(root, "Repo.kt", repo_src);
-    write(root, "Factory.kt", factory_src);
-    write(root, "Caller.kt", caller_src);
-    write(root, "Unrelated.kt", unrelated_src);
+    let (_, factory_uri) = write(root, "Factory.kt", factory_src);
+    let (_, caller_uri) = write(root, "Caller.kt", caller_src);
+    let (_, unrelated_uri) = write(root, "Unrelated.kt", unrelated_src);
 
     let idx = Arc::new(Indexer::new());
     idx.workspace_root.set(root.to_path_buf());
-    idx.index_content(&repo_uri, repo_src);
+    // Every file gets indexed, mirroring a real workspace scan — including
+    // `Factory.kt`, the hop-1 producer file: producer-widening now reads
+    // `SymbolEntry::detail` from the `Indexer` (not the filesystem directly),
+    // so an unindexed producer file would safely degrade to hop-1-only
+    // behavior, which is not what this test exists to cover.
+    for (uri, src) in [
+        (&repo_uri, repo_src),
+        (&factory_uri, factory_src),
+        (&caller_uri, caller_src),
+        (&unrelated_uri, unrelated_src),
+    ] {
+        idx.index_content(uri, src);
+    }
 
     // Cursor on `openBody` in `fun openBody(): Body` — line 3 (0-based).
     let declaration_line = 3u32;

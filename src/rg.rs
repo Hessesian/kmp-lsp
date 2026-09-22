@@ -15,7 +15,7 @@ use std::process::Command;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
-use tower_lsp::lsp_types::{Location, Position, Range, Url};
+use tower_lsp::lsp_types::{Location, Position, Range, SymbolKind, Url};
 
 // ─── Global concurrency limiter ───────────────────────────────────────────────
 
@@ -363,6 +363,15 @@ pub(crate) struct RgSearchRequest<'a> {
     /// When non-empty, the qualified rg pass is scoped to these files instead of
     /// searching the whole workspace, preventing cross-package same-short-name FPs.
     pub(crate) index_qualified_candidate_files: Vec<String>,
+    /// Pre-computed `(file_uri, member_name)` pairs: for whichever owner class this
+    /// request cares about (`field_owner`/`owner_class`/`parent_class`), every
+    /// already-indexed function/property/method whose [`SymbolEntry::detail`]
+    /// declares a type matching that owner class — built once from the `Indexer`
+    /// before the `spawn_blocking` rg pass (see [`crate::features::references::rg_locations`]),
+    /// since `Indexer` access isn't available inside that blocking closure.
+    /// Consumed by [`producer_scoped_candidate_files`] to widen hop-1 file
+    /// discovery to files that call a producer of the owner class.
+    pub(crate) producer_candidates: Vec<(String, String)>,
 }
 
 enum RgTarget<'a> {
@@ -594,11 +603,17 @@ impl<'a> RgSearchRequest<'a> {
             decl_files,
             index_candidate_files: Vec::new(),
             index_qualified_candidate_files: Vec::new(),
+            producer_candidates: Vec::new(),
         }
     }
 
     pub(crate) fn with_index_candidates(mut self, candidates: Vec<String>) -> Self {
         self.index_candidate_files = candidates;
+        self
+    }
+
+    pub(crate) fn with_producer_candidates(mut self, candidates: Vec<(String, String)>) -> Self {
+        self.producer_candidates = candidates;
         self
     }
 
@@ -1026,13 +1041,11 @@ fn parent_scoped_reference_locations(
     // be referenced bare without an explicit import (see the same-package
     // exclusion above) — so any file this hop finds could only ever burn
     // `verify_candidates`'s IO budget, never produce a real match.
-    if !is_uppercase_nested {
-        if let Some(parent) = request.parent_class {
-            if let ProducerExpansion::Found(producer_files) =
-                producer_scoped_candidate_files(request, matcher, parent, &candidate_files)
-            {
-                extend_unique_files(&mut candidate_files, producer_files);
-            }
+    if !is_uppercase_nested && request.parent_class.is_some() {
+        if let ProducerExpansion::Found(producer_files) =
+            producer_scoped_candidate_files(request, matcher, &candidate_files)
+        {
+            extend_unique_files(&mut candidate_files, producer_files);
         }
     }
 
@@ -1151,7 +1164,7 @@ fn owner_scoped_reference_locations(
     // module.provideFactory(); factoryInstance.create()`) is still found.
     // See `ProducerExpansion` for the degrade-to-hop-1 floor.
     let producer_discovered_files =
-        match producer_scoped_candidate_files(request, matcher, owner_class, &hop1_files) {
+        match producer_scoped_candidate_files(request, matcher, &hop1_files) {
             ProducerExpansion::Found(producer_files) => {
                 let newly_discovered: std::collections::HashSet<String> = producer_files
                     .iter()
@@ -1247,32 +1260,101 @@ enum ProducerExpansion {
     Found(Vec<String>),
 }
 
-/// Returns the member name declared in `content` with an explicit type
-/// annotation matching `owner_class` — a Kotlin `fun` return type, a Kotlin
-/// `val`/`var` declared type, or a Java method's return type. The annotation
-/// may wrap `owner_class` in one generic parameter (`List<Body>`).
+/// Extracts the declared/return type token from an already-CST-bounded
+/// [`crate::types::SymbolEntry::detail`] string (computed once at parse time
+/// by `extract_detail_from_node`, which already handles multi-line signatures,
+/// extension receivers, leading type params, and both Kotlin and Java shapes —
+/// this function does no CST work of its own, only a small string extraction
+/// over that already-normalized text). `kind` selects the shape to parse, using
+/// the same [`SymbolKind`] already attached to the `SymbolEntry` `detail` came
+/// from, rather than re-deriving the declaration shape by sniffing the string:
 ///
-/// This is a purely textual check for an *explicit* annotation. It returns
-/// `None` for a parameter typed as `owner_class` (`fun consume(body: Body)`)
-/// and for a local `val` whose type is only inferred from its initializer
-/// (`val body = Body()`) — the same inference gap this feature widens
-/// discovery around must not be papered over by treating every mention of
-/// the owner class as a producer declaration.
-pub(crate) fn declared_member_name_returning(content: &str, owner_class: &str) -> Option<String> {
-    kotlin_function_returning(content, owner_class)
-        .or_else(|| kotlin_property_typed(content, owner_class))
-        .or_else(|| java_method_returning(content, owner_class))
+/// - [`SymbolKind::FUNCTION`] (Kotlin `fun`): the type after the LAST `": "`
+///   following the closing `)` of the (balanced) parameter list —
+///   `"fun openBody(): Body"`, `"fun Foo.openBody(): Body"`,
+///   `"fun <T> openBody(): Body"`. `None` for a `Unit`-returning function
+///   (no `: Type` suffix at all).
+/// - [`SymbolKind::PROPERTY`] / [`SymbolKind::VARIABLE`] (Kotlin `val`/`var` —
+///   `var` is indexed as `VARIABLE`, not `PROPERTY`): the type after the first
+///   `": "` — `"val isOnline: Boolean"`, `"var count: Int"`.
+/// - [`SymbolKind::METHOD`]: a Kotlin member function nested inside a
+///   class/interface/object (still `"fun name(...): Type"` shaped — nesting
+///   only demotes `FUNCTION` to `METHOD`) OR a Java method, where the return
+///   type comes BEFORE the method name, e.g. `"public Body openBody(int x)"`,
+///   `"@Nullable public Map<String, Object> getMap()"` — disambiguated by
+///   whether `detail` carries the literal `fun` keyword. For the Java shape:
+///   the whitespace-delimited token immediately before the method name,
+///   honoring balanced `<…>` generics so an internal-space generic like
+///   `Map<String, Object>` isn't split apart.
+/// - Anything else (class, constructor, field, …) → `None`.
+pub(crate) fn declared_type_from_detail(detail: &str, kind: SymbolKind) -> Option<&str> {
+    match kind {
+        SymbolKind::FUNCTION => kotlin_function_return_type(detail),
+        SymbolKind::PROPERTY | SymbolKind::VARIABLE => {
+            let colon = detail.find(": ")?;
+            Some(take_type_token(detail[colon + 2..].trim_start()))
+        }
+        // `METHOD` covers TWO different shapes: a Kotlin member function
+        // nested inside a class/interface/object (nesting demotes its
+        // `SymbolKind` from `FUNCTION` to `METHOD` — see `parser.rs`'s
+        // `push_def_symbols` — but the detail shape stays Kotlin's
+        // `"fun name(...): Type"`), and a genuine Java method (`"Type
+        // name(...)"`, return type BEFORE the name). A Kotlin detail always
+        // carries the literal `fun` keyword token; a Java one never does —
+        // that's the only reliable disambiguator available here, since both
+        // land on the same `SymbolKind`.
+        SymbolKind::METHOD => {
+            if detail.starts_with("fun ") || detail.contains(" fun ") {
+                kotlin_function_return_type(detail)
+            } else {
+                java_method_return_type(detail)
+            }
+        }
+        _ => None,
+    }
 }
 
-/// Returns `true` if the byte at `index - 1` in `content` would make a match
-/// starting at `index` NOT a whole-word occurrence (i.e. it's a continuation
-/// of a longer identifier, e.g. matching `val` inside `interval`).
-fn preceded_by_identifier_char(content: &str, index: usize) -> bool {
-    if index == 0 {
-        return false;
+/// Kotlin `fun` detail shape: the type after the LAST `": "` following the
+/// closing `)` of the (balanced) parameter list.
+fn kotlin_function_return_type(detail: &str) -> Option<&str> {
+    let paren_open = detail.find('(')?;
+    let close = balanced_paren_close(&detail[paren_open + 1..])?;
+    let after_params = detail[paren_open + 1 + close + 1..].trim_start();
+    let return_type_text = after_params.strip_prefix(':')?;
+    Some(take_type_token(return_type_text.trim_start()))
+}
+
+/// Java method detail shape: the whitespace-delimited token immediately
+/// before the method name (the return type comes BEFORE the name in Java,
+/// unlike Kotlin), honoring balanced `<…>` generics.
+fn java_method_return_type(detail: &str) -> Option<&str> {
+    let paren_open = detail.find('(')?;
+    let head = detail[..paren_open].trim_end();
+    let name_start = head.rfind(char::is_whitespace)? + 1;
+    let before_name = head[..name_start].trim_end();
+    (!before_name.is_empty()).then(|| rtake_type_token(before_name))
+}
+
+/// Extracts a type token ENDING at `text`'s end, honoring balanced `<…>`
+/// generic nesting, by scanning backward for the first top-level (depth-0)
+/// whitespace. The mirror image of [`take_type_token`] — used for Java, where
+/// the return type sits immediately before the method name rather than after
+/// a `:` marker, so the boundary must be found from the right (e.g.
+/// `"public Map<String, Object>"` → `"Map<String, Object>"`, correctly not
+/// splitting at the space after the generic's comma).
+fn rtake_type_token(text: &str) -> &str {
+    let mut depth = 0i32;
+    for (byte_index, character) in text.char_indices().rev() {
+        match character {
+            '>' => depth += 1,
+            '<' => depth -= 1,
+            character if depth == 0 && character.is_whitespace() => {
+                return text[byte_index + character.len_utf8()..].trim();
+            }
+            _ => {}
+        }
     }
-    let previous_byte = content.as_bytes()[index - 1];
-    previous_byte.is_ascii_alphanumeric() || previous_byte == b'_'
+    text.trim()
 }
 
 /// Extracts a type token starting at `text`, honoring one level of balanced
@@ -1306,7 +1388,7 @@ fn take_type_token(text: &str) -> &str {
 /// (`a.Body` when owner is `Body`). All four are still explicit, unambiguous
 /// textual mentions of the owner class in the declared type — this widens
 /// recognition of the same signal, not the signal itself.
-fn type_annotation_matches_owner(type_text: &str, owner_class: &str) -> bool {
+pub(crate) fn type_annotation_matches_owner(type_text: &str, owner_class: &str) -> bool {
     let trimmed = type_text.trim().trim_end_matches('?');
     if trimmed == owner_class {
         return true;
@@ -1327,112 +1409,22 @@ fn type_annotation_matches_owner(type_text: &str, owner_class: &str) -> bool {
     false
 }
 
-/// Kotlin `fun name(...): OwnerClass` (with or without a body).
-fn kotlin_function_returning(content: &str, owner_class: &str) -> Option<String> {
-    const KEYWORD: &str = "fun ";
-    let mut search_from = 0usize;
-    while let Some(relative_index) = content[search_from..].find(KEYWORD) {
-        let keyword_start = search_from + relative_index;
-        let name_start = keyword_start + KEYWORD.len();
-        search_from = name_start;
-        if preceded_by_identifier_char(content, keyword_start) {
-            continue;
-        }
-        let rest = &content[name_start..];
-        let name_end = rest
-            .find(|character: char| !(character.is_alphanumeric() || character == '_'))
-            .unwrap_or(rest.len());
-        let name = &rest[..name_end];
-        if name.is_empty() || !rest[name_end..].starts_with('(') {
-            continue;
-        }
-        let after_paren_open = &rest[name_end + 1..];
-        let Some(close) = balanced_paren_close(after_paren_open) else {
-            continue;
-        };
-        let after_params = after_paren_open[close + 1..].trim_start();
-        let Some(return_type_text) = after_params.strip_prefix(':') else {
-            continue;
-        };
-        let return_type = take_type_token(return_type_text.trim_start());
-        if type_annotation_matches_owner(return_type, owner_class) {
-            return Some(name.to_string());
-        }
-    }
-    None
-}
-
-/// Kotlin `val name: OwnerClass` / `var name: OwnerClass` (with or without an
-/// initializer). A local declared without an explicit type annotation
-/// (`val name = OwnerClass()`) is deliberately not matched — see
-/// [`declared_member_name_returning`].
-fn kotlin_property_typed(content: &str, owner_class: &str) -> Option<String> {
-    for keyword in ["val ", "var "] {
-        let mut search_from = 0usize;
-        while let Some(relative_index) = content[search_from..].find(keyword) {
-            let keyword_start = search_from + relative_index;
-            let name_start = keyword_start + keyword.len();
-            search_from = name_start;
-            if preceded_by_identifier_char(content, keyword_start) {
-                continue;
-            }
-            let rest = &content[name_start..];
-            let name_end = rest
-                .find(|character: char| !(character.is_alphanumeric() || character == '_'))
-                .unwrap_or(rest.len());
-            let name = &rest[..name_end];
-            if name.is_empty() {
-                continue;
-            }
-            let after_name = rest[name_end..].trim_start();
-            let Some(type_text) = after_name.strip_prefix(':') else {
-                continue;
-            };
-            let declared_type = take_type_token(type_text.trim_start());
-            if type_annotation_matches_owner(declared_type, owner_class) {
-                return Some(name.to_string());
-            }
-        }
-    }
-    None
-}
-
-/// Java `OwnerClass name(...)` — modifiers (`public`, `static`, …) may precede
-/// `OwnerClass`. Rejects a parameter typed as `owner_class` (the token right
-/// after `name(...)` must be `(` for the match to count as a return type
-/// rather than a parameter's own type).
-fn java_method_returning(content: &str, owner_class: &str) -> Option<String> {
-    let mut search_from = 0usize;
-    while let Some(relative_index) = content[search_from..].find(owner_class) {
-        let type_start = search_from + relative_index;
-        let type_end = type_start + owner_class.len();
-        search_from = type_end;
-        if preceded_by_identifier_char(content, type_start) {
-            continue;
-        }
-        let Some(rest) = content[type_end..].strip_prefix(' ') else {
-            continue;
-        };
-        let name_end = rest
-            .find(|character: char| !(character.is_alphanumeric() || character == '_'))
-            .unwrap_or(rest.len());
-        let name = &rest[..name_end];
-        if name.is_empty() {
-            continue;
-        }
-        if rest[name_end..].trim_start().starts_with('(') {
-            return Some(name.to_string());
-        }
-    }
-    None
-}
-
-/// Widens field-reference discovery beyond files that textually mention
-/// `owner_class` (hop 1) to files that call a producer of it — a function or
-/// property declared, in one of the hop-1 files, with an explicit type
-/// annotation matching `owner_class`. This is what lets
+/// Widens field-reference discovery beyond files that textually mention the
+/// request's owner class (hop 1) to files that call a producer of it — a
+/// function or property declared, in one of the hop-1 files, with an explicit
+/// type annotation matching the owner class. This is what lets
 /// `val response = repository.openBody(); response.isOnline` be found even
 /// though the calling file never mentions `Body`.
+///
+/// `request.producer_candidates` is pre-computed (before the `spawn_blocking`
+/// rg pass, since `Indexer` access isn't available inside it — see
+/// [`RgSearchRequest::producer_candidates`]) as `(file_uri, member_name)`
+/// pairs already type-matched to whichever owner class this request cares
+/// about; this function's only job is to intersect that list with `hop1_files`
+/// — the actual CST-bounded detection happened once at parse time
+/// (`extract_detail_from_node`) and the type-matching happened while building
+/// `producer_candidates` ([`declared_type_from_detail`] +
+/// [`type_annotation_matches_owner`]).
 ///
 /// Scoped exactly like every other rg pass here (`source_paths`/`search_root`)
 /// — never an unscoped workspace scan. Degrades to [`ProducerExpansion::NoProducerFound`]
@@ -1441,28 +1433,20 @@ fn java_method_returning(content: &str, owner_class: &str) -> Option<String> {
 fn producer_scoped_candidate_files(
     request: &RgSearchRequest<'_>,
     matcher: Option<&IgnoreMatcher>,
-    owner_class: &str,
     hop1_files: &[String],
 ) -> ProducerExpansion {
+    let hop1_uris: std::collections::HashSet<String> = hop1_files
+        .iter()
+        .filter_map(|file| file_uri_string(file))
+        .collect();
+
     let mut producer_member_names: Vec<String> = Vec::new();
-    for file in hop1_files {
-        let Ok(content) = std::fs::read_to_string(file) else {
+    for (file_uri, member_name) in &request.producer_candidates {
+        if !hop1_uris.contains(file_uri) {
             continue;
-        };
-        for line in content.lines() {
-            // Cheap pre-filter before the shape-specific parsing below: a line
-            // that doesn't even mention `owner_class` can never declare a
-            // member returning it. Skips the vast majority of lines in a
-            // hop-1 file without running `declared_member_name_returning`'s
-            // three parsers over them.
-            if !line.contains(owner_class) {
-                continue;
-            }
-            if let Some(member_name) = declared_member_name_returning(line, owner_class) {
-                if !producer_member_names.contains(&member_name) {
-                    producer_member_names.push(member_name);
-                }
-            }
+        }
+        if !producer_member_names.contains(member_name) {
+            producer_member_names.push(member_name.clone());
         }
     }
 
@@ -1492,6 +1476,15 @@ fn producer_scoped_candidate_files(
     }
 
     ProducerExpansion::Found(filter_candidate_files(candidate_files, matcher))
+}
+
+/// Converts a plain filesystem path (as produced by `rg`'s file-list output)
+/// to the `file://` URI string used as the key of [`crate::indexer::Indexer::files`]
+/// — the same conversion idiom used throughout this module (e.g. [`parse_rg_line`]).
+fn file_uri_string(path: &str) -> Option<String> {
+    Url::from_file_path(path)
+        .ok()
+        .map(|uri| uri.as_str().to_owned())
 }
 
 /// Find references to a class member (field, property, or method) declared inside
@@ -1534,7 +1527,7 @@ fn field_scoped_reference_locations(
     // that a variable whose type is only known via transitive inference is
     // still discovered. See `ProducerExpansion` for the degrade-to-hop-1 floor.
     if let ProducerExpansion::Found(producer_files) =
-        producer_scoped_candidate_files(request, matcher, field_owner, &hop1_files)
+        producer_scoped_candidate_files(request, matcher, &hop1_files)
     {
         extend_unique_files(&mut candidate_files, producer_files);
     }

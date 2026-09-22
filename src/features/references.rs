@@ -630,6 +630,40 @@ async fn rg_locations(
     } else {
         (vec![], vec![])
     };
+    // Pre-computed `(file_uri, member_name)` producer candidates for whichever
+    // owner class `rg_find_references` will actually widen discovery around —
+    // `field_owner` else `owner_class` else `parent_class`, the same
+    // precedence `rg_find_references` itself dispatches on (see `rg.rs`).
+    // Built here from already-indexed `SymbolEntry::detail` data (computed
+    // once at parse time via CST-bounded `extract_detail_from_node`) because
+    // `Indexer` access isn't available inside the `spawn_blocking` rg pass
+    // below — same reason `index_candidates`/`index_qualified_candidates`
+    // above are also precomputed rather than looked up there.
+    let producer_owner = search
+        .field_owner
+        .as_deref()
+        .or(search.owner_class.as_deref())
+        .or(search.parent_class.as_deref());
+    let producer_candidates: Vec<(String, String)> = if let Some(owner) = producer_owner {
+        let mut candidates = Vec::new();
+        index.for_each_indexed_file(&mut |uri_str, file_data| {
+            for symbol in &file_data.symbols {
+                let Some(declared_type) =
+                    crate::rg::declared_type_from_detail(&symbol.detail, symbol.kind)
+                else {
+                    continue;
+                };
+                if crate::rg::type_annotation_matches_owner(declared_type, owner) {
+                    candidates.push((uri_str.to_string(), symbol.name.clone()));
+                }
+            }
+            true
+        });
+        candidates
+    } else {
+        Vec::new()
+    };
+
     let request = search.clone();
     let join_result = tokio::task::spawn_blocking(move || {
         let rg_req = RgSearchRequest::new(
@@ -643,7 +677,8 @@ async fn rg_locations(
         )
         .with_source_paths(&source_roots)
         .with_index_candidates(index_candidates)
-        .with_index_qualified_candidates(index_qualified_candidates);
+        .with_index_qualified_candidates(index_qualified_candidates)
+        .with_producer_candidates(producer_candidates);
         let rg_req = match request.owner_class.as_deref() {
             Some(owner) => rg_req.with_owner_class(owner),
             None => rg_req,

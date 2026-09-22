@@ -7,11 +7,11 @@
 //! mod tests;
 //! ```
 
-use tower_lsp::lsp_types::Url;
+use tower_lsp::lsp_types::{SymbolKind, Url};
 
 use crate::rg::{
-    is_declaration_occurrence_at, is_declaration_of, parse_rg_line, rg_find_definition,
-    rg_find_references, IgnoreMatcher, RgSearchRequest,
+    declared_type_from_detail, is_declaration_occurrence_at, is_declaration_of, parse_rg_line,
+    rg_find_definition, rg_find_references, IgnoreMatcher, RgSearchRequest,
 };
 
 // ─── parse_rg_line ────────────────────────────────────────────────────────────
@@ -1027,72 +1027,144 @@ fn java_method_declaration_recognises_semicolon_form() {
     ));
 }
 
-// ─── declared_member_name_returning ────────────────────────────────────────────
+// ─── declared_type_from_detail ─────────────────────────────────────────────────
+//
+// `detail` inputs below are real `SymbolEntry::detail` shapes (as produced by
+// `extract_detail_from_node` at parse time) — not raw source lines. See
+// `docs/superpowers/plans/2026-09-22b-producer-detection-cst-follow-up-plan.md`.
 
 #[test]
-fn declared_member_name_returning_finds_kotlin_function() {
-    use crate::rg::declared_member_name_returning;
+fn declared_type_from_detail_extracts_kotlin_function_return_type() {
     assert_eq!(
-        declared_member_name_returning("    fun openBody(): Body", "Body"),
-        Some("openBody".to_string())
-    );
-    // With a body on the same line too.
-    assert_eq!(
-        declared_member_name_returning("fun openBody(): Body { return body }", "Body"),
-        Some("openBody".to_string())
+        declared_type_from_detail("fun openBody(): Body", SymbolKind::FUNCTION),
+        Some("Body")
     );
 }
 
 #[test]
-fn declared_member_name_returning_finds_kotlin_property() {
-    use crate::rg::declared_member_name_returning;
+fn declared_type_from_detail_extracts_kotlin_val_type() {
     assert_eq!(
-        declared_member_name_returning("    val cachedBody: Body = Body()", "Body"),
-        Some("cachedBody".to_string())
-    );
-    // No initializer — abstract/interface property.
-    assert_eq!(
-        declared_member_name_returning("    val cachedBody: Body", "Body"),
-        Some("cachedBody".to_string())
+        declared_type_from_detail("val cachedBody: Body", SymbolKind::PROPERTY),
+        Some("Body")
     );
 }
 
 #[test]
-fn declared_member_name_returning_finds_java_method() {
-    use crate::rg::declared_member_name_returning;
+fn declared_type_from_detail_extracts_kotlin_var_type() {
+    // `var` is indexed as `SymbolKind::VARIABLE`, not `PROPERTY` — see
+    // `src/queries.rs`. Both must be handled the same way.
     assert_eq!(
-        declared_member_name_returning("    public Body getBody() {", "Body"),
-        Some("getBody".to_string())
+        declared_type_from_detail("var count: Int", SymbolKind::VARIABLE),
+        Some("Int")
     );
 }
 
 #[test]
-fn declared_member_name_returning_unwraps_generic_return_type() {
-    use crate::rg::declared_member_name_returning;
+fn declared_type_from_detail_extracts_kotlin_nested_method_return_type() {
+    // A Kotlin member function nested inside a class/interface/object is
+    // indexed as `SymbolKind::METHOD` (nesting demotes it from `FUNCTION`,
+    // see `parser.rs`'s `push_def_symbols`) — the SAME `SymbolKind` a Java
+    // method uses, but the detail shape stays Kotlin's `"fun ...): Type"`.
+    // Found via a real fixture (`field_reference_found_through_inferred_receiver_type`)
+    // that failed until `METHOD` disambiguated by the literal `fun` keyword.
     assert_eq!(
-        declared_member_name_returning("fun openBodies(): List<Body>", "Body"),
-        Some("openBodies".to_string())
+        declared_type_from_detail("fun openBody(): Body", SymbolKind::METHOD),
+        Some("Body")
+    );
+    assert_eq!(
+        declared_type_from_detail("override fun openBody(): Body", SymbolKind::METHOD),
+        Some("Body"),
+        "a modifier (override/public/private/…) before `fun` must not break \
+         the `fun`-keyword disambiguation against the Java shape"
     );
 }
 
 #[test]
-fn declared_member_name_returning_rejects_parameter_type() {
-    use crate::rg::declared_member_name_returning;
+fn declared_type_from_detail_extracts_java_method_return_type() {
+    // Real shape confirmed via a throwaway `parse_java` probe: no trailing
+    // `{` (detail is already body-truncated) and the return type comes
+    // BEFORE the method name, unlike Kotlin.
     assert_eq!(
-        declared_member_name_returning("fun consume(body: Body) {}", "Body"),
+        declared_type_from_detail("public Body getBody()", SymbolKind::METHOD),
+        Some("Body")
+    );
+}
+
+#[test]
+fn declared_type_from_detail_unwraps_generic_return_type() {
+    assert_eq!(
+        declared_type_from_detail("fun openBodies(): List<Body>", SymbolKind::FUNCTION),
+        Some("List<Body>")
+    );
+}
+
+#[test]
+fn declared_type_from_detail_unwraps_java_generic_with_internal_space() {
+    // `Map<String, Object>` contains a space (after the comma) that must NOT
+    // be treated as the boundary before the method name.
+    assert_eq!(
+        declared_type_from_detail(
+            "@Nullable public Map<String, Object> getMap()",
+            SymbolKind::METHOD
+        ),
+        Some("Map<String, Object>")
+    );
+}
+
+#[test]
+fn declared_type_from_detail_none_for_unit_function() {
+    assert_eq!(
+        declared_type_from_detail("fun consume(body: Body)", SymbolKind::FUNCTION),
         None,
-        "a `Body`-typed parameter is not a producer declaration"
+        "no `: Type` suffix at all (Unit-returning) must not be treated as a \
+         producer declaration"
     );
 }
 
 #[test]
-fn declared_member_name_returning_rejects_inferred_local_val() {
-    use crate::rg::declared_member_name_returning;
+fn declared_type_from_detail_none_for_inferred_local_val() {
     assert_eq!(
-        declared_member_name_returning("val body = Body()", "Body"),
+        declared_type_from_detail("val body = Body()", SymbolKind::PROPERTY),
         None,
         "a local `val` with only an initializer expression (no explicit type \
          annotation) must not be treated as a producer declaration"
+    );
+}
+
+#[test]
+fn declared_type_from_detail_none_for_non_declaration_kind() {
+    assert_eq!(
+        declared_type_from_detail("class Foo", SymbolKind::CLASS),
+        None,
+        "a class/constructor/field detail is never a producer declaration \
+         shape, gated via SymbolKind rather than sniffing the string"
+    );
+}
+
+#[test]
+fn declared_type_from_detail_extracts_multiline_function_return_type() {
+    // The return type sits on a line AFTER the closing paren — only possible
+    // to detect once `detail` is already the CST-joined single-line text
+    // (multi-line raw source, single-line scanning, would miss this).
+    assert_eq!(
+        declared_type_from_detail("fun openBody( x: Int ): Body", SymbolKind::FUNCTION),
+        Some("Body")
+    );
+}
+
+#[test]
+fn declared_type_from_detail_extracts_extension_receiver_function_return_type() {
+    assert_eq!(
+        declared_type_from_detail("fun Foo.openBody(): Body", SymbolKind::FUNCTION),
+        Some("Body")
+    );
+}
+
+#[test]
+fn declared_type_from_detail_extracts_leading_type_param_function_return_type() {
+    assert_eq!(
+        declared_type_from_detail("fun <T> openBody(): Body", SymbolKind::FUNCTION),
+        Some("Body")
     );
 }
 
@@ -1212,6 +1284,12 @@ fn producer_scoped_candidate_files_finds_callers_of_every_producer_name() {
 
     let dummy_uri = Url::from_file_path(&hop1_path).unwrap();
     let decl_files: Vec<String> = vec![];
+    // `producer_scoped_candidate_files` no longer reads `hop1_files` off disk —
+    // it intersects `hop1_files` against pre-computed `(file_uri, member_name)`
+    // producer candidates (see `RgSearchRequest::producer_candidates`), which
+    // in production are built from the `Indexer` before the callers-search rg
+    // pass this test exercises. Supply them directly here.
+    let hop1_uri = dummy_uri.to_string();
     let request = RgSearchRequest::new(
         "produceOne",
         None,
@@ -1220,10 +1298,14 @@ fn producer_scoped_candidate_files_finds_callers_of_every_producer_name() {
         false,
         &dummy_uri,
         &decl_files,
-    );
+    )
+    .with_producer_candidates(vec![
+        (hop1_uri.clone(), "produceOne".to_string()),
+        (hop1_uri, "produceTwo".to_string()),
+    ]);
 
     let hop1_files = vec![hop1_path];
-    let result = producer_scoped_candidate_files(&request, None, "Owner", &hop1_files);
+    let result = producer_scoped_candidate_files(&request, None, &hop1_files);
 
     let ProducerExpansion::Found(files) = result else {
         panic!(
