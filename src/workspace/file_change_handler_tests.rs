@@ -185,13 +185,21 @@ async fn live_added_nested_val_reaches_member_completion() {
 /// diagnostic was ever added, and nothing kept the two lists in sync.
 #[tokio::test]
 async fn debounced_diagnostics_flag_a_deleted_package_declaration() {
-    let tmp = tempfile::tempdir().unwrap();
-    std::fs::write(tmp.path().join("workspace.json"), r#"{"sourcePaths":[]}"#).unwrap();
-    let file_path = tmp.path().join("src/main/kotlin/com/example/app/Foo.kt");
+    let temporary_workspace = tempfile::tempdir().unwrap();
+    std::fs::write(
+        temporary_workspace.path().join("workspace.json"),
+        r#"{"sourcePaths":[]}"#,
+    )
+    .unwrap();
+    let file_path = temporary_workspace
+        .path()
+        .join("src/main/kotlin/com/example/app/Foo.kt");
     std::fs::create_dir_all(file_path.parent().unwrap()).unwrap();
 
     let indexer = Arc::new(Indexer::new());
-    indexer.workspace_root.set(tmp.path().to_path_buf());
+    indexer
+        .workspace_root
+        .set(temporary_workspace.path().to_path_buf());
     let uri = Url::from_file_path(&file_path).unwrap();
 
     let mut handler = FileChangeHandler::new(Arc::clone(&indexer), None);
@@ -203,10 +211,10 @@ async fn debounced_diagnostics_flag_a_deleted_package_declaration() {
         .await;
     handler.wait_for_pending_reindex(&uri).await;
 
-    let diags_before =
-        super::compute_debounced_semantic_diagnostics(&indexer, &uri, with_package, 0);
+    let diagnostics_before =
+        super::compute_debounced_semantic_diagnostics(&indexer, &uri, with_package, true, 0);
     assert!(
-        !diags_before
+        !diagnostics_before
             .iter()
             .any(|d| d.message.contains("Missing package declaration")),
         "step1: package is present, should not warn"
@@ -219,13 +227,52 @@ async fn debounced_diagnostics_flag_a_deleted_package_declaration() {
         .await;
     handler.wait_for_pending_reindex(&uri).await;
 
-    let diags_after =
-        super::compute_debounced_semantic_diagnostics(&indexer, &uri, without_package, 1);
+    let diagnostics_after =
+        super::compute_debounced_semantic_diagnostics(&indexer, &uri, without_package, true, 1);
     assert!(
-        diags_after
+        diagnostics_after
             .iter()
             .any(|d| d.message.contains("Missing package declaration")),
         "step2: package line was deleted via a live edit, expected a \
-         missing-package warning, got: {diags_after:?}"
+         missing-package warning, got: {diagnostics_after:?}"
+    );
+}
+
+/// Review finding: `diagnostics_text_is_current = false` must suppress the
+/// missing-package check even though the fallback text (an empty string)
+/// would otherwise trigger it — this is the exact shape a failed
+/// `index_content` `spawn_blocking` join produces in production
+/// (`result.unwrap_or_else(|_| (None, String::new()))`), and publishing a
+/// "Missing package declaration" warning in that state would be a false
+/// positive: the real file content was never actually re-read.
+#[tokio::test]
+async fn debounced_diagnostics_suppress_missing_package_when_text_is_stale() {
+    let temporary_workspace = tempfile::tempdir().unwrap();
+    std::fs::write(
+        temporary_workspace.path().join("workspace.json"),
+        r#"{"sourcePaths":[]}"#,
+    )
+    .unwrap();
+    let file_path = temporary_workspace
+        .path()
+        .join("src/main/kotlin/com/example/app/Foo.kt");
+    std::fs::create_dir_all(file_path.parent().unwrap()).unwrap();
+
+    let indexer = Arc::new(Indexer::new());
+    indexer
+        .workspace_root
+        .set(temporary_workspace.path().to_path_buf());
+    let uri = Url::from_file_path(&file_path).unwrap();
+
+    // Empty text would normally trigger the missing-package warning (no
+    // `package ` line present) — but `diagnostics_text_is_current: false`
+    // must suppress it, since this simulates the fallback text a failed
+    // `index_content` join produces, not real file content.
+    let diagnostics = super::compute_debounced_semantic_diagnostics(&indexer, &uri, "", false, 0);
+    assert!(
+        !diagnostics
+            .iter()
+            .any(|d| d.message.contains("Missing package declaration")),
+        "expected no missing-package warning when diagnostics_text is stale, got: {diagnostics:?}"
     );
 }

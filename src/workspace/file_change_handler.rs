@@ -162,6 +162,7 @@ impl FileChangeHandler {
                     )
                 });
             }
+            let index_content_join_succeeded = result.is_ok();
             let (index_result, diagnostics_text) = result.unwrap_or_else(|_| (None, String::new()));
             let index_hit_cache = index_result.is_none();
             log::debug!(
@@ -183,7 +184,18 @@ impl FileChangeHandler {
                     .unwrap_or_default(),
             };
 
-            // Move all CPU-bound diagnostic work off the async thread.
+            // Move all CPU-bound diagnostic work off the async thread. This
+            // closure is now a thin one-line call into
+            // `compute_debounced_semantic_diagnostics` specifically so there
+            // is no logic left here to drift from what the tests below
+            // exercise — but a test calling that function directly still
+            // cannot prove this closure keeps calling it (removing the call
+            // here would still compile). Closing that gap needs a real or
+            // fake `tower_lsp::Client` capturing what actually gets
+            // published; no such test harness exists anywhere in this
+            // codebase yet, and building one is a bigger investment than
+            // this bug fix — left as a known, named gap rather than silently
+            // dropped.
             let semantic_diags = tokio::task::spawn_blocking({
                 let indexer = Arc::clone(&diag_indexer);
                 let uri = diagnostics_uri.clone();
@@ -192,6 +204,7 @@ impl FileChangeHandler {
                         &indexer,
                         &uri,
                         &diagnostics_text,
+                        index_content_join_succeeded,
                         my_generation,
                     )
                 }
@@ -264,10 +277,21 @@ impl FileChangeHandler {
 /// extracted from the workspace actor (`refactor(workspace): extract actor
 /// handlers (w5b)`, before the missing-package diagnostic even existed) —
 /// both of those call `missing_package_diagnostic`, this one never did.
+///
+/// `diagnostics_text_is_current` must be `false` whenever `diagnostics_text`
+/// is a fallback placeholder rather than the real just-indexed content (the
+/// caller's `index_content` `spawn_blocking` task panicked, so the real text
+/// is unknown) — review finding: the other diagnostics here degrade
+/// gracefully on an empty/fabricated string (an empty file simply has no
+/// call args, no nullable dots, no imports to flag), but
+/// `missing_package_diagnostic` does not — an empty string genuinely has no
+/// `package` line, so it would publish a real, false "Missing package
+/// declaration" warning for a file whose content was never actually re-read.
 fn compute_debounced_semantic_diagnostics(
     indexer: &Indexer,
     uri: &Url,
     diagnostics_text: &str,
+    diagnostics_text_is_current: bool,
     generation: u64,
 ) -> Vec<tower_lsp::lsp_types::Diagnostic> {
     // Parse tree from the exact same text that was just indexed — this
@@ -287,9 +311,17 @@ fn compute_debounced_semantic_diagnostics(
     } else {
         log::debug!("diag[gen={generation}]: live_doc is None — no call-arg diagnostics");
     }
-    let text_lines: Vec<String> = diagnostics_text.lines().map(str::to_owned).collect();
-    if let Some(pkg_diag) = missing_package_diagnostic(&text_lines, uri) {
-        diagnostics.push(pkg_diag);
+    if diagnostics_text_is_current {
+        let text_lines: Vec<String> = diagnostics_text.lines().map(str::to_owned).collect();
+        if let Some(package_diagnostic) = missing_package_diagnostic(&text_lines, uri) {
+            diagnostics.push(package_diagnostic);
+        }
+    } else {
+        log::debug!(
+            "diag[gen={generation}]: diagnostics_text is not current (index_content join \
+             failed) — skipping missing_package_diagnostic to avoid a false positive on \
+             fabricated empty content"
+        );
     }
     diagnostics
 }
