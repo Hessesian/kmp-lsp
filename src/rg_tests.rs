@@ -10,8 +10,9 @@
 use tower_lsp::lsp_types::{SymbolKind, Url};
 
 use crate::rg::{
-    declared_type_from_detail, is_declaration_occurrence_at, is_declaration_of, parse_rg_line,
-    rg_find_definition, rg_find_references, IgnoreMatcher, RgSearchRequest,
+    declared_type_from_detail, declared_type_from_raw_lines, file_uri_under_source_paths,
+    is_declaration_occurrence_at, is_declaration_of, parse_rg_line, rg_find_definition,
+    rg_find_references, IgnoreMatcher, ProducerCandidate, RgSearchRequest,
 };
 
 // ─── parse_rg_line ────────────────────────────────────────────────────────────
@@ -1168,6 +1169,58 @@ fn declared_type_from_detail_extracts_leading_type_param_function_return_type() 
     );
 }
 
+// ─── declared_type_from_raw_lines ──────────────────────────────────────────────
+//
+// 2026-09-22b fix round: `SymbolEntry::detail` is capped at `MAX_DETAIL_CHARS`
+// (120 chars, `src/parser.rs`). A Dagger/Hilt-shaped producer with a long
+// enough parameter list can exceed that before its `": Type"` return-type
+// suffix, so `declared_type_from_detail` alone silently loses the type this
+// whole feature depends on — this is the fallback: re-derive the type from
+// the symbol's own raw source lines instead. Uses the REAL parser (not a
+// hand-written truncated string) so the fixture genuinely exercises
+// `parser.rs`'s truncation, not an assumption about its exact shape.
+
+#[test]
+fn declared_type_from_raw_lines_recovers_truncated_producer_return_type() {
+    let src = "fun provideNetworkRepository(context: ApplicationContext, \
+               apiClient: RetrofitApiClient, cache: DiskLruCache, logger: EventLogger): \
+               NetworkRepository";
+    assert!(
+        src.chars().count() > 120,
+        "fixture must actually exceed MAX_DETAIL_CHARS to exercise truncation"
+    );
+
+    let data = crate::parser::parse_kotlin(src);
+    let symbol = data
+        .symbols
+        .iter()
+        .find(|s| s.name == "provideNetworkRepository")
+        .expect("provideNetworkRepository must be indexed");
+
+    assert!(
+        symbol.detail.ends_with('…'),
+        "sanity check: the fixture must actually get truncated by the parser; \
+         detail={:?}",
+        symbol.detail
+    );
+    assert_eq!(
+        declared_type_from_detail(&symbol.detail, symbol.kind),
+        None,
+        "sanity check (red before the fix): the truncated detail alone must \
+         NOT recover the return type — this is exactly the gap the fallback \
+         exists for; got detail={:?}",
+        symbol.detail
+    );
+
+    let recovered = declared_type_from_raw_lines(&data.lines, symbol.range, symbol.kind);
+    assert_eq!(
+        recovered.as_deref(),
+        Some("NetworkRepository"),
+        "the fallback must recover the return type from raw source lines \
+         when `detail` was truncated"
+    );
+}
+
 // ─── type_annotation_matches_owner ─────────────────────────────────────────────
 
 #[test]
@@ -1300,8 +1353,14 @@ fn producer_scoped_candidate_files_finds_callers_of_every_producer_name() {
         &decl_files,
     )
     .with_producer_candidates(vec![
-        (hop1_uri.clone(), "produceOne".to_string()),
-        (hop1_uri, "produceTwo".to_string()),
+        ProducerCandidate {
+            file_uri: hop1_uri.clone(),
+            member_name: "produceOne".to_string(),
+        },
+        ProducerCandidate {
+            file_uri: hop1_uri,
+            member_name: "produceTwo".to_string(),
+        },
     ]);
 
     let hop1_files = vec![hop1_path];
@@ -1327,5 +1386,133 @@ fn producer_scoped_candidate_files_finds_callers_of_every_producer_name() {
     assert!(
         names.contains(&"CallerTwo.kt".to_string()),
         "caller of the second producer name must be found; got: {names:?}"
+    );
+}
+
+/// 2026-09-22b fix round (finding 4, from PR #324's own review):
+/// `MAX_PRODUCER_CANDIDATE_FILES` must be compared against the count of
+/// NEWLY discovered files (filtered, minus hop-1 overlap), not the raw `rg`
+/// match count — a file hop 1 already found isn't new widening, so counting
+/// it toward the cap could disable widening entirely even when the real
+/// new-and-usable file count is comfortably under the cap.
+///
+/// 260 files match the producer name (`Hop1.kt`, which declares it, plus 259
+/// callers) — over the 256 cap on raw count alone. 10 of those (`Hop1.kt` +
+/// 9 callers) are already counted as hop 1. The correctly-computed newly
+/// discovered count is 260 - 10 = 250, under the cap — so this must return
+/// `Found`, not `SkippedTooBroad`.
+#[test]
+fn producer_scoped_candidate_files_caps_only_the_newly_discovered_count() {
+    use crate::rg::{producer_scoped_candidate_files, ProducerExpansion};
+
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+
+    let hop1_src = "package a\n\nclass Hop1 {\n    fun produce(): Owner = TODO()\n}\n";
+    let hop1_path = write_temp(root, "Hop1.kt", hop1_src);
+
+    const TOTAL_CALLERS: usize = 259;
+    const HOP1_OVERLAP_CALLERS: usize = 9;
+    let mut hop1_files: Vec<String> = vec![hop1_path.clone()];
+    for i in 0..TOTAL_CALLERS {
+        let src = format!("package b\n\nfun use{i}(hop1: Hop1) {{\n    hop1.produce()\n}}\n");
+        let path = write_temp(root, &format!("Caller{i}.kt"), &src);
+        if i < HOP1_OVERLAP_CALLERS {
+            hop1_files.push(path);
+        }
+    }
+    // 260 total files match `\bproduce\b` (Hop1.kt + 259 callers) — over 256 —
+    // but only 250 are newly discovered (minus the 10-file hop-1 overlap
+    // built above) — under 256.
+    assert_eq!(
+        hop1_files.len(),
+        HOP1_OVERLAP_CALLERS + 1,
+        "sanity check on the fixture's own hop-1 overlap count"
+    );
+
+    let dummy_uri = Url::from_file_path(&hop1_path).unwrap();
+    let decl_files: Vec<String> = vec![];
+    let hop1_uri = dummy_uri.to_string();
+    let request = RgSearchRequest::new(
+        "produce",
+        None,
+        None,
+        Some(root),
+        false,
+        &dummy_uri,
+        &decl_files,
+    )
+    .with_producer_candidates(vec![ProducerCandidate {
+        file_uri: hop1_uri,
+        member_name: "produce".to_string(),
+    }]);
+
+    let result = producer_scoped_candidate_files(&request, None, &hop1_files);
+
+    assert!(
+        matches!(result, ProducerExpansion::Found(_)),
+        "expected Found (newly-discovered count is under the cap), got a \
+         different variant — the cap must be checked AFTER filtering and \
+         subtracting hop-1 overlap, not on the raw rg match count: {:?}",
+        match result {
+            ProducerExpansion::NoProducerFound => "NoProducerFound",
+            ProducerExpansion::SkippedTooBroad => "SkippedTooBroad",
+            ProducerExpansion::Found(_) => "Found",
+        }
+    );
+}
+
+// ─── file_uri_under_source_paths ───────────────────────────────────────────────
+//
+// 2026-09-22b fix round: keeps `rg_locations`'s pre-`spawn_blocking` producer
+// scan (see `references.rs`) scoped to configured source roots, the same way
+// every other rg pass in this module already is.
+
+#[test]
+fn file_uri_under_source_paths_empty_scope_keeps_everything() {
+    let uri = Url::from_file_path("/workspace/module/Foo.kt")
+        .unwrap()
+        .to_string();
+    assert!(
+        file_uri_under_source_paths(&uri, &[], None),
+        "no configured source paths means no additional scoping"
+    );
+}
+
+#[test]
+fn file_uri_under_source_paths_accepts_file_under_an_absolute_source_root() {
+    let uri = Url::from_file_path("/workspace/app/src/Foo.kt")
+        .unwrap()
+        .to_string();
+    let source_paths = vec!["/workspace/app/src".to_string()];
+    assert!(file_uri_under_source_paths(&uri, &source_paths, None));
+}
+
+#[test]
+fn file_uri_under_source_paths_rejects_file_outside_every_source_root() {
+    let uri = Url::from_file_path("/workspace/other-module/Foo.kt")
+        .unwrap()
+        .to_string();
+    let source_paths = vec!["/workspace/app/src".to_string()];
+    assert!(
+        !file_uri_under_source_paths(&uri, &source_paths, None),
+        "a file outside every configured source root must not pass"
+    );
+}
+
+#[test]
+fn file_uri_under_source_paths_resolves_relative_entries_against_workspace_root() {
+    let uri = Url::from_file_path("/workspace/app/src/Foo.kt")
+        .unwrap()
+        .to_string();
+    let source_paths = vec!["app/src".to_string()];
+    assert!(
+        file_uri_under_source_paths(
+            &uri,
+            &source_paths,
+            Some(std::path::Path::new("/workspace"))
+        ),
+        "a relative source path must resolve against workspace_root, matching \
+         RgTarget::SourcePaths's own resolution idiom"
     );
 }

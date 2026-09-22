@@ -2522,3 +2522,75 @@ async fn interface_method_reference_found_without_importing_the_interface() {
     assert_refs_contain(&locs, &["Caller.kt"]);
     assert_refs_exclude(&locs, &["Unrelated.kt", "Factory.kt", "Repo.kt"]);
 }
+
+/// 2026-09-22b fix round (finding 3, from PR #324's own review): a file
+/// reached ONLY through hop 2's producer-name widening must not have its own
+/// unrelated same-named top-level declaration counted as a reference.
+/// `should_skip_reference` keeps a lowercase-name declaration in another file
+/// as a valid "override implementation" — correct for a hop-1 file (which
+/// textually relates to `Repo`), but a false positive for a hop-2-only file,
+/// which merely happens to also mention the producer's member name
+/// (`provideRepo`) somewhere and separately declares its own unrelated
+/// `openBody`. `verify_candidates` can't catch this either: a top-level
+/// declaration has no enclosing class to check against.
+///
+/// Layout: same as [`interface_method_reference_found_without_importing_the_interface`]
+/// plus:
+///   DecoyHop2Only.kt — mentions `provideRepo` (pulling it into hop 2's
+///                      candidate set) and separately declares its own
+///                      unrelated `fun openBody(): String` — must not appear
+///                      in results at all.
+#[tokio::test]
+async fn hop2_only_file_own_unrelated_declaration_is_not_a_reference() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    std::fs::write(root.join("workspace.json"), r#"{"sourcePaths":[]}"#).unwrap();
+
+    let repo_src = "package a\n\ninterface Repo {\n    fun openBody(): Body\n}\n";
+    let factory_src =
+        "package b\n\nimport a.Repo\n\nclass Factory {\n    fun provideRepo(): Repo = TODO()\n}\n";
+    let caller_src = "package c\n\nimport b.Factory\n\nfun use(factory: Factory) {\n    \
+                       val repoInstance = factory.provideRepo()\n    \
+                       repoInstance.openBody()\n}\n";
+    let decoy_src = "package d\n\nclass UnrelatedFactory {\n    \
+                      fun provideRepo(): String = \"unrelated\"\n    \
+                      fun openBody(): String = \"also unrelated\"\n}\n";
+
+    let (_, repo_uri) = write(root, "Repo.kt", repo_src);
+    let (_, factory_uri) = write(root, "Factory.kt", factory_src);
+    let (_, caller_uri) = write(root, "Caller.kt", caller_src);
+    let (_, decoy_uri) = write(root, "DecoyHop2Only.kt", decoy_src);
+
+    let idx = Arc::new(Indexer::new());
+    idx.workspace_root.set(root.to_path_buf());
+    for (uri, src) in [
+        (&repo_uri, repo_src),
+        (&factory_uri, factory_src),
+        (&caller_uri, caller_src),
+        (&decoy_uri, decoy_src),
+    ] {
+        idx.index_content(uri, src);
+    }
+
+    // Cursor on `openBody` in `fun openBody(): Body` — line 3 (0-based).
+    let declaration_line = 3u32;
+    let declaration_column = repo_src
+        .lines()
+        .nth(declaration_line as usize)
+        .unwrap()
+        .find("openBody")
+        .unwrap() as u32;
+
+    let locs = find_references_with_qualifier(
+        "openBody",
+        None,
+        &repo_uri,
+        Position::new(declaration_line, declaration_column),
+        false,
+        &idx,
+    )
+    .await;
+
+    assert_refs_contain(&locs, &["Caller.kt"]);
+    assert_refs_exclude(&locs, &["DecoyHop2Only.kt"]);
+}

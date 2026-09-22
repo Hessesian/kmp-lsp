@@ -47,6 +47,10 @@ pub(crate) trait SymbolIndex {
     /// Return `false` from `f` to stop iteration early.
     fn for_each_indexed_file(&self, f: &mut dyn FnMut(&str, &Arc<FileData>) -> bool);
 
+    /// Iterate indexed WORKSPACE files only — unlike [`SymbolIndex::for_each_indexed_file`],
+    /// JAR-sourced files are excluded. See [`crate::indexer::Indexer::for_each_indexed_workspace_file`].
+    fn for_each_indexed_workspace_file(&self, f: &mut dyn FnMut(&str, &Arc<FileData>) -> bool);
+
     /// Returns absolute file paths of all indexed files that explicitly import
     /// `parent.name` or `parent.*` (star import of the parent).
     ///

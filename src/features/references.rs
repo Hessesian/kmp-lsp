@@ -639,22 +639,60 @@ async fn rg_locations(
     // `Indexer` access isn't available inside the `spawn_blocking` rg pass
     // below — same reason `index_candidates`/`index_qualified_candidates`
     // above are also precomputed rather than looked up there.
+    //
+    // Scoped like every other rg pass in this module, not an unscoped
+    // workspace scan: `for_each_indexed_workspace_file` (not
+    // `for_each_indexed_file`) excludes `jar_files` entirely — a JAR-sourced
+    // symbol can never be a hop-1 candidate anyway, since `hop1_files` only
+    // ever comes from an `rg` scan over workspace source files, so visiting
+    // JAR symbols here could only ever cost time for zero possible payoff
+    // (potentially a very large cost on a JAR-heavy Android project). When
+    // `sourceRoots` are configured, iteration is further narrowed to files
+    // under them, matching the exact scope `rg` itself uses for the hop-1
+    // pass this feeds into.
     let producer_owner = search
         .field_owner
         .as_deref()
         .or(search.owner_class.as_deref())
         .or(search.parent_class.as_deref());
-    let producer_candidates: Vec<(String, String)> = if let Some(owner) = producer_owner {
+    let producer_candidates: Vec<crate::rg::ProducerCandidate> = if let Some(owner) = producer_owner
+    {
         let mut candidates = Vec::new();
-        index.for_each_indexed_file(&mut |uri_str, file_data| {
+        index.for_each_indexed_workspace_file(&mut |uri_str, file_data| {
+            if !crate::rg::file_uri_under_source_paths(
+                uri_str,
+                &source_roots,
+                workspace_root.as_deref(),
+            ) {
+                return true;
+            }
             for symbol in &file_data.symbols {
-                let Some(declared_type) =
+                // `detail` is capped at 120 chars (`MAX_DETAIL_CHARS`); a
+                // truncated (`…`-suffixed) detail on a long enough parameter
+                // list can lose its `": Type"` tail entirely. Fall back to a
+                // bounded re-derivation from the symbol's own raw source
+                // lines rather than silently missing the producer — see
+                // `declared_type_from_raw_lines`.
+                let declared_type =
                     crate::rg::declared_type_from_detail(&symbol.detail, symbol.kind)
-                else {
+                        .map(str::to_owned)
+                        .or_else(|| {
+                            symbol.detail.ends_with('…').then(|| {
+                                crate::rg::declared_type_from_raw_lines(
+                                    &file_data.lines,
+                                    symbol.range,
+                                    symbol.kind,
+                                )
+                            })?
+                        });
+                let Some(declared_type) = declared_type else {
                     continue;
                 };
-                if crate::rg::type_annotation_matches_owner(declared_type, owner) {
-                    candidates.push((uri_str.to_string(), symbol.name.clone()));
+                if crate::rg::type_annotation_matches_owner(&declared_type, owner) {
+                    candidates.push(crate::rg::ProducerCandidate {
+                        file_uri: uri_str.to_string(),
+                        member_name: symbol.name.clone(),
+                    });
                 }
             }
             true
