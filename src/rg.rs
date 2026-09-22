@@ -1144,11 +1144,273 @@ fn owner_scoped_reference_locations(
         .collect()
 }
 
+/// Cap on how many distinct producer member names (functions/properties whose
+/// declared type is the field's owner class) [`producer_scoped_candidate_files`]
+/// will search for. Exceeding it means the owner class is too generic to widen
+/// discovery safely (many unrelated members happen to return it) — hop 2 is
+/// skipped entirely rather than fan out into an effectively unscoped search.
+const MAX_OWNER_PRODUCING_MEMBER_NAMES: usize = 8;
+
+/// Cap on how many additional candidate files [`producer_scoped_candidate_files`]
+/// may contribute. Exceeding it is the same signal as
+/// [`MAX_OWNER_PRODUCING_MEMBER_NAMES`] — a producer name common enough to show
+/// up in this many files is too generic to trust — so hop 2 is skipped rather
+/// than truncated to an arbitrary, rg-output-order-dependent subset.
+const MAX_PRODUCER_CANDIDATE_FILES: usize = 256;
+
+/// Outcome of the hop-2 "producer" file-discovery pass in
+/// [`field_scoped_reference_locations`].
+///
+/// Hop 1 finds files that textually mention the declaring class name. That
+/// misses a caller whose receiver type is only known through transitive
+/// inference — e.g. `val response = repository.openBody(); response.isOnline`
+/// never mentions `Body` textually. Hop 2 widens the candidate set to files
+/// that call a *producer* of the owner class: a function or property declared
+/// elsewhere whose explicit type IS the owner class.
+///
+/// Both non-[`Found`] variants degrade to hop-1-only behavior — today's exact
+/// search, never wider — which is the required floor whenever hop 2 has
+/// nothing useful to add.
+enum ProducerExpansion {
+    /// No hop-1 file declared a member whose type is the owner class.
+    NoProducerFound,
+    /// A cap was exceeded (see [`MAX_OWNER_PRODUCING_MEMBER_NAMES`] and
+    /// [`MAX_PRODUCER_CANDIDATE_FILES`]) — the owner class is too generic to
+    /// widen discovery for safely.
+    SkippedTooBroad,
+    /// Producer member names were found and searched for; these are the
+    /// additional candidate files discovered (not yet merged with hop 1).
+    Found(Vec<String>),
+}
+
+/// Returns the member name declared in `content` with an explicit type
+/// annotation matching `owner_class` — a Kotlin `fun` return type, a Kotlin
+/// `val`/`var` declared type, or a Java method's return type. The annotation
+/// may wrap `owner_class` in one generic parameter (`List<Body>`).
+///
+/// This is a purely textual check for an *explicit* annotation. It returns
+/// `None` for a parameter typed as `owner_class` (`fun consume(body: Body)`)
+/// and for a local `val` whose type is only inferred from its initializer
+/// (`val body = Body()`) — the same inference gap this feature widens
+/// discovery around must not be papered over by treating every mention of
+/// the owner class as a producer declaration.
+pub(crate) fn declared_member_name_returning(content: &str, owner_class: &str) -> Option<String> {
+    kotlin_function_returning(content, owner_class)
+        .or_else(|| kotlin_property_typed(content, owner_class))
+        .or_else(|| java_method_returning(content, owner_class))
+}
+
+/// Returns `true` if the byte at `index - 1` in `content` would make a match
+/// starting at `index` NOT a whole-word occurrence (i.e. it's a continuation
+/// of a longer identifier, e.g. matching `val` inside `interval`).
+fn preceded_by_identifier_char(content: &str, index: usize) -> bool {
+    if index == 0 {
+        return false;
+    }
+    let previous_byte = content.as_bytes()[index - 1];
+    previous_byte.is_ascii_alphanumeric() || previous_byte == b'_'
+}
+
+/// Extracts a type token starting at `text`, honoring one level of balanced
+/// `<…>` generic nesting (so `List<Body>` is captured whole rather than
+/// stopping at the inner `<`).
+fn take_type_token(text: &str) -> &str {
+    let mut depth = 0i32;
+    for (byte_index, character) in text.char_indices() {
+        match character {
+            '<' => depth += 1,
+            '>' => depth -= 1,
+            character
+                if depth == 0
+                    && (character.is_whitespace()
+                        || matches!(character, '{' | '=' | ';' | ',' | ')')) =>
+            {
+                return &text[..byte_index];
+            }
+            _ => {}
+        }
+    }
+    text
+}
+
+/// Returns `true` when `type_text` is exactly `owner_class` (optionally
+/// nullable, `Body?`) or a single-level generic wrapper around it
+/// (`List<Body>`, `Optional<Body>`).
+fn type_annotation_matches_owner(type_text: &str, owner_class: &str) -> bool {
+    let trimmed = type_text.trim().trim_end_matches('?');
+    if trimmed == owner_class {
+        return true;
+    }
+    if let (Some(open), true) = (trimmed.find('<'), trimmed.ends_with('>')) {
+        let inner = trimmed[open + 1..trimmed.len() - 1].trim();
+        return inner.trim_end_matches('?') == owner_class;
+    }
+    false
+}
+
+/// Kotlin `fun name(...): OwnerClass` (with or without a body).
+fn kotlin_function_returning(content: &str, owner_class: &str) -> Option<String> {
+    const KEYWORD: &str = "fun ";
+    let mut search_from = 0usize;
+    while let Some(relative_index) = content[search_from..].find(KEYWORD) {
+        let keyword_start = search_from + relative_index;
+        let name_start = keyword_start + KEYWORD.len();
+        search_from = name_start;
+        if preceded_by_identifier_char(content, keyword_start) {
+            continue;
+        }
+        let rest = &content[name_start..];
+        let name_end = rest
+            .find(|character: char| !(character.is_alphanumeric() || character == '_'))
+            .unwrap_or(rest.len());
+        let name = &rest[..name_end];
+        if name.is_empty() || !rest[name_end..].starts_with('(') {
+            continue;
+        }
+        let after_paren_open = &rest[name_end + 1..];
+        let Some(close) = balanced_paren_close(after_paren_open) else {
+            continue;
+        };
+        let after_params = after_paren_open[close + 1..].trim_start();
+        let Some(return_type_text) = after_params.strip_prefix(':') else {
+            continue;
+        };
+        let return_type = take_type_token(return_type_text.trim_start());
+        if type_annotation_matches_owner(return_type, owner_class) {
+            return Some(name.to_string());
+        }
+    }
+    None
+}
+
+/// Kotlin `val name: OwnerClass` / `var name: OwnerClass` (with or without an
+/// initializer). A local declared without an explicit type annotation
+/// (`val name = OwnerClass()`) is deliberately not matched — see
+/// [`declared_member_name_returning`].
+fn kotlin_property_typed(content: &str, owner_class: &str) -> Option<String> {
+    for keyword in ["val ", "var "] {
+        let mut search_from = 0usize;
+        while let Some(relative_index) = content[search_from..].find(keyword) {
+            let keyword_start = search_from + relative_index;
+            let name_start = keyword_start + keyword.len();
+            search_from = name_start;
+            if preceded_by_identifier_char(content, keyword_start) {
+                continue;
+            }
+            let rest = &content[name_start..];
+            let name_end = rest
+                .find(|character: char| !(character.is_alphanumeric() || character == '_'))
+                .unwrap_or(rest.len());
+            let name = &rest[..name_end];
+            if name.is_empty() {
+                continue;
+            }
+            let after_name = rest[name_end..].trim_start();
+            let Some(type_text) = after_name.strip_prefix(':') else {
+                continue;
+            };
+            let declared_type = take_type_token(type_text.trim_start());
+            if type_annotation_matches_owner(declared_type, owner_class) {
+                return Some(name.to_string());
+            }
+        }
+    }
+    None
+}
+
+/// Java `OwnerClass name(...)` — modifiers (`public`, `static`, …) may precede
+/// `OwnerClass`. Rejects a parameter typed as `owner_class` (the token right
+/// after `name(...)` must be `(` for the match to count as a return type
+/// rather than a parameter's own type).
+fn java_method_returning(content: &str, owner_class: &str) -> Option<String> {
+    let mut search_from = 0usize;
+    while let Some(relative_index) = content[search_from..].find(owner_class) {
+        let type_start = search_from + relative_index;
+        let type_end = type_start + owner_class.len();
+        search_from = type_end;
+        if preceded_by_identifier_char(content, type_start) {
+            continue;
+        }
+        let Some(rest) = content[type_end..].strip_prefix(' ') else {
+            continue;
+        };
+        let name_end = rest
+            .find(|character: char| !(character.is_alphanumeric() || character == '_'))
+            .unwrap_or(rest.len());
+        let name = &rest[..name_end];
+        if name.is_empty() {
+            continue;
+        }
+        if rest[name_end..].trim_start().starts_with('(') {
+            return Some(name.to_string());
+        }
+    }
+    None
+}
+
+/// Widens field-reference discovery beyond files that textually mention
+/// `owner_class` (hop 1) to files that call a producer of it — a function or
+/// property declared, in one of the hop-1 files, with an explicit type
+/// annotation matching `owner_class`. This is what lets
+/// `val response = repository.openBody(); response.isOnline` be found even
+/// though the calling file never mentions `Body`.
+///
+/// Scoped exactly like every other rg pass here (`source_paths`/`search_root`)
+/// — never an unscoped workspace scan. Degrades to [`ProducerExpansion::NoProducerFound`]
+/// or [`ProducerExpansion::SkippedTooBroad`], never widening beyond the caps,
+/// per [`ProducerExpansion`]'s contract.
+fn producer_scoped_candidate_files(
+    request: &RgSearchRequest<'_>,
+    matcher: Option<&IgnoreMatcher>,
+    owner_class: &str,
+    hop1_files: &[String],
+) -> ProducerExpansion {
+    let mut producer_member_names: Vec<String> = Vec::new();
+    for file in hop1_files {
+        let Ok(content) = std::fs::read_to_string(file) else {
+            continue;
+        };
+        for line in content.lines() {
+            if let Some(member_name) = declared_member_name_returning(line, owner_class) {
+                if !producer_member_names.contains(&member_name) {
+                    producer_member_names.push(member_name);
+                }
+            }
+        }
+    }
+
+    if producer_member_names.is_empty() {
+        return ProducerExpansion::NoProducerFound;
+    }
+    if producer_member_names.len() > MAX_OWNER_PRODUCING_MEMBER_NAMES {
+        return ProducerExpansion::SkippedTooBroad;
+    }
+
+    let mut candidate_files: Vec<String> = Vec::new();
+    for member_name in &producer_member_names {
+        let safe_member_name = regex_escape(member_name);
+        let files = rg_files_with_matches_scoped(
+            &format!(r"\b{safe_member_name}\b"),
+            request.source_paths,
+            request.search_root.as_ref(),
+        );
+        extend_unique_files(&mut candidate_files, files);
+    }
+
+    if candidate_files.len() > MAX_PRODUCER_CANDIDATE_FILES {
+        return ProducerExpansion::SkippedTooBroad;
+    }
+
+    ProducerExpansion::Found(filter_candidate_files(candidate_files, matcher))
+}
+
 /// Find references to a class member (field, property, or method) declared inside
 /// a class or interface.
 ///
 /// Scopes file discovery to files that mention the declaring class (by name),
-/// then searches those files for the member name.
+/// widened by [`producer_scoped_candidate_files`] to files that call a producer
+/// of the declaring class, then searches the combined candidate set for the
+/// member name.
 ///
 /// Differs from [`owner_scoped_reference_locations`] (for doubly-nested methods):
 /// 1. The declaring file is **not** restricted to the declaration line — bare
@@ -1165,9 +1427,9 @@ fn field_scoped_reference_locations(
     let safe_owner = regex_escape(field_owner);
     let safe_name = regex_escape(request.name);
 
-    // Candidate files: any file that mentions the declaring class/interface name.
+    // Hop 1: candidate files that textually mention the declaring class/interface name.
     let owner_pattern = format!(r"\b{safe_owner}\b");
-    let mut candidate_files = filter_candidate_files(
+    let hop1_files = filter_candidate_files(
         rg_files_with_matches_scoped(
             &owner_pattern,
             request.source_paths,
@@ -1175,16 +1437,24 @@ fn field_scoped_reference_locations(
         ),
         matcher,
     );
+
+    let mut candidate_files = hop1_files.clone();
+
+    // Hop 2: widen to files that call a producer of the declaring class, so
+    // that a variable whose type is only known via transitive inference is
+    // still discovered. See `ProducerExpansion` for the degrade-to-hop-1 floor.
+    if let ProducerExpansion::Found(producer_files) =
+        producer_scoped_candidate_files(request, matcher, field_owner, &hop1_files)
+    {
+        extend_unique_files(&mut candidate_files, producer_files);
+    }
+
     // Always include the declaring file(s) — the class body can access the member
     // without the class name appearing elsewhere in the file.
     merge_decl_files(
         &mut candidate_files,
         &scope_decl_files(request.decl_files, request.source_paths),
     );
-
-    if candidate_files.is_empty() {
-        return vec![];
-    }
 
     rg_word_in_files(&safe_name, &candidate_files)
         .into_iter()

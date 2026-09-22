@@ -1026,3 +1026,72 @@ fn java_method_declaration_recognises_semicolon_form() {
         11
     ));
 }
+
+// ─── declared_member_name_returning ────────────────────────────────────────────
+
+#[test]
+fn declared_member_name_returning_finds_kotlin_function() {
+    use crate::rg::declared_member_name_returning;
+    assert_eq!(
+        declared_member_name_returning("    fun openBody(): Body", "Body"),
+        Some("openBody".to_string())
+    );
+    // With a body on the same line too.
+    assert_eq!(
+        declared_member_name_returning("fun openBody(): Body { return body }", "Body"),
+        Some("openBody".to_string())
+    );
+}
+
+#[test]
+fn declared_member_name_returning_finds_kotlin_property() {
+    use crate::rg::declared_member_name_returning;
+    assert_eq!(
+        declared_member_name_returning("    val cachedBody: Body = Body()", "Body"),
+        Some("cachedBody".to_string())
+    );
+    // No initializer — abstract/interface property.
+    assert_eq!(
+        declared_member_name_returning("    val cachedBody: Body", "Body"),
+        Some("cachedBody".to_string())
+    );
+}
+
+#[test]
+fn declared_member_name_returning_finds_java_method() {
+    use crate::rg::declared_member_name_returning;
+    assert_eq!(
+        declared_member_name_returning("    public Body getBody() {", "Body"),
+        Some("getBody".to_string())
+    );
+}
+
+#[test]
+fn declared_member_name_returning_unwraps_generic_return_type() {
+    use crate::rg::declared_member_name_returning;
+    assert_eq!(
+        declared_member_name_returning("fun openBodies(): List<Body>", "Body"),
+        Some("openBodies".to_string())
+    );
+}
+
+#[test]
+fn declared_member_name_returning_rejects_parameter_type() {
+    use crate::rg::declared_member_name_returning;
+    assert_eq!(
+        declared_member_name_returning("fun consume(body: Body) {}", "Body"),
+        None,
+        "a `Body`-typed parameter is not a producer declaration"
+    );
+}
+
+#[test]
+fn declared_member_name_returning_rejects_inferred_local_val() {
+    use crate::rg::declared_member_name_returning;
+    assert_eq!(
+        declared_member_name_returning("val body = Body()", "Body"),
+        None,
+        "a local `val` with only an initializer expression (no explicit type \
+         annotation) must not be treated as a producer declaration"
+    );
+}

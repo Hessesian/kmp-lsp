@@ -19,8 +19,9 @@ use std::sync::Arc;
 
 use tower_lsp::lsp_types::{Position, Url};
 
-use crate::features::references::find_references_with_qualifier;
+use crate::features::references::{find_references_with_qualifier, verified_references_for};
 use crate::indexer::Indexer;
+use crate::resolver::MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK;
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -2093,5 +2094,262 @@ async fn find_references_excludes_wrong_arity_same_type_call_site() {
             .all(|location| location.range.start.line != wrong_shadow_line),
         "the 2-arg call to the arity-incompatible same-type shadow must not \
          appear as a reference to the real 1-arg member; got: {locations:?}"
+    );
+}
+
+// ─── inferred-receiver field-reference discovery ──────────────────────────────
+
+/// Fixture shared by the inferred-receiver-discovery tests: a `Body` data
+/// class field, a `Repo` producer of `Body`, a caller that only reaches
+/// `Body` through inference, and three decoys.
+///
+/// Layout:
+///   Body.kt         — `class Body { val isOnline: Boolean = false }` (declaration)
+///   Repo.kt         — `interface Repo { fun openBody(): Body }` (producer)
+///   Caller.kt       — imports `a.Repo` only; `val response = repository.openBody()`
+///                     then `response.isOnline` — never mentions `Body` textually.
+///   MentionsBody.kt — decoy 1: textually mentions `Body` (a hop-1 candidate)
+///                     only via a `Body`-typed parameter, plus an unrelated
+///                     `class Other(val isOnline: Boolean)`.
+///   Session.kt      — decoy 2: `class Session(val isOnline: Boolean)` with its
+///                     own `session.isOnline` usage; mentions neither `Body`
+///                     nor `openBody`.
+///   FakeProducer.kt — decoy 3: unrelated `fun openBody(): Session`, called as
+///                     `openBody().isOnline` — reachable via hop 2 (same
+///                     producer member name) but a different receiver type.
+struct InferredReceiverFixture {
+    _dir: tempfile::TempDir,
+    indexer: Arc<Indexer>,
+    body_uri: Url,
+    caller_uri: Url,
+    session_uri: Url,
+    fake_producer_uri: Url,
+    body_src: &'static str,
+    caller_src: &'static str,
+}
+
+fn build_inferred_receiver_fixture() -> InferredReceiverFixture {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    std::fs::write(root.join("workspace.json"), r#"{"sourcePaths":[]}"#).unwrap();
+
+    // `isOnline` is declared as a class-BODY property (not a primary-constructor
+    // parameter): `enclosing_class_at` (used by `verify_candidates` to compute
+    // the query's declaring type for a Declaration-role cursor) only recognizes
+    // a declaration as "inside" a class when it sits under that class's CST
+    // `KIND_CLASS_BODY` node — a primary-constructor parameter never does,
+    // since it's syntactically part of the constructor's parameter list, not
+    // the `{ }` body. That's a separate, pre-existing gap in
+    // `src/indexer/scope.rs`, out of this task's scope (`rg.rs` /
+    // `references_tests.rs` only) — using a body property here sidesteps it
+    // without weakening what this fixture actually tests (rg-level discovery
+    // through an inferred receiver type).
+    let body_src = "package a\n\nclass Body {\n    val isOnline: Boolean = false\n}\n";
+    let repo_src = "package a\n\ninterface Repo {\n    fun openBody(): Body\n}\n";
+    let caller_src = "package b\n\nimport a.Repo\n\nfun use(repository: Repo) {\n    \
+                       val response = repository.openBody()\n    response.isOnline\n}\n";
+    let mentions_body_src = "package b\n\nimport a.Body\n\nfun consume(body: Body) {}\n\n\
+                              class Other(val isOnline: Boolean)\n";
+    let session_src = "package c\n\nclass Session(val isOnline: Boolean)\n\n\
+                        fun use(session: Session) {\n    session.isOnline\n}\n";
+    let fake_producer_src = "package c\n\nfun openBody(): Session = Session(true)\n\n\
+                              fun use2() {\n    openBody().isOnline\n}\n";
+
+    let (_, body_uri) = write(root, "Body.kt", body_src);
+    let (_, repo_uri) = write(root, "Repo.kt", repo_src);
+    let (_, caller_uri) = write(root, "Caller.kt", caller_src);
+    let (_, mentions_body_uri) = write(root, "MentionsBody.kt", mentions_body_src);
+    let (_, session_uri) = write(root, "Session.kt", session_src);
+    let (_, fake_producer_uri) = write(root, "FakeProducer.kt", fake_producer_src);
+
+    let indexer = Arc::new(Indexer::new());
+    indexer.workspace_root.set(root.to_path_buf());
+    for (uri, src) in [
+        (&body_uri, body_src),
+        (&repo_uri, repo_src),
+        (&caller_uri, caller_src),
+        (&mentions_body_uri, mentions_body_src),
+        (&session_uri, session_src),
+        (&fake_producer_uri, fake_producer_src),
+    ] {
+        indexer.index_content(uri, src);
+        indexer.store_live_tree(uri, src);
+    }
+
+    InferredReceiverFixture {
+        _dir: dir,
+        indexer,
+        body_uri,
+        caller_uri,
+        session_uri,
+        fake_producer_uri,
+        body_src,
+        caller_src,
+    }
+}
+
+/// **The repro**: `find_references` on a data-class field must be discovered
+/// even when every real usage reaches it through a variable whose type is
+/// only known via transitive inference — `val response = repository.openBody()`
+/// then `response.isOnline` — because `Caller.kt` never mentions `Body`
+/// textually (only `Repo`, which it imports; `openBody` does not contain
+/// `Body` as a standalone word).
+///
+/// See [`build_inferred_receiver_fixture`] for the full file layout and why
+/// each decoy must stay excluded.
+#[tokio::test]
+async fn field_reference_found_through_inferred_receiver_type() {
+    let fixture = build_inferred_receiver_fixture();
+
+    // Cursor on `isOnline` in `class Body { val isOnline: Boolean = false }` —
+    // line 3 (0-based). The exact column matters here (not just the line):
+    // `verify_candidates` needs the cursor to classify AS the `isOnline`
+    // declaration to compute a query declaring type at all — landing
+    // elsewhere on the line yields no query identity, which short-circuits
+    // `verify_candidates` into treating every candidate as today's
+    // unverified behavior (see `verify_candidates`'s
+    // `let Some(query_declaring_type) = ... else` guard).
+    let declaration_line = 3u32;
+    let declaration_column = fixture
+        .body_src
+        .lines()
+        .nth(declaration_line as usize)
+        .unwrap()
+        .find("isOnline")
+        .unwrap() as u32;
+
+    let locs = find_references_with_qualifier(
+        "isOnline",
+        None,
+        &fixture.body_uri,
+        Position::new(declaration_line, declaration_column),
+        true,
+        &fixture.indexer,
+    )
+    .await;
+
+    assert_refs_contain(&locs, &["Caller.kt"]);
+    assert_refs_exclude(&locs, &["MentionsBody.kt", "Session.kt", "FakeProducer.kt"]);
+
+    // The 6b design's rule: a proven exclusion is an assertable fact, not a
+    // silent absence — assert FakeProducer.kt is REJECTED, not merely absent.
+    let (verified, _declaring_type, _declaring_uri) = verified_references_for(
+        "isOnline",
+        None,
+        &fixture.body_uri,
+        Position::new(declaration_line, declaration_column),
+        true,
+        &fixture.indexer,
+        MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK,
+        false,
+    )
+    .await;
+    assert!(
+        verified
+            .rejected
+            .iter()
+            .any(|location| location.uri == fixture.fake_producer_uri),
+        "FakeProducer.kt's openBody().isOnline (Session, not Body) must be \
+         proven-rejected by verify_candidates, not silently absent; rejected: {:?}",
+        verified.rejected
+    );
+}
+
+/// **Locks the ruled-out `package_scoped` widening decision** in a test: a
+/// top-level function reference search must stay scoped to files that import
+/// (or share the package of) the declaring file — never widened the way
+/// field references now are by hop 2. Fails if `package_scoped_reference_locations`
+/// is later widened without cause.
+///
+/// Layout:
+///   Formatter.kt — package a; `fun formatPrice() {}` (declaration)
+///   Caller.kt    — package b; imports `a.formatPrice`; calls `formatPrice()`
+///   Other.kt     — package c; an UNCALLED, unrelated `fun formatPrice() {}`
+///                  of the same name — must stay absent.
+#[tokio::test]
+async fn top_level_function_reference_stays_package_scoped() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    std::fs::write(root.join("workspace.json"), r#"{"sourcePaths":[]}"#).unwrap();
+
+    let formatter_src = "package a\n\nfun formatPrice() {}\n";
+    let caller_src = "package b\n\nimport a.formatPrice\n\nfun use() {\n    formatPrice()\n}\n";
+    let other_src = "package c\n\nfun formatPrice() {}\n";
+
+    let (_, formatter_uri) = write(root, "Formatter.kt", formatter_src);
+    write(root, "Caller.kt", caller_src);
+    write(root, "Other.kt", other_src);
+
+    let idx = Arc::new(Indexer::new());
+    idx.workspace_root.set(root.to_path_buf());
+    idx.index_content(&formatter_uri, formatter_src);
+
+    // Cursor on `formatPrice`'s declaration — line 2 (0-based).
+    let locs = find_references_with_qualifier(
+        "formatPrice",
+        None,
+        &formatter_uri,
+        Position::new(2, 0),
+        true,
+        &idx,
+    )
+    .await;
+
+    assert_refs_contain(&locs, &["Caller.kt"]);
+    assert_refs_exclude(&locs, &["Other.kt"]);
+}
+
+/// **Characterizes the architecturally different usage-site path**: cursor on
+/// `response.isOnline` (a *usage*, not the declaration) in `Caller.kt`, using
+/// the same fixture as [`field_reference_found_through_inferred_receiver_type`].
+/// Unlike the declaration-site query, this goes through cursor/receiver-type
+/// classification rather than `field_owner_for_decl`, an architecturally
+/// different, unscoped-by-field-owner path. The expected outcome was genuinely
+/// unknown going into this task — if this goes red, that's a separate,
+/// distinct finding for its own follow-up, not a silent scope expansion of
+/// this plan.
+#[tokio::test]
+async fn usage_site_field_reference_finds_sibling_usages() {
+    let fixture = build_inferred_receiver_fixture();
+    let usage_line = 6u32;
+    let usage_column = fixture
+        .caller_src
+        .lines()
+        .nth(usage_line as usize)
+        .unwrap()
+        .find("isOnline")
+        .unwrap() as u32;
+
+    let locs = find_references_with_qualifier(
+        "isOnline",
+        None,
+        &fixture.caller_uri,
+        Position::new(usage_line, usage_column),
+        true,
+        &fixture.indexer,
+    )
+    .await;
+
+    assert_refs_contain(&locs, &["Body.kt", "Caller.kt"]);
+
+    let (verified, _declaring_type, _declaring_uri) = verified_references_for(
+        "isOnline",
+        None,
+        &fixture.caller_uri,
+        Position::new(usage_line, usage_column),
+        true,
+        &fixture.indexer,
+        MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK,
+        false,
+    )
+    .await;
+    assert!(
+        verified
+            .rejected
+            .iter()
+            .any(|location| location.uri == fixture.session_uri),
+        "Session.kt's session.isOnline (Session, not Body) must be proven-\
+         rejected by verify_candidates, not silently absent; rejected: {:?}",
+        verified.rejected
     );
 }
