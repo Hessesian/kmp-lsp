@@ -153,34 +153,67 @@ through," per this repo's own root-cause discipline.
 
 ## Tasks
 
-**PR 1 — `fix(references): discover field references through inferred receiver types`**
-(~300 lines, base of the stack)
+Two tasks, each its own PR, stacked (PR 2 depends on PR 1's new helpers — sequential, not parallel).
+
+### Task 1: `fix(references): discover field references through inferred receiver types`
+
+(~300 lines, base of the stack. PR title above — use it verbatim as the commit/PR title.)
 
 1. `declared_member_name_returning` in `rg.rs` + unit tests (Kotlin `fun`/`val`, Java, generic
    wrapper, negative case: parameter type, negative case: local `val` with an initializer expression
    rather than a type annotation).
 2. `producer_scoped_candidate_files(request, matcher, owner_class, hop1_files) -> ProducerExpansion`
-   with the two caps above.
-3. Wire into `field_scoped_reference_locations`; drop its empty-guard. No new provenance type needed
-   here — the field path applies no owner-name-dependent filter downstream (rg.rs:1189-1227 only
-   checks `is_declaration_of` / the Java-specific shape checks).
-4. Tests A, C, D (below).
+   with the two caps above (`MAX_OWNER_PRODUCING_MEMBER_NAMES = 8`, `MAX_PRODUCER_CANDIDATE_FILES = 256`).
+3. Wire into `field_scoped_reference_locations`; drop its empty-guard (the
+   `if candidate_files.is_empty() { return vec![] }` early-return — locate it by reading the function,
+   plan-text line numbers are approximate). No new provenance type needed here — the field path
+   applies no owner-name-dependent filter downstream (only `is_declaration_of` / the Java-specific
+   shape checks apply, both already text-content-based, not file-identity-based).
+4. Tests A, C, D (see Test plan below).
 
-**PR 2 — `fix(references): sweep the inferred-receiver gap to owner- and parent-scoped discovery`**
-(stacked on PR 1, ~250 lines)
+Scope for Task 1: `src/rg.rs` and `src/features/references_tests.rs` only. Do not touch
+`owner_scoped_reference_locations` or `parent_scoped_reference_locations` — that's Task 2.
 
-5. `owner_scoped_reference_locations`: same hop, drop its empty-guard. **Needs provenance** —
-   `qualifier_hints_owner` (rg.rs:1139) would reject every hop-2 hit, since the receiver there is
-   named after the producer, not the owner class. Introduce `ProducerDiscoveredFiles(HashSet<String>)`
-   with a `contains` check, and skip `qualifier_hints_owner` only for members reached through it;
-   `verify_candidates` remains the backstop.
+### Task 2: `fix(references): sweep the inferred-receiver gap to owner- and parent-scoped discovery`
+
+(stacked on Task 1, ~250 lines. PR title above — use it verbatim as the commit/PR title.)
+
+5. `owner_scoped_reference_locations`: same hop (reuse Task 1's `producer_scoped_candidate_files` —
+   do not duplicate it), drop its empty-guard. **Needs provenance** — `qualifier_hints_owner` would
+   reject every hop-2 hit, since the receiver there is named after the producer, not the owner class.
+   Introduce `ProducerDiscoveredFiles(HashSet<String>)` with a `contains` check, and skip
+   `qualifier_hints_owner` only for members reached through it; `verify_candidates` remains the
+   backstop.
 6. `parent_scoped_reference_locations`: merge the hop into `candidate_files` before the bare-name
-   pass at rg.rs:1016.
-7. Tests B, E (below).
+   pass (its `import[^\n]*\bParent\b`-restricted scan).
+7. Tests B, E (see Test plan below).
+
+Scope for Task 2: `src/rg.rs` and `src/features/references_tests.rs` only, building on Task 1's
+commit. `field_scoped_reference_locations` is already done — do not re-touch it.
 
 Splitting the stack this way keeps the reported bug and its regression test in a reviewable base PR,
 and isolates the widening of the two more heavily-relied-on paths — matching this repo's precedent
 of preparatory/adjacent work stacked around a main slice.
+
+## Global Constraints (binding on both tasks)
+
+- `verify_candidates` / `src/features/references_verify.rs` is the correctness backstop and must
+  **not** be modified by either task — it is already receiver-type-based and file-text-independent;
+  widening discovery is safe specifically because this layer needs no changes.
+- Every new capability introduced (`ProducerExpansion`, `ProducerDiscoveredFiles`, the two caps) must
+  degrade to **today's exact behaviour** when the hop finds nothing — `SkippedTooBroad` /
+  cap-exceeded means "search exactly as before," never "search wider than before." No unscoped
+  workspace-wide scan may be introduced anywhere in this change.
+- AGENTS.md governs style: no abbreviated names (`s`,`c`,`ty`,`rt`,`sym`,`loc`,`p`,`diags` banned);
+  encode control-flow meaning as an enum/newtype, not a comment; no `and` in function/test names;
+  every fix needs a test with a competing/misleading decoy, not just the happy path; `cargo fmt`,
+  `cargo test`, and `cargo clippy -- -D warnings` must all be clean before a task is done.
+- Cargo commands may take a while to compile in a fresh worktree (crates rebuild from scratch) — this
+  is expected, not a hang.
+- Serena's `activate_project` is broken for this worktree for the rest of this session (stale cached
+  registry entry on the MCP server side). Use plain Read/Grep/Edit for navigation and edits instead of
+  Serena's symbolic tools; a plain `grep -rn` for a function's name across `src/` is an acceptable
+  substitute for `find_referencing_symbols` as the zero-references check before deleting anything.
 
 ## Test plan
 
