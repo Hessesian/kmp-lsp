@@ -1012,6 +1012,22 @@ fn parent_scoped_reference_locations(
         })
         .collect();
 
+    // Hop 2: widen the bare-name candidate set to files that call a producer
+    // of the parent class/interface, so a caller reaching it through an
+    // inferred-receiver variable (`val repoInstance = factory.provideRepo();
+    // repoInstance.openBody()`) is still found even though the file never
+    // imports `Repo`. Unlike `owner_scoped_reference_locations`, no per-file
+    // provenance tracking is needed here — `verify_candidates` remains the
+    // backstop, same as every other hop-2 widening in this module. See
+    // `ProducerExpansion` for the degrade-to-hop-1 floor.
+    if let Some(parent) = request.parent_class {
+        if let ProducerExpansion::Found(producer_files) =
+            producer_scoped_candidate_files(request, matcher, parent, &candidate_files)
+        {
+            extend_unique_files(&mut candidate_files, producer_files);
+        }
+    }
+
     // Step 5: bare-name pass in import-based candidates only.
     if !candidate_files.is_empty() {
         let bare_hits = rg_word_in_files(&patterns[2], &candidate_files);
@@ -1073,6 +1089,24 @@ fn package_scoped_reference_locations(
         .collect()
 }
 
+/// Files discovered via [`producer_scoped_candidate_files`] (hop 2) that were
+/// NOT already found by hop 1's direct owner-class mention.
+///
+/// `qualifier_hints_owner` must be skipped for members reached only through
+/// this set: the call-site qualifier there is named after the intermediate
+/// producer (e.g. `val factoryInstance = module.provideFactory()`), not the
+/// owner class, so the heuristic would reject every genuine hop-2 hit. A file
+/// hop 1 already found keeps the heuristic applied — that's what keeps an
+/// `overviewMapperFactory.create()`-style decoy (a hop-1 file with an
+/// unrelated same-named call) excluded.
+struct ProducerDiscoveredFiles(std::collections::HashSet<String>);
+
+impl ProducerDiscoveredFiles {
+    fn contains(&self, file: &str) -> bool {
+        self.0.contains(file)
+    }
+}
+
 /// Find references to a lowercase method declared inside a doubly-nested class
 /// (e.g. `create` inside `Factory` inside `RegularReducer`).
 ///
@@ -1092,7 +1126,7 @@ fn owner_scoped_reference_locations(
 
     // Find files that mention the outer class (as a type, import, or constructor param).
     let owner_pattern = format!(r"\b{safe_owner}\b");
-    let candidate_files = filter_candidate_files(
+    let hop1_files = filter_candidate_files(
         rg_files_with_matches_scoped(
             &owner_pattern,
             request.source_paths,
@@ -1101,9 +1135,28 @@ fn owner_scoped_reference_locations(
         matcher,
     );
 
-    if candidate_files.is_empty() {
-        return vec![];
-    }
+    let mut candidate_files = hop1_files.clone();
+
+    // Hop 2: widen to files that call a producer of the outer class, so a
+    // caller reaching the doubly-nested member through a variable whose type
+    // is only known via transitive inference (`val factoryInstance =
+    // module.provideFactory(); factoryInstance.create()`) is still found.
+    // See `ProducerExpansion` for the degrade-to-hop-1 floor.
+    let producer_discovered_files =
+        match producer_scoped_candidate_files(request, matcher, owner_class, &hop1_files) {
+            ProducerExpansion::Found(producer_files) => {
+                let newly_discovered: std::collections::HashSet<String> = producer_files
+                    .iter()
+                    .filter(|file| !hop1_files.contains(*file))
+                    .cloned()
+                    .collect();
+                extend_unique_files(&mut candidate_files, producer_files);
+                ProducerDiscoveredFiles(newly_discovered)
+            }
+            ProducerExpansion::NoProducerFound | ProducerExpansion::SkippedTooBroad => {
+                ProducerDiscoveredFiles(std::collections::HashSet::new())
+            }
+        };
 
     // Bare search for the method name in candidate files; qualifier filter is
     // intentionally skipped since callers use variable names, not class names.
@@ -1117,7 +1170,8 @@ fn owner_scoped_reference_locations(
     //   Additionally apply a naming-convention heuristic: if there is an explicit
     //   dot-qualifier before the name (e.g. `overviewMapperFactory.create`) and
     //   that qualifier does not contain the outer class name, the call is almost
-    //   certainly to a different factory.
+    //   certainly to a different factory. Skipped entirely for files reached
+    //   only via hop 2 — see [`ProducerDiscoveredFiles`].
     rg_word_in_files(&safe_name, &candidate_files)
         .into_iter()
         .filter_map(|(loc, content)| {
@@ -1136,7 +1190,9 @@ fn owner_scoped_reference_locations(
             if is_declaration_of(&content, request.name) {
                 return None;
             }
-            if !qualifier_hints_owner(&content, loc.range.start.character as usize, owner_class) {
+            if !producer_discovered_files.contains(loc.uri.path())
+                && !qualifier_hints_owner(&content, loc.range.start.character as usize, owner_class)
+            {
                 return None;
             }
             Some(loc)

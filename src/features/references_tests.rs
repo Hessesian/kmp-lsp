@@ -2353,3 +2353,143 @@ async fn usage_site_field_reference_finds_sibling_usages() {
         verified.rejected
     );
 }
+
+// ─── inferred-receiver owner/parent-scoped discovery (Task 2) ─────────────────
+
+/// **Sweeps the inferred-receiver fix to `owner_scoped_reference_locations`**:
+/// a doubly-nested method (`create` inside `Factory` inside `Reducer`) must be
+/// found even when the caller reaches it through a variable whose type is only
+/// known via transitive inference — `val factoryInstance =
+/// module.provideFactory()` then `factoryInstance.create()` — because
+/// `Caller.kt` never mentions `Reducer` textually (only `Module`).
+///
+/// Layout:
+///   Reducer.kt     — `class Reducer { interface Factory { fun create(): Reducer } }`
+///                    (declaration; also hop 1's own producer of `Reducer`,
+///                    since `Factory.create()` returns the outer class).
+///   Module.kt      — `class Module { fun provideFactory(): Reducer.Factory }`
+///                    hop-1 candidate (textually mentions `Reducer`).
+///   Caller.kt      — imports `Module` only; `val factoryInstance =
+///                    module.provideFactory()` then `factoryInstance.create()`
+///                    — never mentions `Reducer`.
+///   OtherCaller.kt — decoy: a hop-1 file (mentions `Reducer` in passing) with
+///                    an unrelated `overviewMapperFactory.create()` call. Must
+///                    stay excluded by `qualifier_hints_owner` — proving the
+///                    new hop-2 bypass is scoped to files reached *only*
+///                    through hop 2, not to every hop-1 file that happens to
+///                    also match the producer-name rg pass.
+#[tokio::test]
+async fn owner_scoped_method_reference_found_through_inferred_receiver_type() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    std::fs::write(root.join("workspace.json"), r#"{"sourcePaths":[]}"#).unwrap();
+
+    let reducer_src = "package a\n\nclass Reducer {\n    interface Factory {\n        \
+                        fun create(): Reducer\n    }\n}\n";
+    let module_src =
+        "package a\n\nclass Module {\n    fun provideFactory(): Reducer.Factory = TODO()\n}\n";
+    let caller_src = "package b\n\nimport a.Module\n\nfun use(module: Module) {\n    \
+                       val factoryInstance = module.provideFactory()\n    \
+                       factoryInstance.create()\n}\n";
+    let other_caller_src = "package a\n\n\
+                             // Unrelated helper that happens to mention Reducer in passing.\n\
+                             class OtherCaller(val overviewMapperFactory: UnrelatedFactory) {\n    \
+                             fun use() {\n        overviewMapperFactory.create()\n    }\n}\n";
+
+    let (_, reducer_uri) = write(root, "Reducer.kt", reducer_src);
+    write(root, "Module.kt", module_src);
+    write(root, "Caller.kt", caller_src);
+    write(root, "OtherCaller.kt", other_caller_src);
+
+    let idx = Arc::new(Indexer::new());
+    idx.workspace_root.set(root.to_path_buf());
+    idx.index_content(&reducer_uri, reducer_src);
+
+    // Cursor on `create` in `fun create(): Reducer` — line 4 (0-based).
+    let declaration_line = 4u32;
+    let declaration_column = reducer_src
+        .lines()
+        .nth(declaration_line as usize)
+        .unwrap()
+        .find("create")
+        .unwrap() as u32;
+
+    let locs = find_references_with_qualifier(
+        "create",
+        None,
+        &reducer_uri,
+        Position::new(declaration_line, declaration_column),
+        false,
+        &idx,
+    )
+    .await;
+
+    assert_refs_contain(&locs, &["Caller.kt"]);
+    assert_refs_exclude(&locs, &["OtherCaller.kt", "Module.kt", "Reducer.kt"]);
+}
+
+/// **Sweeps the inferred-receiver fix to `parent_scoped_reference_locations`**
+/// — the analogue of [`field_reference_found_through_inferred_receiver_type`]
+/// for an interface method: `interface Repo { fun openBody(): Body }`
+/// declared at top level (not doubly-nested, so this goes through
+/// `parent_scoped_reference_locations`, not `owner_scoped_reference_locations`).
+/// The real usage reaches `openBody` only via an inferred-receiver caller that
+/// never imports `Repo`.
+///
+/// Layout:
+///   Repo.kt      — `interface Repo { fun openBody(): Body }` (declaration)
+///   Factory.kt   — imports `Repo`; `fun provideRepo(): Repo` (producer)
+///   Caller.kt    — imports `Factory` only; `val repoInstance =
+///                  factory.provideRepo()` then `repoInstance.openBody()` —
+///                  never imports or mentions `Repo`.
+///   Unrelated.kt — decoy: an unrelated `fun openBody(): String` on a
+///                  same-named but unrelated type, with no textual or
+///                  producer path back to `Repo` — never a candidate file at
+///                  all, not merely filtered.
+#[tokio::test]
+async fn interface_method_reference_found_without_importing_the_interface() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    std::fs::write(root.join("workspace.json"), r#"{"sourcePaths":[]}"#).unwrap();
+
+    let repo_src = "package a\n\ninterface Repo {\n    fun openBody(): Body\n}\n";
+    let factory_src =
+        "package b\n\nimport a.Repo\n\nclass Factory {\n    fun provideRepo(): Repo = TODO()\n}\n";
+    let caller_src = "package c\n\nimport b.Factory\n\nfun use(factory: Factory) {\n    \
+                       val repoInstance = factory.provideRepo()\n    \
+                       repoInstance.openBody()\n}\n";
+    let unrelated_src =
+        "package d\n\nclass OtherThing {\n    fun openBody(): String = \"x\"\n}\n\n\
+                          fun useOther(other: OtherThing) {\n    other.openBody()\n}\n";
+
+    let (_, repo_uri) = write(root, "Repo.kt", repo_src);
+    write(root, "Factory.kt", factory_src);
+    write(root, "Caller.kt", caller_src);
+    write(root, "Unrelated.kt", unrelated_src);
+
+    let idx = Arc::new(Indexer::new());
+    idx.workspace_root.set(root.to_path_buf());
+    idx.index_content(&repo_uri, repo_src);
+
+    // Cursor on `openBody` in `fun openBody(): Body` — line 3 (0-based).
+    let declaration_line = 3u32;
+    let declaration_column = repo_src
+        .lines()
+        .nth(declaration_line as usize)
+        .unwrap()
+        .find("openBody")
+        .unwrap() as u32;
+
+    let locs = find_references_with_qualifier(
+        "openBody",
+        None,
+        &repo_uri,
+        Position::new(declaration_line, declaration_column),
+        false,
+        &idx,
+    )
+    .await;
+
+    assert_refs_contain(&locs, &["Caller.kt"]);
+    assert_refs_exclude(&locs, &["Unrelated.kt", "Factory.kt", "Repo.kt"]);
+}
