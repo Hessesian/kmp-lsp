@@ -169,7 +169,39 @@ Two tasks, each its own PR, stacked (PR 2 depends on PR 1's new helpers — sequ
    plan-text line numbers are approximate). No new provenance type needed here — the field path
    applies no owner-name-dependent filter downstream (only `is_declaration_of` / the Java-specific
    shape checks apply, both already text-content-based, not file-identity-based).
-4. Tests A, C, D (see Test plan below).
+4. Tests (all via `tempfile::tempdir` + real `rg`, per the existing pattern at
+   `references_tests.rs:85-143`; every test includes a competing/misleading decoy, not just the
+   happy path):
+
+**A. `field_reference_found_through_inferred_receiver_type`** — the repro.
+- `a/Body.kt`: `data class Body(val isOnline: Boolean)`
+- `a/Repo.kt`: `interface Repo { fun openBody(): Body }`
+- `b/Caller.kt`: imports `a.Repo` **only**; `val response = repository.openBody()` then
+  `response.isOnline`
+- Decoy 1, `b/MentionsBody.kt`: names `Body` textually (`fun consume(body: Body) {}`) and declares its
+  own unrelated `class Other(val isOnline: Boolean)` — must be absent (hop-1 file, dropped by
+  `is_declaration_of`).
+- Decoy 2, `c/Session.kt`: `class Session(val isOnline: Boolean)` plus `session.isOnline`, mentioning
+  neither `Body` nor `openBody` — must be absent. This is the anti-regression assertion: it fails
+  loudly if this fix is later "simplified" into an unscoped scan.
+- Decoy 3, `c/FakeProducer.kt`: declares an unrelated `fun openBody(): Session` and calls
+  `openBody().isOnline`. Reaches the candidate set via hop 2, and must land in
+  `VerifiedReferences::rejected` — asserted directly, per the 6b design's own rule that a proven
+  exclusion is an assertable fact, not a silent absence.
+
+**C. `top_level_function_reference_stays_package_scoped`** — locks the ruled-out `package_scoped`
+decision in a test: top-level `fun formatPrice()` in package `a`, importing caller in `b` (found),
+uncalled same-named top-level `fun formatPrice()` in `c` (absent). Fails if `package_scoped` is later
+widened without cause.
+
+**D. `usage_site_field_reference_finds_sibling_usages`** — characterizes the architecturally
+different unscoped usage-site path: cursor on `response.isOnline` in `Caller.kt`; assert the
+declaration and all usages are returned and `c/Session.kt` lands in `rejected`. Expected outcome is
+genuinely unknown going in — if red, that's a separate, distinct finding and gets its own follow-up,
+not a silent scope expansion of this plan.
+
+**Floor:** all existing `references_tests.rs` and `references_verify.rs` tests stay green unchanged —
+this only widens recall; nothing already-found may be lost.
 
 Scope for Task 1: `src/rg.rs` and `src/features/references_tests.rs` only. Do not touch
 `owner_scoped_reference_locations` or `parent_scoped_reference_locations` — that's Task 2.
@@ -186,7 +218,21 @@ Scope for Task 1: `src/rg.rs` and `src/features/references_tests.rs` only. Do no
    backstop.
 6. `parent_scoped_reference_locations`: merge the hop into `candidate_files` before the bare-name
    pass (its `import[^\n]*\bParent\b`-restricted scan).
-7. Tests B, E (see Test plan below).
+7. Tests (same `tempfile::tempdir` + real `rg` pattern as Task 1; each includes a competing/
+   misleading decoy):
+
+**B. `owner_scoped_method_reference_found_through_inferred_receiver_type`** — doubly-nested
+`Reducer.Factory.create`; caller does `val factory = module.provideFactory()` then `factory.create()`,
+never naming `Reducer`. Decoy: `overviewMapperFactory.create()` in a hop-1 file — must still be
+excluded by `qualifier_hints_owner`, proving the bypass is scoped to hop-2 files only.
+
+**E. `interface_method_reference_found_without_importing_the_interface`** — the `parent_scoped`
+analogue of Task 1's test A: `interface Repo { fun openBody(): Body }` declaration-site query, real
+usage only via an inferred-receiver caller that never imports `Repo`, decoy usage on an unrelated
+same-named method whose receiver has no path back to `Repo`.
+
+**Floor:** all existing `references_tests.rs` and `references_verify.rs` tests stay green unchanged —
+this only widens recall; nothing already-found may be lost.
 
 Scope for Task 2: `src/rg.rs` and `src/features/references_tests.rs` only, building on Task 1's
 commit. `field_scoped_reference_locations` is already done — do not re-touch it.
@@ -217,46 +263,9 @@ of preparatory/adjacent work stacked around a main slice.
 
 ## Test plan
 
-All via `tempfile::tempdir` + real `rg`, per the existing pattern at `references_tests.rs:85-143`.
-Every AGENTS.md-required test includes a competing/misleading decoy, not just the happy path.
-
-**A. `field_reference_found_through_inferred_receiver_type`** — the repro.
-- `a/Body.kt`: `data class Body(val isOnline: Boolean)`
-- `a/Repo.kt`: `interface Repo { fun openBody(): Body }`
-- `b/Caller.kt`: imports `a.Repo` **only**; `val response = repository.openBody()` then
-  `response.isOnline`
-- Decoy 1, `b/MentionsBody.kt`: names `Body` textually (`fun consume(body: Body) {}`) and declares its
-  own unrelated `class Other(val isOnline: Boolean)` — must be absent (hop-1 file, dropped by
-  `is_declaration_of`).
-- Decoy 2, `c/Session.kt`: `class Session(val isOnline: Boolean)` plus `session.isOnline`, mentioning
-  neither `Body` nor `openBody` — must be absent. This is the anti-regression assertion: it fails
-  loudly if this fix is later "simplified" into an unscoped scan.
-- Decoy 3, `c/FakeProducer.kt`: declares an unrelated `fun openBody(): Session` and calls
-  `openBody().isOnline`. Reaches the candidate set via hop 2, and must land in
-  `VerifiedReferences::rejected` — asserted directly, per the 6b design's own rule that a proven
-  exclusion is an assertable fact, not a silent absence.
-
-**B. `owner_scoped_method_reference_found_through_inferred_receiver_type`** — doubly-nested
-`Reducer.Factory.create`; caller does `val factory = module.provideFactory()` then `factory.create()`,
-never naming `Reducer`. Decoy: `overviewMapperFactory.create()` in a hop-1 file — must still be
-excluded by `qualifier_hints_owner`, proving the bypass is scoped to hop-2 files only.
-
-**C. `top_level_function_reference_stays_package_scoped`** — locks the ruled-out `package_scoped`
-decision in a test: top-level `fun formatPrice()` in package `a`, importing caller in `b` (found),
-uncalled same-named top-level `fun formatPrice()` in `c` (absent). Fails if `package_scoped` is later
-widened without cause.
-
-**D. `usage_site_field_reference_finds_sibling_usages`** — characterizes the architecturally
-different unscoped usage-site path: cursor on `response.isOnline` in `Caller.kt`; assert the
-declaration and all usages are returned and `c/Session.kt` lands in `rejected`. Expected outcome is
-genuinely unknown going in — if red, that's a separate, distinct finding and gets its own follow-up,
-not a silent scope expansion of this plan.
-
-**E. `interface_method_reference_found_without_importing_the_interface`** — the `parent_scoped`
-analogue of test A.
-
-**Floor:** all existing `references_tests.rs` and `references_verify.rs` tests stay green unchanged —
-this only widens recall; nothing already-found may be lost.
+Tests A/C/D are specified inline under Task 1 above; tests B/E are specified inline under Task 2.
+Floor: all existing `references_tests.rs` and `references_verify.rs` tests stay green unchanged —
+this only widens recall, nothing already-found may be lost.
 
 ## Performance
 
