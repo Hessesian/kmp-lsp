@@ -1073,7 +1073,7 @@ fn declared_type_from_detail_extracts_type_past_override_modifier() {
 }
 
 #[test]
-fn declared_type_from_detail_extracts_type_past_annotation_and_lateinit_var() {
+fn declared_type_from_detail_extracts_type_past_an_annotated_lateinit_var() {
     // The canonical Dagger/Hilt field-injection shape this whole feature
     // targets — real regression: delegating straight to
     // `extract_property_type_from_detail` (which strips only a leading
