@@ -1304,6 +1304,23 @@ enum ProducerExpansion {
     Found(Vec<String>),
 }
 
+/// Is `name`/`kind` the compiler-synthesized `copy()` every Kotlin `data class`
+/// gets (`synthesize_data_class_copy`, `parser.rs`)?
+///
+/// `copy()` always returns the owning class — but that's true for EVERY data
+/// class in a workspace, so as a producer-discovery signal it carries zero
+/// information about which files are actually related to one specific owner.
+/// Worse, `copy` as a bare-word `rg` pattern matches a very large fraction of
+/// files in a real Kotlin codebase (over a thousand in an ~18k-file real-world
+/// Android monorepo, empirically) — enough on its own to exceed
+/// `MAX_PRODUCER_CANDIDATE_FILES` and discard hop 2's entire merged
+/// alternation search, including every other, genuinely narrow producer name
+/// found alongside it. Excluded here so one universal synthetic member can
+/// never poison every other producer's recall.
+pub(crate) fn is_data_class_synthetic_copy(name: &str, kind: SymbolKind) -> bool {
+    name == "copy" && kind == SymbolKind::FUNCTION
+}
+
 /// Extracts the declared/return type token from an already-CST-bounded
 /// [`crate::types::SymbolEntry::detail`] string (computed once at parse time
 /// by `extract_detail_from_node`, which already handles multi-line signatures,

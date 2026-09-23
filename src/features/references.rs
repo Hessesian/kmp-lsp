@@ -688,7 +688,9 @@ async fn rg_locations(
                 let Some(declared_type) = declared_type else {
                     continue;
                 };
-                if crate::rg::type_annotation_matches_owner(&declared_type, owner) {
+                if !crate::rg::is_data_class_synthetic_copy(&symbol.name, symbol.kind)
+                    && crate::rg::type_annotation_matches_owner(&declared_type, owner)
+                {
                     candidates.push(crate::rg::ProducerCandidate {
                         file_uri: uri_str.to_string(),
                         member_name: symbol.name.clone(),

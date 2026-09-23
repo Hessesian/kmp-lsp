@@ -2354,6 +2354,79 @@ async fn usage_site_field_reference_finds_sibling_usages() {
     );
 }
 
+/// **Real-world regression** (the actual reported bug, missed by every prior
+/// test in this suite because none of them used a `data class`): a `data
+/// class`'s compiler-synthesized `copy(): Self` must never be treated as a
+/// producer-discovery signal, because `copy` as a bare-word `rg` pattern
+/// matches a very large fraction of files in any real Kotlin codebase —
+/// enough on its own to exceed `MAX_PRODUCER_CANDIDATE_FILES` and silently
+/// discard hop 2's entire merged alternation search, INCLUDING the real,
+/// narrow producer name found alongside it. Every other inferred-receiver
+/// test in this file uses a plain `class` specifically to sidestep the
+/// unrelated `enclosing_class_at` primary-constructor-property gap — which
+/// meant none of them ever exercised a real `copy()` synthesis, and this bug
+/// shipped and passed every existing test and two rounds of PR review before
+/// being caught by re-running the literal original repro against the real
+/// external project it was reported against.
+///
+/// Fixture: `data class Body(val isOnline: Boolean)` (real ctor-property
+/// data class, matching the reported bug's exact shape), a real producer
+/// (`Repo.openBody(): Body`), a caller reaching `isOnline` only through
+/// inference, and 260 decoy files that call `.copy()` on an unrelated type —
+/// enough alone to exceed `MAX_PRODUCER_CANDIDATE_FILES` if `copy` were not
+/// excluded from producer discovery.
+#[tokio::test]
+async fn data_class_synthetic_copy_does_not_poison_producer_discovery() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    std::fs::write(root.join("workspace.json"), r#"{"sourcePaths":[]}"#).unwrap();
+
+    let body_src = "package a\n\ndata class Body(val isOnline: Boolean)\n";
+    let repo_src = "package a\n\ninterface Repo {\n    fun openBody(): Body\n}\n";
+    let caller_src = "package b\n\nimport a.Repo\n\nfun use(repository: Repo) {\n    \
+                       val response = repository.openBody()\n    response.isOnline\n}\n";
+
+    let (_, body_uri) = write(root, "Body.kt", body_src);
+    let (_, repo_uri) = write(root, "Repo.kt", repo_src);
+    let (_, caller_uri) = write(root, "Caller.kt", caller_src);
+
+    let indexer = Arc::new(Indexer::new());
+    indexer.workspace_root.set(root.to_path_buf());
+    for (uri, src) in [
+        (&body_uri, body_src),
+        (&repo_uri, repo_src),
+        (&caller_uri, caller_src),
+    ] {
+        indexer.index_content(uri, src);
+        indexer.store_live_tree(uri, src);
+    }
+
+    // 260 decoy files calling `.copy()` on an unrelated type — enough alone
+    // to exceed `MAX_PRODUCER_CANDIDATE_FILES` (256) if `copy` were treated
+    // as a producer of `Body`, discarding the whole hop-2 alternation search
+    // (including the real `openBody` producer merged into the same call).
+    let decoy_src = "package c\n\ndata class Other(val x: Int)\n\n\
+                      fun use(other: Other) {\n    other.copy(x = 1)\n}\n";
+    for i in 0..260 {
+        let filename = format!("Decoy{i}.kt");
+        let (_, decoy_uri) = write(root, &filename, decoy_src);
+        indexer.index_content(&decoy_uri, decoy_src);
+        indexer.store_live_tree(&decoy_uri, decoy_src);
+    }
+
+    let locs = find_references_with_qualifier(
+        "isOnline",
+        None,
+        &body_uri,
+        Position::new(2, 20),
+        false,
+        &indexer,
+    )
+    .await;
+
+    assert_refs_contain(&locs, &["Caller.kt"]);
+}
+
 // ─── inferred-receiver owner/parent-scoped discovery (Task 2) ─────────────────
 
 /// **Sweeps the inferred-receiver fix to `owner_scoped_reference_locations`**:

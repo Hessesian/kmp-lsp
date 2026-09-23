@@ -11,8 +11,8 @@ use tower_lsp::lsp_types::{SymbolKind, Url};
 
 use crate::rg::{
     declared_type_from_detail, declared_type_from_raw_lines, file_uri_under_source_paths,
-    is_declaration_occurrence_at, is_declaration_of, parse_rg_line, rg_find_definition,
-    rg_find_references, IgnoreMatcher, ProducerCandidate, RgSearchRequest,
+    is_data_class_synthetic_copy, is_declaration_occurrence_at, is_declaration_of, parse_rg_line,
+    rg_find_definition, rg_find_references, IgnoreMatcher, ProducerCandidate, RgSearchRequest,
 };
 
 // ─── parse_rg_line ────────────────────────────────────────────────────────────
@@ -1515,4 +1515,36 @@ fn file_uri_under_source_paths_resolves_relative_entries_against_workspace_root(
         "a relative source path must resolve against workspace_root, matching \
          RgTarget::SourcePaths's own resolution idiom"
     );
+}
+
+// ─── is_data_class_synthetic_copy ─────────────────────────────────────────────
+//
+// Real-world regression: a data class's synthesized `copy(): Self` was being
+// treated as a producer-discovery candidate. `copy` as a bare-word `rg`
+// pattern matches over a thousand files in a real ~18k-file Android
+// monorepo, which alone exceeded `MAX_PRODUCER_CANDIDATE_FILES` and
+// discarded hop 2's ENTIRE merged alternation search — silently reverting
+// the whole feature (see `field_reference_found_through_inferred_receiver_type`'s
+// sibling integration test below for the end-to-end proof) for exactly the
+// data-class-field shape the reported bug was about.
+
+#[test]
+fn is_data_class_synthetic_copy_detects_the_synthesized_function() {
+    assert!(is_data_class_synthetic_copy("copy", SymbolKind::FUNCTION));
+}
+
+#[test]
+fn is_data_class_synthetic_copy_does_not_match_a_differently_named_producer() {
+    assert!(!is_data_class_synthetic_copy(
+        "openBody",
+        SymbolKind::FUNCTION
+    ));
+}
+
+#[test]
+fn is_data_class_synthetic_copy_does_not_match_copy_of_a_different_kind() {
+    // A property or variable literally named `copy` (e.g. `val copy: Body`) is
+    // not the synthesized function — only `SymbolKind::FUNCTION` is excluded.
+    assert!(!is_data_class_synthetic_copy("copy", SymbolKind::PROPERTY));
+    assert!(!is_data_class_synthetic_copy("copy", SymbolKind::VARIABLE));
 }
