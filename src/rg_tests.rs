@@ -1556,7 +1556,8 @@ fn producer_scoped_candidate_files_caps_only_the_newly_discovered_count() {
 
 #[test]
 fn file_uri_under_source_paths_empty_scope_keeps_everything() {
-    let uri = Url::from_file_path("/workspace/module/Foo.kt")
+    let dir = tempfile::tempdir().unwrap();
+    let uri = Url::from_file_path(dir.path().join("module").join("Foo.kt"))
         .unwrap()
         .to_string();
     assert!(
@@ -1567,19 +1568,28 @@ fn file_uri_under_source_paths_empty_scope_keeps_everything() {
 
 #[test]
 fn file_uri_under_source_paths_accepts_file_under_an_absolute_source_root() {
-    let uri = Url::from_file_path("/workspace/app/src/Foo.kt")
+    let dir = tempfile::tempdir().unwrap();
+    let source_root = dir.path().join("app").join("src");
+    let uri = Url::from_file_path(source_root.join("Foo.kt"))
         .unwrap()
         .to_string();
-    let source_paths = vec!["/workspace/app/src".to_string()];
+    let source_paths = vec![source_root.to_str().unwrap().to_string()];
     assert!(file_uri_under_source_paths(&uri, &source_paths, None));
 }
 
 #[test]
 fn file_uri_under_source_paths_rejects_file_outside_every_source_root() {
-    let uri = Url::from_file_path("/workspace/other-module/Foo.kt")
+    let dir = tempfile::tempdir().unwrap();
+    let uri = Url::from_file_path(dir.path().join("other-module").join("Foo.kt"))
         .unwrap()
         .to_string();
-    let source_paths = vec!["/workspace/app/src".to_string()];
+    let source_paths = vec![dir
+        .path()
+        .join("app")
+        .join("src")
+        .to_str()
+        .unwrap()
+        .to_string()];
     assert!(
         !file_uri_under_source_paths(&uri, &source_paths, None),
         "a file outside every configured source root must not pass"
@@ -1588,16 +1598,13 @@ fn file_uri_under_source_paths_rejects_file_outside_every_source_root() {
 
 #[test]
 fn file_uri_under_source_paths_resolves_relative_entries_against_workspace_root() {
-    let uri = Url::from_file_path("/workspace/app/src/Foo.kt")
+    let dir = tempfile::tempdir().unwrap();
+    let uri = Url::from_file_path(dir.path().join("app").join("src").join("Foo.kt"))
         .unwrap()
         .to_string();
     let source_paths = vec!["app/src".to_string()];
     assert!(
-        file_uri_under_source_paths(
-            &uri,
-            &source_paths,
-            Some(std::path::Path::new("/workspace"))
-        ),
+        file_uri_under_source_paths(&uri, &source_paths, Some(dir.path())),
         "a relative source path must resolve against workspace_root, matching \
          RgTarget::SourcePaths's own resolution idiom"
     );
