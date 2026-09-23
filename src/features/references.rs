@@ -655,13 +655,14 @@ async fn rg_locations(
         .as_deref()
         .or(search.owner_class.as_deref())
         .or(search.parent_class.as_deref());
-    // Resolved once, not per indexed file — mirrors `build_command`'s own
-    // missing-source-path fallback so this scan degrades the same way `rg`
-    // itself does when every configured `sourceRoots` entry is stale.
-    let effective_source_roots =
-        crate::rg::resolve_effective_source_paths(&source_roots, workspace_root.as_deref());
     let producer_candidates: Vec<crate::rg::ProducerCandidate> = if let Some(owner) = producer_owner
     {
+        // Resolved once, not per indexed file — mirrors `build_command`'s own
+        // missing-source-path fallback so this scan degrades the same way
+        // `rg` itself does when every configured `sourceRoots` entry is
+        // stale. Only computed when a producer scan actually runs.
+        let effective_source_roots =
+            crate::rg::resolve_effective_source_paths(&source_roots, workspace_root.as_deref());
         let mut candidates = Vec::new();
         index.for_each_indexed_workspace_file(&mut |uri_str, file_data| {
             if !crate::rg::file_uri_under_source_paths(

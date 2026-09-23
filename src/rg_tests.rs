@@ -1061,6 +1061,43 @@ fn declared_type_from_detail_extracts_kotlin_var_type() {
 }
 
 #[test]
+fn declared_type_from_detail_extracts_type_past_override_modifier() {
+    assert_eq!(
+        declared_type_from_detail(
+            "override val factory: Reducer.Factory",
+            SymbolKind::PROPERTY
+        )
+        .as_deref(),
+        Some("Reducer.Factory")
+    );
+}
+
+#[test]
+fn declared_type_from_detail_extracts_type_past_annotation_and_lateinit_var() {
+    // The canonical Dagger/Hilt field-injection shape this whole feature
+    // targets — real regression: delegating straight to
+    // `extract_property_type_from_detail` (which strips only a leading
+    // visibility modifier) silently returned `None` here, since neither
+    // `@Inject` nor `lateinit` is a visibility modifier it knows about.
+    assert_eq!(
+        declared_type_from_detail(
+            "@Inject lateinit var repository: Repository",
+            SymbolKind::VARIABLE
+        )
+        .as_deref(),
+        Some("Repository")
+    );
+}
+
+#[test]
+fn declared_type_from_detail_extracts_type_past_const_modifier() {
+    assert_eq!(
+        declared_type_from_detail("const val cachedBody: Body", SymbolKind::PROPERTY).as_deref(),
+        Some("Body")
+    );
+}
+
+#[test]
 fn declared_type_from_detail_extracts_kotlin_nested_method_return_type() {
     // A Kotlin member function nested inside a class/interface/object is
     // indexed as `SymbolKind::METHOD` (nesting demotes it from `FUNCTION`,

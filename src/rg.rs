@@ -1380,7 +1380,16 @@ pub(crate) fn declared_type_from_detail(detail: &str, kind: SymbolKind) -> Optio
     match kind {
         SymbolKind::FUNCTION => crate::resolver::extract_return_type_from_detail(detail),
         SymbolKind::PROPERTY | SymbolKind::VARIABLE => {
-            crate::resolver::extract_property_type_from_detail(detail)
+            // `extract_property_type_from_detail` only strips a leading
+            // visibility modifier before expecting `val `/`var ` — it does
+            // not know about `override`, `lateinit`, `const`, or a leading
+            // annotation (`@Inject lateinit var repository: Repository`, the
+            // canonical Dagger/Hilt field-injection shape this whole feature
+            // targets). Anchor on the `val `/`var ` keyword itself first —
+            // same strategy `extract_return_type_from_detail`'s `fun `
+            // anchor uses — so whatever precedes it never matters here.
+            let property_start = detail.find("val ").or_else(|| detail.find("var "))?;
+            crate::resolver::extract_property_type_from_detail(&detail[property_start..])
         }
         // `METHOD` covers TWO different shapes: a Kotlin member function
         // nested inside a class/interface/object (nesting demotes its
