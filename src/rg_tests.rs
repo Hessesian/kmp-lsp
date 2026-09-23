@@ -1037,7 +1037,7 @@ fn java_method_declaration_recognises_semicolon_form() {
 #[test]
 fn declared_type_from_detail_extracts_kotlin_function_return_type() {
     assert_eq!(
-        declared_type_from_detail("fun openBody(): Body", SymbolKind::FUNCTION),
+        declared_type_from_detail("fun openBody(): Body", SymbolKind::FUNCTION).as_deref(),
         Some("Body")
     );
 }
@@ -1045,7 +1045,7 @@ fn declared_type_from_detail_extracts_kotlin_function_return_type() {
 #[test]
 fn declared_type_from_detail_extracts_kotlin_val_type() {
     assert_eq!(
-        declared_type_from_detail("val cachedBody: Body", SymbolKind::PROPERTY),
+        declared_type_from_detail("val cachedBody: Body", SymbolKind::PROPERTY).as_deref(),
         Some("Body")
     );
 }
@@ -1055,7 +1055,7 @@ fn declared_type_from_detail_extracts_kotlin_var_type() {
     // `var` is indexed as `SymbolKind::VARIABLE`, not `PROPERTY` — see
     // `src/queries.rs`. Both must be handled the same way.
     assert_eq!(
-        declared_type_from_detail("var count: Int", SymbolKind::VARIABLE),
+        declared_type_from_detail("var count: Int", SymbolKind::VARIABLE).as_deref(),
         Some("Int")
     );
 }
@@ -1069,11 +1069,11 @@ fn declared_type_from_detail_extracts_kotlin_nested_method_return_type() {
     // Found via a real fixture (`field_reference_found_through_inferred_receiver_type`)
     // that failed until `METHOD` disambiguated by the literal `fun` keyword.
     assert_eq!(
-        declared_type_from_detail("fun openBody(): Body", SymbolKind::METHOD),
+        declared_type_from_detail("fun openBody(): Body", SymbolKind::METHOD).as_deref(),
         Some("Body")
     );
     assert_eq!(
-        declared_type_from_detail("override fun openBody(): Body", SymbolKind::METHOD),
+        declared_type_from_detail("override fun openBody(): Body", SymbolKind::METHOD).as_deref(),
         Some("Body"),
         "a modifier (override/public/private/…) before `fun` must not break \
          the `fun`-keyword disambiguation against the Java shape"
@@ -1086,7 +1086,7 @@ fn declared_type_from_detail_extracts_java_method_return_type() {
     // `{` (detail is already body-truncated) and the return type comes
     // BEFORE the method name, unlike Kotlin.
     assert_eq!(
-        declared_type_from_detail("public Body getBody()", SymbolKind::METHOD),
+        declared_type_from_detail("public Body getBody()", SymbolKind::METHOD).as_deref(),
         Some("Body")
     );
 }
@@ -1094,7 +1094,7 @@ fn declared_type_from_detail_extracts_java_method_return_type() {
 #[test]
 fn declared_type_from_detail_unwraps_generic_return_type() {
     assert_eq!(
-        declared_type_from_detail("fun openBodies(): List<Body>", SymbolKind::FUNCTION),
+        declared_type_from_detail("fun openBodies(): List<Body>", SymbolKind::FUNCTION).as_deref(),
         Some("List<Body>")
     );
 }
@@ -1107,7 +1107,8 @@ fn declared_type_from_detail_unwraps_java_generic_with_internal_space() {
         declared_type_from_detail(
             "@Nullable public Map<String, Object> getMap()",
             SymbolKind::METHOD
-        ),
+        )
+        .as_deref(),
         Some("Map<String, Object>")
     );
 }
@@ -1148,7 +1149,7 @@ fn declared_type_from_detail_extracts_multiline_function_return_type() {
     // to detect once `detail` is already the CST-joined single-line text
     // (multi-line raw source, single-line scanning, would miss this).
     assert_eq!(
-        declared_type_from_detail("fun openBody( x: Int ): Body", SymbolKind::FUNCTION),
+        declared_type_from_detail("fun openBody( x: Int ): Body", SymbolKind::FUNCTION).as_deref(),
         Some("Body")
     );
 }
@@ -1156,7 +1157,7 @@ fn declared_type_from_detail_extracts_multiline_function_return_type() {
 #[test]
 fn declared_type_from_detail_extracts_extension_receiver_function_return_type() {
     assert_eq!(
-        declared_type_from_detail("fun Foo.openBody(): Body", SymbolKind::FUNCTION),
+        declared_type_from_detail("fun Foo.openBody(): Body", SymbolKind::FUNCTION).as_deref(),
         Some("Body")
     );
 }
@@ -1164,7 +1165,55 @@ fn declared_type_from_detail_extracts_extension_receiver_function_return_type() 
 #[test]
 fn declared_type_from_detail_extracts_leading_type_param_function_return_type() {
     assert_eq!(
-        declared_type_from_detail("fun <T> openBody(): Body", SymbolKind::FUNCTION),
+        declared_type_from_detail("fun <T> openBody(): Body", SymbolKind::FUNCTION).as_deref(),
+        Some("Body")
+    );
+}
+
+#[test]
+fn declared_type_from_detail_extracts_kotlin_return_type_past_a_parenthesized_annotation() {
+    // A leading annotation with its own argument list (`@Named("body")`) must
+    // not make the annotation's `(` the one this function anchors on — it
+    // would land on `"body"`'s closing `)` instead of the parameter list's,
+    // and never find the `: Body` suffix.
+    assert_eq!(
+        declared_type_from_detail(
+            "@Named(\"body\") fun provideBody(): Body",
+            SymbolKind::FUNCTION
+        )
+        .as_deref(),
+        Some("Body")
+    );
+}
+
+#[test]
+fn declared_type_from_detail_extracts_java_return_type_past_a_parenthesized_annotation() {
+    assert_eq!(
+        declared_type_from_detail(
+            "@Named(\"body\") public Body provideBody()",
+            SymbolKind::METHOD
+        )
+        .as_deref(),
+        Some("Body")
+    );
+}
+
+#[test]
+fn declared_type_from_detail_extracts_kotlin_return_type_past_a_paren_in_a_default_value() {
+    // A `)` inside a string default value (`separator: String = ")"`) would
+    // defeat a forward `(`-then-matching-`)` scan — this is exactly why
+    // `declared_type_from_detail` delegates to the shared resolver parser
+    // (`extract_return_type_from_detail`) instead of hand-rolling a second
+    // one: an earlier from-scratch version of this function had this bug,
+    // found only by differential-testing it against the resolver's existing
+    // parser, which never had it (it scans backward for a `):` pattern,
+    // retrying past any `)` that isn't followed by `:`).
+    assert_eq!(
+        declared_type_from_detail(
+            "fun split(separator: String = \")\"): Body",
+            SymbolKind::FUNCTION
+        )
+        .as_deref(),
         Some("Body")
     );
 }
@@ -1554,4 +1603,42 @@ fn is_unusable_producer_name_detects_the_synthesized_enum_members() {
 #[test]
 fn is_unusable_producer_name_does_not_match_a_differently_named_producer() {
     assert!(!is_unusable_producer_name("openBody"));
+}
+
+// ─── resolve_effective_source_paths ────────────────────────────────────────────
+//
+// Real-world regression (GitHub Copilot review, PR #324): `build_command`
+// falls back to the whole workspace root when every configured `sourceRoots`
+// entry is missing/stale, so `rg` itself never returns zero results in that
+// scenario — but `file_uri_under_source_paths` had no equivalent fallback,
+// silently disabling the producer precompute (and therefore hop 2) whenever
+// `sourceRoots` pointed at directories that don't actually exist.
+
+#[test]
+fn resolve_effective_source_paths_falls_back_to_empty_when_every_path_is_missing() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    let source_paths = vec!["app/src".to_string(), "lib/src".to_string()];
+    let effective = crate::rg::resolve_effective_source_paths(&source_paths, Some(root));
+    assert!(
+        effective.is_empty(),
+        "every configured source path is missing on disk, so the effective \
+         list must be empty — matching build_command's own \
+         all-paths-missing -> whole-workspace-root fallback"
+    );
+}
+
+#[test]
+fn resolve_effective_source_paths_keeps_paths_when_at_least_one_exists() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    std::fs::create_dir_all(root.join("app/src")).unwrap();
+    let source_paths = vec!["app/src".to_string(), "lib/src".to_string()];
+    let effective = crate::rg::resolve_effective_source_paths(&source_paths, Some(root));
+    assert_eq!(
+        effective, source_paths,
+        "at least one configured source path exists, so the original list is \
+         kept unchanged (including the missing one — matching rg's own \
+         per-path `is_dir()` skip, not an all-or-nothing decision at this level)"
+    );
 }

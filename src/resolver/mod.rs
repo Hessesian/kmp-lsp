@@ -39,7 +39,10 @@ pub(crate) use infer::{
     infer_receiver_type, infer_receiver_type_at, infer_variable_type_from_cst,
     infer_variable_type_raw, ReceiverKind, ReceiverType,
 };
-pub(crate) use infer_lines::extract_collection_element_type;
+pub(crate) use infer_lines::{
+    extract_collection_element_type, extract_property_type_from_detail,
+    extract_return_type_from_detail,
+};
 pub(crate) use package_scope::find_symbol_in_package;
 pub(crate) use resolve::{
     ensure_file_data, fqns_for_name, resolve_callee_definition,

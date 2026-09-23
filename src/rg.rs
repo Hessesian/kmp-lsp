@@ -917,7 +917,7 @@ fn append_unique_reference_hits(
         // producer. `verify_candidates` can't reject this on its own — a
         // top-level declaration has no enclosing class to check against.
         if location.uri.as_str() != request.from_uri.as_str()
-            && hop2_only_files.contains(location.uri.path())
+            && hop2_only_files.contains(location.uri.as_str())
             && is_declaration_occurrence_at(&content, location.range.start.character)
         {
             continue;
@@ -1082,11 +1082,14 @@ fn parent_scoped_reference_locations(
         if let ProducerExpansion::Found(producer_files) =
             producer_scoped_candidate_files(request, matcher, &candidate_files)
         {
+            // Store as `file://` URI strings, not raw filesystem paths — see
+            // `ProducerDiscoveredFiles`'s construction in
+            // `owner_scoped_reference_locations` for why.
             hop2_only_files = ProducerDiscoveredFiles(
                 producer_files
                     .iter()
                     .filter(|file| !pre_hop2_candidate_files.contains(*file))
-                    .cloned()
+                    .filter_map(|file| file_uri_string(file))
                     .collect(),
             );
             extend_unique_files(&mut candidate_files, producer_files);
@@ -1210,10 +1213,15 @@ fn owner_scoped_reference_locations(
     let producer_discovered_files =
         match producer_scoped_candidate_files(request, matcher, &hop1_files) {
             ProducerExpansion::Found(producer_files) => {
+                // Store as `file://` URI strings, not raw filesystem paths —
+                // `ProducerDiscoveredFiles::contains` is checked against
+                // `loc.uri.as_str()` (a `Url`, percent-encoded for spaces/
+                // non-ASCII), and comparing that against a raw OS path string
+                // would silently fail the lookup on exactly those paths.
                 let newly_discovered: std::collections::HashSet<String> = producer_files
                     .iter()
                     .filter(|file| !hop1_files.contains(*file))
-                    .cloned()
+                    .filter_map(|file| file_uri_string(file))
                     .collect();
                 extend_unique_files(&mut candidate_files, producer_files);
                 ProducerDiscoveredFiles(newly_discovered)
@@ -1255,7 +1263,7 @@ fn owner_scoped_reference_locations(
             if is_declaration_of(&content, request.name) {
                 return None;
             }
-            if !producer_discovered_files.contains(loc.uri.path())
+            if !producer_discovered_files.contains(loc.uri.as_str())
                 && !qualifier_hints_owner(&content, loc.range.start.character as usize, owner_class)
             {
                 return None;
@@ -1341,30 +1349,38 @@ pub(crate) fn is_unusable_producer_name(name: &str) -> bool {
 /// the same [`SymbolKind`] already attached to the `SymbolEntry` `detail` came
 /// from, rather than re-deriving the declaration shape by sniffing the string:
 ///
-/// - [`SymbolKind::FUNCTION`] (Kotlin `fun`): the type after the LAST `": "`
-///   following the closing `)` of the (balanced) parameter list —
-///   `"fun openBody(): Body"`, `"fun Foo.openBody(): Body"`,
-///   `"fun <T> openBody(): Body"`. `None` for a `Unit`-returning function
-///   (no `: Type` suffix at all).
+/// - [`SymbolKind::FUNCTION`] (Kotlin `fun`) — delegates to
+///   [`crate::resolver::extract_return_type_from_detail`], the same parser
+///   the `Resolver` trait's `function_return_type`/`method_return_type`
+///   already run on this exact string shape elsewhere in the codebase (this
+///   function used to hand-roll a second, independent parser for the same
+///   shape — real divergence found: the resolver's version correctly handles
+///   a `)` inside a string default value, e.g.
+///   `fun split(separator: String = ")"): Body`, by scanning backward for a
+///   `):` pattern rather than forward-matching the first `(`; the duplicate
+///   here did not, silently missing that producer).
 /// - [`SymbolKind::PROPERTY`] / [`SymbolKind::VARIABLE`] (Kotlin `val`/`var` —
-///   `var` is indexed as `VARIABLE`, not `PROPERTY`): the type after the first
-///   `": "` — `"val isOnline: Boolean"`, `"var count: Int"`.
+///   `var` is indexed as `VARIABLE`, not `PROPERTY`) — delegates to
+///   [`crate::resolver::extract_property_type_from_detail`] (same reasoning;
+///   it additionally handles a leading visibility modifier and an extension
+///   receiver, which the prior hand-rolled version here did not).
 /// - [`SymbolKind::METHOD`]: a Kotlin member function nested inside a
 ///   class/interface/object (still `"fun name(...): Type"` shaped — nesting
-///   only demotes `FUNCTION` to `METHOD`) OR a Java method, where the return
-///   type comes BEFORE the method name, e.g. `"public Body openBody(int x)"`,
+///   only demotes `FUNCTION` to `METHOD`, so this still routes through the
+///   shared resolver parser) OR a Java method, where the return type comes
+///   BEFORE the method name, e.g. `"public Body openBody(int x)"`,
 ///   `"@Nullable public Map<String, Object> getMap()"` — disambiguated by
-///   whether `detail` carries the literal `fun` keyword. For the Java shape:
-///   the whitespace-delimited token immediately before the method name,
-///   honoring balanced `<…>` generics so an internal-space generic like
-///   `Map<String, Object>` isn't split apart.
+///   whether `detail` carries the literal `fun` keyword. For the Java shape
+///   (no existing parser elsewhere in the codebase for this direction):
+///   [`java_method_return_type`], the whitespace-delimited token immediately
+///   before the method name, honoring balanced `<…>` generics so an
+///   internal-space generic like `Map<String, Object>` isn't split apart.
 /// - Anything else (class, constructor, field, …) → `None`.
-pub(crate) fn declared_type_from_detail(detail: &str, kind: SymbolKind) -> Option<&str> {
+pub(crate) fn declared_type_from_detail(detail: &str, kind: SymbolKind) -> Option<String> {
     match kind {
-        SymbolKind::FUNCTION => kotlin_function_return_type(detail),
+        SymbolKind::FUNCTION => crate::resolver::extract_return_type_from_detail(detail),
         SymbolKind::PROPERTY | SymbolKind::VARIABLE => {
-            let colon = detail.find(": ")?;
-            Some(take_type_token(detail[colon + 2..].trim_start()))
+            crate::resolver::extract_property_type_from_detail(detail)
         }
         // `METHOD` covers TWO different shapes: a Kotlin member function
         // nested inside a class/interface/object (nesting demotes its
@@ -1380,9 +1396,9 @@ pub(crate) fn declared_type_from_detail(detail: &str, kind: SymbolKind) -> Optio
         // unlikely in practice.
         SymbolKind::METHOD => {
             if detail.starts_with("fun ") || detail.contains(" fun ") {
-                kotlin_function_return_type(detail)
+                crate::resolver::extract_return_type_from_detail(detail)
             } else {
-                java_method_return_type(detail)
+                java_method_return_type(detail).map(str::to_owned)
             }
         }
         _ => None,
@@ -1427,25 +1443,24 @@ pub(crate) fn declared_type_from_raw_lines(
             break;
         }
     }
-    declared_type_from_detail(&joined, kind).map(str::to_owned)
-}
-
-/// Kotlin `fun` detail shape: the type after the LAST `": "` following the
-/// closing `)` of the (balanced) parameter list.
-fn kotlin_function_return_type(detail: &str) -> Option<&str> {
-    let paren_open = detail.find('(')?;
-    let close = balanced_paren_close(&detail[paren_open + 1..])?;
-    let after_params = detail[paren_open + 1 + close + 1..].trim_start();
-    let return_type_text = after_params.strip_prefix(':')?;
-    Some(take_type_token(return_type_text.trim_start()))
+    declared_type_from_detail(&joined, kind)
 }
 
 /// Java method detail shape: the whitespace-delimited token immediately
 /// before the method name (the return type comes BEFORE the name in Java,
 /// unlike Kotlin), honoring balanced `<…>` generics.
+///
+/// The method's own parameter list is located by scanning backward from
+/// `detail`'s own closing `)` (`extract_detail_from_node` always ends detail
+/// right after it, modulo a trailing `;`) rather than by the first `(` in
+/// `detail` — an annotation with its own argument list ahead of the
+/// declaration (`@Named("body") public Body provideBody()`) would otherwise
+/// make the first `(` the annotation's own, not the method's.
 fn java_method_return_type(detail: &str) -> Option<&str> {
-    let paren_open = detail.find('(')?;
-    let head = detail[..paren_open].trim_end();
+    let trimmed = detail.trim_end().trim_end_matches(';').trim_end();
+    let close_paren = trimmed.rfind(')')?;
+    let paren_open = balanced_paren_open_backward(&trimmed[..close_paren])?;
+    let head = trimmed[..paren_open].trim_end();
     let name_start = head.rfind(char::is_whitespace)? + 1;
     let before_name = head[..name_start].trim_end();
     (!before_name.is_empty()).then(|| rtake_type_token(before_name))
@@ -1453,11 +1468,11 @@ fn java_method_return_type(detail: &str) -> Option<&str> {
 
 /// Extracts a type token ENDING at `text`'s end, honoring balanced `<…>`
 /// generic nesting, by scanning backward for the first top-level (depth-0)
-/// whitespace. The mirror image of [`take_type_token`] — used for Java, where
-/// the return type sits immediately before the method name rather than after
-/// a `:` marker, so the boundary must be found from the right (e.g.
-/// `"public Map<String, Object>"` → `"Map<String, Object>"`, correctly not
-/// splitting at the space after the generic's comma).
+/// whitespace — used for Java, where the return type sits immediately before
+/// the method name rather than after a `:` marker, so the boundary must be
+/// found from the right (e.g. `"public Map<String, Object>"` →
+/// `"Map<String, Object>"`, correctly not splitting at the space after the
+/// generic's comma).
 fn rtake_type_token(text: &str) -> &str {
     let mut depth = 0i32;
     for (byte_index, character) in text.char_indices().rev() {
@@ -1471,28 +1486,6 @@ fn rtake_type_token(text: &str) -> &str {
         }
     }
     text.trim()
-}
-
-/// Extracts a type token starting at `text`, honoring one level of balanced
-/// `<…>` generic nesting (so `List<Body>` is captured whole rather than
-/// stopping at the inner `<`).
-fn take_type_token(text: &str) -> &str {
-    let mut depth = 0i32;
-    for (byte_index, character) in text.char_indices() {
-        match character {
-            '<' => depth += 1,
-            '>' => depth -= 1,
-            character
-                if depth == 0
-                    && (character.is_whitespace()
-                        || matches!(character, '{' | '=' | ';' | ',' | ')')) =>
-            {
-                return &text[..byte_index];
-            }
-            _ => {}
-        }
-    }
-    text
 }
 
 /// Returns `true` when `type_text` is exactly `owner_class` (optionally
@@ -1653,6 +1646,37 @@ pub(crate) fn file_uri_under_source_paths(
         };
         file_path.starts_with(&abs)
     })
+}
+
+/// Resolves `source_paths` to the list [`file_uri_under_source_paths`] should
+/// actually filter against, mirroring [`RgTarget::SourcePaths`]'s own
+/// missing-path fallback in `build_command`: when every configured source
+/// path is missing (stale or misconfigured `sourceRoots`), `rg` itself falls
+/// back to searching the whole workspace root rather than returning zero
+/// results — so the indexed-file filter must fall back the same way (an
+/// empty list means "no scoping" to `file_uri_under_source_paths`), or hop 1
+/// would search the real workspace while this precompute silently finds no
+/// files at all, disabling hop 2 in exactly that scenario.
+pub(crate) fn resolve_effective_source_paths(
+    source_paths: &[String],
+    workspace_root: Option<&Path>,
+) -> Vec<String> {
+    let any_configured_path_exists = source_paths.iter().any(|source_path| {
+        let path = Path::new(source_path);
+        let abs = if path.is_absolute() {
+            path.to_path_buf()
+        } else if let Some(root) = workspace_root {
+            root.join(path)
+        } else {
+            return false;
+        };
+        abs.is_dir()
+    });
+    if any_configured_path_exists {
+        source_paths.to_vec()
+    } else {
+        Vec::new()
+    }
 }
 
 /// Find references to a class member (field, property, or method) declared inside
@@ -1846,6 +1870,30 @@ fn balanced_paren_close(s: &str) -> Option<usize> {
         match b {
             b'(' => depth += 1,
             b')' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(i);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+/// Find the index of the `(` that opens the closing `)` already consumed —
+/// the backward mirror of [`balanced_paren_close`].
+///
+/// `s` is the text *before* the closing `)`. Scanning from the end means the
+/// first depth-0 `(` found is always the LAST top-level pair in `s`, so an
+/// earlier, unrelated parenthesized group (e.g. an annotation's own argument
+/// list ahead of a declaration) is correctly skipped rather than matched.
+fn balanced_paren_open_backward(s: &str) -> Option<usize> {
+    let mut depth = 1usize;
+    for (i, b) in s.bytes().enumerate().rev() {
+        match b {
+            b')' => depth += 1,
+            b'(' => {
                 depth -= 1;
                 if depth == 0 {
                     return Some(i);

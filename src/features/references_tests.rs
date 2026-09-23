@@ -2518,6 +2518,67 @@ async fn owner_scoped_method_reference_found_through_inferred_receiver_type() {
     assert_refs_exclude(&locs, &["OtherCaller.kt", "Module.kt", "Reducer.kt"]);
 }
 
+/// **Real-world regression** (GitHub Copilot review, PR #324): the same
+/// scenario as [`owner_scoped_method_reference_found_through_inferred_receiver_type`],
+/// but with the whole workspace living under a directory name containing a
+/// space — forcing `Url::path()`/`Url::as_str()` to percent-encode it
+/// (`%20`). `ProducerDiscoveredFiles`'s membership check must compare against
+/// a consistently-encoded form on both sides (URI string vs. URI string),
+/// not a raw filesystem path against a percent-encoded one — otherwise the
+/// lookup silently fails, the hop-2-only bypass never fires, and a genuine
+/// reference (`factoryInstance.create()`, whose qualifier doesn't hint at
+/// `Reducer`) gets wrongly rejected by `qualifier_hints_owner`.
+#[tokio::test]
+async fn hop2_provenance_check_survives_a_workspace_path_with_a_space() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().join("has space in it");
+    std::fs::create_dir_all(&root).unwrap();
+    let root = root.as_path();
+    std::fs::write(root.join("workspace.json"), r#"{"sourcePaths":[]}"#).unwrap();
+
+    let reducer_src = "package a\n\nclass Reducer {\n    interface Factory {\n        \
+                        fun create(): Any\n    }\n}\n";
+    let module_src =
+        "package a\n\nclass Module {\n    fun provideFactory(): Reducer.Factory = TODO()\n}\n";
+    let caller_src = "package b\n\nimport a.Module\n\nfun use(module: Module) {\n    \
+                       val factoryInstance = module.provideFactory()\n    \
+                       factoryInstance.create()\n}\n";
+
+    let (_, reducer_uri) = write(root, "Reducer.kt", reducer_src);
+    let (_, module_uri) = write(root, "Module.kt", module_src);
+    let (_, caller_uri) = write(root, "Caller.kt", caller_src);
+
+    let idx = Arc::new(Indexer::new());
+    idx.workspace_root.set(root.to_path_buf());
+    for (uri, src) in [
+        (&reducer_uri, reducer_src),
+        (&module_uri, module_src),
+        (&caller_uri, caller_src),
+    ] {
+        idx.index_content(uri, src);
+    }
+
+    let declaration_line = 4u32;
+    let declaration_column = reducer_src
+        .lines()
+        .nth(declaration_line as usize)
+        .unwrap()
+        .find("create")
+        .unwrap() as u32;
+
+    let locs = find_references_with_qualifier(
+        "create",
+        None,
+        &reducer_uri,
+        Position::new(declaration_line, declaration_column),
+        false,
+        &idx,
+    )
+    .await;
+
+    assert_refs_contain(&locs, &["Caller.kt"]);
+}
+
 /// **Sweeps the inferred-receiver fix to `parent_scoped_reference_locations`**
 /// — the analogue of [`field_reference_found_through_inferred_receiver_type`]
 /// for an interface method: `interface Repo { fun openBody(): Body }`
