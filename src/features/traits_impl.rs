@@ -48,6 +48,10 @@ impl SymbolIndex for Indexer {
         self.for_each_indexed_file(f);
     }
 
+    fn for_each_indexed_workspace_file(&self, f: &mut dyn FnMut(&str, &Arc<FileData>) -> bool) {
+        self.for_each_indexed_workspace_file(f);
+    }
+
     fn enclosing_class_at(&self, uri: &Url, row: u32) -> Option<String> {
         self.enclosing_class_at(uri, row)
     }

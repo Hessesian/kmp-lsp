@@ -19,6 +19,42 @@ fn symbol_found_after_indexing() {
     assert!(!idx.find_definition("MyViewModel", &u).is_empty());
 }
 
+/// 2026-09-22b fix round: `for_each_indexed_workspace_file` must skip
+/// `jar_files` entirely (unlike `for_each_indexed_file`) — a JAR-sourced
+/// symbol can never be a hop-1 rg-discovered candidate, so visiting it in a
+/// scan that only cares about workspace files is pure wasted cost, and on a
+/// JAR-heavy project that map can be very large.
+#[test]
+fn for_each_indexed_workspace_file_excludes_jar_files() {
+    let (u, idx) = indexed("/t.kt", "class Foo");
+    idx.jar_files.insert(
+        "jar:file:///fake.jar!/Bar.class".to_string(),
+        Arc::new(FileData::default()),
+    );
+
+    let mut workspace_only: Vec<String> = Vec::new();
+    idx.for_each_indexed_workspace_file(|found_uri, _| {
+        workspace_only.push(found_uri.to_string());
+        true
+    });
+    assert_eq!(
+        workspace_only,
+        vec![u.as_str().to_string()],
+        "jar_files must not be visited by for_each_indexed_workspace_file"
+    );
+
+    let mut both: Vec<String> = Vec::new();
+    idx.for_each_indexed_file(|found_uri, _| {
+        both.push(found_uri.to_string());
+        true
+    });
+    assert_eq!(
+        both.len(),
+        2,
+        "for_each_indexed_file (unchanged) still visits both files and jar_files"
+    );
+}
+
 #[test]
 fn data_class_single_definition() {
     let (u, idx) = indexed("/t.kt", "data class Foo(val x: Int)");

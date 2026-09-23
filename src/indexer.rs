@@ -985,6 +985,27 @@ impl Indexer {
         }
     }
 
+    /// Calls `f(uri, file_data)` for every indexed WORKSPACE file only — unlike
+    /// [`Indexer::for_each_indexed_file`], `jar_files` is deliberately excluded.
+    /// Return `false` from the callback to stop iteration early.
+    ///
+    /// Use this instead of `for_each_indexed_file` whenever the scan is
+    /// specifically looking for something only a workspace source file could
+    /// ever provide (e.g. a candidate for an `rg`-discovered file path) — a
+    /// JAR-sourced symbol can never be that, so visiting `jar_files` there is
+    /// pure wasted cost with zero possible payoff, and on a JAR-heavy project
+    /// (e.g. Android) that map can be very large.
+    pub(crate) fn for_each_indexed_workspace_file(
+        &self,
+        mut f: impl FnMut(&str, &Arc<FileData>) -> bool,
+    ) {
+        for entry in self.files.iter() {
+            if !f(entry.key(), entry.value()) {
+                return;
+            }
+        }
+    }
+
     /// Clear JAR-sourced symbol maps (called on workspace root change).
     /// Also removes JAR URIs from `library_uris` so `is_library_uri` stays consistent.
     /// Resets `jar_phase` to `Pending` if the sidecar is available, so the next

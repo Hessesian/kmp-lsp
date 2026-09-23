@@ -15,7 +15,7 @@ use std::process::Command;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
-use tower_lsp::lsp_types::{Location, Position, Range, Url};
+use tower_lsp::lsp_types::{Location, Position, Range, SymbolKind, Url};
 
 // ─── Global concurrency limiter ───────────────────────────────────────────────
 
@@ -363,6 +363,24 @@ pub(crate) struct RgSearchRequest<'a> {
     /// When non-empty, the qualified rg pass is scoped to these files instead of
     /// searching the whole workspace, preventing cross-package same-short-name FPs.
     pub(crate) index_qualified_candidate_files: Vec<String>,
+    /// Pre-computed producer candidates: for whichever owner class this
+    /// request cares about (`field_owner`/`owner_class`/`parent_class`), every
+    /// already-indexed function/property/method whose [`SymbolEntry::detail`]
+    /// declares a type matching that owner class — built once from the `Indexer`
+    /// before the `spawn_blocking` rg pass (see [`crate::features::references::rg_locations`]),
+    /// since `Indexer` access isn't available inside that blocking closure.
+    /// Consumed by [`producer_scoped_candidate_files`] to widen hop-1 file
+    /// discovery to files that call a producer of the owner class.
+    pub(crate) producer_candidates: Vec<ProducerCandidate>,
+}
+
+/// A single entry of [`RgSearchRequest::producer_candidates`]: `member_name`
+/// is declared in `file_uri` with an explicit type matching the request's
+/// owner class.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ProducerCandidate {
+    pub(crate) file_uri: String,
+    pub(crate) member_name: String,
 }
 
 enum RgTarget<'a> {
@@ -594,11 +612,17 @@ impl<'a> RgSearchRequest<'a> {
             decl_files,
             index_candidate_files: Vec::new(),
             index_qualified_candidate_files: Vec::new(),
+            producer_candidates: Vec::new(),
         }
     }
 
     pub(crate) fn with_index_candidates(mut self, candidates: Vec<String>) -> Self {
         self.index_candidate_files = candidates;
+        self
+    }
+
+    pub(crate) fn with_producer_candidates(mut self, candidates: Vec<ProducerCandidate>) -> Self {
+        self.producer_candidates = candidates;
         self
     }
 
@@ -864,6 +888,7 @@ fn append_unique_reference_hits(
     locations: &mut Vec<Location>,
     hits: Vec<(Location, String)>,
     request: &RgSearchRequest<'_>,
+    hop2_only_files: &ProducerDiscoveredFiles,
 ) {
     let mut seen: std::collections::HashSet<(String, u32, u32)> = locations
         .iter()
@@ -878,6 +903,23 @@ fn append_unique_reference_hits(
 
     for (location, content) in hits {
         if should_skip_reference(&location, &content, request) {
+            continue;
+        }
+        // A declaration-looking line in a file reached ONLY through hop 2's
+        // producer-file widening is not a genuine override implementation of
+        // `request.parent_class`'s member — hop 2 only proves the file calls
+        // a producer's member name, not that the file has any real
+        // relationship to `parent_class`. `should_skip_reference` above kept
+        // it (a same-named lowercase declaration in another file is normally
+        // a valid override reference), which is correct for a hop-1 file but
+        // a false positive here: an unrelated same-named top-level
+        // declaration that happens to also live in a file calling the
+        // producer. `verify_candidates` can't reject this on its own — a
+        // top-level declaration has no enclosing class to check against.
+        if location.uri.as_str() != request.from_uri.as_str()
+            && hop2_only_files.contains(location.uri.as_str())
+            && is_declaration_occurrence_at(&content, location.range.start.character)
+        {
             continue;
         }
         // Java-specific: filter bare-name hits that are method declarations in
@@ -1012,10 +1054,52 @@ fn parent_scoped_reference_locations(
         })
         .collect();
 
+    // Hop 2: widen the bare-name candidate set to files that call a producer
+    // of the parent class/interface, so a caller reaching it through an
+    // inferred-receiver variable (`val repoInstance = factory.provideRepo();
+    // repoInstance.openBody()`) is still found even though the file never
+    // imports `Repo`. See `ProducerExpansion` for the degrade-to-hop-1 floor.
+    //
+    // Per-file provenance IS tracked (`ProducerDiscoveredFiles`, same as
+    // `owner_scoped_reference_locations`): `append_unique_reference_hits`
+    // below keeps a same-named lowercase declaration found in another file as
+    // a valid "override implementation" reference — correct for a hop-1 file
+    // (which textually mentions `parent_class`, a real relationship), but a
+    // false positive for a file reached ONLY through hop 2, which merely
+    // calls a producer's member name and may have no real relationship to
+    // `parent_class` at all (an unrelated top-level same-named declaration
+    // elsewhere). `verify_candidates` cannot catch this on its own: a
+    // top-level declaration has no enclosing class to check against.
+    //
+    // Only runs for lowercase names (methods/properties): for an uppercase
+    // nested type, `Step 5` is a bare-name pass, and a nested type can never
+    // be referenced bare without an explicit import (see the same-package
+    // exclusion above) — so any file this hop finds could only ever burn
+    // `verify_candidates`'s IO budget, never produce a real match.
+    let mut hop2_only_files = ProducerDiscoveredFiles(std::collections::HashSet::new());
+    if !is_uppercase_nested && request.parent_class.is_some() {
+        let pre_hop2_candidate_files = candidate_files.clone();
+        if let ProducerExpansion::Found(producer_files) =
+            producer_scoped_candidate_files(request, matcher, &candidate_files)
+        {
+            // Store as `file://` URI strings, not raw filesystem paths — see
+            // `ProducerDiscoveredFiles`'s construction in
+            // `owner_scoped_reference_locations` for why.
+            hop2_only_files = ProducerDiscoveredFiles(
+                producer_files
+                    .iter()
+                    .filter(|file| !pre_hop2_candidate_files.contains(*file))
+                    .filter_map(|file| file_uri_string(file))
+                    .collect(),
+            );
+            extend_unique_files(&mut candidate_files, producer_files);
+        }
+    }
+
     // Step 5: bare-name pass in import-based candidates only.
     if !candidate_files.is_empty() {
         let bare_hits = rg_word_in_files(&patterns[2], &candidate_files);
-        append_unique_reference_hits(&mut locations, bare_hits, request);
+        append_unique_reference_hits(&mut locations, bare_hits, request, &hop2_only_files);
     }
     locations
 }
@@ -1073,6 +1157,24 @@ fn package_scoped_reference_locations(
         .collect()
 }
 
+/// Files discovered via [`producer_scoped_candidate_files`] (hop 2) that were
+/// NOT already found by hop 1's direct owner-class mention.
+///
+/// `qualifier_hints_owner` must be skipped for members reached only through
+/// this set: the call-site qualifier there is named after the intermediate
+/// producer (e.g. `val factoryInstance = module.provideFactory()`), not the
+/// owner class, so the heuristic would reject every genuine hop-2 hit. A file
+/// hop 1 already found keeps the heuristic applied — that's what keeps an
+/// `overviewMapperFactory.create()`-style decoy (a hop-1 file with an
+/// unrelated same-named call) excluded.
+struct ProducerDiscoveredFiles(std::collections::HashSet<String>);
+
+impl ProducerDiscoveredFiles {
+    fn contains(&self, file: &str) -> bool {
+        self.0.contains(file)
+    }
+}
+
 /// Find references to a lowercase method declared inside a doubly-nested class
 /// (e.g. `create` inside `Factory` inside `RegularReducer`).
 ///
@@ -1092,7 +1194,7 @@ fn owner_scoped_reference_locations(
 
     // Find files that mention the outer class (as a type, import, or constructor param).
     let owner_pattern = format!(r"\b{safe_owner}\b");
-    let candidate_files = filter_candidate_files(
+    let hop1_files = filter_candidate_files(
         rg_files_with_matches_scoped(
             &owner_pattern,
             request.source_paths,
@@ -1101,9 +1203,33 @@ fn owner_scoped_reference_locations(
         matcher,
     );
 
-    if candidate_files.is_empty() {
-        return vec![];
-    }
+    let mut candidate_files = hop1_files.clone();
+
+    // Hop 2: widen to files that call a producer of the outer class, so a
+    // caller reaching the doubly-nested member through a variable whose type
+    // is only known via transitive inference (`val factoryInstance =
+    // module.provideFactory(); factoryInstance.create()`) is still found.
+    // See `ProducerExpansion` for the degrade-to-hop-1 floor.
+    let producer_discovered_files =
+        match producer_scoped_candidate_files(request, matcher, &hop1_files) {
+            ProducerExpansion::Found(producer_files) => {
+                // Store as `file://` URI strings, not raw filesystem paths —
+                // `ProducerDiscoveredFiles::contains` is checked against
+                // `loc.uri.as_str()` (a `Url`, percent-encoded for spaces/
+                // non-ASCII), and comparing that against a raw OS path string
+                // would silently fail the lookup on exactly those paths.
+                let newly_discovered: std::collections::HashSet<String> = producer_files
+                    .iter()
+                    .filter(|file| !hop1_files.contains(*file))
+                    .filter_map(|file| file_uri_string(file))
+                    .collect();
+                extend_unique_files(&mut candidate_files, producer_files);
+                ProducerDiscoveredFiles(newly_discovered)
+            }
+            ProducerExpansion::NoProducerFound | ProducerExpansion::SkippedTooBroad => {
+                ProducerDiscoveredFiles(std::collections::HashSet::new())
+            }
+        };
 
     // Bare search for the method name in candidate files; qualifier filter is
     // intentionally skipped since callers use variable names, not class names.
@@ -1117,7 +1243,8 @@ fn owner_scoped_reference_locations(
     //   Additionally apply a naming-convention heuristic: if there is an explicit
     //   dot-qualifier before the name (e.g. `overviewMapperFactory.create`) and
     //   that qualifier does not contain the outer class name, the call is almost
-    //   certainly to a different factory.
+    //   certainly to a different factory. Skipped entirely for files reached
+    //   only via hop 2 — see [`ProducerDiscoveredFiles`].
     rg_word_in_files(&safe_name, &candidate_files)
         .into_iter()
         .filter_map(|(loc, content)| {
@@ -1136,7 +1263,9 @@ fn owner_scoped_reference_locations(
             if is_declaration_of(&content, request.name) {
                 return None;
             }
-            if !qualifier_hints_owner(&content, loc.range.start.character as usize, owner_class) {
+            if !producer_discovered_files.contains(loc.uri.as_str())
+                && !qualifier_hints_owner(&content, loc.range.start.character as usize, owner_class)
+            {
                 return None;
             }
             Some(loc)
@@ -1144,11 +1273,428 @@ fn owner_scoped_reference_locations(
         .collect()
 }
 
+/// Cap on how many distinct producer member names (functions/properties whose
+/// declared type is the field's owner class) [`producer_scoped_candidate_files`]
+/// will search for. Exceeding it means the owner class is too generic to widen
+/// discovery safely (many unrelated members happen to return it) — hop 2 is
+/// skipped entirely rather than fan out into an effectively unscoped search.
+const MAX_OWNER_PRODUCING_MEMBER_NAMES: usize = 8;
+
+/// Cap on how many additional candidate files [`producer_scoped_candidate_files`]
+/// may contribute. Exceeding it is the same signal as
+/// [`MAX_OWNER_PRODUCING_MEMBER_NAMES`] — a producer name common enough to show
+/// up in this many files is too generic to trust — so hop 2 is skipped rather
+/// than truncated to an arbitrary, rg-output-order-dependent subset.
+const MAX_PRODUCER_CANDIDATE_FILES: usize = 256;
+
+/// Outcome of the hop-2 "producer" file-discovery pass in
+/// [`field_scoped_reference_locations`].
+///
+/// Hop 1 finds files that textually mention the declaring class name. That
+/// misses a caller whose receiver type is only known through transitive
+/// inference — e.g. `val response = repository.openBody(); response.isOnline`
+/// never mentions `Body` textually. Hop 2 widens the candidate set to files
+/// that call a *producer* of the owner class: a function or property declared
+/// elsewhere whose explicit type IS the owner class.
+///
+/// Both non-[`Found`] variants degrade to hop-1-only behavior — today's exact
+/// search, never wider — which is the required floor whenever hop 2 has
+/// nothing useful to add.
+enum ProducerExpansion {
+    /// No hop-1 file declared a member whose type is the owner class.
+    NoProducerFound,
+    /// A cap was exceeded (see [`MAX_OWNER_PRODUCING_MEMBER_NAMES`] and
+    /// [`MAX_PRODUCER_CANDIDATE_FILES`]) — the owner class is too generic to
+    /// widen discovery for safely.
+    SkippedTooBroad,
+    /// Producer member names were found and searched for; these are the
+    /// additional candidate files discovered (not yet merged with hop 1).
+    Found(Vec<String>),
+}
+
+/// Is `name` a producer name too common to ever usefully narrow hop 2's
+/// caller search — a Kotlin compiler-synthesized member every `data class`
+/// or `enum class` gets, regardless of the owner?
+///
+/// `data class` synthesizes `copy(): Self` (`synthesize_data_class_copy`,
+/// `parser.rs`); `enum class` synthesizes `values(): Array<Self>`,
+/// `valueOf(String): Self`, and `entries: EnumEntries<Self>`
+/// (`synthesize_enum_members`, `parser.rs`). Each genuinely returns the
+/// owning type — but that's true for EVERY data/enum class in a workspace,
+/// so none of them carry any information about which files are actually
+/// related to one specific owner. Worse, each is common enough as a bare
+/// word that it alone can exceed `MAX_PRODUCER_CANDIDATE_FILES` (measured on
+/// a real ~18k-file Android monorepo: `copy` matches 1166 files, the
+/// `values`/`valueOf`/`entries` alternation matches 557 — both well over the
+/// 256 cap), discarding hop 2's entire merged alternation search, including
+/// every other, genuinely narrow producer name found alongside it.
+///
+/// Excluded by name alone, regardless of [`SymbolKind`] — a hand-written
+/// member sharing one of these exact names has the identical bare-word rg
+/// hazard as the synthesized one, so kind-gating the exclusion (e.g. to
+/// `SymbolKind::FUNCTION` only) would silently reopen the hole for a
+/// same-named class member (`FUNCTION` demotes to `METHOD` once nested —
+/// confirmed live in the real monorepo this was measured against: a
+/// hand-written `fun copy(...)` class member elsewhere in that corpus).
+pub(crate) fn is_unusable_producer_name(name: &str) -> bool {
+    matches!(name, "copy" | "values" | "valueOf" | "entries")
+}
+
+/// Extracts the declared/return type token from an already-CST-bounded
+/// [`crate::types::SymbolEntry::detail`] string (computed once at parse time
+/// by `extract_detail_from_node`, which already handles multi-line signatures,
+/// extension receivers, leading type params, and both Kotlin and Java shapes —
+/// this function does no CST work of its own, only a small string extraction
+/// over that already-normalized text). `kind` selects the shape to parse, using
+/// the same [`SymbolKind`] already attached to the `SymbolEntry` `detail` came
+/// from, rather than re-deriving the declaration shape by sniffing the string:
+///
+/// - [`SymbolKind::FUNCTION`] (Kotlin `fun`) — delegates to
+///   [`crate::resolver::extract_return_type_from_detail`], the same parser
+///   the `Resolver` trait's `function_return_type`/`method_return_type`
+///   already run on this exact string shape elsewhere in the codebase (this
+///   function used to hand-roll a second, independent parser for the same
+///   shape — real divergence found: the resolver's version correctly handles
+///   a `)` inside a string default value, e.g.
+///   `fun split(separator: String = ")"): Body`, by scanning backward for a
+///   `):` pattern rather than forward-matching the first `(`; the duplicate
+///   here did not, silently missing that producer).
+/// - [`SymbolKind::PROPERTY`] / [`SymbolKind::VARIABLE`] (Kotlin `val`/`var` —
+///   `var` is indexed as `VARIABLE`, not `PROPERTY`) — delegates to
+///   [`crate::resolver::extract_property_type_from_detail`] (same reasoning;
+///   it additionally handles a leading visibility modifier and an extension
+///   receiver, which the prior hand-rolled version here did not).
+/// - [`SymbolKind::METHOD`]: a Kotlin member function nested inside a
+///   class/interface/object (still `"fun name(...): Type"` shaped — nesting
+///   only demotes `FUNCTION` to `METHOD`, so this still routes through the
+///   shared resolver parser) OR a Java method, where the return type comes
+///   BEFORE the method name, e.g. `"public Body openBody(int x)"`,
+///   `"@Nullable public Map<String, Object> getMap()"` — disambiguated by
+///   whether `detail` carries the literal `fun` keyword. For the Java shape
+///   (no existing parser elsewhere in the codebase for this direction):
+///   [`java_method_return_type`], the whitespace-delimited token immediately
+///   before the method name, honoring balanced `<…>` generics so an
+///   internal-space generic like `Map<String, Object>` isn't split apart.
+/// - Anything else (class, constructor, field, …) → `None`.
+pub(crate) fn declared_type_from_detail(detail: &str, kind: SymbolKind) -> Option<String> {
+    match kind {
+        SymbolKind::FUNCTION => crate::resolver::extract_return_type_from_detail(detail),
+        SymbolKind::PROPERTY | SymbolKind::VARIABLE => {
+            // `extract_property_type_from_detail` only strips a leading
+            // visibility modifier before expecting `val `/`var ` — it does
+            // not know about `override`, `lateinit`, `const`, or a leading
+            // annotation (`@Inject lateinit var repository: Repository`, the
+            // canonical Dagger/Hilt field-injection shape this whole feature
+            // targets). Anchor on the `val `/`var ` keyword itself first —
+            // same strategy `extract_return_type_from_detail`'s `fun `
+            // anchor uses — so whatever precedes it never matters here.
+            let property_start = detail.find("val ").or_else(|| detail.find("var "))?;
+            crate::resolver::extract_property_type_from_detail(&detail[property_start..])
+        }
+        // `METHOD` covers TWO different shapes: a Kotlin member function
+        // nested inside a class/interface/object (nesting demotes its
+        // `SymbolKind` from `FUNCTION` to `METHOD` — see `parser.rs`'s
+        // `push_def_symbols` — but the detail shape stays Kotlin's
+        // `"fun name(...): Type"`), and a genuine Java method (`"Type
+        // name(...)"`, return type BEFORE the name). A Kotlin detail always
+        // carries the literal `fun` keyword token; a Java one never does —
+        // that's the only reliable disambiguator available here, since both
+        // land on the same `SymbolKind`. Theoretical misfire: a Java method
+        // or parameter literally named `fun` (not a real Java keyword) would
+        // be mistaken for the Kotlin shape — accepted as vanishingly
+        // unlikely in practice.
+        SymbolKind::METHOD => {
+            if detail.starts_with("fun ") || detail.contains(" fun ") {
+                crate::resolver::extract_return_type_from_detail(detail)
+            } else {
+                java_method_return_type(detail).map(str::to_owned)
+            }
+        }
+        _ => None,
+    }
+}
+
+/// Fallback for [`declared_type_from_detail`] specifically for the case where
+/// `SymbolEntry::detail` (`src/parser.rs`, capped at `MAX_DETAIL_CHARS` = 120
+/// chars) was truncated (ends with the `…` marker parser.rs appends) AND the
+/// truncation swallowed the declared-type tail — a realistic Dagger/Hilt-shaped
+/// `fun provideX(a: TypeA, b: TypeB, c: TypeC): Owner` producer whose
+/// parameter list alone exceeds the cap would otherwise go silently
+/// undetected, a real capability narrowing versus the old unbounded
+/// filesystem-read implementation this rework replaced.
+///
+/// Deliberately does NOT change `SymbolEntry::detail`'s own truncation
+/// behavior (that string is a shared, already-computed value other consumers
+/// — hover, document-symbol, inference elsewhere — depend on in its exact
+/// existing shape); instead re-derives the type from the symbol's own raw
+/// source lines, bounded to a small prefix of its declaration range rather
+/// than reintroducing an unbounded scan: a real return-type tail always sits
+/// within the first line or two after the parameter list closes, regardless
+/// of how long the parameter list or the function's body is.
+pub(crate) fn declared_type_from_raw_lines(
+    lines: &[String],
+    range: Range,
+    kind: SymbolKind,
+) -> Option<String> {
+    /// Generous relative to `MAX_DETAIL_CHARS` (120) — comfortably covers even
+    /// a pathologically long parameter list's head, while still bounding cost
+    /// far below joining an entire (possibly huge) function body.
+    const MAX_FALLBACK_CHARS: usize = 2000;
+    let start = range.start.line as usize;
+    let end = (range.end.line as usize + 1).min(lines.len());
+    let mut joined = String::new();
+    for line in lines.get(start..end)? {
+        if !joined.is_empty() {
+            joined.push(' ');
+        }
+        joined.push_str(line.trim());
+        if joined.chars().count() >= MAX_FALLBACK_CHARS {
+            break;
+        }
+    }
+    declared_type_from_detail(&joined, kind)
+}
+
+/// Java method detail shape: the whitespace-delimited token immediately
+/// before the method name (the return type comes BEFORE the name in Java,
+/// unlike Kotlin), honoring balanced `<…>` generics.
+///
+/// The method's own parameter list is located by scanning backward from
+/// `detail`'s own closing `)` (`extract_detail_from_node` always ends detail
+/// right after it, modulo a trailing `;`) rather than by the first `(` in
+/// `detail` — an annotation with its own argument list ahead of the
+/// declaration (`@Named("body") public Body provideBody()`) would otherwise
+/// make the first `(` the annotation's own, not the method's.
+fn java_method_return_type(detail: &str) -> Option<&str> {
+    let trimmed = detail.trim_end().trim_end_matches(';').trim_end();
+    let close_paren = trimmed.rfind(')')?;
+    let paren_open = balanced_paren_open_backward(&trimmed[..close_paren])?;
+    let head = trimmed[..paren_open].trim_end();
+    let name_start = head.rfind(char::is_whitespace)? + 1;
+    let before_name = head[..name_start].trim_end();
+    (!before_name.is_empty()).then(|| rtake_type_token(before_name))
+}
+
+/// Extracts a type token ENDING at `text`'s end, honoring balanced `<…>`
+/// generic nesting, by scanning backward for the first top-level (depth-0)
+/// whitespace — used for Java, where the return type sits immediately before
+/// the method name rather than after a `:` marker, so the boundary must be
+/// found from the right (e.g. `"public Map<String, Object>"` →
+/// `"Map<String, Object>"`, correctly not splitting at the space after the
+/// generic's comma).
+fn rtake_type_token(text: &str) -> &str {
+    let mut depth = 0i32;
+    for (byte_index, character) in text.char_indices().rev() {
+        match character {
+            '>' => depth += 1,
+            '<' => depth -= 1,
+            character if depth == 0 && character.is_whitespace() => {
+                return text[byte_index + character.len_utf8()..].trim();
+            }
+            _ => {}
+        }
+    }
+    text.trim()
+}
+
+/// Returns `true` when `type_text` is exactly `owner_class` (optionally
+/// nullable, `Body?`), a single-level generic wrapper around it
+/// (`List<Body>`, `Optional<Body>`), a dotted nested-type reference whose
+/// first segment is `owner_class` (`Reducer.Factory` when owner is
+/// `Reducer` — a member returning a type nested inside the owner), or a
+/// dotted fully-qualified reference whose last segment is `owner_class`
+/// (`a.Body` when owner is `Body`). All four are still explicit, unambiguous
+/// textual mentions of the owner class in the declared type — this widens
+/// recognition of the same signal, not the signal itself.
+pub(crate) fn type_annotation_matches_owner(type_text: &str, owner_class: &str) -> bool {
+    let trimmed = type_text.trim().trim_end_matches('?');
+    if trimmed == owner_class {
+        return true;
+    }
+    if let (Some(open), true) = (trimmed.find('<'), trimmed.ends_with('>')) {
+        let inner = trimmed[open + 1..trimmed.len() - 1].trim();
+        return inner.trim_end_matches('?') == owner_class;
+    }
+    if trimmed.contains('.') {
+        let mut segments = trimmed.split('.');
+        if segments.next() == Some(owner_class) {
+            return true;
+        }
+        if trimmed.rsplit('.').next() == Some(owner_class) {
+            return true;
+        }
+    }
+    false
+}
+
+/// Widens field-reference discovery beyond files that textually mention the
+/// request's owner class (hop 1) to files that call a producer of it — a
+/// function or property declared, in one of the hop-1 files, with an explicit
+/// type annotation matching the owner class. This is what lets
+/// `val response = repository.openBody(); response.isOnline` be found even
+/// though the calling file never mentions `Body`.
+///
+/// `request.producer_candidates` is pre-computed (before the `spawn_blocking`
+/// rg pass, since `Indexer` access isn't available inside it — see
+/// [`RgSearchRequest::producer_candidates`]) as [`ProducerCandidate`] entries
+/// already type-matched to whichever owner class this request cares
+/// about; this function's only job is to intersect that list with `hop1_files`
+/// — the actual CST-bounded detection happened once at parse time
+/// (`extract_detail_from_node`) and the type-matching happened while building
+/// `producer_candidates` ([`declared_type_from_detail`] +
+/// [`type_annotation_matches_owner`]).
+///
+/// Scoped exactly like every other rg pass here (`source_paths`/`search_root`)
+/// — never an unscoped workspace scan. Degrades to [`ProducerExpansion::NoProducerFound`]
+/// or [`ProducerExpansion::SkippedTooBroad`], never widening beyond the caps,
+/// per [`ProducerExpansion`]'s contract.
+fn producer_scoped_candidate_files(
+    request: &RgSearchRequest<'_>,
+    matcher: Option<&IgnoreMatcher>,
+    hop1_files: &[String],
+) -> ProducerExpansion {
+    let hop1_uris: std::collections::HashSet<String> = hop1_files
+        .iter()
+        .filter_map(|file| file_uri_string(file))
+        .collect();
+
+    let mut producer_member_names: Vec<String> = Vec::new();
+    for candidate in &request.producer_candidates {
+        if !hop1_uris.contains(&candidate.file_uri) {
+            continue;
+        }
+        if !producer_member_names.contains(&candidate.member_name) {
+            producer_member_names.push(candidate.member_name.clone());
+        }
+    }
+
+    if producer_member_names.is_empty() {
+        return ProducerExpansion::NoProducerFound;
+    }
+    if producer_member_names.len() > MAX_OWNER_PRODUCING_MEMBER_NAMES {
+        return ProducerExpansion::SkippedTooBroad;
+    }
+
+    // One scoped `rg` call over an alternation of every producer name, rather
+    // than one whole-scoped call per name — `MAX_OWNER_PRODUCING_MEMBER_NAMES`
+    // already bounds the alternation to at most 8 names.
+    let alternation = producer_member_names
+        .iter()
+        .map(|name| regex_escape(name))
+        .collect::<Vec<_>>()
+        .join("|");
+    let candidate_files = filter_candidate_files(
+        rg_files_with_matches_scoped(
+            &format!(r"\b(?:{alternation})\b"),
+            request.source_paths,
+            request.search_root.as_ref(),
+        ),
+        matcher,
+    );
+
+    // Compare against the cap AFTER filtering (ignore-matcher-excluded files
+    // must not count) and AFTER subtracting the overlap with `hop1_files`
+    // (a file hop 1 already found isn't new widening — counting it here could
+    // trip the cap and disable widening entirely in a workspace where the
+    // REAL new-and-usable file count is well under it). This must run on the
+    // filtered/de-duplicated count, not raw rg output, to match the cap's own
+    // "too generic to widen safely" intent.
+    let newly_discovered_count = candidate_files
+        .iter()
+        .filter(|file| !hop1_files.contains(*file))
+        .count();
+    if newly_discovered_count > MAX_PRODUCER_CANDIDATE_FILES {
+        return ProducerExpansion::SkippedTooBroad;
+    }
+
+    ProducerExpansion::Found(candidate_files)
+}
+
+/// Converts a plain filesystem path (as produced by `rg`'s file-list output)
+/// to the `file://` URI string used as the key of [`crate::indexer::Indexer::files`]
+/// — the same conversion idiom used throughout this module (e.g. [`parse_rg_line`]).
+fn file_uri_string(path: &str) -> Option<String> {
+    Url::from_file_path(path)
+        .ok()
+        .map(|uri| uri.as_str().to_owned())
+}
+
+/// Returns `true` when the `file://` URI string `uri_str` names a path under
+/// one of `source_paths` (relative entries resolved against `workspace_root`,
+/// same idiom as [`RgTarget::SourcePaths`]'s resolution in `build_command`).
+/// An empty `source_paths` means "no configured scoping" — always `true` in
+/// that case, since the caller's own fallback (e.g. the whole workspace) is
+/// already the intended scope.
+///
+/// Used to keep [`crate::features::references::rg_locations`]'s pre-`spawn_blocking`
+/// `Indexer` scan (building `RgSearchRequest::producer_candidates`) scoped
+/// the same way every `rg` pass in this module already is, rather than
+/// walking every indexed workspace file regardless of configured source roots.
+pub(crate) fn file_uri_under_source_paths(
+    uri_str: &str,
+    source_paths: &[String],
+    workspace_root: Option<&Path>,
+) -> bool {
+    if source_paths.is_empty() {
+        return true;
+    }
+    let Some(file_path) = Url::parse(uri_str)
+        .ok()
+        .and_then(|uri| uri.to_file_path().ok())
+    else {
+        return false;
+    };
+    source_paths.iter().any(|source_path| {
+        let path = Path::new(source_path);
+        let abs = if path.is_absolute() {
+            path.to_path_buf()
+        } else if let Some(root) = workspace_root {
+            root.join(path)
+        } else {
+            return false;
+        };
+        file_path.starts_with(&abs)
+    })
+}
+
+/// Resolves `source_paths` to the list [`file_uri_under_source_paths`] should
+/// actually filter against, mirroring [`RgTarget::SourcePaths`]'s own
+/// missing-path fallback in `build_command`: when every configured source
+/// path is missing (stale or misconfigured `sourceRoots`), `rg` itself falls
+/// back to searching the whole workspace root rather than returning zero
+/// results — so the indexed-file filter must fall back the same way (an
+/// empty list means "no scoping" to `file_uri_under_source_paths`), or hop 1
+/// would search the real workspace while this precompute silently finds no
+/// files at all, disabling hop 2 in exactly that scenario.
+pub(crate) fn resolve_effective_source_paths(
+    source_paths: &[String],
+    workspace_root: Option<&Path>,
+) -> Vec<String> {
+    let any_configured_path_exists = source_paths.iter().any(|source_path| {
+        let path = Path::new(source_path);
+        let abs = if path.is_absolute() {
+            path.to_path_buf()
+        } else if let Some(root) = workspace_root {
+            root.join(path)
+        } else {
+            return false;
+        };
+        abs.is_dir()
+    });
+    if any_configured_path_exists {
+        source_paths.to_vec()
+    } else {
+        Vec::new()
+    }
+}
+
 /// Find references to a class member (field, property, or method) declared inside
 /// a class or interface.
 ///
 /// Scopes file discovery to files that mention the declaring class (by name),
-/// then searches those files for the member name.
+/// widened by [`producer_scoped_candidate_files`] to files that call a producer
+/// of the declaring class, then searches the combined candidate set for the
+/// member name.
 ///
 /// Differs from [`owner_scoped_reference_locations`] (for doubly-nested methods):
 /// 1. The declaring file is **not** restricted to the declaration line — bare
@@ -1165,9 +1711,9 @@ fn field_scoped_reference_locations(
     let safe_owner = regex_escape(field_owner);
     let safe_name = regex_escape(request.name);
 
-    // Candidate files: any file that mentions the declaring class/interface name.
+    // Hop 1: candidate files that textually mention the declaring class/interface name.
     let owner_pattern = format!(r"\b{safe_owner}\b");
-    let mut candidate_files = filter_candidate_files(
+    let hop1_files = filter_candidate_files(
         rg_files_with_matches_scoped(
             &owner_pattern,
             request.source_paths,
@@ -1175,16 +1721,24 @@ fn field_scoped_reference_locations(
         ),
         matcher,
     );
+
+    let mut candidate_files = hop1_files.clone();
+
+    // Hop 2: widen to files that call a producer of the declaring class, so
+    // that a variable whose type is only known via transitive inference is
+    // still discovered. See `ProducerExpansion` for the degrade-to-hop-1 floor.
+    if let ProducerExpansion::Found(producer_files) =
+        producer_scoped_candidate_files(request, matcher, &hop1_files)
+    {
+        extend_unique_files(&mut candidate_files, producer_files);
+    }
+
     // Always include the declaring file(s) — the class body can access the member
     // without the class name appearing elsewhere in the file.
     merge_decl_files(
         &mut candidate_files,
         &scope_decl_files(request.decl_files, request.source_paths),
     );
-
-    if candidate_files.is_empty() {
-        return vec![];
-    }
 
     rg_word_in_files(&safe_name, &candidate_files)
         .into_iter()
@@ -1325,6 +1879,30 @@ fn balanced_paren_close(s: &str) -> Option<usize> {
         match b {
             b'(' => depth += 1,
             b')' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(i);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+/// Find the index of the `(` that opens the closing `)` already consumed —
+/// the backward mirror of [`balanced_paren_close`].
+///
+/// `s` is the text *before* the closing `)`. Scanning from the end means the
+/// first depth-0 `(` found is always the LAST top-level pair in `s`, so an
+/// earlier, unrelated parenthesized group (e.g. an annotation's own argument
+/// list ahead of a declaration) is correctly skipped rather than matched.
+fn balanced_paren_open_backward(s: &str) -> Option<usize> {
+    let mut depth = 1usize;
+    for (i, b) in s.bytes().enumerate().rev() {
+        match b {
+            b')' => depth += 1,
+            b'(' => {
                 depth -= 1;
                 if depth == 0 {
                     return Some(i);

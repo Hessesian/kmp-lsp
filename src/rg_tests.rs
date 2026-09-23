@@ -7,11 +7,12 @@
 //! mod tests;
 //! ```
 
-use tower_lsp::lsp_types::Url;
+use tower_lsp::lsp_types::{SymbolKind, Url};
 
 use crate::rg::{
-    is_declaration_occurrence_at, is_declaration_of, parse_rg_line, rg_find_definition,
-    rg_find_references, IgnoreMatcher, RgSearchRequest,
+    declared_type_from_detail, declared_type_from_raw_lines, file_uri_under_source_paths,
+    is_declaration_occurrence_at, is_declaration_of, is_unusable_producer_name, parse_rg_line,
+    rg_find_definition, rg_find_references, IgnoreMatcher, ProducerCandidate, RgSearchRequest,
 };
 
 // ─── parse_rg_line ────────────────────────────────────────────────────────────
@@ -1025,4 +1026,663 @@ fn java_method_declaration_recognises_semicolon_form() {
         "process",
         11
     ));
+}
+
+// ─── declared_type_from_detail ─────────────────────────────────────────────────
+//
+// `detail` inputs below are real `SymbolEntry::detail` shapes (as produced by
+// `extract_detail_from_node` at parse time) — not raw source lines. See
+// `docs/superpowers/plans/2026-09-22b-producer-detection-cst-follow-up-plan.md`.
+
+#[test]
+fn declared_type_from_detail_extracts_kotlin_function_return_type() {
+    assert_eq!(
+        declared_type_from_detail("fun openBody(): Body", SymbolKind::FUNCTION).as_deref(),
+        Some("Body")
+    );
+}
+
+#[test]
+fn declared_type_from_detail_extracts_kotlin_val_type() {
+    assert_eq!(
+        declared_type_from_detail("val cachedBody: Body", SymbolKind::PROPERTY).as_deref(),
+        Some("Body")
+    );
+}
+
+#[test]
+fn declared_type_from_detail_extracts_kotlin_var_type() {
+    // `var` is indexed as `SymbolKind::VARIABLE`, not `PROPERTY` — see
+    // `src/queries.rs`. Both must be handled the same way.
+    assert_eq!(
+        declared_type_from_detail("var count: Int", SymbolKind::VARIABLE).as_deref(),
+        Some("Int")
+    );
+}
+
+#[test]
+fn declared_type_from_detail_extracts_type_past_override_modifier() {
+    assert_eq!(
+        declared_type_from_detail(
+            "override val factory: Reducer.Factory",
+            SymbolKind::PROPERTY
+        )
+        .as_deref(),
+        Some("Reducer.Factory")
+    );
+}
+
+#[test]
+fn declared_type_from_detail_extracts_type_past_an_annotated_lateinit_var() {
+    // The canonical Dagger/Hilt field-injection shape this whole feature
+    // targets — real regression: delegating straight to
+    // `extract_property_type_from_detail` (which strips only a leading
+    // visibility modifier) silently returned `None` here, since neither
+    // `@Inject` nor `lateinit` is a visibility modifier it knows about.
+    assert_eq!(
+        declared_type_from_detail(
+            "@Inject lateinit var repository: Repository",
+            SymbolKind::VARIABLE
+        )
+        .as_deref(),
+        Some("Repository")
+    );
+}
+
+#[test]
+fn declared_type_from_detail_extracts_type_past_const_modifier() {
+    assert_eq!(
+        declared_type_from_detail("const val cachedBody: Body", SymbolKind::PROPERTY).as_deref(),
+        Some("Body")
+    );
+}
+
+#[test]
+fn declared_type_from_detail_extracts_kotlin_nested_method_return_type() {
+    // A Kotlin member function nested inside a class/interface/object is
+    // indexed as `SymbolKind::METHOD` (nesting demotes it from `FUNCTION`,
+    // see `parser.rs`'s `push_def_symbols`) — the SAME `SymbolKind` a Java
+    // method uses, but the detail shape stays Kotlin's `"fun ...): Type"`.
+    // Found via a real fixture (`field_reference_found_through_inferred_receiver_type`)
+    // that failed until `METHOD` disambiguated by the literal `fun` keyword.
+    assert_eq!(
+        declared_type_from_detail("fun openBody(): Body", SymbolKind::METHOD).as_deref(),
+        Some("Body")
+    );
+    assert_eq!(
+        declared_type_from_detail("override fun openBody(): Body", SymbolKind::METHOD).as_deref(),
+        Some("Body"),
+        "a modifier (override/public/private/…) before `fun` must not break \
+         the `fun`-keyword disambiguation against the Java shape"
+    );
+}
+
+#[test]
+fn declared_type_from_detail_extracts_java_method_return_type() {
+    // Real shape confirmed via a throwaway `parse_java` probe: no trailing
+    // `{` (detail is already body-truncated) and the return type comes
+    // BEFORE the method name, unlike Kotlin.
+    assert_eq!(
+        declared_type_from_detail("public Body getBody()", SymbolKind::METHOD).as_deref(),
+        Some("Body")
+    );
+}
+
+#[test]
+fn declared_type_from_detail_unwraps_generic_return_type() {
+    assert_eq!(
+        declared_type_from_detail("fun openBodies(): List<Body>", SymbolKind::FUNCTION).as_deref(),
+        Some("List<Body>")
+    );
+}
+
+#[test]
+fn declared_type_from_detail_unwraps_java_generic_with_internal_space() {
+    // `Map<String, Object>` contains a space (after the comma) that must NOT
+    // be treated as the boundary before the method name.
+    assert_eq!(
+        declared_type_from_detail(
+            "@Nullable public Map<String, Object> getMap()",
+            SymbolKind::METHOD
+        )
+        .as_deref(),
+        Some("Map<String, Object>")
+    );
+}
+
+#[test]
+fn declared_type_from_detail_none_for_unit_function() {
+    assert_eq!(
+        declared_type_from_detail("fun consume(body: Body)", SymbolKind::FUNCTION),
+        None,
+        "no `: Type` suffix at all (Unit-returning) must not be treated as a \
+         producer declaration"
+    );
+}
+
+#[test]
+fn declared_type_from_detail_none_for_inferred_local_val() {
+    assert_eq!(
+        declared_type_from_detail("val body = Body()", SymbolKind::PROPERTY),
+        None,
+        "a local `val` with only an initializer expression (no explicit type \
+         annotation) must not be treated as a producer declaration"
+    );
+}
+
+#[test]
+fn declared_type_from_detail_none_for_non_declaration_kind() {
+    assert_eq!(
+        declared_type_from_detail("class Foo", SymbolKind::CLASS),
+        None,
+        "a class/constructor/field detail is never a producer declaration \
+         shape, gated via SymbolKind rather than sniffing the string"
+    );
+}
+
+#[test]
+fn declared_type_from_detail_extracts_multiline_function_return_type() {
+    // The return type sits on a line AFTER the closing paren — only possible
+    // to detect once `detail` is already the CST-joined single-line text
+    // (multi-line raw source, single-line scanning, would miss this).
+    assert_eq!(
+        declared_type_from_detail("fun openBody( x: Int ): Body", SymbolKind::FUNCTION).as_deref(),
+        Some("Body")
+    );
+}
+
+#[test]
+fn declared_type_from_detail_extracts_extension_receiver_function_return_type() {
+    assert_eq!(
+        declared_type_from_detail("fun Foo.openBody(): Body", SymbolKind::FUNCTION).as_deref(),
+        Some("Body")
+    );
+}
+
+#[test]
+fn declared_type_from_detail_extracts_leading_type_param_function_return_type() {
+    assert_eq!(
+        declared_type_from_detail("fun <T> openBody(): Body", SymbolKind::FUNCTION).as_deref(),
+        Some("Body")
+    );
+}
+
+#[test]
+fn declared_type_from_detail_extracts_kotlin_return_type_past_a_parenthesized_annotation() {
+    // A leading annotation with its own argument list (`@Named("body")`) must
+    // not make the annotation's `(` the one this function anchors on — it
+    // would land on `"body"`'s closing `)` instead of the parameter list's,
+    // and never find the `: Body` suffix.
+    assert_eq!(
+        declared_type_from_detail(
+            "@Named(\"body\") fun provideBody(): Body",
+            SymbolKind::FUNCTION
+        )
+        .as_deref(),
+        Some("Body")
+    );
+}
+
+#[test]
+fn declared_type_from_detail_extracts_java_return_type_past_a_parenthesized_annotation() {
+    assert_eq!(
+        declared_type_from_detail(
+            "@Named(\"body\") public Body provideBody()",
+            SymbolKind::METHOD
+        )
+        .as_deref(),
+        Some("Body")
+    );
+}
+
+#[test]
+fn declared_type_from_detail_extracts_kotlin_return_type_past_a_paren_in_a_default_value() {
+    // A `)` inside a string default value (`separator: String = ")"`) would
+    // defeat a forward `(`-then-matching-`)` scan — this is exactly why
+    // `declared_type_from_detail` delegates to the shared resolver parser
+    // (`extract_return_type_from_detail`) instead of hand-rolling a second
+    // one: an earlier from-scratch version of this function had this bug,
+    // found only by differential-testing it against the resolver's existing
+    // parser, which never had it (it scans backward for a `):` pattern,
+    // retrying past any `)` that isn't followed by `:`).
+    assert_eq!(
+        declared_type_from_detail(
+            "fun split(separator: String = \")\"): Body",
+            SymbolKind::FUNCTION
+        )
+        .as_deref(),
+        Some("Body")
+    );
+}
+
+// ─── declared_type_from_raw_lines ──────────────────────────────────────────────
+//
+// 2026-09-22b fix round: `SymbolEntry::detail` is capped at `MAX_DETAIL_CHARS`
+// (120 chars, `src/parser.rs`). A Dagger/Hilt-shaped producer with a long
+// enough parameter list can exceed that before its `": Type"` return-type
+// suffix, so `declared_type_from_detail` alone silently loses the type this
+// whole feature depends on — this is the fallback: re-derive the type from
+// the symbol's own raw source lines instead. Uses the REAL parser (not a
+// hand-written truncated string) so the fixture genuinely exercises
+// `parser.rs`'s truncation, not an assumption about its exact shape.
+
+#[test]
+fn declared_type_from_raw_lines_recovers_truncated_producer_return_type() {
+    let src = "fun provideNetworkRepository(context: ApplicationContext, \
+               apiClient: RetrofitApiClient, cache: DiskLruCache, logger: EventLogger): \
+               NetworkRepository";
+    assert!(
+        src.chars().count() > 120,
+        "fixture must actually exceed MAX_DETAIL_CHARS to exercise truncation"
+    );
+
+    let data = crate::parser::parse_kotlin(src);
+    let symbol = data
+        .symbols
+        .iter()
+        .find(|s| s.name == "provideNetworkRepository")
+        .expect("provideNetworkRepository must be indexed");
+
+    assert!(
+        symbol.detail.ends_with('…'),
+        "sanity check: the fixture must actually get truncated by the parser; \
+         detail={:?}",
+        symbol.detail
+    );
+    assert_eq!(
+        declared_type_from_detail(&symbol.detail, symbol.kind),
+        None,
+        "sanity check (red before the fix): the truncated detail alone must \
+         NOT recover the return type — this is exactly the gap the fallback \
+         exists for; got detail={:?}",
+        symbol.detail
+    );
+
+    let recovered = declared_type_from_raw_lines(&data.lines, symbol.range, symbol.kind);
+    assert_eq!(
+        recovered.as_deref(),
+        Some("NetworkRepository"),
+        "the fallback must recover the return type from raw source lines \
+         when `detail` was truncated"
+    );
+}
+
+// ─── type_annotation_matches_owner ─────────────────────────────────────────────
+
+#[test]
+fn type_annotation_matches_owner_accepts_nested_type_shape() {
+    use crate::rg::type_annotation_matches_owner;
+    assert!(
+        type_annotation_matches_owner("Reducer.Factory", "Reducer"),
+        "a member declared to return `Owner.Nested` explicitly mentions `Owner` \
+         as its first segment and must count as a producer of `Owner`"
+    );
+}
+
+#[test]
+fn type_annotation_matches_owner_accepts_fully_qualified_shape() {
+    use crate::rg::type_annotation_matches_owner;
+    assert!(
+        type_annotation_matches_owner("a.Body", "Body"),
+        "a member declared to return a fully-qualified `pkg.Owner` explicitly \
+         mentions `Owner` as its last segment and must count as a producer of `Owner`"
+    );
+}
+
+#[test]
+fn type_annotation_matches_owner_rejects_unrelated_dotted_type() {
+    use crate::rg::type_annotation_matches_owner;
+    assert!(
+        !type_annotation_matches_owner("a.Other", "Body"),
+        "a dotted type whose segments do not include `Body` at all must not match"
+    );
+}
+
+// ─── producer-scoped hop 2 gating (uppercase nested types) ────────────────────
+
+/// Regression for the hop-2 "producer" widening in `parent_scoped_reference_locations`:
+/// it must not run for uppercase nested-type searches. An uppercase nested type can
+/// never be referenced bare without an explicit import (same reasoning as the
+/// same-package exclusion), so widening the bare-name candidate set for one can only
+/// ever surface an unrelated textual coincidence in a hop-2-discovered file, never a
+/// real reference.
+///
+/// `IntroContract` self-produces via its own `create(): IntroContract` companion
+/// factory method — mirroring the exact shape that made the analogous owner-scoped
+/// fix's test fixture accidentally self-producing. `Caller.kt` never imports or
+/// mentions `IntroContract`/`Event` as code, calls the generically-named `create()`
+/// producer of an unrelated type, and only contains the word `Event` inside a comment.
+/// Without the gate, hop 2 would still add `Caller.kt` as a bare-name candidate (the
+/// producer name `create` is searched project-wide) and its comment's bare `Event`
+/// would leak through — there's no dot-qualifier for `has_wrong_qualifier_at_col` to
+/// reject.
+#[test]
+fn parent_scoped_reference_locations_does_not_widen_via_hop_two_for_uppercase_name() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+
+    let contract = "package com.example.intro\ninterface IntroContract {\n    \
+                     sealed class Event\n    companion object {\n        \
+                     fun create(): IntroContract = TODO()\n    }\n}\n";
+    let caller = "package com.other\n\nfun use() {\n    \
+                   val instance = SomeUnrelatedFactory().create()\n    \
+                   // Event: coincidental word, no relation to IntroContract.\n}\n";
+
+    let contract_path = write_temp(root, "IntroContract.kt", contract);
+    write_temp(root, "Caller.kt", caller);
+
+    let contract_uri = Url::from_file_path(&contract_path).unwrap();
+    let decl_files = vec![contract_path.clone()];
+
+    let request = RgSearchRequest::new(
+        "Event",
+        Some("IntroContract"),
+        Some("com.example.intro"),
+        Some(root),
+        false,
+        &contract_uri,
+        &decl_files,
+    );
+
+    let locs = rg_find_references(&request, None);
+    let paths: Vec<String> = locs
+        .iter()
+        .filter_map(|l| {
+            l.uri
+                .to_file_path()
+                .ok()
+                .and_then(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()))
+        })
+        .collect();
+
+    assert!(
+        !paths.iter().any(|p| p == "Caller.kt"),
+        "a file reached only through hop 2's producer widening must not surface a \
+         coincidental bare-word match for an uppercase nested type; got: {paths:?}"
+    );
+}
+
+/// Regression for the hop-2 file-discovery call in `producer_scoped_candidate_files`:
+/// it must issue a single scoped `rg` call over an alternation of every producer
+/// name, not one call per name — and every name's callers must still be found.
+#[test]
+fn producer_scoped_candidate_files_finds_callers_of_every_producer_name() {
+    use crate::rg::{producer_scoped_candidate_files, ProducerExpansion};
+
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+
+    let hop1_src = "package a\n\nclass Hop1 {\n    fun produceOne(): Owner = TODO()\n    \
+                     fun produceTwo(): Owner = TODO()\n}\n";
+    let caller_one_src = "package b\n\nfun use(hop1: Hop1) {\n    hop1.produceOne()\n}\n";
+    let caller_two_src = "package b\n\nfun use(hop1: Hop1) {\n    hop1.produceTwo()\n}\n";
+
+    let hop1_path = write_temp(root, "Hop1.kt", hop1_src);
+    write_temp(root, "CallerOne.kt", caller_one_src);
+    write_temp(root, "CallerTwo.kt", caller_two_src);
+
+    let dummy_uri = Url::from_file_path(&hop1_path).unwrap();
+    let decl_files: Vec<String> = vec![];
+    // `producer_scoped_candidate_files` no longer reads `hop1_files` off disk —
+    // it intersects `hop1_files` against pre-computed `(file_uri, member_name)`
+    // producer candidates (see `RgSearchRequest::producer_candidates`), which
+    // in production are built from the `Indexer` before the callers-search rg
+    // pass this test exercises. Supply them directly here.
+    let hop1_uri = dummy_uri.to_string();
+    let request = RgSearchRequest::new(
+        "produceOne",
+        None,
+        None,
+        Some(root),
+        false,
+        &dummy_uri,
+        &decl_files,
+    )
+    .with_producer_candidates(vec![
+        ProducerCandidate {
+            file_uri: hop1_uri.clone(),
+            member_name: "produceOne".to_string(),
+        },
+        ProducerCandidate {
+            file_uri: hop1_uri,
+            member_name: "produceTwo".to_string(),
+        },
+    ]);
+
+    let hop1_files = vec![hop1_path];
+    let result = producer_scoped_candidate_files(&request, None, &hop1_files);
+
+    let ProducerExpansion::Found(files) = result else {
+        panic!(
+            "expected ProducerExpansion::Found with two producer names, got a different variant"
+        );
+    };
+    let names: Vec<String> = files
+        .iter()
+        .filter_map(|f| {
+            std::path::Path::new(f)
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+        })
+        .collect();
+    assert!(
+        names.contains(&"CallerOne.kt".to_string()),
+        "caller of the first producer name must be found; got: {names:?}"
+    );
+    assert!(
+        names.contains(&"CallerTwo.kt".to_string()),
+        "caller of the second producer name must be found; got: {names:?}"
+    );
+}
+
+/// 2026-09-22b fix round (finding 4, from PR #324's own review):
+/// `MAX_PRODUCER_CANDIDATE_FILES` must be compared against the count of
+/// NEWLY discovered files (filtered, minus hop-1 overlap), not the raw `rg`
+/// match count — a file hop 1 already found isn't new widening, so counting
+/// it toward the cap could disable widening entirely even when the real
+/// new-and-usable file count is comfortably under the cap.
+///
+/// 260 files match the producer name (`Hop1.kt`, which declares it, plus 259
+/// callers) — over the 256 cap on raw count alone. 10 of those (`Hop1.kt` +
+/// 9 callers) are already counted as hop 1. The correctly-computed newly
+/// discovered count is 260 - 10 = 250, under the cap — so this must return
+/// `Found`, not `SkippedTooBroad`.
+#[test]
+fn producer_scoped_candidate_files_caps_only_the_newly_discovered_count() {
+    use crate::rg::{producer_scoped_candidate_files, ProducerExpansion};
+
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+
+    let hop1_src = "package a\n\nclass Hop1 {\n    fun produce(): Owner = TODO()\n}\n";
+    let hop1_path = write_temp(root, "Hop1.kt", hop1_src);
+
+    const TOTAL_CALLERS: usize = 259;
+    const HOP1_OVERLAP_CALLERS: usize = 9;
+    let mut hop1_files: Vec<String> = vec![hop1_path.clone()];
+    for i in 0..TOTAL_CALLERS {
+        let src = format!("package b\n\nfun use{i}(hop1: Hop1) {{\n    hop1.produce()\n}}\n");
+        let path = write_temp(root, &format!("Caller{i}.kt"), &src);
+        if i < HOP1_OVERLAP_CALLERS {
+            hop1_files.push(path);
+        }
+    }
+    // 260 total files match `\bproduce\b` (Hop1.kt + 259 callers) — over 256 —
+    // but only 250 are newly discovered (minus the 10-file hop-1 overlap
+    // built above) — under 256.
+    assert_eq!(
+        hop1_files.len(),
+        HOP1_OVERLAP_CALLERS + 1,
+        "sanity check on the fixture's own hop-1 overlap count"
+    );
+
+    let dummy_uri = Url::from_file_path(&hop1_path).unwrap();
+    let decl_files: Vec<String> = vec![];
+    let hop1_uri = dummy_uri.to_string();
+    let request = RgSearchRequest::new(
+        "produce",
+        None,
+        None,
+        Some(root),
+        false,
+        &dummy_uri,
+        &decl_files,
+    )
+    .with_producer_candidates(vec![ProducerCandidate {
+        file_uri: hop1_uri,
+        member_name: "produce".to_string(),
+    }]);
+
+    let result = producer_scoped_candidate_files(&request, None, &hop1_files);
+
+    assert!(
+        matches!(result, ProducerExpansion::Found(_)),
+        "expected Found (newly-discovered count is under the cap), got a \
+         different variant — the cap must be checked AFTER filtering and \
+         subtracting hop-1 overlap, not on the raw rg match count: {:?}",
+        match result {
+            ProducerExpansion::NoProducerFound => "NoProducerFound",
+            ProducerExpansion::SkippedTooBroad => "SkippedTooBroad",
+            ProducerExpansion::Found(_) => "Found",
+        }
+    );
+}
+
+// ─── file_uri_under_source_paths ───────────────────────────────────────────────
+//
+// 2026-09-22b fix round: keeps `rg_locations`'s pre-`spawn_blocking` producer
+// scan (see `references.rs`) scoped to configured source roots, the same way
+// every other rg pass in this module already is.
+
+#[test]
+fn file_uri_under_source_paths_empty_scope_keeps_everything() {
+    let dir = tempfile::tempdir().unwrap();
+    let uri = Url::from_file_path(dir.path().join("module").join("Foo.kt"))
+        .unwrap()
+        .to_string();
+    assert!(
+        file_uri_under_source_paths(&uri, &[], None),
+        "no configured source paths means no additional scoping"
+    );
+}
+
+#[test]
+fn file_uri_under_source_paths_accepts_file_under_an_absolute_source_root() {
+    let dir = tempfile::tempdir().unwrap();
+    let source_root = dir.path().join("app").join("src");
+    let uri = Url::from_file_path(source_root.join("Foo.kt"))
+        .unwrap()
+        .to_string();
+    let source_paths = vec![source_root.to_str().unwrap().to_string()];
+    assert!(file_uri_under_source_paths(&uri, &source_paths, None));
+}
+
+#[test]
+fn file_uri_under_source_paths_rejects_file_outside_every_source_root() {
+    let dir = tempfile::tempdir().unwrap();
+    let uri = Url::from_file_path(dir.path().join("other-module").join("Foo.kt"))
+        .unwrap()
+        .to_string();
+    let source_paths = vec![dir
+        .path()
+        .join("app")
+        .join("src")
+        .to_str()
+        .unwrap()
+        .to_string()];
+    assert!(
+        !file_uri_under_source_paths(&uri, &source_paths, None),
+        "a file outside every configured source root must not pass"
+    );
+}
+
+#[test]
+fn file_uri_under_source_paths_resolves_relative_entries_against_workspace_root() {
+    let dir = tempfile::tempdir().unwrap();
+    let uri = Url::from_file_path(dir.path().join("app").join("src").join("Foo.kt"))
+        .unwrap()
+        .to_string();
+    let source_paths = vec!["app/src".to_string()];
+    assert!(
+        file_uri_under_source_paths(&uri, &source_paths, Some(dir.path())),
+        "a relative source path must resolve against workspace_root, matching \
+         RgTarget::SourcePaths's own resolution idiom"
+    );
+}
+
+// ─── is_unusable_producer_name ─────────────────────────────────────────────────
+//
+// Real-world regression: a data class's synthesized `copy(): Self` was being
+// treated as a producer-discovery candidate. `copy` as a bare-word `rg`
+// pattern matches over a thousand files in a real ~18k-file Android
+// monorepo, which alone exceeded `MAX_PRODUCER_CANDIDATE_FILES` and
+// discarded hop 2's ENTIRE merged alternation search — silently reverting
+// the whole feature (see `field_reference_found_through_inferred_receiver_type`'s
+// sibling integration test below for the end-to-end proof) for exactly the
+// data-class-field shape the reported bug was about.
+//
+// Widened (same day, same real corpus) after review found the identical
+// mechanism unaddressed for enum-synthesized `values`/`valueOf`/`entries`
+// (measured: 557 files, 2.2x the cap, silently discarding hop 2 for every
+// field on any of the corpus's enum classes) and for a hand-written `copy`
+// class *method* (`SymbolKind::METHOD`, not `FUNCTION` — nesting demotes the
+// kind, so the original kind-gated exclusion missed it; a real instance of
+// exactly this shape exists in the same corpus this was measured against).
+// The exclusion is now name-only, regardless of kind, on the same reasoning
+// that already justified excluding `copy`: a name this common as a bare-word
+// rg pattern is an unusable discovery signal no matter who wrote it.
+
+#[test]
+fn is_unusable_producer_name_detects_the_synthesized_data_class_copy() {
+    assert!(is_unusable_producer_name("copy"));
+}
+
+#[test]
+fn is_unusable_producer_name_detects_the_synthesized_enum_members() {
+    assert!(is_unusable_producer_name("values"));
+    assert!(is_unusable_producer_name("valueOf"));
+    assert!(is_unusable_producer_name("entries"));
+}
+
+#[test]
+fn is_unusable_producer_name_does_not_match_a_differently_named_producer() {
+    assert!(!is_unusable_producer_name("openBody"));
+}
+
+// ─── resolve_effective_source_paths ────────────────────────────────────────────
+//
+// Real-world regression (GitHub Copilot review, PR #324): `build_command`
+// falls back to the whole workspace root when every configured `sourceRoots`
+// entry is missing/stale, so `rg` itself never returns zero results in that
+// scenario — but `file_uri_under_source_paths` had no equivalent fallback,
+// silently disabling the producer precompute (and therefore hop 2) whenever
+// `sourceRoots` pointed at directories that don't actually exist.
+
+#[test]
+fn resolve_effective_source_paths_falls_back_to_empty_when_every_path_is_missing() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    let source_paths = vec!["app/src".to_string(), "lib/src".to_string()];
+    let effective = crate::rg::resolve_effective_source_paths(&source_paths, Some(root));
+    assert!(
+        effective.is_empty(),
+        "every configured source path is missing on disk, so the effective \
+         list must be empty — matching build_command's own \
+         all-paths-missing -> whole-workspace-root fallback"
+    );
+}
+
+#[test]
+fn resolve_effective_source_paths_keeps_paths_when_at_least_one_exists() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    std::fs::create_dir_all(root.join("app/src")).unwrap();
+    let source_paths = vec!["app/src".to_string(), "lib/src".to_string()];
+    let effective = crate::rg::resolve_effective_source_paths(&source_paths, Some(root));
+    assert_eq!(
+        effective, source_paths,
+        "at least one configured source path exists, so the original list is \
+         kept unchanged (including the missing one — matching rg's own \
+         per-path `is_dir()` skip, not an all-or-nothing decision at this level)"
+    );
 }

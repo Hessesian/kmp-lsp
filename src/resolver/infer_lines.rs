@@ -497,7 +497,7 @@ pub(crate) fn extract_property_type_from_detail(detail: &str) -> Option<String> 
 ///
 /// `"fun getDetail(req: Req): Response<Data>"` → `"Response<Data>"`
 /// `"fun doSomething()"` → `None`
-pub(super) fn extract_return_type_from_detail(detail: &str) -> Option<String> {
+pub(crate) fn extract_return_type_from_detail(detail: &str) -> Option<String> {
     // If the detail was truncated (ends with `…`), parsing it would yield an
     // incomplete return type string that poisons downstream type substitution.
     // Return None so callers can fall back to the full source-line signature.
