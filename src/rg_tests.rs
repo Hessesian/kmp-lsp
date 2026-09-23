@@ -11,7 +11,7 @@ use tower_lsp::lsp_types::{SymbolKind, Url};
 
 use crate::rg::{
     declared_type_from_detail, declared_type_from_raw_lines, file_uri_under_source_paths,
-    is_data_class_synthetic_copy, is_declaration_occurrence_at, is_declaration_of, parse_rg_line,
+    is_declaration_occurrence_at, is_declaration_of, is_unusable_producer_name, parse_rg_line,
     rg_find_definition, rg_find_references, IgnoreMatcher, ProducerCandidate, RgSearchRequest,
 };
 
@@ -1517,7 +1517,7 @@ fn file_uri_under_source_paths_resolves_relative_entries_against_workspace_root(
     );
 }
 
-// ─── is_data_class_synthetic_copy ─────────────────────────────────────────────
+// ─── is_unusable_producer_name ─────────────────────────────────────────────────
 //
 // Real-world regression: a data class's synthesized `copy(): Self` was being
 // treated as a producer-discovery candidate. `copy` as a bare-word `rg`
@@ -1527,24 +1527,31 @@ fn file_uri_under_source_paths_resolves_relative_entries_against_workspace_root(
 // the whole feature (see `field_reference_found_through_inferred_receiver_type`'s
 // sibling integration test below for the end-to-end proof) for exactly the
 // data-class-field shape the reported bug was about.
+//
+// Widened (same day, same real corpus) after review found the identical
+// mechanism unaddressed for enum-synthesized `values`/`valueOf`/`entries`
+// (measured: 557 files, 2.2x the cap, silently discarding hop 2 for every
+// field on any of the corpus's enum classes) and for a hand-written `copy`
+// class *method* (`SymbolKind::METHOD`, not `FUNCTION` — nesting demotes the
+// kind, so the original kind-gated exclusion missed it; a real instance of
+// exactly this shape exists in the same corpus this was measured against).
+// The exclusion is now name-only, regardless of kind, on the same reasoning
+// that already justified excluding `copy`: a name this common as a bare-word
+// rg pattern is an unusable discovery signal no matter who wrote it.
 
 #[test]
-fn is_data_class_synthetic_copy_detects_the_synthesized_function() {
-    assert!(is_data_class_synthetic_copy("copy", SymbolKind::FUNCTION));
+fn is_unusable_producer_name_detects_the_synthesized_data_class_copy() {
+    assert!(is_unusable_producer_name("copy"));
 }
 
 #[test]
-fn is_data_class_synthetic_copy_does_not_match_a_differently_named_producer() {
-    assert!(!is_data_class_synthetic_copy(
-        "openBody",
-        SymbolKind::FUNCTION
-    ));
+fn is_unusable_producer_name_detects_the_synthesized_enum_members() {
+    assert!(is_unusable_producer_name("values"));
+    assert!(is_unusable_producer_name("valueOf"));
+    assert!(is_unusable_producer_name("entries"));
 }
 
 #[test]
-fn is_data_class_synthetic_copy_does_not_match_copy_of_a_different_kind() {
-    // A property or variable literally named `copy` (e.g. `val copy: Body`) is
-    // not the synthesized function — only `SymbolKind::FUNCTION` is excluded.
-    assert!(!is_data_class_synthetic_copy("copy", SymbolKind::PROPERTY));
-    assert!(!is_data_class_synthetic_copy("copy", SymbolKind::VARIABLE));
+fn is_unusable_producer_name_does_not_match_a_differently_named_producer() {
+    assert!(!is_unusable_producer_name("openBody"));
 }

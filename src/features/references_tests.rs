@@ -2667,3 +2667,70 @@ async fn hop2_only_file_own_unrelated_declaration_is_not_a_reference() {
     assert_refs_contain(&locs, &["Caller.kt"]);
     assert_refs_exclude(&locs, &["DecoyHop2Only.kt"]);
 }
+
+/// **Real-world regression, sibling of the `data class copy()` case above**
+/// (found in review of that fix, same day, same real corpus): an `enum
+/// class`'s compiler-synthesized `values()`/`valueOf()`/`entries` must also
+/// never be treated as producer-discovery signals — measured on the real
+/// ~18k-file Android monorepo this was built against, the three-name
+/// alternation alone matches 557 files (2.2x `MAX_PRODUCER_CANDIDATE_FILES`),
+/// silently discarding hop 2 for every field on any of that corpus's enum
+/// classes.
+///
+/// Fixture: `enum class Body(val isOnline: Boolean) { A(true), B(false) }`
+/// (an enum constructor property, matching `field_owner_for_decl`'s
+/// `SymbolKind::ENUM`-container path), a real producer (`Repo.openBody():
+/// Body`), a caller reaching `isOnline` only through inference, and 260
+/// decoy files that call `.values()` on an unrelated enum — enough alone to
+/// exceed `MAX_PRODUCER_CANDIDATE_FILES` if `values` were not excluded.
+#[tokio::test]
+async fn enum_synthetic_members_do_not_poison_producer_discovery() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    std::fs::write(root.join("workspace.json"), r#"{"sourcePaths":[]}"#).unwrap();
+
+    let body_src =
+        "package a\n\nenum class Body(val isOnline: Boolean) {\n    A(true),\n    B(false),\n}\n";
+    let repo_src = "package a\n\ninterface Repo {\n    fun openBody(): Body\n}\n";
+    let caller_src = "package b\n\nimport a.Repo\n\nfun use(repository: Repo) {\n    \
+                       val response = repository.openBody()\n    response.isOnline\n}\n";
+
+    let (_, body_uri) = write(root, "Body.kt", body_src);
+    let (_, repo_uri) = write(root, "Repo.kt", repo_src);
+    let (_, caller_uri) = write(root, "Caller.kt", caller_src);
+
+    let indexer = Arc::new(Indexer::new());
+    indexer.workspace_root.set(root.to_path_buf());
+    for (uri, src) in [
+        (&body_uri, body_src),
+        (&repo_uri, repo_src),
+        (&caller_uri, caller_src),
+    ] {
+        indexer.index_content(uri, src);
+        indexer.store_live_tree(uri, src);
+    }
+
+    // 260 decoy files calling `.values()` on an unrelated enum — enough alone
+    // to exceed `MAX_PRODUCER_CANDIDATE_FILES` (256) if `values` were treated
+    // as a producer of `Body`, discarding the whole hop-2 alternation search.
+    let decoy_src = "package c\n\nenum class Other { X, Y }\n\n\
+                      fun use() {\n    Other.values()\n}\n";
+    for i in 0..260 {
+        let filename = format!("Decoy{i}.kt");
+        let (_, decoy_uri) = write(root, &filename, decoy_src);
+        indexer.index_content(&decoy_uri, decoy_src);
+        indexer.store_live_tree(&decoy_uri, decoy_src);
+    }
+
+    let locs = find_references_with_qualifier(
+        "isOnline",
+        None,
+        &body_uri,
+        Position::new(2, 20),
+        false,
+        &indexer,
+    )
+    .await;
+
+    assert_refs_contain(&locs, &["Caller.kt"]);
+}

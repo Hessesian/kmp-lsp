@@ -688,7 +688,7 @@ async fn rg_locations(
                 let Some(declared_type) = declared_type else {
                     continue;
                 };
-                if !crate::rg::is_data_class_synthetic_copy(&symbol.name, symbol.kind)
+                if !crate::rg::is_unusable_producer_name(&symbol.name)
                     && crate::rg::type_annotation_matches_owner(&declared_type, owner)
                 {
                     candidates.push(crate::rg::ProducerCandidate {

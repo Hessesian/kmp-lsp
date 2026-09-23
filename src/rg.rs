@@ -1304,21 +1304,32 @@ enum ProducerExpansion {
     Found(Vec<String>),
 }
 
-/// Is `name`/`kind` the compiler-synthesized `copy()` every Kotlin `data class`
-/// gets (`synthesize_data_class_copy`, `parser.rs`)?
+/// Is `name` a producer name too common to ever usefully narrow hop 2's
+/// caller search — a Kotlin compiler-synthesized member every `data class`
+/// or `enum class` gets, regardless of the owner?
 ///
-/// `copy()` always returns the owning class — but that's true for EVERY data
-/// class in a workspace, so as a producer-discovery signal it carries zero
-/// information about which files are actually related to one specific owner.
-/// Worse, `copy` as a bare-word `rg` pattern matches a very large fraction of
-/// files in a real Kotlin codebase (over a thousand in an ~18k-file real-world
-/// Android monorepo, empirically) — enough on its own to exceed
-/// `MAX_PRODUCER_CANDIDATE_FILES` and discard hop 2's entire merged
-/// alternation search, including every other, genuinely narrow producer name
-/// found alongside it. Excluded here so one universal synthetic member can
-/// never poison every other producer's recall.
-pub(crate) fn is_data_class_synthetic_copy(name: &str, kind: SymbolKind) -> bool {
-    name == "copy" && kind == SymbolKind::FUNCTION
+/// `data class` synthesizes `copy(): Self` (`synthesize_data_class_copy`,
+/// `parser.rs`); `enum class` synthesizes `values(): Array<Self>`,
+/// `valueOf(String): Self`, and `entries: EnumEntries<Self>`
+/// (`synthesize_enum_members`, `parser.rs`). Each genuinely returns the
+/// owning type — but that's true for EVERY data/enum class in a workspace,
+/// so none of them carry any information about which files are actually
+/// related to one specific owner. Worse, each is common enough as a bare
+/// word that it alone can exceed `MAX_PRODUCER_CANDIDATE_FILES` (measured on
+/// a real ~18k-file Android monorepo: `copy` matches 1166 files, the
+/// `values`/`valueOf`/`entries` alternation matches 557 — both well over the
+/// 256 cap), discarding hop 2's entire merged alternation search, including
+/// every other, genuinely narrow producer name found alongside it.
+///
+/// Excluded by name alone, regardless of [`SymbolKind`] — a hand-written
+/// member sharing one of these exact names has the identical bare-word rg
+/// hazard as the synthesized one, so kind-gating the exclusion (e.g. to
+/// `SymbolKind::FUNCTION` only) would silently reopen the hole for a
+/// same-named class member (`FUNCTION` demotes to `METHOD` once nested —
+/// confirmed live in the real monorepo this was measured against: a
+/// hand-written `fun copy(...)` class member elsewhere in that corpus).
+pub(crate) fn is_unusable_producer_name(name: &str) -> bool {
+    matches!(name, "copy" | "values" | "valueOf" | "entries")
 }
 
 /// Extracts the declared/return type token from an already-CST-bounded
