@@ -149,6 +149,37 @@ fn settings_gradle_multimodule() {
 }
 
 #[test]
+fn settings_gradle_relocated_module_dir_is_discovered() {
+    // Real regression (issue #326): modules grouped under a parent directory
+    // via `project(":name").projectDir = file(...)`, matching the reporter's
+    // exact settings.gradle.kts shape.
+    let dir = TempDir::new().unwrap();
+    fs::write(
+        dir.path().join("settings.gradle.kts"),
+        "include(\"kmp-module-one\")\n\
+         include(\"kmp-module-two\")\n\
+         \n\
+         project(\":kmp-module-one\").projectDir = file(\"modules/kmp-module-one\")\n\
+         project(\":kmp-module-two\").projectDir = file(\"modules/kmp-module-two\")\n",
+    )
+    .unwrap();
+    let module_one_src = dir.path().join("modules/kmp-module-one/src/main/kotlin");
+    let module_two_src = dir.path().join("modules/kmp-module-two/src/main/kotlin");
+    fs::create_dir_all(&module_one_src).unwrap();
+    fs::create_dir_all(&module_two_src).unwrap();
+
+    let paths = detect_build_layout_source_paths(dir.path());
+    assert!(
+        paths.contains(&module_one_src),
+        "relocated module-one source root must be discovered; got {paths:?}"
+    );
+    assert!(
+        paths.contains(&module_two_src),
+        "relocated module-two source root must be discovered; got {paths:?}"
+    );
+}
+
+#[test]
 fn kmp_source_sets_discovered_structurally() {
     // probe_source_set_roots() must discover non-standard KMP source sets by
     // checking which src/<set>/{kotlin,java} directories actually exist on disk,
@@ -224,6 +255,61 @@ fn ignores_include_build_lines() {
     let content = "includeBuild(\"../other-project\")\ninclude(\":app\")";
     let result = parse_include_calls(content);
     assert_eq!(result, vec!["app"]);
+}
+
+// ─── parse_project_dir_overrides unit tests ────────────────────────────────────
+//
+// Real regression (issue #326): a project that groups its modules under a
+// parent directory (`modules/kmp-module-one` for `include(":kmp-module-one")`)
+// via `project(":name").projectDir = file(...)` had every module's directory
+// silently derived as just the include name, so `settings_subprojects` pointed
+// at a directory that doesn't exist and every source root under it was lost.
+
+#[test]
+fn parses_kotlin_dsl_project_dir_override() {
+    let content = r#"project(":kmp-module-one").projectDir = file("modules/kmp-module-one")"#;
+    let overrides = parse_project_dir_overrides(content);
+    let sep = std::path::MAIN_SEPARATOR_STR;
+    assert_eq!(
+        overrides.get("kmp-module-one"),
+        Some(&format!("modules{sep}kmp-module-one"))
+    );
+}
+
+#[test]
+fn parses_groovy_project_dir_override_with_new_file() {
+    let content = "project(':app').projectDir = new File('modules/app')";
+    let overrides = parse_project_dir_overrides(content);
+    let sep = std::path::MAIN_SEPARATOR_STR;
+    assert_eq!(overrides.get("app"), Some(&format!("modules{sep}app")));
+}
+
+#[test]
+fn parses_bare_string_project_dir_override() {
+    let content = r#"project(":app").projectDir = "modules/app""#;
+    let overrides = parse_project_dir_overrides(content);
+    let sep = std::path::MAIN_SEPARATOR_STR;
+    assert_eq!(overrides.get("app"), Some(&format!("modules{sep}app")));
+}
+
+#[test]
+fn ignores_project_lines_without_project_dir() {
+    // A bare `project(":app")` reference with no `.projectDir` assignment
+    // (e.g. dependency configuration) must not be mistaken for a relocation.
+    let content = r#"implementation(project(":app"))"#;
+    let overrides = parse_project_dir_overrides(content);
+    assert!(overrides.is_empty());
+}
+
+#[test]
+fn no_override_for_a_module_that_is_not_relocated() {
+    let content = "include(\":app\")\ninclude(\":core\")\n\
+                   project(\":app\").projectDir = file(\"modules/app\")";
+    let overrides = parse_project_dir_overrides(content);
+    assert!(
+        !overrides.contains_key("core"),
+        "core was never relocated, must not appear in the override map"
+    );
 }
 
 // ─── Android SDK detection tests ─────────────────────────────────────────────
