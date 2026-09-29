@@ -293,22 +293,50 @@ fn parses_bare_string_project_dir_override() {
 }
 
 #[test]
-fn ignores_project_lines_without_project_dir() {
+fn ignores_a_project_reference_with_no_project_dir_prefix() {
     // A bare `project(":app")` reference with no `.projectDir` assignment
     // (e.g. dependency configuration) must not be mistaken for a relocation.
+    // This line doesn't even start with `project(` once trimmed (it starts
+    // with `implementation(`) — see the sibling test below for the case
+    // where the line DOES start with `project(` but still isn't a relocation.
     let content = r#"implementation(project(":app"))"#;
     let overrides = parse_project_dir_overrides(content);
     assert!(overrides.is_empty());
 }
 
 #[test]
-fn no_override_for_a_module_that_is_not_relocated() {
-    let content = "include(\":app\")\ninclude(\":core\")\n\
-                   project(\":app\").projectDir = file(\"modules/app\")";
+fn ignores_a_project_line_that_configures_something_other_than_project_dir() {
+    // Starts with `project(` (unlike the sibling test above) but configures
+    // an unrelated property — must not be mistaken for a relocation either.
+    let content = r#"project(":app").version = "1.0""#;
     let overrides = parse_project_dir_overrides(content);
+    assert!(overrides.is_empty());
+}
+
+#[test]
+fn settings_subprojects_passes_through_a_non_relocated_module_unchanged() {
+    // End-to-end through settings_subprojects (not just the override parser
+    // in isolation): a mixed project with one relocated and one ordinary
+    // module must resolve the ordinary one to its plain include-derived
+    // directory, exercising the real `unwrap_or(dir)` fallback path.
+    let dir = TempDir::new().unwrap();
+    fs::write(
+        dir.path().join("settings.gradle.kts"),
+        "include(\":app\")\ninclude(\":core\")\n\
+         project(\":app\").projectDir = file(\"modules/app\")\n",
+    )
+    .unwrap();
+
+    let subprojects = settings_subprojects(dir.path());
     assert!(
-        !overrides.contains_key("core"),
-        "core was never relocated, must not appear in the override map"
+        subprojects.contains(&"core".to_string()),
+        "core was never relocated, must resolve to its plain include-derived \
+         directory; got {subprojects:?}"
+    );
+    let sep = std::path::MAIN_SEPARATOR_STR;
+    assert!(
+        subprojects.contains(&format!("modules{sep}app")),
+        "app must resolve to its relocated directory; got {subprojects:?}"
     );
 }
 
