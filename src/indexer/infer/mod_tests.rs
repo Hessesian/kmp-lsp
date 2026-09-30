@@ -308,6 +308,35 @@ fn resolve_call_expr_type_substitutes_extension_receiver_as_the_whole_type_param
     );
 }
 
+/// The shape `resolve_call_expr_type_substitutes_extension_receiver_as_the_whole_type_param`
+/// above misses: a real extension function is NOT a method of its receiver's
+/// type, so `receiver_based_method` never matches and the return type comes
+/// from the signature lookup (`SignatureDerived`), which used to skip
+/// receiver substitution entirely -- `.required(...)` stayed the literal
+/// `"T"` on a real index. Real Moneta case: `textModel.required("textModel").title`
+/// with `textModel: IScenes.IPermanentAddress?`.
+#[test]
+fn resolve_call_expr_type_substitutes_extension_receiver_for_a_signature_derived_return() {
+    use super::chain::resolve_call_expr_type;
+
+    let uri = test_url("/Required.kt");
+    let deps = super::deps::TestDeps::new()
+        .with_var(uri.as_str(), "textModel", "IScenes.IPermanentAddress?")
+        .with_return("required", "T")
+        .with_callable_info("required", &["T"], "T?");
+    let doc = live_doc_for("fun f() { textModel.required(\"textModel\") }\n");
+    let call = find_first_node_of_kind(doc.tree.root_node(), crate::queries::KIND_CALL_EXPR)
+        .expect("call expr node");
+
+    let result = resolve_call_expr_type(call, &doc.bytes, &deps, &uri);
+    assert_eq!(
+        result.as_deref(),
+        Some("IScenes.IPermanentAddress"),
+        "required()'s T must bind to the receiver's non-null type even when the \
+         return type came from the signature lookup -- got {result:?}"
+    );
+}
+
 /// Real Moneta gap (`fragmentArguments`/`fragmentBundle`): a nested-class
 /// constructor call like `CaliforniaActivity.Builder(...)` must report the
 /// full qualified type name, not just the bare leaf "Builder" --

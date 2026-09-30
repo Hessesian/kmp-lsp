@@ -339,6 +339,18 @@ impl SymbolEntry {
             .map_or("", |cold_fields| &cold_fields.extension_receiver_type)
     }
 
+    /// The receiver type as declared, for generic substitution: the full type
+    /// when it has generics (`"List<T>"`), else the base name (`"T"` for
+    /// `fun <T> T?.required()`). Empty for non-extension symbols.
+    pub(crate) fn declared_extension_receiver(&self) -> &str {
+        let full_type = self.extension_receiver_type();
+        if full_type.is_empty() {
+            self.extension_receiver()
+        } else {
+            full_type
+        }
+    }
+
     /// KDoc / Javadoc text for this symbol. Empty for source-indexed symbols
     /// (doc is extracted live from `FileData.lines`); populated for JAR-indexed
     /// symbols where we have no real source lines.

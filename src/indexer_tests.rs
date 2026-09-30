@@ -3532,3 +3532,32 @@ fn jar_callable_info_prefers_an_importable_declaration_over_build_tooling() {
          one that happens to be indexed first"
     );
 }
+
+/// Real Moneta gap (`textModel.required("textModel").title`): the parser stores
+/// `extension_receiver_type` only when the receiver has generics, so the plain
+/// `T?` receiver of `fun <T : Any> T?.required(...)` was empty and generic-return
+/// substitution (`build_ext_fn_type_subst`) had nothing to bind `T` against —
+/// `.required(...)` inferred the literal `"T"` and every member after it missed.
+#[test]
+fn callable_info_reports_a_non_generic_type_param_receiver() {
+    let idx = Indexer::new();
+    let uri = Url::parse("file:///t/NullableScope.kt").unwrap();
+    idx.index_content(
+        &uri,
+        "package p\n\
+         class NullableScope {\n\
+             fun <T : Any> T?.required(field: String): T = this ?: error(field)\n\
+         }\n",
+    );
+
+    let info = idx
+        .find_fun_callable_info("required", &uri)
+        .expect("`required` declares a type parameter");
+
+    assert_eq!(info.type_params, vec!["T".to_string()]);
+    assert_eq!(
+        info.extension_receiver_type, "T",
+        "the receiver `T?` has no generics, but substitution still needs to know \
+         the extension's own type parameter IS the whole receiver"
+    );
+}

@@ -531,7 +531,7 @@ impl InferDeps for Indexer {
                 .find(|s| s.name == fn_name && !s.type_params().is_empty())?;
             Some(CallableInfo {
                 type_params: sym.type_params().to_vec(),
-                extension_receiver_type: sym.extension_receiver_type().to_owned(),
+                extension_receiver_type: sym.declared_extension_receiver().to_owned(),
             })
         });
         if from_workspace.is_some() {
@@ -573,7 +573,7 @@ impl InferDeps for Indexer {
                 {
                     return Some(CallableInfo {
                         type_params: sym.type_params().to_vec(),
-                        extension_receiver_type: sym.extension_receiver_type().to_owned(),
+                        extension_receiver_type: sym.declared_extension_receiver().to_owned(),
                     });
                 }
             }
