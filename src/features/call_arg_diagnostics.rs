@@ -12,13 +12,16 @@
 use tower_lsp::lsp_types::*;
 
 use crate::indexer::{
-    live_tree::LiveDoc, resolve_call_signature, CallShape, CallSite, Indexer, NodeExt, Resolution,
-    Signature,
+    live_tree::LiveDoc, resolve_call_signature, split_params_at_depth_zero, CallShape, CallSite,
+    Indexer, NodeExt, Resolution, Signature,
 };
 use crate::queries::{
-    KIND_CALL_EXPR, KIND_CALL_SUFFIX, KIND_FUN_DECL, KIND_LAMBDA_LIT, KIND_SIMPLE_IDENT,
-    KIND_VALUE_ARG,
+    KIND_CALL_EXPR, KIND_CALL_SUFFIX, KIND_CLASS_DECL, KIND_FUN_DECL, KIND_LAMBDA_LIT,
+    KIND_OBJECT_DECL, KIND_SIMPLE_IDENT, KIND_TYPE_IDENT, KIND_VALUE_ARG,
 };
+use crate::resolver::{walk_hierarchy, ReceiverKind, Resolver};
+use crate::types::CallerContext;
+use crate::StrExt;
 
 /// Scan a file for call-argument count mismatches and return diagnostics.
 ///
@@ -169,6 +172,21 @@ fn check_call_args(
     }
 
     if provided_count < required {
+        // Override-tolerance: the resolver may return a stricter override
+        // (one that dropped its supertype's defaults) while kotlinc accepts
+        // the call through the overridden declaration. Suppress when any
+        // same-name member on the receiver's/scope's own chain accepts.
+        if call_accepted_by_scope_or_supertype(
+            indexer,
+            uri,
+            call_node,
+            bytes,
+            &fn_name,
+            qualifier.as_deref(),
+            value_arguments.as_ref(),
+        ) {
+            return None;
+        }
         let range = diagnostic_range(call_node, value_arguments.as_ref());
         let message = if required == total {
             format!("{fn_name}: expected {required} argument(s), found {provided_count}")
@@ -204,6 +222,303 @@ fn check_call_args(
     }
 
     None
+}
+
+/// Override-tolerance for the too-few arm: kotlinc accepts calls that fit an
+/// overridden declaration's defaults even when the override drops them
+/// (verified by compiling such calls — e.g. `Player.spotanim` drops
+/// `PathingEntity.spotanim`'s defaults, yet 3-arg `target.spotanim(...)`
+/// calls compile). Resolution returns the stricter override as the single
+/// signature, so without this the diagnostic flags calls the compiler
+/// accepts.
+///
+/// When the resolved signature rejects, test same-name members on the
+/// receiver's own chain (qualified call) or the lexically enclosing scope's
+/// chain (unqualified call in an extension/class body). If any accepts,
+/// suppress. Only the too-few direction: an override can only drop defaults
+/// (accept fewer), never accept more than its own total.
+fn call_accepted_by_scope_or_supertype(
+    indexer: &Indexer,
+    uri: &Url,
+    call_node: &tree_sitter::Node,
+    bytes: &[u8],
+    fn_name: &str,
+    qualifier: Option<&str>,
+    value_arguments: Option<&tree_sitter::Node>,
+) -> bool {
+    let provided_count = count_provided_args(value_arguments, bytes);
+    let provided_named = provided_named_args(value_arguments, bytes);
+    let mut scope_types = Vec::new();
+    if let Some(qualifier_name) = qualifier {
+        if let Some(receiver) =
+            indexer.infer_receiver_type(ReceiverKind::Variable(qualifier_name), uri)
+        {
+            scope_types.push(bare_class_name(&receiver.leaf));
+        }
+    } else {
+        scope_types.extend(enclosing_scope_types(call_node, bytes));
+    }
+    scope_types.iter().any(|scope_type| {
+        chain_has_acceptor(
+            indexer,
+            uri,
+            scope_type,
+            fn_name,
+            provided_count,
+            &provided_named,
+        )
+    })
+}
+
+/// Reduce a type string to a bare class name for hierarchy/member lookup:
+/// drop generics, outer qualifiers, and a trailing `?`.
+fn bare_class_name(type_name: &str) -> String {
+    type_name
+        .split('<')
+        .next()
+        .unwrap_or(type_name)
+        .rsplit('.')
+        .next()
+        .unwrap_or(type_name)
+        .strip_nullable()
+        .to_owned()
+}
+
+/// Lexically enclosing scope types for an unqualified call, nearest first:
+/// extension-receiver types of enclosing `fun Receiver.name` declarations
+/// and names of enclosing classes/objects (implicit `this` scopes).
+fn enclosing_scope_types(call_node: &tree_sitter::Node, bytes: &[u8]) -> Vec<String> {
+    let mut types = Vec::new();
+    let mut node = *call_node;
+    for _ in 0..25 {
+        let Some(parent) = node.parent() else {
+            break;
+        };
+        match parent.kind() {
+            KIND_FUN_DECL => {
+                let (base, _) = crate::parser::extension_receiver_from_decl(parent, bytes);
+                if !base.is_empty() && !types.contains(&base) {
+                    types.push(bare_class_name(&base));
+                }
+            }
+            KIND_CLASS_DECL | KIND_OBJECT_DECL => {
+                if let Some(name) = parent
+                    .first_child_of_kind(KIND_SIMPLE_IDENT)
+                    .or_else(|| parent.first_child_of_kind(KIND_TYPE_IDENT))
+                    .and_then(|name_node| name_node.utf8_text_owned(bytes))
+                {
+                    if !types.contains(&name) {
+                        types.push(name);
+                    }
+                }
+            }
+            _ => {}
+        }
+        node = parent;
+    }
+    types
+}
+
+/// Whether `scope_type` itself or any supertype (up to 4 levels, workspace
+/// classes only — no JAR IO on the diagnostics path) declares a same-name
+/// member that accepts the call.
+fn chain_has_acceptor(
+    indexer: &Indexer,
+    uri: &Url,
+    scope_type: &str,
+    fn_name: &str,
+    provided_count: usize,
+    provided_named: &[String],
+) -> bool {
+    if member_accepts_in_class(indexer, scope_type, fn_name, provided_count, provided_named) {
+        return true;
+    }
+    // Supertypes live in the scope type's own declaring files — not the
+    // caller's. Walking from the caller file finds no supers (a caller
+    // rarely redeclares the receiver's own inheritance).
+    let caller = CallerContext {
+        uri: Some(uri.as_str()),
+        cursor_line: None,
+    };
+    for declaring_uri in declaring_files(indexer, scope_type) {
+        let hits: Vec<bool> = walk_hierarchy(
+            indexer,
+            scope_type,
+            &declaring_uri,
+            caller,
+            4,
+            0,
+            |idx, class, _class_uri, _caller| {
+                let members = member_signatures(idx, class, fn_name);
+                vec![members.iter().any(|(params, counts)| {
+                    signature_accepts_call(params, *counts, provided_count, provided_named)
+                })]
+            },
+        );
+        if hits.into_iter().any(|hit| hit) {
+            return true;
+        }
+    }
+    false
+}
+
+/// URI strings of workspace files declaring a class-like symbol named
+/// `class_name` (class/interface/object/enum) — hierarchy walk start points.
+fn declaring_files(indexer: &Indexer, class_name: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let Some(locations) = indexer.definitions.get(class_name) else {
+        return out;
+    };
+    for location in locations.iter() {
+        let Some(url) = indexer.file_table.url(location.file) else {
+            continue;
+        };
+        let Some(file_data) = indexer.files.get(url.as_str()) else {
+            continue;
+        };
+        let declares = file_data.symbols.iter().any(|symbol| {
+            symbol.name == class_name
+                && matches!(
+                    symbol.kind,
+                    SymbolKind::CLASS
+                        | SymbolKind::INTERFACE
+                        | SymbolKind::OBJECT
+                        | SymbolKind::ENUM
+                )
+        });
+        if declares && !out.contains(&url.as_str().to_owned()) {
+            out.push(url.as_str().to_owned());
+        }
+    }
+    out
+}
+
+/// Same-name `FUNCTION`/`METHOD` members of exactly `class_name` (workspace
+/// definitions only) as `(params_text, param_counts)` pairs. Constructors
+/// excluded (different call shape).
+fn member_signatures(
+    indexer: &Indexer,
+    class_name: &str,
+    fn_name: &str,
+) -> Vec<(String, (u8, u8))> {
+    let mut out = Vec::new();
+    let Some(locations) = indexer.definitions.get(class_name) else {
+        return out;
+    };
+    for location in locations.iter() {
+        let Some(url) = indexer.file_table.url(location.file) else {
+            continue;
+        };
+        let Some(file_data) = indexer.files.get(url.as_str()) else {
+            continue;
+        };
+        for symbol in &file_data.symbols {
+            if symbol.name != fn_name {
+                continue;
+            }
+            if !matches!(
+                symbol.kind,
+                SymbolKind::FUNCTION | SymbolKind::METHOD | SymbolKind::OPERATOR
+            ) {
+                continue;
+            }
+            if symbol.container.as_deref() != Some(class_name) {
+                continue;
+            }
+            out.push((symbol.params.clone(), symbol.param_counts));
+        }
+    }
+    out
+}
+
+/// Same-name `FUNCTION`/`METHOD` members of exactly `class_name` (workspace
+/// definitions only), tested for call acceptance. Constructors excluded
+/// (different call shape).
+fn member_accepts_in_class(
+    indexer: &Indexer,
+    class_name: &str,
+    fn_name: &str,
+    provided_count: usize,
+    provided_named: &[String],
+) -> bool {
+    member_signatures(indexer, class_name, fn_name)
+        .iter()
+        .any(|(params, counts)| {
+            signature_accepts_call(params, *counts, provided_count, provided_named)
+        })
+}
+
+/// Whether a candidate signature accepts the call: the provided count fits
+/// `required..=total`, every provided named argument exists by name, and the
+/// candidate is not vararg (never suppress on a vararg basis — the winner
+/// path already skips vararg entirely, and vararg arity claims need the
+/// full per-arg type check this lint cannot do).
+fn signature_accepts_call(
+    params_text: &str,
+    param_counts: (u8, u8),
+    provided_count: usize,
+    provided_named: &[String],
+) -> bool {
+    if params_text.contains("vararg ")
+        || params_text.contains("vararg\t")
+        || params_text.contains("...")
+    {
+        return false;
+    }
+    let (required, total) = (param_counts.0 as usize, param_counts.1 as usize);
+    if provided_count < required || provided_count > total {
+        return false;
+    }
+    if provided_named.is_empty() {
+        return true;
+    }
+    let names = param_name_list(params_text);
+    provided_named.iter().all(|name| names.contains(name))
+}
+
+/// Parameter names of one raw parameter-list text, e.g.
+/// `"spot: String, delay: Int = 0"` → `["spot", "delay"]`.
+fn param_name_list(params_text: &str) -> Vec<String> {
+    split_params_at_depth_zero(params_text)
+        .into_iter()
+        .filter_map(|segment| {
+            let head = segment.split(':').next()?.trim();
+            // Strip annotations/modifiers, keep the declared name.
+            head.split_whitespace().last().map(str::to_owned)
+        })
+        .collect()
+}
+
+/// Names of the call's `name = value` arguments, e.g. `["delay", "height"]`
+/// for `spotanim(spot, delay = d, height = h)`.
+fn provided_named_args(value_arguments: Option<&tree_sitter::Node>, bytes: &[u8]) -> Vec<String> {
+    let mut names = Vec::new();
+    let Some(args) = value_arguments else {
+        return names;
+    };
+    let mut cursor = args.walk();
+    for arg in args.children(&mut cursor) {
+        if arg.kind() != KIND_VALUE_ARG {
+            continue;
+        }
+        // Named shape: `name = value` — the first named child is the name.
+        let mut inner = arg.walk();
+        let mut named = arg.children(&mut inner).filter(|child| child.is_named());
+        let (Some(first), Some(second)) = (named.next(), named.next()) else {
+            continue;
+        };
+        if first.kind() != KIND_SIMPLE_IDENT {
+            continue;
+        }
+        let between = &bytes[first.end_byte()..second.start_byte()];
+        if std::str::from_utf8(between).map(str::trim) != Ok("=") {
+            continue;
+        }
+        if let Ok(name) = first.utf8_text(bytes) {
+            names.push(name.to_owned());
+        }
+    }
+    names
 }
 
 /// Check if the call is inside a lambda that belongs to a scope function

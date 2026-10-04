@@ -1,7 +1,8 @@
 use tower_lsp::lsp_types::Url;
 
 use crate::indexer::live_tree::parse_live;
-use crate::indexer::Indexer;
+use crate::indexer::{Indexer, NodeExt};
+use crate::queries::KIND_CALL_EXPR;
 
 use super::call_arg_diagnostics;
 
@@ -1765,5 +1766,121 @@ fn extension_self_shadow_does_not_produce_a_false_diagnostic() {
     assert!(
         diags.is_empty(),
         "must not diagnose the self-shadowed call, got: {diags:?}"
+    );
+}
+
+/// Override-tolerance: `Child.spotanim` drops the defaults its supertype
+/// declares, yet kotlinc accepts calls fitting the supertype shape (verified
+/// by compiling such calls against the real engine hierarchy). Resolution
+/// returns the stricter override, so without tolerance the diagnostic flags
+/// a call the compiler accepts.
+#[test]
+fn no_diagnostic_when_supertype_override_accepts_named_call() {
+    let (uri, idx, src) = setup(&[
+        (
+            "/base.kt",
+            concat!(
+                "open class Base {\n",
+                "    open fun spotanim(spot: String, delay: Int = 0, height: Int = 0, slot: Int = 0) {}\n",
+                "}\n",
+            ),
+        ),
+        (
+            "/child.kt",
+            concat!(
+                "class Child : Base() {\n",
+                "    override fun spotanim(spot: String, delay: Int, height: Int, slot: Int) {}\n",
+                "}\n",
+            ),
+        ),
+        (
+            "/use.kt",
+            concat!(
+                "fun use(child: Child) {\n",
+                "    child.spotanim(\"x\", delay = 1, height = 2)\n",
+                "}\n",
+            ),
+        ),
+    ]);
+    let diags = run_diagnostics(&idx, &uri, &src);
+    assert!(
+        diags.is_empty(),
+        "supertype defaults accept this call; must not flag: {diags:?}"
+    );
+}
+
+/// Same tolerance for unqualified calls in an extension scope, tested
+/// directly against the tolerance entry point: `anim("x")` inside
+/// `fun SubAccess.shove` must be accepted via the enclosing scope's own
+/// chain (SubAccess itself rejects 1 arg; its supertype Access accepts).
+/// (An end-to-end version of this shape passes vacuously — unqualified
+/// resolution already declines to diagnose — so this pins the tolerance
+/// path itself instead.)
+#[test]
+fn tolerance_accepts_bare_call_in_extension_scope() {
+    let (_uri, idx, _src) = setup(&[(
+        "/access.kt",
+        concat!(
+            "open class Access {\n",
+            "    open fun anim(seq: String, delay: Int = 0) {}\n",
+            "}\n",
+            "class SubAccess : Access() {\n",
+            "    override fun anim(seq: String, delay: Int) {}\n",
+            "}\n",
+        ),
+    )]);
+    let snippet = "fun SubAccess.shove() {\n    anim(\"x\")\n}\n";
+    let doc = parse_live(snippet, tree_sitter_kotlin::LANGUAGE.into()).unwrap();
+    let call = crate::indexer::walk::descendants(doc.tree.root_node())
+        .find(|node| node.kind() == KIND_CALL_EXPR)
+        .expect("snippet must contain a call");
+    let value_args = call.find_value_arguments();
+    let accepted = super::call_accepted_by_scope_or_supertype(
+        &idx,
+        &uri("/use.kt"),
+        &call,
+        &doc.bytes,
+        "anim",
+        None,
+        value_args.as_ref(),
+    );
+    assert!(
+        accepted,
+        "enclosing scope chain (Access.anim) accepts anim(\"x\")"
+    );
+}
+
+/// Guard: tolerance must not silence genuine errors. No declaration anywhere
+/// in the chain accepts zero args, so the flag must stand.
+#[test]
+fn still_flags_when_no_chain_member_accepts() {
+    let (uri, idx, src) = setup(&[
+        (
+            "/base.kt",
+            concat!(
+                "open class Base {\n",
+                "    open fun work(a: String, b: Int = 0) {}\n",
+                "}\n",
+            ),
+        ),
+        (
+            "/child.kt",
+            concat!(
+                "class Child : Base() {\n",
+                "    override fun work(a: String, b: Int) {}\n",
+                "}\n",
+            ),
+        ),
+        (
+            "/use.kt",
+            concat!("fun use(child: Child) {\n", "    child.work()\n", "}\n",),
+        ),
+    ]);
+    let diags = run_diagnostics(&idx, &uri, &src);
+    assert_eq!(diags.len(), 1, "expected one diagnostic: {diags:?}");
+    assert!(
+        diags[0].message.contains("expected 2"),
+        "msg: {}",
+        diags[0].message
     );
 }

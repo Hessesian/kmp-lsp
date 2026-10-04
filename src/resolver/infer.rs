@@ -842,7 +842,7 @@ fn infer_var_from_rhs_data(
 /// sites, or between the STRING and CST engines -- which is exactly how the
 /// supertype-walk fallback itself went missing from this file before it was
 /// added back (see `find_method_return_type_via_supertypes`'s callers).
-fn resolve_method_return_type_substituted(
+pub(crate) fn resolve_method_return_type_substituted(
     indexer: &Indexer,
     recv_type_raw: &str,
     method: &str,
@@ -1148,7 +1148,7 @@ pub(crate) fn find_field_type_in_class(
 /// Depth-guarded implementation of [`find_field_type_in_class`] — shares its
 /// budget with `infer_var_from_rhs_data`'s `field_match` branch, the one
 /// caller that re-enters this function (see `MAX_RAW_TYPE_INFER_DEPTH`).
-fn find_field_type_in_class_impl(
+pub(crate) fn find_field_type_in_class_impl(
     indexer: &Indexer,
     class_name: &str,
     field_name: &str,
