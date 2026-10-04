@@ -248,6 +248,19 @@ When `sourcePaths` is present (even as `[]`), it overrides the `~/.kmp-lsp/sourc
 
 Hover docs for these come from a sibling `*-sources.jar` when one is present next to the jar; otherwise you still get signatures, completions, and go-to-definition to the compiled symbol.
 
+**`sourceJarPatterns`** — substring filters limiting which Gradle *sources* JARs get parsed. The global Gradle cache holds every project on the machine, and parsing all of it costs gigabytes of RAM. With this key, only JARs whose `group.artifact` (or full cache path) contains a pattern are parsed:
+
+```json
+{
+  "sourceJarPatterns": [
+    "org.jetbrains.kotlin",
+    "net.rsprot"
+  ]
+}
+```
+
+Absent means unscoped (previous behaviour); an explicitly empty list parses no sources JARs. Only the sources pass is scoped — the compiled-JAR manifest stays global (cheap). JARs outside the cache layout are always kept.
+
 **Manual override** via LSP config (for custom stubs or generated code):
 
 ```toml

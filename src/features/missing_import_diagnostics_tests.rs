@@ -327,3 +327,29 @@ fn no_diagnostic_for_a_plain_call_provided_by_the_extension_receiver() {
          Fragment and must not be flagged: {diags:?}"
     );
 }
+
+/// User-reported false positive: `lazy`, `repeat`, and `with` are `kotlin.*`
+/// top-level functions, implicitly imported in every Kotlin file. When no
+/// stdlib JAR/sources are indexed (lean setups with an empty Gradle home),
+/// the package-based exemption has no data — but a same-named workspace
+/// declaration still makes the name "importable", so the bare stdlib call
+/// gets flagged. The names must be exempt as a language fact, like the
+/// hardcoded default-import *type* list already is.
+#[test]
+fn no_diagnostic_for_default_import_stdlib_functions() {
+    let (uri, idx, src) = setup(&[
+        (
+            "/lib/Helpers.kt",
+            "package com.example.lib\nfun with(x: Int) = x\nfun repeat(n: Int) = n\nfun lazy(x: Int) = x\n",
+        ),
+        (
+            "/app/Caller.kt",
+            "package app\nfun demo(x: Int) {\n    with(x) { println(it) }\n    repeat(3) { println(it) }\n    val deferred = lazy { 42 }\n}\n",
+        ),
+    ]);
+    let diags = run_diagnostics(&idx, &uri, &src);
+    assert!(
+        diags.is_empty(),
+        "kotlin.with/repeat/lazy need no import and must not flag: {diags:?}"
+    );
+}

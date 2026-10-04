@@ -5,6 +5,8 @@
 ### Bug fixes
 
 - **Pull diagnostics (`textDocument/diagnostic`) now served** — the server previously advertised no `diagnosticProvider` and answered pull requests with `method_not_found`, so pull-based clients (oh-my-pi's "LSP diagnostics") always reported a clean bill no matter what the push path found. Pull now serves the exact same set the push path publishes (syntax, call-arg, nullable, `when`, missing-import, unused-import, missing-package) through one shared coordinator, and works for files the editor never opened. `kmp-lsp diagnose` also runs `unused-import` and `missing-package` now (previously LSP-only), with `--only` support for both; `--only unused-import`/`--only missing-package` skip the workspace index build entirely.
+- **Missing-import no longer flags Kotlin stdlib top-level functions** — `lazy`, `repeat`, `with` (and fellow `kotlin.*`/`kotlin.io.*`/`kotlin.collections.*` callables: scope functions, `TODO`/`error`/`check`/`require`, `println`, collection/array builders) were flagged whenever no stdlib JAR/sources were indexed to confirm their package while a same-named workspace declaration made them look "importable" — exactly the lean-Gradle-home setup. They are now exempt as a language fact (no import is ever needed), mirroring the existing hardcoded default-import *type* list.
+- **`sourceJarPatterns` (`workspace.json`) scopes the Gradle sources-JAR crawl** — substring filters on `group.artifact`, so a workspace only parses the libraries it uses instead of every project's jars in the global cache (a full-cache warmup plateaued at ~3.4GB RSS in measurement). Absent means unscoped; only the sources pass is scoped, the compiled-JAR manifest stays global.
 
 ## 0.27.0
 

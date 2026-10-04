@@ -320,6 +320,46 @@ fn collect_all_jars(dir: &Path, out: &mut Vec<PathBuf>) {
 
 // ── Sources-JAR auto-mount ─────────────────────────────────────────────────────
 
+/// Scope the Gradle sources-JAR crawl to the workspace's `sourceJarPatterns`
+/// (`workspace.json`). The global cache holds every project on the machine —
+/// parsing all of it costs gigabytes of RAM — while most workspaces touch a
+/// fraction. Absent key (or no workspace root yet) means unscoped: every
+/// discovered JAR is parsed, exactly as before. An explicitly empty list
+/// parses none. Matching is substring on `group.artifact` (same convention
+/// as `kmp-lsp extract-sources PATTERN…`), falling back to the full cache
+/// path so version- or file-pinned patterns also work. JARs outside the
+/// cache layout (unparseable group/artifact) are always kept: with no
+/// coordinates to judge, dropping them could only hide symbols.
+fn filter_sources_jars_by_workspace_patterns(
+    indexer: &crate::indexer::Indexer,
+    jars: Vec<PathBuf>,
+) -> Vec<PathBuf> {
+    let Some(root) = indexer.workspace_root.get() else {
+        return jars;
+    };
+    let Some(patterns) = crate::workspace_json::load_source_jar_patterns(&root) else {
+        return jars;
+    };
+    let total = jars.len();
+    let kept: Vec<PathBuf> = jars
+        .into_iter()
+        .filter(|jar| {
+            let Some(meta) = parse_jar_meta(jar) else {
+                return true;
+            };
+            let qualified = format!("{}.{}", meta.group, meta.artifact);
+            patterns.iter().any(|pattern| {
+                qualified.contains(pattern) || jar.to_string_lossy().contains(pattern)
+            })
+        })
+        .collect();
+    log::info!(
+        "jar: sourceJarPatterns kept {} of {total} sources JARs ({patterns:?})",
+        kept.len()
+    );
+    kept
+}
+
 /// Index *-sources.jar files from the Gradle cache by unpacking them
 /// in-memory and parsing each `.kt` / `.java` entry with tree-sitter.
 ///
@@ -339,6 +379,7 @@ pub(crate) fn index_sources_jars(
     cache_dir: Option<&Path>,
 ) -> usize {
     let sources = scan_gradle_sources_jars(gradle_home);
+    let sources = filter_sources_jars_by_workspace_patterns(indexer, sources);
     if sources.is_empty() {
         log::debug!("jar: no sources JARs found in Gradle cache");
         return 0;

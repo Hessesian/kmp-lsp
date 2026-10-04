@@ -75,18 +75,48 @@ fn is_default_import_type(name: &str) -> bool {
         | "Sequence"
     )
 }
+/// Top-level `kotlin.*` / `kotlin.io.*` / `kotlin.collections.*` functions from
+/// the language's default imports. The function-level companion of
+/// [`is_default_import_type`]: a bare `with` / `repeat` / `lazy` is virtually
+/// always the stdlib call, which needs no import by definition — so it must
+/// not flag even when no stdlib JAR/sources are indexed to confirm the
+/// package (lean setups) and a same-named workspace declaration makes the
+/// name look "importable". Same accepted tradeoff as the type list: a
+/// workspace that genuinely declares its own top-level `fun with(...)` and
+/// calls it unqualified without an import will no longer be told about it.
+/// Names mirror the project's own curated stdlib inventory (`TOP_LEVEL_FUNS`
+/// / `SCOPE_FUNS` in `src/stdlib.rs`), not a guess at the whole stdlib.
+fn is_default_import_function(name: &str) -> bool {
+    matches!(
+        name,
+        // Scope functions (kotlin.*)
+        "let" | "run" | "apply" | "also" | "with" | "takeIf" | "takeUnless"
+        // lazy + repeat (kotlin.*) — user-reported false positives
+        | "lazy" | "repeat"
+        // Preconditions / debugging (kotlin.*)
+        | "TODO" | "error" | "check" | "checkNotNull" | "require" | "requireNotNull" | "assert"
+        // Console IO (kotlin.io.*)
+        | "print" | "println" | "readLine" | "readln" | "readlnOrNull"
+        // Collection builders (kotlin.collections.*)
+        | "listOf" | "mutableListOf" | "emptyList" | "listOfNotNull"
+        | "setOf" | "mutableSetOf" | "emptySet"
+        | "mapOf" | "mutableMapOf" | "emptyMap"
+        // Array builders (kotlin.*)
+        | "arrayOf" | "arrayOfNulls" | "emptyArray"
+    )
+}
 
 /// Whether `name` is available without an import because a symbol of that name is
 /// declared in a Kotlin default-import package (e.g. `kotlin.Result`, `kotlin.apply`),
-/// or `name` is itself one of the core default-import types.
-///
-/// Checks `jar_definitions`/`definitions` directly (by package), not the narrower
-/// `importable_fqns` cache — that cache only holds container-less symbols recorded
-/// for auto-import completion, and top-level `kotlin.*` functions (`error`, `run`,
-/// `with`, `repeat`, …) aren't reliably captured there, so a `fqns_for_name`-only
-/// check would silently miss them and flag real stdlib calls as missing imports.
+/// or `name` is itself one of the core default-import types or top-level functions.
 pub(super) fn resolvable_via_default_import(indexer: &Indexer, name: &str) -> bool {
     if is_default_import_type(name) {
+        return true;
+    }
+    // Top-level stdlib functions need no import either — and unlike the
+    // package checks below, this needs no indexed data at all, so it holds
+    // on lean setups with no stdlib JAR/sources.
+    if is_default_import_function(name) {
         return true;
     }
     // Promote-before-read (zero budget): this runs on the diagnostics/keystroke

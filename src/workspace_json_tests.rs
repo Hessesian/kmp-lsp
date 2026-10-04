@@ -1071,3 +1071,45 @@ fn r_class_jar_deterministic_among_multiple_fallback_variants() {
         jars[0]
     );
 }
+
+// ─── sourceJarPatterns tests ──────────────────────────────────────────────────
+
+#[test]
+fn patterns_absent_without_workspace_file() {
+    let dir = TempDir::new().unwrap();
+    assert_eq!(load_source_jar_patterns(dir.path()), None);
+}
+
+#[test]
+fn patterns_absent_without_key() {
+    let dir = TempDir::new().unwrap();
+    make_workspace_json(&dir, r#"{"modules": []}"#);
+    assert_eq!(load_source_jar_patterns(dir.path()), None);
+}
+
+#[test]
+fn patterns_round_trip() {
+    let dir = TempDir::new().unwrap();
+    make_workspace_json(
+        &dir,
+        r#"{"sourceJarPatterns": ["org.jetbrains.kotlin", "net.rsprot"]}"#,
+    );
+    assert_eq!(
+        load_source_jar_patterns(dir.path()),
+        Some(vec![
+            "org.jetbrains.kotlin".to_owned(),
+            "net.rsprot".to_owned()
+        ])
+    );
+}
+
+#[test]
+fn patterns_empty_list_is_explicit_none() {
+    let dir = TempDir::new().unwrap();
+    make_workspace_json(&dir, r#"{"sourceJarPatterns": []}"#);
+    assert_eq!(
+        load_source_jar_patterns(dir.path()),
+        Some(Vec::new()),
+        "an explicitly empty list must parse no sources JARs, not fall back to unscoped"
+    );
+}
