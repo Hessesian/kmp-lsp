@@ -725,9 +725,11 @@ fn diagnostic_enabled(only: Option<&[String]>, name: &str) -> bool {
 
 async fn run_diagnose(root: &Path, file: &Path, _verbose: bool, only: Option<&[String]>) {
     use crate::features::call_arg_diagnostics::call_arg_diagnostics;
+    use crate::features::code_actions::missing_package_diagnostic;
     use crate::features::fill_when::when_diagnostics;
     use crate::features::missing_import_diagnostics::missing_import_diagnostics;
     use crate::features::nullable_call_diagnostics::nullable_dot_call_diagnostics;
+    use crate::features::unused_import_diagnostics::unused_import_diagnostics;
     use tower_lsp::lsp_types::Url;
 
     let syntax_enabled = diagnostic_enabled(only, "syntax");
@@ -735,8 +737,11 @@ async fn run_diagnose(root: &Path, file: &Path, _verbose: bool, only: Option<&[S
     let nullable_enabled = diagnostic_enabled(only, "nullable");
     let when_enabled = diagnostic_enabled(only, "when");
     let missing_import_enabled = diagnostic_enabled(only, "missing-import");
+    let unused_import_enabled = diagnostic_enabled(only, "unused-import");
+    let missing_package_enabled = diagnostic_enabled(only, "missing-package");
     // Building the index + JAR scan is the expensive part of this command —
-    // skip it entirely for a `--only syntax` request, same as `check`.
+    // skip it entirely for requests that need no index (`--only syntax`,
+    // `--only unused-import`, `--only missing-package`), same as `check`.
     let needs_index =
         call_arg_enabled || nullable_enabled || when_enabled || missing_import_enabled;
 
@@ -821,6 +826,37 @@ async fn run_diagnose(root: &Path, file: &Path, _verbose: bool, only: Option<&[S
         }
         if missing_import_enabled {
             diagnostics.extend(missing_import_diagnostics(&index, &uri, &doc));
+        }
+        if unused_import_enabled {
+            diagnostics.extend(unused_import_diagnostics(&doc));
+        }
+        if missing_package_enabled {
+            let text_lines: Vec<String> = source.lines().map(str::to_owned).collect();
+            if let Some(package_diagnostic) = missing_package_diagnostic(&text_lines, &uri) {
+                diagnostics.push(package_diagnostic);
+            }
+        }
+    } else {
+        // No index needed: `unused-import` is a pure CST walk and
+        // `missing-package` only needs the file's own lines.
+        if unused_import_enabled || missing_package_enabled {
+            let uri = Url::from_file_path(&abs_path).unwrap_or_else(|_| {
+                eprintln!("error: cannot convert path to URI: {}", abs_path.display());
+                std::process::exit(1);
+            });
+            if unused_import_enabled {
+                if let Some(lang) = crate::indexer::live_tree::lang_for_path(&path_str) {
+                    if let Some(doc) = crate::indexer::live_tree::parse_live(&source, lang) {
+                        diagnostics.extend(unused_import_diagnostics(&doc));
+                    }
+                }
+            }
+            if missing_package_enabled {
+                let text_lines: Vec<String> = source.lines().map(str::to_owned).collect();
+                if let Some(package_diagnostic) = missing_package_diagnostic(&text_lines, &uri) {
+                    diagnostics.push(package_diagnostic);
+                }
+            }
         }
     }
 

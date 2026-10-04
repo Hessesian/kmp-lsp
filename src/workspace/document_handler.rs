@@ -6,12 +6,8 @@ use tower_lsp::lsp_types::Url;
 use tower_lsp::Client;
 
 use crate::backend::helpers::syntax_diagnostics;
-use crate::features::call_arg_diagnostics::call_arg_diagnostics;
 use crate::features::code_actions::missing_package_diagnostic;
-use crate::features::fill_when::when_diagnostics;
-use crate::features::missing_import_diagnostics::missing_import_diagnostics;
-use crate::features::nullable_call_diagnostics::nullable_dot_call_diagnostics;
-use crate::features::unused_import_diagnostics::unused_import_diagnostics;
+use crate::features::diagnostics::semantic_diagnostics;
 use crate::indexer::live_tree::{lang_for_path, parse_live};
 use crate::indexer::{Indexer, ProgressReporter};
 
@@ -262,12 +258,8 @@ impl DocumentHandler {
                     // actor will call `republish_open_file_diagnostics` once the scan
                     // completes to fill in the diagnostics for all open files.
                     if !indexing_in_progress {
-                        d.extend(when_diagnostics(&indexer, &uri));
-                        if let Some(ref doc) = live_doc {
-                            d.extend(call_arg_diagnostics(&indexer, &uri, doc));
-                            d.extend(nullable_dot_call_diagnostics(&indexer, &uri, doc));
-                            d.extend(missing_import_diagnostics(&indexer, &uri, doc));
-                            d.extend(unused_import_diagnostics(doc));
+                        if let Some(doc) = &live_doc {
+                            d.extend(semantic_diagnostics(&indexer, &uri, doc));
                         }
                     }
                     let lines = indexer.mem_lines_for(uri.as_str());
@@ -384,12 +376,8 @@ impl DocumentHandler {
                         let uri = uri.clone();
                         move || {
                             let mut d = Vec::new();
-                            d.extend(when_diagnostics(&indexer, &uri));
                             if let Some(doc) = indexer.live_doc(&uri) {
-                                d.extend(call_arg_diagnostics(&indexer, &uri, &doc));
-                                d.extend(nullable_dot_call_diagnostics(&indexer, &uri, &doc));
-                                d.extend(missing_import_diagnostics(&indexer, &uri, &doc));
-                                d.extend(unused_import_diagnostics(&doc));
+                                d.extend(semantic_diagnostics(&indexer, &uri, &doc));
                             }
                             let lines = indexer.mem_lines_for(uri.as_str());
                             let lines: Vec<String> = lines

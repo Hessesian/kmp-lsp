@@ -19,7 +19,7 @@ more precise (superclass hierarchy, cross-file resolution) as indexing completes
 | `textDocument/foldingRange` | Brace-based region folds + consecutive comment block folds |
 | `textDocument/inlayHint` | Type hints for lambda `it`, named lambda params, `this`, untyped `val`/`var` |
 | `textDocument/semanticTokens/full` | Two-phase: Phase 1 CST classification + Phase 2 cross-file resolution. Kotlin, Java, Swift |
-| `textDocument/publishDiagnostics` | Syntax errors from tree-sitter (ERROR/MISSING nodes) — not type checking |
+| `textDocument/publishDiagnostics` + `textDocument/diagnostic` (pull) | Syntax errors (tree-sitter ERROR/MISSING) plus call-arg, nullable-receiver, non-exhaustive `when`, missing-import, unused-import, and missing-package hints — one shared set for push, pull, and `kmp-lsp diagnose`. No full type checking; use Gradle/Xcode/CI for that |
 | `textDocument/implementation` | Transitive subtype lookup (interface → all implementing classes, BFS) |
 | `textDocument/documentHighlight` | Highlights all in-file occurrences; declaration sites marked WRITE, usages READ |
 | `workspace/symbol` | Fuzzy substring search; supports dot-qualified queries for extension functions |
@@ -281,7 +281,7 @@ Paths can be absolute (including `~/…`) or relative to the workspace root. The
 ## Limitations
 
 - **No type inference** for generic lambda parameters — use explicit annotations for unresolvable cases
-- **No type checking** — syntax errors only; use Gradle/Xcode/CI for semantic diagnostics
+- **No full type checking** — diagnostics cover syntax plus arity, nullability, `when` exhaustiveness, and import hygiene; anything deeper needs Gradle/Xcode/CI
 - **Swift support is structural** — all symbols indexed; no module boundaries or closure type inference
 - **Java completion** is less refined than Kotlin
 - **`findReferences` on common names** returns noise — name-based search via `rg`, no import filtering yet

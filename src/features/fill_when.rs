@@ -8,6 +8,7 @@
 use tower_lsp::lsp_types::*;
 
 use crate::indexer::live_tree::utf16_col_to_byte;
+use crate::indexer::live_tree::LiveDoc;
 use crate::indexer::Indexer;
 use crate::queries::{
     KIND_BOOLEAN_LITERAL, KIND_ELSE, KIND_LBRACE, KIND_NAV_EXPR, KIND_NAV_SUFFIX, KIND_RBRACE,
@@ -186,13 +187,23 @@ pub(crate) fn build_fill_when_action(
 /// Scans the CST for every `when_expression` node and emits a warning
 /// diagnostic on each one that has missing branches.
 pub(crate) fn when_diagnostics(indexer: &Indexer, uri: &Url) -> Vec<Diagnostic> {
+    let Some(live_doc) = indexer.live_doc(uri) else {
+        return Vec::new();
+    };
+    when_diagnostics_with_doc(indexer, uri, &live_doc)
+}
+
+/// Doc-based core of [`when_diagnostics`], shared with the pull-diagnostics
+/// path (`textDocument/diagnostic`), which resolves its `LiveDoc` via
+/// `live_doc_or_parse` and therefore cannot rely on a stored live tree.
+pub(crate) fn when_diagnostics_with_doc(
+    indexer: &Indexer,
+    uri: &Url,
+    live_doc: &LiveDoc,
+) -> Vec<Diagnostic> {
     if crate::Language::from_path(uri.path()) != crate::Language::Kotlin {
         return Vec::new();
     }
-    let live_doc = match indexer.live_doc(uri) {
-        Some(doc) => doc,
-        None => return Vec::new(),
-    };
     let source_bytes = &live_doc.bytes;
     let root = live_doc.tree.root_node();
 

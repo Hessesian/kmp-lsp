@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Bug fixes
+
+- **Pull diagnostics (`textDocument/diagnostic`) now served** — the server previously advertised no `diagnosticProvider` and answered pull requests with `method_not_found`, so pull-based clients (oh-my-pi's "LSP diagnostics") always reported a clean bill no matter what the push path found. Pull now serves the exact same set the push path publishes (syntax, call-arg, nullable, `when`, missing-import, unused-import, missing-package) through one shared coordinator, and works for files the editor never opened. `kmp-lsp diagnose` also runs `unused-import` and `missing-package` now (previously LSP-only), with `--only` support for both; `--only unused-import`/`--only missing-package` skip the workspace index build entirely.
+
 ## 0.27.0
 
 ### Features

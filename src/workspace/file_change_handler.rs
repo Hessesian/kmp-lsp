@@ -7,12 +7,8 @@ use tower_lsp::lsp_types::{TextDocumentContentChangeEvent, Url};
 use tower_lsp::Client;
 
 use crate::backend::helpers::syntax_diagnostics;
-use crate::features::call_arg_diagnostics::call_arg_diagnostics;
 use crate::features::code_actions::missing_package_diagnostic;
-use crate::features::fill_when::when_diagnostics;
-use crate::features::missing_import_diagnostics::missing_import_diagnostics;
-use crate::features::nullable_call_diagnostics::nullable_dot_call_diagnostics;
-use crate::features::unused_import_diagnostics::unused_import_diagnostics;
+use crate::features::diagnostics::semantic_diagnostics;
 use crate::indexer::live_tree::{lang_for_path, parse_live};
 use crate::indexer::Indexer;
 
@@ -270,14 +266,11 @@ impl FileChangeHandler {
 /// Named and pulled out of the `spawn_blocking` closure it used to be
 /// inline in so it can be unit-tested directly — see
 /// `debounced_diagnostics_flag_a_deleted_package_declaration` in the test
-/// module for the regression this shape exists to catch: this function's
-/// own list of diagnostic calls had silently drifted from
-/// `DocumentHandler`'s two call sites (`handle_file_opened`,
-/// `republish_open_file_diagnostics`) since the day this file was first
-/// extracted from the workspace actor (`refactor(workspace): extract actor
-/// handlers (w5b)`, before the missing-package diagnostic even existed) —
-/// both of those call `missing_package_diagnostic`, this one never did.
-///
+/// module for the regression this shape exists to catch. The semantic set
+/// itself delegates to [`crate::features::diagnostics::semantic_diagnostics`],
+/// the same coordinator the didOpen/republish paths and the pull
+/// (`textDocument/diagnostic`) handler use, so the per-surface lists cannot
+/// drift again.
 /// `diagnostics_text_is_current` must be `false` whenever `diagnostics_text`
 /// is a fallback placeholder rather than the real just-indexed content (the
 /// caller's `index_content` `spawn_blocking` task panicked, so the real text
@@ -297,19 +290,16 @@ fn compute_debounced_semantic_diagnostics(
     // Parse tree from the exact same text that was just indexed — this
     // guarantees CST and indexed data are consistent.
     let live_doc = lang_for_path(uri.path()).and_then(|lang| parse_live(diagnostics_text, lang));
-    let mut diagnostics = when_diagnostics(indexer, uri);
-    if let Some(ref doc) = live_doc {
-        let arg_diags = call_arg_diagnostics(indexer, uri, doc);
+    let mut diagnostics = Vec::new();
+    if let Some(doc) = &live_doc {
+        let semantic = semantic_diagnostics(indexer, uri, doc);
         log::debug!(
-            "diag[gen={generation}]: call_arg_diagnostics returned {} items",
-            arg_diags.len(),
+            "diag[gen={generation}]: semantic_diagnostics returned {} items",
+            semantic.len(),
         );
-        diagnostics.extend(arg_diags);
-        diagnostics.extend(nullable_dot_call_diagnostics(indexer, uri, doc));
-        diagnostics.extend(missing_import_diagnostics(indexer, uri, doc));
-        diagnostics.extend(unused_import_diagnostics(doc));
+        diagnostics.extend(semantic);
     } else {
-        log::debug!("diag[gen={generation}]: live_doc is None — no call-arg diagnostics");
+        log::debug!("diag[gen={generation}]: live_doc is None — no semantic diagnostics");
     }
     if diagnostics_text_is_current {
         let text_lines: Vec<String> = diagnostics_text.lines().map(str::to_owned).collect();

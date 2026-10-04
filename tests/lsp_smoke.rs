@@ -1007,3 +1007,57 @@ fn smoke_unused_import_diagnostic_on_edit() {
         Duration::from_secs(20),
     );
 }
+
+/// Pull diagnostics (`textDocument/diagnostic`) must serve the same set the
+/// push path publishes. Previously the server advertised no
+/// `diagnosticProvider` and answered pull with `method_not_found`, so
+/// pull-based clients (oh-my-pi's "LSP diagnostics") always saw a clean
+/// bill no matter how many warnings the push path produced.
+#[test]
+fn smoke_pull_diagnostics_matches_push() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+
+    write(root, "workspace.json", r#"{"sourcePaths":[]}"#);
+    let unused = concat!(
+        "package com.example.app\n",
+        "\n",
+        "import com.example.lib.Target\n",
+        "\n",
+        "fun demo() {\n",
+        "    println(\"hi\")\n",
+        "}\n",
+    );
+    write(root, "src/Main.kt", unused);
+
+    let mut client = LspClient::spawn(root);
+    client.initialize(root);
+    client.wait_for_indexing();
+
+    let uri = file_uri(root, "src/Main.kt");
+    client.open_file(&uri, "kotlin", unused);
+
+    // Wait for the push path to settle first: this proves didOpen indexing
+    // finished, so the pull below cannot race it and flake.
+    client.wait_for_diagnostic_containing(
+        &uri,
+        "Unused import 'com.example.lib.Target'",
+        Duration::from_secs(20),
+    );
+
+    let resp = client.request(
+        "textDocument/diagnostic",
+        json!({"textDocument": {"uri": uri}}),
+    );
+    let items = resp
+        .get("result")
+        .and_then(|result| result.get("items"))
+        .and_then(|items| items.as_array())
+        .unwrap_or_else(|| panic!("pull diagnostics must return full items; got: {resp}"));
+    assert!(
+        items.iter().any(|item| item["message"]
+            .as_str()
+            .is_some_and(|message| message.contains("Unused import"))),
+        "pull must report the same unused import as push; got: {resp}"
+    );
+}

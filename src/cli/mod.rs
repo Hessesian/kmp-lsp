@@ -5,7 +5,7 @@
 //!   refs  <name> [--exclude-imports] — locate all usages of NAME
 //!   hover <file> <line> <col>    — show symbol signature at position
 //!   check <file|dir>…            — syntax-check files (no index needed)
-//!   diagnose <file>              — call-arg + syntax diagnostics
+//!   diagnose <file>              — full diagnostics (same set as the LSP push/pull path)
 //!   index                        — pre-build the workspace index cache
 //!
 //! Modes (default: auto):
