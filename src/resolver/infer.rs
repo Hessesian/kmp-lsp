@@ -1775,9 +1775,51 @@ pub(crate) fn find_method_return_type(
             if let Some(ret) = extract_return_type_from_detail(&full_sig) {
                 return Some(ret);
             }
+            // No declared type at all: `fun f() = <expr>` — the type is the body's.
+            if let Some(ret) = infer_expression_body_return_type(indexer, &loc.uri, symbol) {
+                return Some(ret);
+            }
         }
         None
     })
+}
+
+/// The return type of an expression-bodied function (`fun f() = <expr>`),
+/// inferred from its body. Block-bodied functions must declare their type, so
+/// there is nothing to infer for them.
+///
+/// Guarded like [`infer_variable_type_from_cst`]: inferring the body resolves
+/// identifiers, which can lead back to this same function.
+fn infer_expression_body_return_type(
+    indexer: &Indexer,
+    uri: &Url,
+    function: &crate::types::SymbolEntry,
+) -> Option<String> {
+    use crate::queries::{KIND_EQ, KIND_FUN_BODY, KIND_FUN_DECL};
+
+    let declaration_line = function.selection_start();
+    let _guard =
+        ResolutionInFlight::enter(uri, &format!("fun {}@{declaration_line}", function.name))?;
+    let doc = indexer.live_doc_or_parse(uri)?;
+    let bytes = doc.bytes.as_slice();
+    let start_point = tree_sitter::Point {
+        row: declaration_line as usize,
+        column: function.selection_range.start.character as usize,
+    };
+    let mut node =
+        crate::indexer::node_ext::descendant_for_point(doc.tree.root_node(), bytes, start_point)?;
+    while node.kind() != KIND_FUN_DECL {
+        node = node.parent()?;
+    }
+    let mut cursor = node.walk();
+    let body = node
+        .children(&mut cursor)
+        .find(|child| child.kind() == KIND_FUN_BODY)?;
+    let equals_sign = body.child(0)?;
+    if equals_sign.kind() != KIND_EQ {
+        return None;
+    }
+    crate::indexer::infer_expr_type(body.child(1)?, bytes, indexer, uri)
 }
 
 /// Returns true when an extension function declared in `entry_package` is

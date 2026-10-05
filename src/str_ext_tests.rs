@@ -73,3 +73,15 @@ fn word_at_non_word_char_returns_empty() {
     // should return the empty string.
     assert_eq!("foo + bar".word_at_utf16_col(4), "");
 }
+
+#[test]
+fn strip_variance_removes_only_a_leading_projection() {
+    assert_eq!("out Foo".strip_variance(), "Foo");
+    assert_eq!("in Foo".strip_variance(), "Foo");
+    assert_eq!("  out  Foo".strip_variance(), "Foo");
+    assert_eq!("Foo".strip_variance(), "Foo");
+    // a type that merely starts with the letters must stay intact
+    assert_eq!("outcome".strip_variance(), "outcome");
+    assert_eq!("input.Foo".strip_variance(), "input.Foo");
+    assert_eq!("out Foo<in Bar>".strip_variance(), "Foo<in Bar>");
+}

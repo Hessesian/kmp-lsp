@@ -704,12 +704,7 @@ fn type_params_from_angle_brackets(text: &str) -> Vec<String> {
         .split(',')
         .filter_map(|s| {
             let s = s.trim();
-            // Strip variance annotation prefix
-            let s = s
-                .strip_prefix("out ")
-                .or_else(|| s.strip_prefix("in "))
-                .unwrap_or(s)
-                .trim();
+            let s = s.strip_variance().trim();
             // Strip upper bound suffix (e.g. `T : Any`, `T: Comparable`)
             let s = s.split(':').next().unwrap_or(s).trim();
             if !s.is_empty() && s.chars().all(|c| c.is_alphanumeric() || c == '_') {

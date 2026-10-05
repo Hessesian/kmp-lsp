@@ -20,6 +20,7 @@ use crate::queries::{
 };
 use crate::resolver::api::Definitions;
 use crate::semantic_tokens::is_named_argument_label;
+use crate::str_ext::StrExt as _;
 use crate::types::CursorPos;
 use tower_lsp::lsp_types::{Location, Position, Url};
 
@@ -284,15 +285,20 @@ pub(crate) fn classify_symbol_at(
         // `has_type_definition` so a made-up/unresolvable annotation
         // doesn't silently masquerade as a real receiver type (house
         // decoy: `untypeable_receiver_yields_no_receiver_type`).
-        let receiver_type =
-            navigation_receiver_node(nav).and_then(|receiver| {
-                match CstQuery::new(receiver, doc, indexer, uri).expr_type() {
-                    Resolution::Resolved(t) if indexer.has_type_definition(t.as_type_str()) => {
-                        Some(t.as_type_str().to_owned())
-                    }
-                    _ => None,
-                }
-            });
+        let receiver_type = navigation_receiver_node(nav).and_then(|receiver| {
+            let Resolution::Resolved(resolved) =
+                CstQuery::new(receiver, doc, indexer, uri).expr_type()
+            else {
+                return None;
+            };
+            // The inferred type is as-written (`Box<out Texts>`, `User?`);
+            // the member lookup and the known-type gate both want the
+            // type's own name, not its type arguments or nullability.
+            let type_path = resolved.as_type_str().dotted_ident_prefix();
+            indexer
+                .has_type_definition(type_path.last_segment())
+                .then_some(type_path)
+        });
         return Some(SymbolAtCursor {
             name,
             role: SymbolRole::Reference {

@@ -36,6 +36,13 @@ pub(crate) trait StrExt {
     /// strings never carry `?`, so this is a no-op there — safe language-agnostic.)
     fn strip_nullable(&self) -> &str;
 
+    /// Returns `self` with a leading Kotlin variance projection (`out `/`in `)
+    /// removed. `"out Foo"` → `"Foo"`, `"in Foo"` → `"Foo"`, `"Foo"` → `"Foo"`.
+    ///
+    /// A projected type argument (`Box<out Foo>`) names the same type as the
+    /// unprojected one for every lookup this server does.
+    fn strip_variance(&self) -> &str;
+
     /// Returns the declaration-keyword prefix of `self` — strips leading whitespace and annotations.
     fn decl_prefix(&self) -> &str;
 
@@ -85,6 +92,15 @@ impl StrExt for str {
     #[inline]
     fn strip_nullable(&self) -> &str {
         self.trim_end_matches('?')
+    }
+
+    #[inline]
+    fn strip_variance(&self) -> &str {
+        let trimmed = self.trim_start();
+        trimmed
+            .strip_prefix("out ")
+            .or_else(|| trimmed.strip_prefix("in "))
+            .map_or(trimmed, str::trim_start)
     }
 
     #[inline]

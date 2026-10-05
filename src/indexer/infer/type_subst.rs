@@ -32,7 +32,7 @@ pub(crate) fn build_type_arg_subst(
     };
     let type_args: Vec<String> = split_top_level_commas(inner)
         .into_iter()
-        .map(|raw_arg| raw_arg.trim().strip_nullable().to_owned())
+        .map(|raw_arg| raw_arg.trim().strip_variance().strip_nullable().to_owned())
         .filter(|trimmed_arg| !trimmed_arg.is_empty())
         .collect();
     type_params.into_iter().zip(type_args).collect()

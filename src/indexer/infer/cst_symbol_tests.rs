@@ -661,3 +661,67 @@ fn local_scope_occurrences_is_not_quadratic_in_nesting_depth() {
         "took {elapsed:?} — the parent lookup is quadratic again"
     );
 }
+
+/// The receiver type a member reference is classified with.
+fn receiver_type_at(src: &str, line: u32, member: &str) -> Option<String> {
+    let (uri, indexer) = indexed_with_live("/D.kt", src);
+    let column = src
+        .lines()
+        .nth(line as usize)
+        .unwrap()
+        .find(member)
+        .unwrap();
+    let symbol = classify_symbol_at(
+        &indexer,
+        &uri,
+        CursorPos {
+            line: line as usize,
+            utf16_col: column,
+        },
+    )
+    .unwrap();
+    match symbol.role {
+        SymbolRole::Reference { receiver_type, .. } => receiver_type,
+        other => panic!("expected a reference, got {other:?}"),
+    }
+}
+
+/// Real Moneta gap (`loadScreenData(..).text`): the call's declared return type
+/// is `ScreenFlowModel<out IProductScreenTexts, out IScreenFlow>`. The "is this
+/// a known type" gate looked the WHOLE string up as a type name, so a generic
+/// call-result receiver was always rejected and the member lost its receiver
+/// type (a parameter annotation takes a different path and was unaffected).
+#[test]
+fn generic_call_result_receiver_keeps_its_base_type_as_receiver_type() {
+    let src = "class Box<T>(val text: T)\n\
+               interface Texts\n\
+               interface Loader { fun load(): Box<out Texts> }\n\
+               fun f(loader: Loader) { loader.load().text }\n";
+    assert_eq!(receiver_type_at(src, 3, "text").as_deref(), Some("Box"));
+}
+
+/// Second hop of the same Moneta chain (`loadScreenData(..).text.scenes`):
+/// `text` is declared `val text: Texts` on `ScreenFlowModel<Texts, ..>`, so the
+/// type of `.text` is the receiver's own type argument (`IProductScreenTexts`,
+/// without its `out` projection), not the literal parameter name `Texts`.
+#[test]
+fn property_of_a_type_parameter_resolves_to_the_receivers_type_argument() {
+    let src = "class Box<T>(val text: T)\n\
+               interface ProductTexts { val scenes: String }\n\
+               interface Loader { fun load(): Box<out ProductTexts> }\n\
+               fun f(loader: Loader) { loader.load().text.scenes }\n";
+    assert_eq!(
+        receiver_type_at(src, 3, "scenes").as_deref(),
+        Some("ProductTexts")
+    );
+}
+
+/// The method-call sibling of the field hop above: `get()` is declared
+/// `fun get(): T`, so a call on a `Box<Texts>` receiver is a `Texts`.
+#[test]
+fn method_returning_a_type_parameter_resolves_to_the_receivers_type_argument() {
+    let src = "class Box<T> { fun get(): T = TODO() }\n\
+               class Texts { val title: String = \"\" }\n\
+               fun f(box: Box<Texts>) { box.get().title }\n";
+    assert_eq!(receiver_type_at(src, 2, "title").as_deref(), Some("Texts"));
+}
