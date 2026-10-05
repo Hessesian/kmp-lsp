@@ -17,6 +17,8 @@ mod package;
 mod package_scope;
 mod platform_types;
 mod qualified;
+pub(crate) use qualified::resolve_type_path_declarations;
+pub(crate) use resolve::ResolveIo;
 pub(crate) mod resolve;
 mod scope_check;
 #[cfg(test)]

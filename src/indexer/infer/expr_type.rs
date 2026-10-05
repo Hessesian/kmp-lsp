@@ -44,6 +44,7 @@ use crate::queries::{
 };
 use crate::StrExt as _;
 
+use super::chain::{resolve_field_type_on, resolve_method_return_type_on};
 use super::deps::InferDeps;
 
 // ─── public API ───────────────────────────────────────────────────────────────
@@ -238,6 +239,9 @@ fn infer_navigation_expr_type(
     let (receiver_type, receiver_uri) =
         infer_expr_type_at_depth(receiver, bytes, deps, uri, depth + 1)?;
 
+    // The type's own (possibly nested/qualified) name: no type arguments, no `?`.
+    let lookup_name = receiver_type.dotted_ident_prefix();
+
     if nav_is_call_callee(node) {
         // The two-step `find_fun_return_type_reachable` → `find_fun_return_type` replicates
         // `Resolver::function_return_type`'s reachable→by_name fallback behaviour (see
@@ -245,14 +249,20 @@ fn infer_navigation_expr_type(
         // `Resolver` trait directly.  Together they are equivalent to the original
         // `indexer.function_return_type(&member, uri)` call in `navigation_expression_type`.
         // Neither is `Url`-aware yet, so the anchor doesn't advance past this hop.
-        let type_name = deps
-            .find_method_return_type_for_type(&receiver_type, &member, &receiver_uri)
-            .or_else(|| deps.find_fun_return_type_reachable(&member, uri))
-            .or_else(|| deps.find_fun_return_type(&member, uri))?;
+        let type_name = resolve_method_return_type_on(
+            &lookup_name,
+            &receiver_type,
+            &member,
+            deps,
+            &receiver_uri,
+        )
+        .map(|(substituted, _)| substituted)
+        .or_else(|| deps.find_fun_return_type_reachable(&member, uri))
+        .or_else(|| deps.find_fun_return_type(&member, uri))?;
         return Some((type_name, receiver_uri));
     }
 
-    deps.find_field_type(&receiver_type, &member, &receiver_uri)
+    resolve_field_type_on(&lookup_name, &receiver_type, &member, deps, &receiver_uri)
 }
 
 // ─── navigation tree-walking helpers ─────────────────────────────────────────

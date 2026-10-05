@@ -20,6 +20,7 @@ use crate::queries::{
 };
 use crate::resolver::api::Definitions;
 use crate::semantic_tokens::is_named_argument_label;
+use crate::str_ext::StrExt as _;
 use crate::types::CursorPos;
 use tower_lsp::lsp_types::{Location, Position, Url};
 
@@ -160,6 +161,23 @@ pub(crate) fn is_call_callee(node: Node<'_>) -> bool {
         && parent.child(0).map(|child| child.id()) == Some(node.id())
 }
 
+/// Whether `type_path` (a simple, nested `Outer.Inner`, or package-qualified
+/// type name) names a type the index knows. A qualified path is validated as a
+/// whole, not by its leaf: `Missing.User` must not pass because some unrelated
+/// `User` is indexed.
+fn names_a_known_type(indexer: &Indexer, type_path: &str, uri: &Url) -> bool {
+    if type_path.contains('.') {
+        return !crate::resolver::resolve_type_path_declarations(
+            indexer,
+            type_path,
+            uri,
+            crate::resolver::ResolveIo::IndexOnly,
+        )
+        .is_empty();
+    }
+    indexer.has_type_definition(type_path)
+}
+
 /// The classified identifier under the cursor, produced by [`classify_symbol_at`].
 #[derive(Debug, Clone)]
 pub(crate) struct SymbolAtCursor {
@@ -284,15 +302,18 @@ pub(crate) fn classify_symbol_at(
         // `has_type_definition` so a made-up/unresolvable annotation
         // doesn't silently masquerade as a real receiver type (house
         // decoy: `untypeable_receiver_yields_no_receiver_type`).
-        let receiver_type =
-            navigation_receiver_node(nav).and_then(|receiver| {
-                match CstQuery::new(receiver, doc, indexer, uri).expr_type() {
-                    Resolution::Resolved(t) if indexer.has_type_definition(t.as_type_str()) => {
-                        Some(t.as_type_str().to_owned())
-                    }
-                    _ => None,
-                }
-            });
+        let receiver_type = navigation_receiver_node(nav).and_then(|receiver| {
+            let Resolution::Resolved(resolved) =
+                CstQuery::new(receiver, doc, indexer, uri).expr_type()
+            else {
+                return None;
+            };
+            // The inferred type is as-written (`Box<out Texts>`, `User?`);
+            // the member lookup and the known-type gate both want the
+            // type's own name, not its type arguments or nullability.
+            let type_path = resolved.as_type_str().dotted_ident_prefix();
+            names_a_known_type(indexer, &type_path, uri).then_some(type_path)
+        });
         return Some(SymbolAtCursor {
             name,
             role: SymbolRole::Reference {

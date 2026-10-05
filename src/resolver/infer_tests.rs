@@ -1891,3 +1891,101 @@ fn find_field_type_via_supertypes_terminates_on_a_mutual_field_reference_cycle()
     // stack.
     let _ = idx.field_type("DerivedA", "value", &uri("/A.kt"));
 }
+
+/// Real Moneta gap: `suspend fun getTexts() = repository.getTexts().scenes.X`
+/// declares no return type, so `find_method_return_type` found nothing and
+/// callers fell through to a bare-name scan that picked one of the ~149
+/// same-named `getTexts` in the corpus. A decoy `getTexts` with a declared
+/// type is what turns that from a lucky pass into a wrong answer.
+#[test]
+fn method_return_type_is_inferred_from_an_expression_body() {
+    use crate::indexer::Indexer;
+    use tower_lsp::lsp_types::Url;
+
+    let idx = Indexer::new();
+    let interactor_uri = Url::parse("file:///t/Interactor.kt").unwrap();
+    let interactor_source = "package p\n\
+         interface Repo { suspend fun getTexts(): TextsBody }\n\
+         data class TextsBody(val scenes: Scenes)\n\
+         data class Scenes(val staticDocuments: StaticDocuments)\n\
+         data class StaticDocuments(val title: String?)\n\
+         class Interactor(private val repository: Repo) {\n\
+             suspend fun getTexts() = repository.getTexts().scenes.staticDocuments\n\
+         }\n";
+    idx.index_content(&interactor_uri, interactor_source);
+    idx.store_live_tree(&interactor_uri, interactor_source);
+    let decoy_uri = Url::parse("file:///t/Decoy.kt").unwrap();
+    idx.index_content(
+        &decoy_uri,
+        "package p\nclass OtherRepo { fun getTexts(): DecoyBody = DecoyBody() }\nclass DecoyBody\n",
+    );
+
+    let return_type = crate::resolver::infer::find_method_return_type(
+        &idx,
+        "Interactor",
+        "getTexts",
+        Some(&interactor_uri),
+    );
+
+    assert_eq!(
+        return_type.as_deref(),
+        Some("StaticDocuments"),
+        "an expression-bodied method's return type is its body's type, not \
+         absent (which lets a same-named decoy win by bare-name lookup)"
+    );
+}
+
+/// `fun loop() = loop()` (and mutual recursion) has no answerable type; the
+/// body inference must terminate with `None`, not recurse until the stack is gone.
+#[test]
+fn expression_body_return_inference_terminates_on_a_self_referential_method() {
+    use crate::indexer::Indexer;
+    use tower_lsp::lsp_types::Url;
+
+    let idx = Indexer::new();
+    let uri = Url::parse("file:///t/Loop.kt").unwrap();
+    let source = "package p\n\
+         class Looper {\n\
+             fun ping() = pong()\n\
+             fun pong() = ping()\n\
+         }\n";
+    idx.index_content(&uri, source);
+    idx.store_live_tree(&uri, source);
+
+    let return_type =
+        crate::resolver::infer::find_method_return_type(&idx, "Looper", "ping", Some(&uri));
+
+    assert_eq!(return_type, None);
+}
+
+/// Review finding on #330: a Kotlin function with a block body (or no body) and
+/// no declared type returns `Unit`; leaving it `None` lets a same-named decoy win
+/// the bare-name fallback — the failure mode expression-body inference exists to prevent.
+#[test]
+fn undeclared_return_of_a_block_bodied_or_bodyless_kotlin_method_is_unit() {
+    use crate::indexer::Indexer;
+    use tower_lsp::lsp_types::Url;
+
+    let idx = Indexer::new();
+    let uri = Url::parse("file:///t/Unit.kt").unwrap();
+    let source = "package p\n\
+         class Worker {\n\
+             fun save() {\n\
+             }\n\
+         }\n\
+         interface Task { fun run() }\n";
+    idx.index_content(&uri, source);
+    idx.store_live_tree(&uri, source);
+    let decoy_uri = Url::parse("file:///t/Decoy.kt").unwrap();
+    idx.index_content(
+        &decoy_uri,
+        "package p\nclass Other { fun save(): Int = 1 }\nclass Another { fun run(): String = \"\" }\n",
+    );
+
+    let block_bodied =
+        crate::resolver::infer::find_method_return_type(&idx, "Worker", "save", Some(&uri));
+    let bodyless = crate::resolver::infer::find_method_return_type(&idx, "Task", "run", Some(&uri));
+
+    assert_eq!(block_bodied.as_deref(), Some("Unit"));
+    assert_eq!(bodyless.as_deref(), Some("Unit"));
+}

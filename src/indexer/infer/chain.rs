@@ -452,32 +452,72 @@ pub(super) fn resolve_member_type_on(
     deps: &impl InferDeps,
     uri: &Url,
 ) -> Option<(String, Url)> {
+    let class_name = receiver_class_name(current_type)?;
+    resolve_field_type_on(&class_name, current_type, member, deps, uri)
+        .or_else(|| resolve_method_return_type_on(&class_name, current_type, member, deps, uri))
+}
+
+/// The receiver's own type name, capitalised if the inferred string was a
+/// lowercase variable-ish name — what a class lookup is keyed by.
+fn receiver_class_name(current_type: &str) -> Option<String> {
     let type_name = current_type.dotted_ident_prefix();
     let type_base = type_name.last_segment();
-    let effective_type = if !type_base.is_empty() && type_base.starts_with_uppercase() {
-        type_base.to_owned()
-    } else if !type_base.is_empty() {
-        capitalize_first_char(type_base)
+    if type_base.is_empty() {
+        None
+    } else if type_base.starts_with_uppercase() {
+        Some(type_base.to_owned())
     } else {
-        return None;
-    };
-    if let Some((field_ty, declaring_uri)) = deps.find_field_type(&effective_type, member, uri) {
-        let subst = build_type_arg_subst(deps, &effective_type, current_type);
-        let applied = crate::indexer::apply_type_subst(&field_ty, &subst);
-        if is_generic_param(applied.strip_nullable()) {
-            return first_type_arg_raw(current_type).map(|t| (t, declaring_uri));
-        }
-        return Some((applied, declaring_uri));
+        Some(capitalize_first_char(type_base))
     }
-    if let Some(ret_ty) = deps.find_method_return_type_for_type(&effective_type, member, uri) {
-        let subst = build_type_arg_subst(deps, &effective_type, current_type);
-        let applied = crate::indexer::apply_type_subst(&ret_ty, &subst);
-        if is_generic_param(applied.strip_nullable()) {
-            return first_type_arg_raw(current_type).map(|t| (t, uri.clone()));
-        }
-        return Some((applied, uri.clone()));
+}
+
+/// A member's declared type with the receiver's own type arguments
+/// substituted in (`text: Texts` on `Box<out ProductTexts>` → `ProductTexts`).
+/// A parameter still unbound after substitution falls back to the receiver's
+/// first concrete type argument. `lookup_name` is whatever the caller keyed
+/// the member lookup by; its base name keys the class's type parameters.
+fn substitute_receiver_type_arguments(
+    declared_type: &str,
+    lookup_name: &str,
+    current_type: &str,
+    deps: &impl InferDeps,
+) -> Option<String> {
+    let class_path = lookup_name.dotted_ident_prefix();
+    let subst = build_type_arg_subst(deps, class_path.last_segment(), current_type);
+    let applied = crate::indexer::apply_type_subst(declared_type, &subst);
+    if is_generic_param(applied.strip_nullable()) {
+        return first_type_arg_raw(current_type);
     }
-    None
+    Some(applied)
+}
+
+/// A FIELD of `lookup_name`'s type, receiver type arguments substituted. The
+/// `Url` is the field's declaring file — the reachability anchor for the next
+/// hop.
+pub(super) fn resolve_field_type_on(
+    lookup_name: &str,
+    current_type: &str,
+    member: &str,
+    deps: &impl InferDeps,
+    uri: &Url,
+) -> Option<(String, Url)> {
+    let (field_type, declaring_uri) = deps.find_field_type(lookup_name, member, uri)?;
+    substitute_receiver_type_arguments(&field_type, lookup_name, current_type, deps)
+        .map(|substituted| (substituted, declaring_uri))
+}
+
+/// A METHOD of `lookup_name`'s type: its return type, receiver type arguments
+/// substituted.
+pub(super) fn resolve_method_return_type_on(
+    lookup_name: &str,
+    current_type: &str,
+    member: &str,
+    deps: &impl InferDeps,
+    uri: &Url,
+) -> Option<(String, Url)> {
+    let return_type = deps.find_method_return_type_for_type(lookup_name, member, uri)?;
+    substitute_receiver_type_arguments(&return_type, lookup_name, current_type, deps)
+        .map(|substituted| (substituted, uri.clone()))
 }
 
 /// Walk up from a node to find the enclosing class/object declaration name.

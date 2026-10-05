@@ -30,12 +30,29 @@ pub(crate) fn build_type_arg_subst(
     let Some(inner) = type_args_inner(concrete_type) else {
         return std::collections::HashMap::new();
     };
-    let type_args: Vec<String> = split_top_level_commas(inner)
+    let type_args: Vec<Option<String>> = split_top_level_commas(inner)
         .into_iter()
-        .map(|raw_arg| raw_arg.trim().strip_nullable().to_owned())
-        .filter(|trimmed_arg| !trimmed_arg.is_empty())
+        .filter(|raw_arg| !raw_arg.trim().is_empty())
+        .map(|raw_arg| readable_type_argument(raw_arg).map(str::to_owned))
         .collect();
-    type_params.into_iter().zip(type_args).collect()
+    type_params
+        .into_iter()
+        .zip(type_args)
+        .filter_map(|(param, argument)| Some((param, argument?)))
+        .collect()
+}
+
+/// A type argument as seen when READING a member through it. An invariant or
+/// `out` argument is the type itself (`out Texts` reads as `Texts`); an `in`
+/// projection or a star has no usable read type (`Box<in String>.value` is
+/// `Any?`, not `String`), so it binds nothing.
+fn readable_type_argument(raw_argument: &str) -> Option<&str> {
+    let trimmed = raw_argument.trim();
+    let is_contravariant_or_star = trimmed == "*" || trimmed.starts_with("in ");
+    if is_contravariant_or_star {
+        return None;
+    }
+    Some(trimmed.strip_variance().strip_nullable())
 }
 
 /// Extract the content between the outermost `<` and `>` of a generic type.
@@ -189,7 +206,7 @@ pub(crate) fn is_generic_param(name: &str) -> bool {
 /// type argument so that downstream resolution can continue walking the chain.
 pub(super) fn first_type_arg_raw(type_name: &str) -> Option<String> {
     let inner = type_args_inner(type_name)?;
-    let arg = first_type_arg(inner).trim().trim_matches('?');
+    let arg = readable_type_argument(first_type_arg(inner))?;
     let base = arg.ident_prefix();
     if base.is_empty() || is_generic_param(&base) {
         return None;
