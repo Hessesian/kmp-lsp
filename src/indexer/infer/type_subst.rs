@@ -111,6 +111,27 @@ pub(super) fn build_ext_fn_type_subst(
     fun_type_params: &[String],
 ) -> std::collections::HashMap<String, String> {
     let mut map = std::collections::HashMap::new();
+    // A type parameter that IS the whole receiver binds by the declared
+    // nullability: `T?` takes the non-null type, a plain `T` takes the
+    // concrete type as-is, nullability included (`fun <T> T.echo()` on
+    // `Foo?` is `T = Foo?`).
+    let declared = declared_receiver.trim();
+    let whole_receiver_param = declared.strip_nullable();
+    if fun_type_params
+        .iter()
+        .any(|param| param == whole_receiver_param)
+    {
+        let concrete = concrete_receiver.trim();
+        let bound = if declared.is_nullable() {
+            concrete.strip_nullable()
+        } else {
+            concrete
+        };
+        if !bound.is_empty() {
+            map.insert(whole_receiver_param.to_owned(), bound.to_owned());
+        }
+        return map;
+    }
     match_type_args_recursive(
         declared_receiver,
         concrete_receiver,

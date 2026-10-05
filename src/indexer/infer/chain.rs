@@ -599,39 +599,76 @@ impl StrategyOutcome {
     fn finalize<D: InferDeps>(self, ctx: &CallCtx<'_, D>) -> String {
         match self {
             StrategyOutcome::Final(s) => s,
-            StrategyOutcome::SignatureDerived(raw) => apply_call_site_type_args(raw, ctx),
+            StrategyOutcome::SignatureDerived(raw_return) => {
+                let has_explicit_receiver = ctx.callee.kind() == KIND_NAV_EXPR;
+                let substitution = if has_explicit_receiver {
+                    callee_receiver_type(ctx)
+                        .map(|receiver_type| {
+                            extension_receiver_type_param_subst(ctx, &receiver_type)
+                        })
+                        .unwrap_or_default()
+                } else {
+                    Default::default()
+                };
+                let substituted = crate::indexer::apply_type_subst(&raw_return, &substitution);
+                apply_call_site_type_args(substituted, ctx)
+            }
             StrategyOutcome::ReceiverDerived {
                 raw_return,
                 effective_type,
                 receiver_type,
             } => {
-                let mut subst = build_type_arg_subst(ctx.deps, &effective_type, &receiver_type);
-                // `build_type_arg_subst` only covers a type param NESTED inside
-                // the receiver's own type argument (`List<T>`'s `T`). It misses
-                // the shape where the extension's OWN type parameter IS the
-                // whole receiver (`fun <T> T?.required(field: String): T`) --
-                // `effective_type` (e.g. "String") declares no class type
-                // params, so that map comes back empty and `raw_return` ("T")
-                // is left unsubstituted. Fill the gap from the extension's own
-                // declared-vs-concrete receiver shape, without overriding any
-                // key `build_type_arg_subst` already resolved.
-                if let Some(info) = ctx.deps.find_fun_callable_info(ctx.fn_name, ctx.uri) {
-                    if !info.extension_receiver_type.is_empty() && !info.type_params.is_empty() {
-                        let ext_subst = build_ext_fn_type_subst(
-                            &info.extension_receiver_type,
-                            &receiver_type,
-                            &info.type_params,
-                        );
-                        for (param, concrete) in ext_subst {
-                            subst.entry(param).or_insert(concrete);
-                        }
-                    }
+                let mut substitution =
+                    build_type_arg_subst(ctx.deps, &effective_type, &receiver_type);
+                for (param, concrete) in extension_receiver_type_param_subst(ctx, &receiver_type) {
+                    substitution.entry(param).or_insert(concrete);
                 }
-                let substituted = crate::indexer::apply_type_subst(&raw_return, &subst);
+                let substituted = crate::indexer::apply_type_subst(&raw_return, &substitution);
                 apply_call_site_type_args(substituted, ctx)
             }
         }
     }
+}
+
+/// Binds the called extension function's own type parameters from its
+/// concrete receiver: `build_type_arg_subst` only covers a type param NESTED
+/// inside the receiver's own type argument (`List<T>`'s `T`). It misses the
+/// shape where the extension's OWN type parameter IS the whole receiver
+/// (`fun <T> T?.required(field: String): T`). Empty for a non-extension.
+fn extension_receiver_type_param_subst<D: InferDeps>(
+    ctx: &CallCtx<'_, D>,
+    receiver_type: &str,
+) -> std::collections::HashMap<String, String> {
+    let Some(info) = ctx.deps.find_fun_callable_info(ctx.fn_name, ctx.uri) else {
+        return Default::default();
+    };
+    if info.extension_receiver_type.is_empty() || info.type_params.is_empty() {
+        return Default::default();
+    }
+    build_ext_fn_type_subst(
+        &info.extension_receiver_type,
+        receiver_type,
+        &info.type_params,
+    )
+}
+
+/// The resolved type of the expression left of `.fn_name(...)`. `None` for a
+/// receiver-less call or when the receiver's type doesn't resolve.
+fn callee_receiver_type<D: InferDeps>(ctx: &CallCtx<'_, D>) -> Option<String> {
+    if ctx.callee.kind() != KIND_NAV_EXPR {
+        return resolve_root_node_type(ctx.callee, ctx.bytes, ctx.deps, ctx.uri);
+    }
+    let segments = collect_nav_segments(ctx.callee, ctx.bytes);
+    if segments.len() < 2 {
+        return None;
+    }
+    resolve_segments_type(
+        &segments[..segments.len() - 1],
+        ctx.bytes,
+        ctx.deps,
+        ctx.uri,
+        SuffixStrictness::LeakReceiver,
+    )
 }
 
 /// A strategy's verdict for `ctx.fn_name(...)`.
@@ -695,22 +732,7 @@ fn lambda_result<D: InferDeps>(ctx: &CallCtx<'_, D>) -> StrategyVerdict {
 /// The receiver's own (indexed) type has a matching method — the most
 /// authoritative signature-based strategy.
 fn receiver_based_method<D: InferDeps>(ctx: &CallCtx<'_, D>) -> StrategyVerdict {
-    let receiver_type = if ctx.callee.kind() == KIND_NAV_EXPR {
-        let segments = collect_nav_segments(ctx.callee, ctx.bytes);
-        if segments.len() >= 2 {
-            resolve_segments_type(
-                &segments[..segments.len() - 1],
-                ctx.bytes,
-                ctx.deps,
-                ctx.uri,
-                SuffixStrictness::LeakReceiver,
-            )
-        } else {
-            None
-        }
-    } else {
-        resolve_root_node_type(ctx.callee, ctx.bytes, ctx.deps, ctx.uri)
-    };
+    let receiver_type = callee_receiver_type(ctx);
     let Some(receiver_type) = receiver_type else {
         return StrategyVerdict::NotApplicable;
     };

@@ -1370,11 +1370,11 @@ pub(crate) fn extension_receiver_from_decl(decl: Node, bytes: &[u8]) -> (String,
         // qualified receiver (`Foo`, `Foo.Bar` — the dot is internal to the
         // one `user_type` node), or wraps `nullable_type (user_type ...)`
         // for a nullable receiver (`Foo?`).
-        let Some(user_type) = child.first_child_of_kind(KIND_USER_TYPE).or_else(|| {
-            child
-                .first_child_of_kind(KIND_NULLABLE_TYPE)?
-                .first_child_of_kind(KIND_USER_TYPE)
-        }) else {
+        let nullable_wrapper = child.first_child_of_kind(KIND_NULLABLE_TYPE);
+        let Some(user_type) = child
+            .first_child_of_kind(KIND_USER_TYPE)
+            .or_else(|| nullable_wrapper?.first_child_of_kind(KIND_USER_TYPE))
+        else {
             continue;
         };
 
@@ -1390,10 +1390,12 @@ pub(crate) fn extension_receiver_from_decl(decl: Node, bytes: &[u8]) -> (String,
             .rsplit('.')
             .next()
             .unwrap_or(without_generics);
-        let receiver_type = if full.contains('<') {
-            full.clone()
-        } else {
-            String::new()
+        // The full type is kept when it has generics OR is nullable: `T?` and
+        // `T` bind a type parameter differently, so the marker must survive.
+        let receiver_type = match (full.contains('<'), nullable_wrapper.is_some()) {
+            (false, false) => String::new(),
+            (_, true) => format!("{full}?"),
+            (true, false) => full.clone(),
         };
         return (base.to_owned(), receiver_type);
     }
