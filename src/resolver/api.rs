@@ -29,8 +29,9 @@ use crate::indexer::Indexer;
 
 use super::infer::{
     find_field_type_in_class, find_field_type_via_supertypes, find_fun_return_type_by_name,
-    find_fun_return_type_reachable, find_method_return_type,
-    find_method_return_type_via_supertypes, infer_field_chain_type, infer_receiver_type,
+    find_fun_return_type_reachable, find_method_return_type_declared,
+    find_method_return_type_via_supertypes_declared, infer_field_chain_type, infer_receiver_type,
+    DeclaredReturn,
 };
 use super::ReceiverTypeAgreement;
 use super::{ReceiverKind, ReceiverType};
@@ -159,12 +160,25 @@ pub(crate) trait Resolver {
     ///
     /// Returns `None` when no matching method (own, extension, or inherited) with
     /// a resolvable return type — declared or inferred — is found.
+    fn method_return_type_declared(
+        &self,
+        type_name: &str,
+        method_name: &str,
+        from_uri: Option<&Url>,
+    ) -> Option<DeclaredReturn>;
+
+    /// [`Self::method_return_type_declared`] without the file the type was
+    /// written in.
+    #[cfg(test)]
     fn method_return_type(
         &self,
         type_name: &str,
         method_name: &str,
         from_uri: Option<&Url>,
-    ) -> Option<ReturnType>;
+    ) -> Option<ReturnType> {
+        self.method_return_type_declared(type_name, method_name, from_uri)
+            .map(|declared| ReturnType(declared.type_name))
+    }
 
     /// Resolve `field_name`'s type (declared, or inferred from its
     /// initializer for an unannotated `val`/`var`) on a receiver whose type's
@@ -229,17 +243,15 @@ impl Resolver for Indexer {
             .map(ReturnType)
     }
 
-    fn method_return_type(
+    fn method_return_type_declared(
         &self,
         type_name: &str,
         method_name: &str,
         from_uri: Option<&Url>,
-    ) -> Option<ReturnType> {
-        find_method_return_type(self, type_name, method_name, from_uri)
-            .or_else(|| {
-                find_method_return_type_via_supertypes(self, type_name, method_name, from_uri)
-            })
-            .map(ReturnType)
+    ) -> Option<DeclaredReturn> {
+        find_method_return_type_declared(self, type_name, method_name, from_uri).or_else(|| {
+            find_method_return_type_via_supertypes_declared(self, type_name, method_name, from_uri)
+        })
     }
 
     fn receiver_type_agreement(

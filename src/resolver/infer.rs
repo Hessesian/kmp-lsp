@@ -1736,17 +1736,41 @@ pub(crate) fn find_fun_return_type_reachable(
     fallback
 }
 
+/// A declared (or body-inferred) return type together with the file it was
+/// written in. `declared_in` is `None` when the answer came from an
+/// extension-registry or JAR-backed lookup that does not report a file.
+#[derive(Debug, Clone)]
+pub(crate) struct DeclaredReturn {
+    pub(crate) type_name: String,
+    pub(crate) declared_in: Option<Url>,
+}
+
+#[cfg(test)]
 pub(crate) fn find_method_return_type(
     indexer: &Indexer,
     type_name: &str,
     method_name: &str,
     from_uri: Option<&Url>,
 ) -> Option<String> {
+    find_method_return_type_declared(indexer, type_name, method_name, from_uri)
+        .map(|declared| declared.type_name)
+}
+
+/// [`find_method_return_type`], keeping the file the return type was written in.
+pub(crate) fn find_method_return_type_declared(
+    indexer: &Indexer,
+    type_name: &str,
+    method_name: &str,
+    from_uri: Option<&Url>,
+) -> Option<DeclaredReturn> {
     let type_base = type_name.last_segment();
 
     // Extension functions take precedence over member functions.
     if let Some(ret) = find_extension_fn_return_type(indexer, type_base, method_name, from_uri) {
-        return Some(ret);
+        return Some(DeclaredReturn {
+            type_name: ret,
+            declared_in: None,
+        });
     }
 
     // Then check member functions (container-based), scoped + capped via the helper.
@@ -1766,18 +1790,20 @@ pub(crate) fn find_method_return_type(
                 continue;
             }
             // Try detail first; fall back to source lines when detail is truncated.
-            if let Some(ret) = extract_return_type_from_detail(&symbol.detail) {
-                return Some(ret);
-            }
-            // detail may be truncated (120 char limit) — try the source lines.
-            let start_line = symbol.selection_start() as usize;
-            let full_sig = file_data.lines.collect_signature(start_line);
-            if let Some(ret) = extract_return_type_from_detail(&full_sig) {
-                return Some(ret);
-            }
-            // No declared type at all: the body's type, or `Unit`.
-            if let Some(ret) = infer_undeclared_return_type(indexer, &loc.uri, symbol) {
-                return Some(ret);
+            let declared_type = extract_return_type_from_detail(&symbol.detail)
+                .or_else(|| {
+                    // detail may be truncated (120 char limit) — try the source lines.
+                    let start_line = symbol.selection_start() as usize;
+                    let full_sig = file_data.lines.collect_signature(start_line);
+                    extract_return_type_from_detail(&full_sig)
+                })
+                // No declared type at all: the body's type, or `Unit`.
+                .or_else(|| infer_undeclared_return_type(indexer, &loc.uri, symbol));
+            if let Some(type_name) = declared_type {
+                return Some(DeclaredReturn {
+                    type_name,
+                    declared_in: Some(loc.uri.clone()),
+                });
             }
         }
         None
@@ -2124,12 +2150,25 @@ fn find_extension_fn_return_type_global(
     })
 }
 
+#[cfg(test)]
 pub(crate) fn find_method_return_type_via_supertypes(
     indexer: &Indexer,
     class_name: &str,
     method_name: &str,
     from_uri: Option<&Url>,
 ) -> Option<String> {
+    find_method_return_type_via_supertypes_declared(indexer, class_name, method_name, from_uri)
+        .map(|declared| declared.type_name)
+}
+
+/// [`find_method_return_type_via_supertypes`], keeping the file the return type
+/// was written in.
+pub(crate) fn find_method_return_type_via_supertypes_declared(
+    indexer: &Indexer,
+    class_name: &str,
+    method_name: &str,
+    from_uri: Option<&Url>,
+) -> Option<DeclaredReturn> {
     // Strip generics AND any qualifying package prefix — `class_base` is
     // matched against bare symbol names below.
     let class_base = class_name.dotted_ident_prefix().last_segment().to_owned();
@@ -2159,21 +2198,23 @@ pub(crate) fn find_method_return_type_via_supertypes(
 /// `class Derived : Base<Int>`) are substituted into a hit found there via
 /// `substitute_direct_supertype_args`; a hit on a deeper ancestor is
 /// returned as-is — multi-level generic substitution isn't attempted, the
-/// same scope the original single-level logic had.
+/// same scope the original single-level logic had. A substituted answer is
+/// attributed to `class_uri` (where `Base<Int>` was spelled), an unchanged one
+/// to the ancestor's own file.
 fn find_method_return_type_via_class_hierarchy(
     indexer: &Indexer,
     class_base: &str,
     class_uri: &str,
     method_name: &str,
     from_uri: Option<&Url>,
-) -> Option<String> {
+) -> Option<DeclaredReturn> {
     use crate::types::CallerContext;
 
     let caller = CallerContext {
         uri: from_uri.map(Url::as_str),
         cursor_line: None,
     };
-    let hits: Vec<(String, String)> = walk_hierarchy(
+    let hits: Vec<(String, DeclaredReturn)> = walk_hierarchy(
         indexer,
         class_base,
         class_uri,
@@ -2181,20 +2222,27 @@ fn find_method_return_type_via_class_hierarchy(
         8,
         MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK,
         |idx, super_name, _super_uri, _caller| {
-            find_method_return_type(idx, super_name, method_name, from_uri)
-                .map(|raw| (super_name.to_owned(), raw))
+            find_method_return_type_declared(idx, super_name, method_name, from_uri)
+                .map(|declared| (super_name.to_owned(), declared))
                 .into_iter()
                 .collect()
         },
     );
-    let (super_name, raw) = hits.into_iter().next()?;
-    Some(substitute_direct_supertype_args(
+    let (super_name, declared) = hits.into_iter().next()?;
+    let substituted = substitute_direct_supertype_args(
         indexer,
         class_uri,
         class_base,
         &super_name,
-        &raw,
-    ))
+        &declared.type_name,
+    );
+    if substituted == declared.type_name {
+        return Some(declared);
+    }
+    Some(DeclaredReturn {
+        type_name: substituted,
+        declared_in: Url::parse(class_uri).ok(),
+    })
 }
 
 /// If `super_name` is `class_base`'s *direct* supertype (declared with

@@ -225,6 +225,20 @@ pub(crate) trait InferDeps {
         None
     }
 
+    /// [`Self::find_method_return_type_for_type`] together with the file the
+    /// return type was written in — the scope its type NAME must be resolved
+    /// against (see `ResolvedType::declaring_uri`). `uri` (the caller) when the
+    /// lookup does not report a file (a JAR or extension-registry answer).
+    fn find_method_return_type_with_origin_for_type(
+        &self,
+        class_name: &str,
+        method_name: &str,
+        uri: &Url,
+    ) -> Option<(String, Url)> {
+        self.find_method_return_type_for_type(class_name, method_name, uri)
+            .map(|type_name| (type_name, uri.clone()))
+    }
+
     /// Return the raw parameter text for a method declared inside `class_name`,
     /// searching both members and extension functions on that receiver type.
     ///

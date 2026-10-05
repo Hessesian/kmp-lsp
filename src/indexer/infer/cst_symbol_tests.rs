@@ -881,3 +881,56 @@ fn field_hop_receiver_type_carries_the_declaring_file_as_its_origin() {
     assert_eq!(receiver.type_path(), "ScreenFlowModel");
     assert_eq!(receiver.declaring_uri(), &uri("/impl/Holder.kt"));
 }
+
+/// The Moneta shape (`screenFlowInteractor.loadScreenData(..).text.scenes`): the
+/// call's return type `ScreenFlowModel<out IProductScreenTexts>` is spelled in
+/// `Impl.kt`, which imports both types; the caller imports neither. Decoys in
+/// package `r` give BOTH names a same-named, member-bearing competitor.
+fn call_hop_files() -> [(&'static str, &'static str); 5] {
+    [
+        (
+            "/types/Types.kt",
+            "package types\nclass ScreenFlowModel<Texts>(val text: Texts)\n",
+        ),
+        (
+            "/texts/Texts.kt",
+            "package texts\ninterface IProductScreenTexts { val scenes: String }\n",
+        ),
+        (
+            "/impl/Impl.kt",
+            "package impl\nimport types.*\nimport texts.*\n\
+             class ProcessInteractor {\n\
+                 suspend fun loadScreenData(refresh: Boolean): ScreenFlowModel<out IProductScreenTexts> = TODO()\n\
+             }\n",
+        ),
+        (
+            "/app/Use.kt",
+            "package app\nimport impl.ProcessInteractor\n\
+             class Use(private val interactor: ProcessInteractor) {\n\
+                 suspend fun go() { interactor.loadScreenData(refresh = false).text.scenes }\n\
+             }\n",
+        ),
+        (
+            "/r/Decoy.kt",
+            "package r\nclass Nav { class ScreenFlowModel(val text: String) }\n\
+             interface IProductScreenTexts { val scenes: Int }\n",
+        ),
+    ]
+}
+
+#[test]
+fn call_hop_member_resolves_in_the_file_the_return_type_was_written_in() {
+    let definitions = definition_paths_at(&call_hop_files(), "/app/Use.kt", 3, "text");
+
+    assert_eq!(definitions, vec!["/t/types/Types.kt".to_owned()]);
+}
+
+/// Second hop: `IProductScreenTexts` was substituted into `ScreenFlowModel<Texts>.text`
+/// from the call's return type, so it was written in `Impl.kt` — NOT in `Types.kt`
+/// (which declares `text`) and not in the caller.
+#[test]
+fn member_of_a_substituted_type_argument_resolves_in_the_receivers_origin() {
+    let definitions = definition_paths_at(&call_hop_files(), "/app/Use.kt", 3, "scenes");
+
+    assert_eq!(definitions, vec!["/t/texts/Texts.kt".to_owned()]);
+}

@@ -471,6 +471,16 @@ fn receiver_class_name(current_type: &str) -> Option<String> {
     }
 }
 
+/// Whose file spelled the head of a member's type after receiver substitution.
+enum SpelledIn {
+    /// The member's own declaring file (`Texts` in `val text: Texts` stays put
+    /// when it names a real class there).
+    MemberDeclaration,
+    /// The receiver's type arguments: the member's declared head was a type
+    /// parameter, so the name that replaced it was spelled with the receiver.
+    ReceiverTypeArguments,
+}
+
 /// A member's declared type with the receiver's own type arguments
 /// substituted in (`text: Texts` on `Box<out ProductTexts>` → `ProductTexts`).
 /// A parameter still unbound after substitution falls back to the receiver's
@@ -481,19 +491,26 @@ fn substitute_receiver_type_arguments(
     lookup_name: &str,
     current_type: &str,
     deps: &impl InferDeps,
-) -> Option<String> {
+) -> Option<(String, SpelledIn)> {
     let class_path = lookup_name.dotted_ident_prefix();
-    let subst = build_type_arg_subst(deps, class_path.last_segment(), current_type);
-    let applied = crate::indexer::apply_type_subst(declared_type, &subst);
+    let substitution = build_type_arg_subst(deps, class_path.last_segment(), current_type);
+    let head_path = declared_type.strip_nullable().dotted_ident_prefix();
+    let applied = crate::indexer::apply_type_subst(declared_type, &substitution);
     if is_generic_param(applied.strip_nullable()) {
-        return first_type_arg_raw(current_type);
+        return first_type_arg_raw(current_type)
+            .map(|type_name| (type_name, SpelledIn::ReceiverTypeArguments));
     }
-    Some(applied)
+    let spelled_in = if substitution.contains_key(&head_path) {
+        SpelledIn::ReceiverTypeArguments
+    } else {
+        SpelledIn::MemberDeclaration
+    };
+    Some((applied, spelled_in))
 }
 
-/// A FIELD of `lookup_name`'s type, receiver type arguments substituted. The
-/// `Url` is the field's declaring file — the reachability anchor for the next
-/// hop.
+/// A FIELD of `lookup_name`'s type, receiver type arguments substituted. `uri`
+/// is the receiver's origin. The returned `Url` is the file that spelled the
+/// answer's head — the reachability anchor for the next hop.
 pub(super) fn resolve_field_type_on(
     lookup_name: &str,
     current_type: &str,
@@ -502,12 +519,17 @@ pub(super) fn resolve_field_type_on(
     uri: &Url,
 ) -> Option<(String, Url)> {
     let (field_type, declaring_uri) = deps.find_field_type(lookup_name, member, uri)?;
-    substitute_receiver_type_arguments(&field_type, lookup_name, current_type, deps)
-        .map(|substituted| (substituted, declaring_uri))
+    let (substituted, spelled_in) =
+        substitute_receiver_type_arguments(&field_type, lookup_name, current_type, deps)?;
+    match spelled_in {
+        SpelledIn::MemberDeclaration => Some((substituted, declaring_uri)),
+        SpelledIn::ReceiverTypeArguments => Some((substituted, uri.clone())),
+    }
 }
 
 /// A METHOD of `lookup_name`'s type: its return type, receiver type arguments
-/// substituted.
+/// substituted. `uri` is the receiver's origin; the returned `Url` is the file
+/// that spelled the answer's head.
 pub(super) fn resolve_method_return_type_on(
     lookup_name: &str,
     current_type: &str,
@@ -515,9 +537,14 @@ pub(super) fn resolve_method_return_type_on(
     deps: &impl InferDeps,
     uri: &Url,
 ) -> Option<(String, Url)> {
-    let return_type = deps.find_method_return_type_for_type(lookup_name, member, uri)?;
-    substitute_receiver_type_arguments(&return_type, lookup_name, current_type, deps)
-        .map(|substituted| (substituted, uri.clone()))
+    let (return_type, declared_in) =
+        deps.find_method_return_type_with_origin_for_type(lookup_name, member, uri)?;
+    let (substituted, spelled_in) =
+        substitute_receiver_type_arguments(&return_type, lookup_name, current_type, deps)?;
+    match spelled_in {
+        SpelledIn::MemberDeclaration => Some((substituted, declared_in)),
+        SpelledIn::ReceiverTypeArguments => Some((substituted, uri.clone())),
+    }
 }
 
 /// Walk up from a node to find the enclosing class/object declaration name.
@@ -620,26 +647,36 @@ struct CallCtx<'a, D: InferDeps> {
 enum StrategyOutcome {
     /// A signature's raw return type resolved against a concrete receiver —
     /// needs receiver-generic substitution, then call-site substitution.
+    /// `return_origin` is the file that declares the signature.
     ReceiverDerived {
         raw_return: String,
         effective_type: String,
         receiver_type: String,
+        return_origin: Url,
     },
     /// A signature's raw return type resolved with no receiver in play —
-    /// needs call-site substitution only.
-    SignatureDerived(String),
+    /// needs call-site substitution only. `origin` is the file that declares
+    /// the signature.
+    SignatureDerived { raw_return: String, origin: Url },
     /// Already the final, concrete answer (fixed stdlib type, a call-site
     /// type argument read directly, a class-literal argument, the bare
-    /// constructor name, or a scope-function's passthrough) — no
-    /// substitution applies.
+    /// constructor name) — no substitution applies, and the name was spelled
+    /// at the call site, so the caller's file is its origin.
     Final(String),
+    /// The receiver's own type flowing through unchanged (a scope function) —
+    /// its name was spelled wherever the receiver's was.
+    ReceiverPassthrough(String),
 }
 
 impl StrategyOutcome {
-    fn finalize<D: InferDeps>(self, ctx: &CallCtx<'_, D>) -> String {
+    /// The call's type and the file its name was spelled in.
+    fn finalize<D: InferDeps>(self, ctx: &CallCtx<'_, D>) -> (String, Url) {
         match self {
-            StrategyOutcome::Final(s) => s,
-            StrategyOutcome::SignatureDerived(raw_return) => {
+            StrategyOutcome::Final(type_name) => (type_name, ctx.uri.clone()),
+            StrategyOutcome::ReceiverPassthrough(type_name) => {
+                (type_name, callee_receiver_origin(ctx))
+            }
+            StrategyOutcome::SignatureDerived { raw_return, origin } => {
                 let has_explicit_receiver = ctx.callee.kind() == KIND_NAV_EXPR;
                 let substitution = if has_explicit_receiver {
                     callee_receiver_type(ctx)
@@ -650,24 +687,56 @@ impl StrategyOutcome {
                 } else {
                     Default::default()
                 };
+                let origin = origin_after_substitution(&raw_return, &substitution, origin, ctx);
                 let substituted = crate::indexer::apply_type_subst(&raw_return, &substitution);
-                apply_call_site_type_args(substituted, ctx)
+                (apply_call_site_type_args(substituted, ctx), origin)
             }
             StrategyOutcome::ReceiverDerived {
                 raw_return,
                 effective_type,
                 receiver_type,
+                return_origin,
             } => {
                 let mut substitution =
                     build_type_arg_subst(ctx.deps, &effective_type, &receiver_type);
                 for (param, concrete) in extension_receiver_type_param_subst(ctx, &receiver_type) {
                     substitution.entry(param).or_insert(concrete);
                 }
+                let origin =
+                    origin_after_substitution(&raw_return, &substitution, return_origin, ctx);
                 let substituted = crate::indexer::apply_type_subst(&raw_return, &substitution);
-                apply_call_site_type_args(substituted, ctx)
+                (apply_call_site_type_args(substituted, ctx), origin)
             }
         }
     }
+}
+
+/// Which file spelled the head of a substituted return type: the declaring
+/// file of the signature, unless the head (`T` in `T?`) was a type parameter
+/// that `subst` bound — then the substituted name was spelled wherever the
+/// receiver's type argument was, i.e. the receiver's origin.
+fn origin_after_substitution<D: InferDeps>(
+    raw_return: &str,
+    substitution: &std::collections::HashMap<String, String>,
+    signature_origin: Url,
+    ctx: &CallCtx<'_, D>,
+) -> Url {
+    let head_path = raw_return.strip_nullable().dotted_ident_prefix();
+    if substitution.contains_key(&head_path) {
+        callee_receiver_origin(ctx)
+    } else {
+        signature_origin
+    }
+}
+
+/// The file the call's explicit receiver expression's type was spelled in
+/// (`ctx.uri` when there is no receiver or its origin is unknown).
+fn callee_receiver_origin<D: InferDeps>(ctx: &CallCtx<'_, D>) -> Url {
+    super::cst_symbol::navigation_receiver_node(ctx.callee)
+        .and_then(|receiver| {
+            super::expr_type::infer_expr_type_with_origin(receiver, ctx.bytes, ctx.deps, ctx.uri)
+        })
+        .map_or_else(|| ctx.uri.clone(), |(_, origin)| origin)
 }
 
 /// Binds the called extension function's own type parameters from its
@@ -753,7 +822,7 @@ fn scope_function_identity<D: InferDeps>(ctx: &CallCtx<'_, D>) -> StrategyVerdic
         return StrategyVerdict::NotApplicable;
     }
     let resolved_type = resolve_root_node_type(ctx.callee, ctx.bytes, ctx.deps, ctx.uri);
-    StrategyVerdict::Terminal(resolved_type.map(StrategyOutcome::Final))
+    StrategyVerdict::Terminal(resolved_type.map(StrategyOutcome::ReceiverPassthrough))
 }
 
 /// Lambda-result functions (e.g. Compose `remember { Foo() }`) return their
@@ -788,16 +857,18 @@ fn receiver_based_method<D: InferDeps>(ctx: &CallCtx<'_, D>) -> StrategyVerdict 
     if effective_type.is_empty() {
         return StrategyVerdict::NotApplicable;
     }
-    let Some(raw_return) =
-        ctx.deps
-            .find_method_return_type_for_type(&effective_type, ctx.fn_name, ctx.uri)
-    else {
+    let Some((raw_return, return_origin)) = ctx.deps.find_method_return_type_with_origin_for_type(
+        &effective_type,
+        ctx.fn_name,
+        ctx.uri,
+    ) else {
         return StrategyVerdict::NotApplicable;
     };
     StrategyVerdict::Terminal(Some(StrategyOutcome::ReceiverDerived {
         raw_return,
         effective_type,
         receiver_type,
+        return_origin,
     }))
 }
 
@@ -809,7 +880,10 @@ fn reachable_return_type<D: InferDeps>(ctx: &CallCtx<'_, D>) -> StrategyVerdict 
         .deps
         .find_fun_return_type_reachable(ctx.fn_name, ctx.uri)
     {
-        Some(raw) => StrategyVerdict::Terminal(Some(StrategyOutcome::SignatureDerived(raw))),
+        Some(raw_return) => StrategyVerdict::Terminal(Some(StrategyOutcome::SignatureDerived {
+            raw_return,
+            origin: ctx.uri.clone(),
+        })),
         None => StrategyVerdict::NotApplicable,
     }
 }
@@ -883,7 +957,10 @@ fn retrofit_class_literal<D: InferDeps>(ctx: &CallCtx<'_, D>) -> StrategyVerdict
 /// this scan instead of before it).
 fn global_name_scan<D: InferDeps>(ctx: &CallCtx<'_, D>) -> StrategyVerdict {
     match ctx.deps.find_fun_return_type(ctx.fn_name, ctx.uri) {
-        Some(raw) => StrategyVerdict::Terminal(Some(StrategyOutcome::SignatureDerived(raw))),
+        Some(raw_return) => StrategyVerdict::Terminal(Some(StrategyOutcome::SignatureDerived {
+            raw_return,
+            origin: ctx.uri.clone(),
+        })),
         None => StrategyVerdict::NotApplicable,
     }
 }
@@ -953,6 +1030,17 @@ pub(super) fn resolve_call_expr_type<D: InferDeps>(
     deps: &D,
     uri: &Url,
 ) -> Option<String> {
+    resolve_call_expr_type_with_origin(node, bytes, deps, uri).map(|(type_name, _)| type_name)
+}
+
+/// [`resolve_call_expr_type`] together with the file the answer's type name was
+/// spelled in (see `ResolvedType::declaring_uri`).
+pub(super) fn resolve_call_expr_type_with_origin<D: InferDeps>(
+    node: tree_sitter::Node<'_>,
+    bytes: &[u8],
+    deps: &D,
+    uri: &Url,
+) -> Option<(String, Url)> {
     let fn_name = node.call_fn_name(bytes)?;
     // Guaranteed `Some`: `call_fn_name` itself reads `node.child(0)` to
     // produce a name, so a resolved `fn_name` implies a callee exists.
