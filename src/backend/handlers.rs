@@ -160,6 +160,60 @@ impl Backend {
             self.indexer.as_ref(),
         ))
     }
+
+    // ── textDocument/diagnostic (pull) ───────────────────────────────────────
+    //
+    // Pull-based clients (oh-my-pi's "LSP diagnostics") ask for diagnostics
+    // on demand instead of waiting for pushed `publishDiagnostics`. This
+    // serves the exact same [`crate::features::diagnostics::full_diagnostics`]
+    // set the push path publishes, so pull can never report a clean bill the
+    // push path would contradict. CPU-bound work runs in `spawn_blocking`;
+    // a join failure degrades to an empty report rather than an RPC error.
+    //
+    // Cold-start race: omp lazily spawns the server on this very request,
+    // so the workspace scan is typically still in flight and the index is
+    // partial. Push compensates by republishing when the scan completes;
+    // pull has no second chance, so wait bounded for the scan before
+    // answering rather than returning a syntax-only clean bill. The deadline
+    // stays inside omp's own default request timeout (20s): waiting longer
+    // would turn a slow scan into a client-side timeout (no answer at all)
+    // instead of a fast fallback answer. On expiry fall through to whatever
+    // is available.
+    pub(super) async fn diagnostic_impl(
+        &self,
+        params: DocumentDiagnosticParams,
+    ) -> Result<DocumentDiagnosticReportResult> {
+        const SCAN_WAIT_DEADLINE: std::time::Duration = std::time::Duration::from_secs(18);
+        const SCAN_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_millis(50);
+        let scan_wait_start = std::time::Instant::now();
+        while self
+            .indexer
+            .indexing_in_progress
+            .load(std::sync::atomic::Ordering::Acquire)
+        {
+            if scan_wait_start.elapsed() >= SCAN_WAIT_DEADLINE {
+                log::debug!("diagnostic: workspace scan still in progress after 18s; answering with available diagnostics");
+                break;
+            }
+            tokio::time::sleep(SCAN_POLL_INTERVAL).await;
+        }
+        let uri = params.text_document.uri;
+        let indexer = std::sync::Arc::clone(&self.indexer);
+        let items = tokio::task::spawn_blocking(move || {
+            crate::features::diagnostics::full_diagnostics(&indexer, &uri)
+        })
+        .await
+        .unwrap_or_default();
+        Ok(DocumentDiagnosticReportResult::Report(
+            DocumentDiagnosticReport::Full(RelatedFullDocumentDiagnosticReport {
+                related_documents: None,
+                full_document_diagnostic_report: FullDocumentDiagnosticReport {
+                    result_id: None,
+                    items,
+                },
+            }),
+        ))
+    }
 }
 
 #[cfg(test)]

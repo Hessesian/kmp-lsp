@@ -59,6 +59,11 @@ pub(super) fn server_capabilities() -> ServerCapabilities {
                 work_done_progress_options: Default::default(),
             },
         )),
+        diagnostic_provider: Some(DiagnosticServerCapabilities::Options(DiagnosticOptions {
+            identifier: Some("kmp-lsp".to_owned()),
+            inter_file_dependencies: true,
+            ..Default::default()
+        })),
         ..Default::default()
     }
 }

@@ -43,6 +43,16 @@ struct WorkspaceData {
     /// Supports `<WORKSPACE>`; relative paths resolve against the workspace root.
     #[serde(default, rename = "jarPaths")]
     jar_paths: Option<Vec<String>>,
+    /// Optional substring patterns limiting which Gradle *sources* JARs get parsed
+    /// (`sourceJarPatterns`). The global Gradle cache holds every project on the
+    /// machine; parsing all of it costs gigabytes of RAM. When absent, every
+    /// discovered sources JAR is indexed. When present, only JARs whose
+    /// `group.artifact` (or full cache path) contains at least one pattern are
+    /// parsed — an empty list parses none. JARs outside the cache layout
+    /// (unparseable group/artifact) are always kept. Only the sources pass is
+    /// scoped; the compiled-JAR Tier-1 manifest stays global (cheap).
+    #[serde(default, rename = "sourceJarPatterns")]
+    source_jar_patterns: Option<Vec<String>>,
 }
 
 #[derive(Deserialize)]
@@ -292,6 +302,34 @@ pub(crate) fn load_configured_jar_paths(workspace_root: &Path) -> Vec<PathBuf> {
         Some(raw) => resolve_jar_path_specs(&raw, workspace_root),
         None => Vec::new(),
     }
+}
+
+/// Reads the `sourceJarPatterns` key from `<workspace_root>/workspace.json`.
+///
+/// Returns `None` when the file is absent, unreadable, unparseable, or the key
+/// is not present — callers index every discovered sources JAR (unscoped).
+/// Returns `Some(patterns)` when the key is present, including an explicitly
+/// empty list (which parses no sources JARs at all).
+pub(crate) fn load_source_jar_patterns(workspace_root: &Path) -> Option<Vec<String>> {
+    let json_path = workspace_root.join("workspace.json");
+    if !json_path.exists() {
+        return None;
+    }
+    let content = match std::fs::read_to_string(&json_path) {
+        Ok(text) => text,
+        Err(error) => {
+            log::warn!("workspace.json: failed to read for sourceJarPatterns: {error}");
+            return None;
+        }
+    };
+    let data: WorkspaceData = match serde_json::from_str(&content) {
+        Ok(parsed) => parsed,
+        Err(error) => {
+            log::warn!("workspace.json: failed to parse for sourceJarPatterns: {error}");
+            return None;
+        }
+    };
+    data.source_jar_patterns
 }
 
 /// Reads and parses `<workspace_root>/workspace.json` into the full

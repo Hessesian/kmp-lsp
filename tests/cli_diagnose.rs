@@ -612,3 +612,70 @@ fn syntax_error_reported_by_diagnose() {
         "expected syntax error in diagnose output:\n{stdout}"
     );
 }
+
+// ── Push/pull/CLI parity ─────────────────────────────────────────────────────
+
+/// `diagnose` must flag an unused import: the CLI previously omitted this
+/// check entirely while the LSP push path reported it, so the CLI claimed a
+/// clean bill the editor contradicted.
+#[test]
+fn diagnose_reports_an_unused_import() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    write_fixture(root, "workspace.json", r#"{"sourcePaths":[]}"#);
+    write_fixture(
+        root,
+        "src/Unused.kt",
+        concat!(
+            "package app\n",
+            "\n",
+            "import com.example.lib.Unused\n",
+            "\n",
+            "fun demo() {\n",
+            "    println(\"hi\")\n",
+            "}\n",
+        ),
+    );
+    let diags = diagnose(root, "src/Unused.kt");
+    assert!(
+        diags.iter().any(|line| line.contains("Unused import")),
+        "expected an unused-import diagnostic; got: {diags:?}"
+    );
+}
+
+/// `--only unused-import` must work without building the workspace index
+/// (pure CST walk): it reports the flag and skips the "Indexed:" lines.
+#[test]
+fn only_unused_import_skips_index_build() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    write_fixture(root, "workspace.json", r#"{"sourcePaths":[]}"#);
+    write_fixture(
+        root,
+        "src/Unused.kt",
+        concat!(
+            "package app\n",
+            "\n",
+            "import com.example.lib.Unused\n",
+            "\n",
+            "fun demo() {\n",
+            "    println(\"hi\")\n",
+            "}\n",
+        ),
+    );
+    let out = diagnose_only(root, "src/Unused.kt", "unused-import");
+    assert!(
+        out.status.success(),
+        "diagnose failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.lines().any(|line| line.contains("Unused import")),
+        "--only unused-import must report the flag; got: {stdout}"
+    );
+    assert!(
+        !stdout.contains("Indexed:"),
+        "--only unused-import must skip index building entirely; got: {stdout}"
+    );
+}

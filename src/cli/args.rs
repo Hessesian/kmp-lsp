@@ -439,12 +439,19 @@ fn first_positional(
 
 /// Names accepted by `diagnose --only <names>`, in the order they run.
 ///
-/// `unused-import` isn't listed yet: `features::unused_import_diagnostics`
-/// hasn't merged to `main` (PR #239) as of this writing. Add it here and wire
-/// it into `run_diagnose` in one line once that lands — same pattern as
-/// `missing-import` below.
-pub(crate) const DIAGNOSTIC_NAMES: &[&str] =
-    &["syntax", "call-arg", "nullable", "when", "missing-import"];
+/// Must match the [`crate::features::diagnostics`] push/pull set: every name
+/// here runs in `run_diagnose`, and every diagnostic the LSP serves is
+/// selectable here, so the CLI can never report a clean bill the LSP would
+/// contradict.
+pub(crate) const DIAGNOSTIC_NAMES: &[&str] = &[
+    "syntax",
+    "call-arg",
+    "nullable",
+    "when",
+    "missing-import",
+    "unused-import",
+    "missing-package",
+];
 
 fn validate_diagnostic_names(names: &[String]) -> Result<(), String> {
     for name in names {
@@ -494,7 +501,7 @@ SUBCOMMANDS:
     find    <name>              Find declarations of a symbol
     refs    <name>              Find all references to a symbol
     check   <file|dir>…        Syntax-check files (no index needed; exit 1 on errors)
-    diagnose <file>             Diagnostics on a file — see --only (requires index)
+    diagnose <file>             Diagnostics on a file — see --only (index needed for call-arg/nullable/when/missing-import)
     hover   <file> <line> <col> Show type/doc info at a position
     complete <file> <line> [col] Show completion candidates at a position
     index                       Build and cache the workspace index

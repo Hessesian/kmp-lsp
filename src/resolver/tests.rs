@@ -8911,6 +8911,11 @@ fn resolve_in_scope_strict_true_via_jar_indexed_default_import_function() {
 /// signal a lazily-loaded JAR starts in) and asserts the promotion actually
 /// ran (`idx.materialized`), the way `find_fun_return_type_reachable`'s own
 /// Tier-1-promotion regression test does.
+///
+/// The probe symbol is deliberately `runCatching`, NOT one of the
+/// name-level-exempted stdlib functions (`error`, `with`, `lazy`, …): those
+/// resolve without touching JAR data at all, so the promotion assertion
+/// below could never fire for them.
 #[test]
 fn resolve_in_scope_strict_promotes_a_tier1_only_default_import_jar_candidate() {
     let tmp = tempfile::tempdir().expect("tempdir");
@@ -8920,10 +8925,10 @@ fn resolve_in_scope_strict_promotes_a_tier1_only_default_import_jar_candidate() 
         let jar_path_key = jar_path.to_string_lossy().to_string();
 
         let symbols = vec![crate::sidecar::SidecarSymbol {
-            name: "error".to_owned(),
+            name: "runCatching".to_owned(),
             kind: "fun".to_owned(),
             container: String::new(),
-            detail: "fun error(message: Any): Nothing".to_owned(),
+            detail: "fun <T> runCatching(block: () -> T): Result<T>".to_owned(),
             doc: String::new(),
             type_params: Vec::new(),
             extension_receiver_type: String::new(),
@@ -8942,16 +8947,19 @@ fn resolve_in_scope_strict_promotes_a_tier1_only_default_import_jar_candidate() 
         let idx = Indexer::new();
         let jar_id = idx.jar_table.intern(&jar_path_key);
         idx.jar_bare_names
-            .entry("error".to_owned())
+            .entry("runCatching".to_owned())
             .or_default()
             .push(jar_id);
 
         let caller_uri = uri("/Caller.kt");
-        idx.index_content(&caller_uri, "package app\nfun use() { error(\"x\") }\n");
+        idx.index_content(
+            &caller_uri,
+            "package app\nfun use() { runCatching { 1 } }\n",
+        );
 
         assert!(
-            resolve_in_scope_strict(&idx, "error", &caller_uri),
-            "kotlin.error must resolve as default-import even before Tier-2 materialization"
+            resolve_in_scope_strict(&idx, "runCatching", &caller_uri),
+            "kotlin.runCatching must resolve as default-import even before Tier-2 materialization"
         );
         assert!(
             idx.materialized.contains(&jar_id),

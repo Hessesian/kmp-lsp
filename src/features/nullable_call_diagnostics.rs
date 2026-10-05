@@ -20,9 +20,16 @@
 
 use tower_lsp::lsp_types::*;
 
-use crate::indexer::{live_tree::LiveDoc, Indexer, NodeExt};
+use crate::features::text_utils::utf16_column;
+use crate::indexer::{live_tree::LiveDoc, local_scope_occurrences, Indexer, NodeExt};
 use crate::queries::{KIND_NAV_EXPR, KIND_SIMPLE_IDENT};
-use crate::resolver::{ReceiverKind, ReceiverType, Resolver};
+use crate::resolver::infer::{
+    find_field_type_in_class_impl, find_fun_return_type_by_name, find_fun_return_type_reachable,
+    resolve_method_return_type_substituted,
+};
+use crate::resolver::infer_lines::infer_type_in_lines_raw;
+use crate::resolver::{infer_variable_type_raw, ReceiverKind, ReceiverType, Resolver};
+use crate::StrExt;
 
 /// Scan a file for plain-`.` member access on nullable receivers.
 ///
@@ -177,8 +184,19 @@ fn resolve_receiver(
             if name == "this" || name == "super" {
                 return None;
             }
-            let receiver_type = indexer.infer_receiver_type(ReceiverKind::Variable(&name), uri)?;
-            Some((name, receiver_type))
+            // Scope-aware local first: a file-wide name scan can attribute the
+            // receiver to an unrelated same-named declaration in another
+            // function (real FP: a `tile: CoordGrid?` parameter vs
+            // `val tile = free.removeAt(...)`).
+            match scoped_local_receiver_type(indexer, uri, receiver_node, bytes, &name) {
+                ScopedLocal::Known(raw) => Some((name, ReceiverType::from_raw(raw))),
+                ScopedLocal::Unknown => None,
+                ScopedLocal::Fallback => {
+                    let receiver_type =
+                        indexer.infer_receiver_type(ReceiverKind::Variable(&name), uri)?;
+                    Some((name, receiver_type))
+                }
+            }
         }
         KIND_NAV_EXPR => {
             let chain = pure_field_chain(receiver_node, bytes)?;
@@ -203,6 +221,343 @@ fn resolve_receiver(
             Some((chain.join("."), receiver_type))
         }
         _ => None,
+    }
+}
+
+/// Depth budget for chasing a scoped receiver chain (`val a = b.foo()` where
+/// `b` is itself a scoped local). Mirrors `MAX_RAW_TYPE_INFER_DEPTH` (4),
+/// which caps the same cycle one layer down.
+const SCOPED_INFER_DEPTH: u8 = 4;
+
+/// How the lexically visible declaration answers.
+enum ScopedLocal {
+    /// Not a lexically visible local — caller falls back to file-wide inference.
+    Fallback,
+    /// Visible local, type known.
+    Known(String),
+    /// Visible local, type unresolvable — caller must SKIP, not fall back:
+    /// file-wide inference could attribute a same-named declaration from
+    /// another function.
+    Unknown,
+}
+
+/// Resolve a simple-identifier receiver to the type of the declaration
+/// lexically visible at its position, via block-scope occurrences rather than
+/// a file-wide name scan. A file-wide scan matches the first same-named
+/// declaration anywhere — including an unrelated parameter or local in
+/// another function — and attributes its (possibly nullable) type to this
+/// use site.
+fn scoped_local_receiver_type(
+    indexer: &Indexer,
+    uri: &Url,
+    receiver_node: &tree_sitter::Node,
+    bytes: &[u8],
+    name: &str,
+) -> ScopedLocal {
+    scoped_variable_type(
+        indexer,
+        uri,
+        bytes,
+        name,
+        receiver_node.start_position().row as u32,
+        receiver_node.start_position().column,
+        SCOPED_INFER_DEPTH,
+    )
+}
+
+/// Core: type of `name` as declared visibly at `use_line`/`use_byte_col`.
+fn scoped_variable_type(
+    indexer: &Indexer,
+    uri: &Url,
+    bytes: &[u8],
+    name: &str,
+    use_line: u32,
+    use_byte_col: usize,
+    depth: u8,
+) -> ScopedLocal {
+    if depth == 0 {
+        return ScopedLocal::Unknown;
+    }
+    let text = match std::str::from_utf8(bytes) {
+        Ok(text) => text,
+        Err(_) => return ScopedLocal::Fallback,
+    };
+    let use_line_text = match text.lines().nth(use_line as usize) {
+        Some(line) => line,
+        None => return ScopedLocal::Fallback,
+    };
+    let prefix = match use_line_text.get(..use_byte_col.min(use_line_text.len())) {
+        Some(prefix) => prefix,
+        None => return ScopedLocal::Fallback,
+    };
+    let pos = Position::new(use_line, utf16_column(prefix));
+    let occurrences = match local_scope_occurrences(indexer, uri, pos) {
+        Some(occurrences) if !occurrences.is_empty() => occurrences,
+        _ => return ScopedLocal::Fallback,
+    };
+    // Visible declaration = latest declaration-form occurrence at or before
+    // the use. Same-generation occurrences share one binding by construction.
+    let mut decl_line: Option<u32> = None;
+    for occurrence in &occurrences {
+        let line = occurrence.range.start.line;
+        if line > use_line {
+            continue;
+        }
+        let occ_text = match text.lines().nth(line as usize) {
+            Some(candidate) => candidate,
+            None => continue,
+        };
+        if is_value_or_param_declaration(occ_text, name) {
+            decl_line = Some(decl_line.map_or(line, |best| best.max(line)));
+        }
+    }
+    let decl_line = match decl_line {
+        Some(line) => line,
+        None => return ScopedLocal::Fallback,
+    };
+    let decl_text = match text.lines().nth(decl_line as usize) {
+        Some(line) => line,
+        None => return ScopedLocal::Fallback,
+    };
+    // 1. Explicit annotation on the visible declaration itself.
+    if let Some(known) = infer_type_in_lines_raw(&[decl_text.to_owned()], name) {
+        return ScopedLocal::Known(known);
+    }
+    // 2. Unannotated val/var: initializer tables filtered to this exact line
+    // (never another same-named declaration's entry).
+    if is_value_declaration(decl_text, name) {
+        if let Some(known) =
+            scoped_initializer_type(indexer, uri, bytes, name, decl_text, decl_line, depth)
+        {
+            return ScopedLocal::Known(known);
+        }
+        return ScopedLocal::Unknown;
+    }
+    // 3. Anything else (lambda params, catch, for, destructuring): old behavior.
+    ScopedLocal::Fallback
+}
+
+/// Whether `line` plausibly declares `name`: a `val`/`var` declaration or a
+/// `name:` annotation/parameter form (whole word). Comment lines never
+/// declare. Used only to pick WHICH in-scope occurrence is the declaration;
+/// the type itself always comes from the annotation/initializer readers.
+fn is_value_or_param_declaration(line: &str, name: &str) -> bool {
+    let trimmed = line.trim_start();
+    if trimmed.starts_with("//") || trimmed.starts_with('*') || trimmed.starts_with("/*") {
+        return false;
+    }
+    if is_value_declaration(line, name) {
+        return true;
+    }
+    // `name:` form, whole word, not a `::` callable reference.
+    let pattern = format!("{name}:");
+    let mut search_from = 0;
+    while let Some(relative) = line[search_from..].find(&pattern) {
+        let pos = search_from + relative;
+        let before_ok = pos == 0
+            || !matches!(line.as_bytes().get(pos - 1), Some(b) if b.is_ascii_alphanumeric() || *b == b'_');
+        let after_ok = !matches!(line.as_bytes().get(pos + pattern.len()), Some(b':'));
+        if before_ok && after_ok {
+            return true;
+        }
+        search_from = pos + 1;
+    }
+    false
+}
+
+/// Whether `line` declares `name` as a `val`/`var` (whole word).
+fn is_value_declaration(line: &str, name: &str) -> bool {
+    let trimmed = line.trim_start();
+    if trimmed.starts_with("//") || trimmed.starts_with('*') || trimmed.starts_with("/*") {
+        return false;
+    }
+    for keyword in ["val ", "var "] {
+        if let Some(rest) = trimmed.strip_prefix(keyword) {
+            return rest == name
+                || rest.strip_prefix(name).is_some_and(|after| {
+                    !after
+                        .chars()
+                        .next()
+                        .is_some_and(|c| c.is_alphanumeric() || c == '_')
+                });
+        }
+    }
+    false
+}
+
+/// Type of an unannotated `val`/`var` from the initializer tables, filtered
+/// to the visible declaration's own line — never another same-named
+/// declaration's entry.
+fn scoped_initializer_type(
+    indexer: &Indexer,
+    uri: &Url,
+    bytes: &[u8],
+    name: &str,
+    decl_text: &str,
+    decl_line: u32,
+    depth: u8,
+) -> Option<String> {
+    let data = indexer.files.get(uri.as_str())?;
+    if let Some(ty) = data
+        .rhs_types
+        .iter()
+        .find(|(line, var, _)| *line == decl_line && var == name)
+        .map(|(_, _, ty)| ty.clone())
+    {
+        return Some(ty);
+    }
+    // Clone out of the DashMap guard before recursing (re-entrant shard locks).
+    let method_match = data
+        .method_call_rhs
+        .iter()
+        .find(|(line, var, _, _)| *line == decl_line && var == name)
+        .map(|(_, _, recv, method)| (recv.clone(), method.clone()));
+    let field_match = data
+        .field_access_rhs
+        .iter()
+        .find(|(line, var, _, _)| *line == decl_line && var == name)
+        .map(|(_, _, recv, field)| (recv.clone(), field.clone()));
+    drop(data);
+    if let Some((recv, method)) = method_match {
+        let eq = assignment_eq_pos(decl_text).unwrap_or(0);
+        let recv_col = find_ident_col(decl_text, &recv, eq + 1).unwrap_or(eq + 1);
+        let recv_raw = match scoped_variable_type(
+            indexer,
+            uri,
+            bytes,
+            &recv,
+            decl_line,
+            recv_col,
+            depth - 1,
+        ) {
+            ScopedLocal::Known(raw) => raw,
+            ScopedLocal::Unknown => return None,
+            ScopedLocal::Fallback => infer_variable_type_raw(indexer, &recv, uri)?,
+        };
+        if let Some(ret) = resolve_method_return_type_substituted(indexer, &recv_raw, &method, uri)
+        {
+            return Some(ret);
+        }
+    }
+    if let Some((recv, field)) = field_match {
+        let eq = assignment_eq_pos(decl_text).unwrap_or(0);
+        let recv_col = find_ident_col(decl_text, &recv, eq + 1).unwrap_or(eq + 1);
+        let recv_raw = match scoped_variable_type(
+            indexer,
+            uri,
+            bytes,
+            &recv,
+            decl_line,
+            recv_col,
+            depth - 1,
+        ) {
+            ScopedLocal::Known(raw) => raw,
+            ScopedLocal::Unknown => return None,
+            ScopedLocal::Fallback => infer_variable_type_raw(indexer, &recv, uri)?,
+        };
+        let recv_base = recv_raw
+            .split('<')
+            .next()
+            .unwrap_or(&recv_raw)
+            .rsplit('.')
+            .next()
+            .unwrap_or(&recv_raw)
+            .strip_nullable();
+        if let Some((field_type, _)) =
+            find_field_type_in_class_impl(indexer, recv_base, &field, uri, depth - 1)
+        {
+            return Some(field_type);
+        }
+    }
+    // Bare call: `val x = compute(...)` — same import-aware rule the old
+    // line-scan fallback used (position-independent, so no scope hazard).
+    if let Some(callee) = bare_call_callee(decl_text) {
+        if let Some(ty) = find_fun_return_type_reachable(indexer, callee, uri)
+            .or_else(|| find_fun_return_type_by_name(indexer, callee, uri))
+        {
+            return Some(ty);
+        }
+    }
+    None
+}
+
+/// Callee of a bare (receiver-less, lowercase) call on a declaration RHS,
+/// e.g. `compute` in `val x = compute(a)`. Returns `None` for qualified
+/// calls (`a.b()` — handled via the tables above), chains (`a().b()`),
+/// and non-call initializers.
+fn bare_call_callee(decl_text: &str) -> Option<&str> {
+    let eq = assignment_eq_pos(decl_text)?;
+    let after = decl_text[eq + 1..].trim_start();
+    let paren = after.find('(')?;
+    let before = after[..paren].trim_end();
+    if before.contains(['.', ' ', '{', '"', '\'']) {
+        return None;
+    }
+    if !before.starts_with_lowercase() {
+        return None;
+    }
+    // Chained `foo().bar()`: the call's own args end where depth returns to
+    // zero; anything past that starting with `.` is a chain, not a bare call.
+    let mut depth = 0u32;
+    for (index, ch) in after.char_indices() {
+        match ch {
+            '(' => depth += 1,
+            ')' => {
+                depth = depth.saturating_sub(1);
+                if depth == 0 {
+                    return if after[index + 1..].trim_start().starts_with('.') {
+                        None
+                    } else {
+                        Some(before)
+                    };
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+/// Byte offset of the `=` that assigns a declaration RHS, skipping `==`,
+/// `=>`, `>=`, `<=`, `!=`.
+fn assignment_eq_pos(line: &str) -> Option<usize> {
+    let bytes = line.as_bytes();
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index] == b'=' {
+            let prev = index.checked_sub(1).and_then(|i| bytes.get(i)).copied();
+            let next = bytes.get(index + 1).copied();
+            let prev_ok = prev.is_none_or(|b| !matches!(b, b'=' | b'>' | b'<' | b'!'));
+            let next_ok = next.is_none_or(|b| !matches!(b, b'=' | b'>'));
+            if prev_ok && next_ok {
+                return Some(index);
+            }
+        }
+        index += 1;
+    }
+    None
+}
+
+/// Byte column of the first whole-word `name` at or after `from` in `line`.
+/// Used to place the scope cursor on a receiver ident inside a declaration
+/// RHS. Returns `None` when there is no whole-word match (positions would
+/// be guesses — the caller degrades instead).
+fn find_ident_col(line: &str, name: &str, from: usize) -> Option<usize> {
+    let mut search_from = from.min(line.len());
+    loop {
+        let rest = line.get(search_from..)?;
+        let relative = rest.find(name)?;
+        let pos = search_from + relative;
+        let before_ok = pos == 0
+            || !matches!(line.as_bytes().get(pos - 1), Some(b) if b.is_ascii_alphanumeric() || *b == b'_');
+        let after_ok = !matches!(
+            line.as_bytes().get(pos + name.len()),
+            Some(b) if b.is_ascii_alphanumeric() || *b == b'_'
+        );
+        if before_ok && after_ok {
+            return Some(pos);
+        }
+        search_from = pos + 1;
     }
 }
 

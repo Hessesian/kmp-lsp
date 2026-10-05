@@ -19,7 +19,7 @@ more precise (superclass hierarchy, cross-file resolution) as indexing completes
 | `textDocument/foldingRange` | Brace-based region folds + consecutive comment block folds |
 | `textDocument/inlayHint` | Type hints for lambda `it`, named lambda params, `this`, untyped `val`/`var` |
 | `textDocument/semanticTokens/full` | Two-phase: Phase 1 CST classification + Phase 2 cross-file resolution. Kotlin, Java, Swift |
-| `textDocument/publishDiagnostics` | Syntax errors from tree-sitter (ERROR/MISSING nodes) — not type checking |
+| `textDocument/publishDiagnostics` + `textDocument/diagnostic` (pull) | Syntax errors (tree-sitter ERROR/MISSING) plus call-arg, nullable-receiver, non-exhaustive `when`, missing-import, unused-import, and missing-package hints — one shared set for push, pull, and `kmp-lsp diagnose`. No full type checking; use Gradle/Xcode/CI for that |
 | `textDocument/implementation` | Transitive subtype lookup (interface → all implementing classes, BFS) |
 | `textDocument/documentHighlight` | Highlights all in-file occurrences; declaration sites marked WRITE, usages READ |
 | `workspace/symbol` | Fuzzy substring search; supports dot-qualified queries for extension functions |
@@ -248,6 +248,19 @@ When `sourcePaths` is present (even as `[]`), it overrides the `~/.kmp-lsp/sourc
 
 Hover docs for these come from a sibling `*-sources.jar` when one is present next to the jar; otherwise you still get signatures, completions, and go-to-definition to the compiled symbol.
 
+**`sourceJarPatterns`** — substring filters limiting which Gradle *sources* JARs get parsed. The global Gradle cache holds every project on the machine, and parsing all of it costs gigabytes of RAM. With this key, only JARs whose `group.artifact` (or full cache path) contains a pattern are parsed:
+
+```json
+{
+  "sourceJarPatterns": [
+    "org.jetbrains.kotlin",
+    "net.rsprot"
+  ]
+}
+```
+
+Absent means unscoped (previous behaviour); an explicitly empty list parses no sources JARs. Only the sources pass is scoped — the compiled-JAR manifest stays global (cheap). JARs outside the cache layout are always kept.
+
 **Manual override** via LSP config (for custom stubs or generated code):
 
 ```toml
@@ -281,7 +294,7 @@ Paths can be absolute (including `~/…`) or relative to the workspace root. The
 ## Limitations
 
 - **No type inference** for generic lambda parameters — use explicit annotations for unresolvable cases
-- **No type checking** — syntax errors only; use Gradle/Xcode/CI for semantic diagnostics
+- **No full type checking** — diagnostics cover syntax plus arity, nullability, `when` exhaustiveness, and import hygiene; anything deeper needs Gradle/Xcode/CI
 - **Swift support is structural** — all symbols indexed; no module boundaries or closure type inference
 - **Java completion** is less refined than Kotlin
 - **`findReferences` on common names** returns noise — name-based search via `rg`, no import filtering yet

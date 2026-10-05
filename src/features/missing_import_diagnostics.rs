@@ -3,12 +3,15 @@
 //!
 //! Flags a bare reference when BOTH hold:
 //!   1. it is importable — `fqns_for_name` knows at least one concrete FQN for it
-//!      (which excludes stdlib/default-import names, since their sources aren't
-//!      indexed, and anything from an unindexed jar);
+//!      (which excludes anything from an unindexed jar, and names nothing
+//!      declares at all);
 //!   2. it is NOT reachable from the file's own scope (`resolve_in_scope_strict`):
 //!      no local/param decl, explicit import, same-package, or non-stdlib star
-//!      import, and not provided by an enclosing extension/implicit-lambda
-//!      receiver (`receiver_provides_member` / `all_lambda_receivers_at`).
+//!      import, not resolvable via Kotlin's default imports (`kotlin.*` types
+//!      AND top-level functions like `with`/`repeat`/`lazy` — a language fact
+//!      that holds with no indexed data), and not provided by an enclosing
+//!      extension/implicit-lambda receiver (`receiver_provides_member` /
+//!      `all_lambda_receivers_at`).
 //!
 //! The candidate-collection walk here is shared with the `missing-imports` CLI
 //! subcommand (`cli::missing_import_poc`), which runs the same

@@ -640,3 +640,54 @@ fn nullable_diagnostics_survives_a_pathologically_deep_field_chain() {
     let (uri, idx, src) = setup(&[("/a.kt", &src)]);
     let _ = run_diagnostics(&idx, &uri, &src);
 }
+
+/// Real false positive (silo GauntletDungeonBuilder): a `tile: CoordGrid?`
+/// parameter in one function must not leak its nullability into
+/// `val tile = free.removeAt(...)` in another. The old file-wide name scan
+/// matched the first same-named declaration anywhere and flagged every use
+/// of the local. The scope-aware path resolves the declaration visible at
+/// the use site instead.
+#[test]
+fn no_diagnostic_when_nullable_same_named_param_lives_in_another_function() {
+    let (uri, idx, src) = setup(&[(
+        "/a.kt",
+        concat!(
+            "class CoordGrid(val x: Int, val z: Int) {\n",
+            "    fun chebyshevDistance(other: CoordGrid): Int = 0\n",
+            "}\n",
+            "fun spawn(resource: Int, tile: CoordGrid?) {}\n",
+            "fun takeTile(free: MutableList<CoordGrid>): CoordGrid? {\n",
+            "    if (free.isEmpty()) {\n",
+            "        return null\n",
+            "    }\n",
+            "    val tile = free.removeAt(0)\n",
+            "    free.removeIf { it.x == tile.x || it.z == tile.z }\n",
+            "    return tile\n",
+            "}\n",
+        ),
+    )]);
+    let diags = run_diagnostics(&idx, &uri, &src);
+    assert!(
+        diags.is_empty(),
+        "cross-function same-named declaration must not leak nullability: {diags:?}"
+    );
+}
+
+/// Companion: a genuinely nullable annotated local in the SAME function
+/// still flags — scoping must not silence real positives.
+#[test]
+fn still_flags_nullable_annotated_local_in_scope() {
+    let (uri, idx, src) = setup(&[(
+        "/a.kt",
+        concat!(
+            "class Box(val x: Int)\n",
+            "fun other(box: Box?) {}\n",
+            "fun use(tile: Box?) {\n",
+            "    tile.x\n",
+            "}\n",
+        ),
+    )]);
+    let diags = run_diagnostics(&idx, &uri, &src);
+    assert_eq!(diags.len(), 1, "expected one diagnostic: {diags:?}");
+    assert!(diags[0].message.contains("tile"));
+}

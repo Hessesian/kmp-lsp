@@ -449,4 +449,11 @@ impl LanguageServer for Backend {
         })
         .await
     }
+
+    async fn diagnostic(
+        &self,
+        params: DocumentDiagnosticParams,
+    ) -> Result<DocumentDiagnosticReportResult> {
+        panic_safe("diagnostic", self.diagnostic_impl(params)).await
+    }
 }

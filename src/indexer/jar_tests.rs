@@ -3323,3 +3323,100 @@ fn populate_from_symbols_falls_back_for_a_non_absolute_path() {
     let probe_locs = indexer.lookup_definitions("Probe");
     assert_eq!(probe_locs.len(), 1, "Probe should still be found");
 }
+
+/// `sourceJarPatterns` scopes the sources crawl: with a workspace root whose
+/// `workspace.json` lists `["com.example.keep"]`, a same-cached `com.example.skip`
+/// sources JAR must never parse, while the matching one still indexes.
+#[test]
+fn index_sources_jars_respects_workspace_source_jar_patterns() {
+    let gradle_home = tempfile::tempdir().unwrap();
+    write_sources_jar(
+        gradle_home.path(),
+        "com.example",
+        "keep",
+        "1.0.0",
+        &[(
+            "com/example/keep/Keep.kt",
+            "package com.example.keep\n\nclass Keep\n",
+        )],
+    );
+    write_sources_jar(
+        gradle_home.path(),
+        "com.example",
+        "skip",
+        "1.0.0",
+        &[(
+            "com/example/skip/Skip.kt",
+            "package com.example.skip\n\nclass Skip\n",
+        )],
+    );
+
+    let workspace_root = tempfile::tempdir().unwrap();
+    std::fs::write(
+        workspace_root.path().join("workspace.json"),
+        r#"{"sourceJarPatterns": ["com.example.keep"]}"#,
+    )
+    .unwrap();
+
+    let indexer = idx();
+    indexer
+        .workspace_root
+        .set(workspace_root.path().to_path_buf());
+    let cache_dir = tempfile::tempdir().unwrap();
+    let total = crate::indexer::jar::index_sources_jars(
+        &indexer,
+        Some(gradle_home.path()),
+        Some(cache_dir.path()),
+    );
+    assert!(total > 0, "the matching JAR must still parse");
+    assert!(
+        indexer.definitions.get("Keep").is_some(),
+        "Keep class from the matching JAR should be in definitions"
+    );
+    assert!(
+        indexer.definitions.get("Skip").is_none(),
+        "Skip class from the filtered-out JAR must not be indexed"
+    );
+}
+
+/// Without a `workspace.json` (or without the key), the crawl stays unscoped:
+/// both JARs parse, exactly as before this knob existed.
+#[test]
+fn index_sources_jars_unscoped_without_patterns_key() {
+    let gradle_home = tempfile::tempdir().unwrap();
+    write_sources_jar(
+        gradle_home.path(),
+        "com.example",
+        "keep",
+        "1.0.0",
+        &[(
+            "com/example/keep/Keep.kt",
+            "package com.example.keep\n\nclass Keep\n",
+        )],
+    );
+    write_sources_jar(
+        gradle_home.path(),
+        "com.example",
+        "skip",
+        "1.0.0",
+        &[(
+            "com/example/skip/Skip.kt",
+            "package com.example.skip\n\nclass Skip\n",
+        )],
+    );
+
+    let workspace_root = tempfile::tempdir().unwrap();
+    let indexer = idx();
+    indexer
+        .workspace_root
+        .set(workspace_root.path().to_path_buf());
+    let cache_dir = tempfile::tempdir().unwrap();
+    let total = crate::indexer::jar::index_sources_jars(
+        &indexer,
+        Some(gradle_home.path()),
+        Some(cache_dir.path()),
+    );
+    assert!(total > 0, "end-to-end index should parse the JARs");
+    assert!(indexer.definitions.get("Keep").is_some());
+    assert!(indexer.definitions.get("Skip").is_some());
+}
