@@ -725,3 +725,26 @@ fn method_returning_a_type_parameter_resolves_to_the_receivers_type_argument() {
                fun f(box: Box<Texts>) { box.get().title }\n";
     assert_eq!(receiver_type_at(src, 2, "title").as_deref(), Some("Texts"));
 }
+
+/// Review finding on #330: gating a qualified annotation on its LEAF alone accepts
+/// `Missing.User` whenever any unrelated `User` is indexed.
+#[test]
+fn qualified_annotation_with_an_unresolvable_qualifier_yields_no_receiver_type() {
+    let src = "class User { fun save() {} }\n\
+               fun f(user: Missing.User) { user.save() }\n";
+
+    assert_eq!(receiver_type_at(src, 1, "save"), None);
+}
+
+#[test]
+fn qualified_annotation_naming_a_real_nested_type_keeps_its_receiver_type() {
+    let src = "class Outer {\n\
+               class Inner { fun save() {} }\n\
+               }\n\
+               fun f(inner: Outer.Inner) { inner.save() }\n";
+
+    assert_eq!(
+        receiver_type_at(src, 3, "save").as_deref(),
+        Some("Outer.Inner")
+    );
+}

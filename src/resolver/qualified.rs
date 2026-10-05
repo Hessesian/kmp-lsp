@@ -130,6 +130,24 @@ pub(super) fn resolve_qualified(
     vec![]
 }
 
+/// The declarations a (possibly nested) type path such as `Outer.Inner` names,
+/// resolved in `scope_uri`. Empty when the root resolves to nothing or a nested
+/// segment names no real nested type — never falls back to the root alone.
+pub(crate) fn resolve_type_path_declarations(
+    indexer: &Indexer,
+    type_path: &str,
+    scope_uri: &Url,
+    io: ResolveIo,
+) -> Vec<Location> {
+    let QualifierRoot::TypePath { root, nested } = parse_qualifier(type_path) else {
+        return vec![];
+    };
+    type_path_anchors(indexer, root, &nested, scope_uri, io)
+        .into_iter()
+        .filter_map(|anchor| anchor.declaration)
+        .collect()
+}
+
 /// STAGE: normalization output. The receiver a qualified lookup is anchored on,
 /// after the root AND every nested segment have been walked. `class_name` is
 /// the LEAF type's simple name — the extension-registry key — never the

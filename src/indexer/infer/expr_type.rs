@@ -250,7 +250,7 @@ fn infer_navigation_expr_type(
         // `indexer.function_return_type(&member, uri)` call in `navigation_expression_type`.
         // Neither is `Url`-aware yet, so the anchor doesn't advance past this hop.
         let type_name = resolve_method_return_type_on(
-            &receiver_type,
+            &lookup_name,
             &receiver_type,
             &member,
             deps,

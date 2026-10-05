@@ -161,6 +161,23 @@ pub(crate) fn is_call_callee(node: Node<'_>) -> bool {
         && parent.child(0).map(|child| child.id()) == Some(node.id())
 }
 
+/// Whether `type_path` (a simple, nested `Outer.Inner`, or package-qualified
+/// type name) names a type the index knows. A qualified path is validated as a
+/// whole, not by its leaf: `Missing.User` must not pass because some unrelated
+/// `User` is indexed.
+fn names_a_known_type(indexer: &Indexer, type_path: &str, uri: &Url) -> bool {
+    if type_path.contains('.') {
+        return !crate::resolver::resolve_type_path_declarations(
+            indexer,
+            type_path,
+            uri,
+            crate::resolver::ResolveIo::IndexOnly,
+        )
+        .is_empty();
+    }
+    indexer.has_type_definition(type_path)
+}
+
 /// The classified identifier under the cursor, produced by [`classify_symbol_at`].
 #[derive(Debug, Clone)]
 pub(crate) struct SymbolAtCursor {
@@ -295,9 +312,7 @@ pub(crate) fn classify_symbol_at(
             // the member lookup and the known-type gate both want the
             // type's own name, not its type arguments or nullability.
             let type_path = resolved.as_type_str().dotted_ident_prefix();
-            indexer
-                .has_type_definition(type_path.last_segment())
-                .then_some(type_path)
+            names_a_known_type(indexer, &type_path, uri).then_some(type_path)
         });
         return Some(SymbolAtCursor {
             name,

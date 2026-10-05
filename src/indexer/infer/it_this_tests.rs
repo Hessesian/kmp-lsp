@@ -2878,3 +2878,26 @@ fn nested_generic_it_resolves_to_the_concrete_inner_type() {
     assert_eq!(resolved.as_deref(), Some("Optional<Foo>"));
     assert_ne!(resolved.as_deref(), Some("T"));
 }
+
+/// A use-site `out` projection reads as its type; `in` and star projections have
+/// no usable read type and must bind nothing (review finding on #330).
+#[test]
+fn type_argument_substitution_honours_use_site_variance() {
+    use super::super::deps::TestDeps;
+    use super::super::type_subst::{build_type_arg_subst, first_type_arg_raw};
+
+    let deps = TestDeps::new().with_class_params("Box", &["T"]);
+
+    let covariant = build_type_arg_subst(&deps, "Box", "Box<out Texts>");
+    let contravariant = build_type_arg_subst(&deps, "Box", "Box<in Texts>");
+    let star = build_type_arg_subst(&deps, "Box", "Box<*>");
+
+    assert_eq!(covariant.get("T").map(String::as_str), Some("Texts"));
+    assert!(contravariant.is_empty(), "got {contravariant:?}");
+    assert!(star.is_empty(), "got {star:?}");
+    assert_eq!(
+        first_type_arg_raw("Box<out Texts>").as_deref(),
+        Some("Texts")
+    );
+    assert_eq!(first_type_arg_raw("Box<in Texts>"), None);
+}

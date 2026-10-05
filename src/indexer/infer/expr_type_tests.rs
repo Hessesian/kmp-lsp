@@ -683,3 +683,36 @@ fn infer_expr_type_survives_a_pathologically_deep_navigation_chain() {
         .unwrap();
     let _ = handle.join().expect("must not overflow the stack");
 }
+
+/// Review finding on #330: the method branch of `infer_navigation_expr_type` keyed the
+/// member lookup by the raw receiver type (`Box<Texts>`), not its class name
+/// (`Box`), so a generic receiver's method return never resolved through an
+/// exact-key lookup.
+#[test]
+fn navigation_callee_on_a_generic_receiver_looks_the_method_up_by_class_name() {
+    use crate::queries::KIND_NAV_EXPR;
+
+    fn find_nav_expr(node: tree_sitter::Node) -> Option<tree_sitter::Node> {
+        if node.kind() == KIND_NAV_EXPR {
+            return Some(node);
+        }
+        let mut cursor = node.walk();
+        let found = node.children(&mut cursor).find_map(find_nav_expr);
+        found
+    }
+
+    let uri = test_url();
+    let deps = TestDeps::new()
+        .with_var(uri.as_str(), "loader", "Loader")
+        .with_class_params("Box", &["T"])
+        .with_method_return_for_type("Loader", "load", "Box<Texts>")
+        .with_method_return_for_type("Box", "get", "T");
+    let source = "fun f() = loader.load().get()\n";
+    let (tree, bytes) = fun_body_expr_node(source);
+    let navigation = find_nav_expr(tree.root_node()).expect("loader.load().get navigation");
+
+    assert_eq!(
+        infer_expr_type(navigation, &bytes, &deps, &uri).as_deref(),
+        Some("Texts")
+    );
+}

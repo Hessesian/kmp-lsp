@@ -1775,8 +1775,8 @@ pub(crate) fn find_method_return_type(
             if let Some(ret) = extract_return_type_from_detail(&full_sig) {
                 return Some(ret);
             }
-            // No declared type at all: `fun f() = <expr>` — the type is the body's.
-            if let Some(ret) = infer_expression_body_return_type(indexer, &loc.uri, symbol) {
+            // No declared type at all: the body's type, or `Unit`.
+            if let Some(ret) = infer_undeclared_return_type(indexer, &loc.uri, symbol) {
                 return Some(ret);
             }
         }
@@ -1784,13 +1784,14 @@ pub(crate) fn find_method_return_type(
     })
 }
 
-/// The return type of an expression-bodied function (`fun f() = <expr>`),
-/// inferred from its body. Block-bodied functions must declare their type, so
-/// there is nothing to infer for them.
+/// The return type of a Kotlin function that declares none: the type of its
+/// `= <expr>` body for an expression body, and `Unit` for a block body or no
+/// body at all (Kotlin's rule when the type is omitted). `None` for a non-Kotlin
+/// declaration, whose signature carries its own type.
 ///
 /// Guarded like [`infer_variable_type_from_cst`]: inferring the body resolves
 /// identifiers, which can lead back to this same function.
-fn infer_expression_body_return_type(
+fn infer_undeclared_return_type(
     indexer: &Indexer,
     uri: &Url,
     function: &crate::types::SymbolEntry,
@@ -1814,10 +1815,13 @@ fn infer_expression_body_return_type(
     let mut cursor = node.walk();
     let body = node
         .children(&mut cursor)
-        .find(|child| child.kind() == KIND_FUN_BODY)?;
-    let equals_sign = body.child(0)?;
-    if equals_sign.kind() != KIND_EQ {
-        return None;
+        .find(|child| child.kind() == KIND_FUN_BODY);
+    let Some(body) = body else {
+        return Some("Unit".to_owned());
+    };
+    let is_expression_body = body.child(0).is_some_and(|first| first.kind() == KIND_EQ);
+    if !is_expression_body {
+        return Some("Unit".to_owned());
     }
     crate::indexer::infer_expr_type(body.child(1)?, bytes, indexer, uri)
 }
