@@ -166,8 +166,9 @@ pub(crate) struct SymbolColdFields {
     /// For extension functions: the full receiver type including generics.
     /// e.g. `fun <T> List<T>.bar()` → `"List<T>"`,
     ///      `fun <E, S> Flow<ReducedResult<E, S>>.collectState(…)` → `"Flow<ReducedResult<E, S>>"`.
-    /// Empty when the receiver has no generics (in which case `extension_receiver`
-    /// already carries the full type).
+    /// Empty when the receiver has no generics and is not nullable (in which
+    /// case `extension_receiver` already carries the full type); a nullable
+    /// receiver keeps its `?` (`"T?"`), since it binds type parameters differently.
     pub extension_receiver_type: String,
     /// KDoc / Javadoc text for this symbol.
     /// Empty for source-indexed symbols (doc is extracted live from `FileData.lines`).
@@ -332,11 +333,23 @@ impl SymbolEntry {
 
     /// For extension functions: the full receiver type including generics.
     /// e.g. `fun <T> List<T>.bar()` → `"List<T>"`. Empty string for non-extension
-    /// symbols or when the receiver has no generics.
+    /// symbols or when the receiver has neither generics nor a `?`.
     pub(crate) fn extension_receiver_type(&self) -> &str {
         self.cold
             .as_ref()
             .map_or("", |cold_fields| &cold_fields.extension_receiver_type)
+    }
+
+    /// The receiver type as declared, for generic substitution: the full type
+    /// when it has generics (`"List<T>"`), else the base name (`"T"` for
+    /// `fun <T> T?.required()`). Empty for non-extension symbols.
+    pub(crate) fn declared_extension_receiver(&self) -> &str {
+        let full_type = self.extension_receiver_type();
+        if full_type.is_empty() {
+            self.extension_receiver()
+        } else {
+            full_type
+        }
     }
 
     /// KDoc / Javadoc text for this symbol. Empty for source-indexed symbols

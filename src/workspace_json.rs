@@ -603,7 +603,11 @@ fn probe_source_set_roots(module_dir: &Path) -> Vec<PathBuf> {
     roots
 }
 
-/// Extracts subproject directory names from `settings.gradle` / `settings.gradle.kts`.
+/// Extracts subproject directory names from `settings.gradle` / `settings.gradle.kts`,
+/// honoring a `project(":name").projectDir = file("...")` relocation when one is
+/// present — the directory Gradle actually builds from, which can differ from the
+/// `include(...)`-derived name when a project groups its modules under a parent
+/// directory (e.g. `modules/kmp-module-one` for `include(":kmp-module-one")`).
 ///
 /// Handles both forms:
 /// - `include(":app", ":core")` — Gradle convention (colon prefix)
@@ -615,9 +619,26 @@ fn settings_subprojects(workspace_root: &Path) -> Vec<String> {
         let Ok(content) = std::fs::read_to_string(&path) else {
             continue;
         };
-        return parse_include_calls(&content);
+        let overrides = parse_project_dir_overrides(&content);
+        return parse_include_calls(&content)
+            .into_iter()
+            .map(|dir| overrides.get(&dir).cloned().unwrap_or(dir))
+            .collect();
     }
     Vec::new()
+}
+
+/// Extracts every single- or double-quoted string literal on `line`, in order.
+fn quoted_tokens(line: &str) -> Vec<String> {
+    let mut tokens = Vec::new();
+    let mut chars = line.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '"' || c == '\'' {
+            let quote = c;
+            tokens.push(chars.by_ref().take_while(|&d| d != quote).collect());
+        }
+    }
+    tokens
 }
 
 /// Parses `include("...", "...")` calls and returns directory paths.
@@ -633,23 +654,52 @@ fn parse_include_calls(content: &str) -> Vec<String> {
         if !trimmed.starts_with("include(") {
             continue;
         }
-        // Extract all single- or double-quoted strings on this line.
-        let mut chars = trimmed.chars().peekable();
-        while let Some(c) = chars.next() {
-            if c == '"' || c == '\'' {
-                let quote = c;
-                let token: String = chars.by_ref().take_while(|&d| d != quote).collect();
-                // ":app" → "app", ":feature:login" → "feature/login"
-                let dir = token
-                    .trim_start_matches(':')
-                    .replace(':', std::path::MAIN_SEPARATOR_STR);
-                if !dir.is_empty() && !result.contains(&dir) {
-                    result.push(dir);
-                }
+        for token in quoted_tokens(trimmed) {
+            // ":app" → "app", ":feature:login" → "feature/login"
+            let dir = token
+                .trim_start_matches(':')
+                .replace(':', std::path::MAIN_SEPARATOR_STR);
+            if !dir.is_empty() && !result.contains(&dir) {
+                result.push(dir);
             }
         }
     }
     result
+}
+
+/// Parses `project(":name").projectDir = file("...")`-shaped relocations,
+/// mapping the `include(...)`-derived directory name (same colon-to-separator
+/// transform as [`parse_include_calls`]) to the real relative path Gradle
+/// actually builds that project from.
+///
+/// The project name is always the first quoted string literal on the line,
+/// the path is always the last — true regardless of whether the path is
+/// wrapped in `file(...)`, `File(...)`, or assigned as a bare string, and
+/// regardless of Kotlin DSL vs. Groovy syntax, since all of those shapes are
+/// still just one quoted literal for the name and one for the path.
+fn parse_project_dir_overrides(content: &str) -> HashMap<String, String> {
+    let mut overrides = HashMap::new();
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if !trimmed.starts_with("project(") || !trimmed.contains("projectDir") {
+            continue;
+        }
+        let tokens = quoted_tokens(trimmed);
+        let (Some(name_token), Some(path_token)) = (tokens.first(), tokens.last()) else {
+            continue;
+        };
+        if name_token == path_token {
+            continue;
+        }
+        let dir = name_token
+            .trim_start_matches(':')
+            .replace(':', std::path::MAIN_SEPARATOR_STR);
+        let real_path = path_token.replace('/', std::path::MAIN_SEPARATOR_STR);
+        if !dir.is_empty() && !real_path.is_empty() {
+            overrides.insert(dir, real_path);
+        }
+    }
+    overrides
 }
 
 /// Auto-detect Android SDK source directories.
