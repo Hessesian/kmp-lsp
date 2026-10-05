@@ -14,7 +14,8 @@
 use tower_lsp::lsp_types::*;
 
 use super::infer::lambda::SCOPE_FUNCTIONS;
-use super::Indexer;
+use super::{Indexer, ResolvedType};
+use crate::resolver::{resolve_symbol_in_type_scope, ResolveIo};
 use crate::types::SymbolEntry;
 use crate::StrExt;
 
@@ -69,6 +70,46 @@ impl Indexer {
         self.find_definition_qualified_with_io(name, qualifier, from_uri, true)
     }
 
+    /// `name` as a member of `receiver`'s type. The type's NAME is resolved in
+    /// the file it was written in ([`ResolvedType::declaring_uri`]), not the
+    /// caller's: an inferred receiver (`holder.model.text`) is spelled in the
+    /// callee's file, which imports it — the caller usually does not.
+    pub(crate) fn find_member_of_type(
+        &self,
+        name: &str,
+        receiver: &ResolvedType,
+        from_uri: &Url,
+    ) -> Vec<Location> {
+        self.find_member_of_type_with_io(name, receiver, from_uri, false)
+    }
+
+    /// Like `find_member_of_type` but never spawns `rg`/`fd`.
+    pub(crate) fn find_member_of_type_index_only(
+        &self,
+        name: &str,
+        receiver: &ResolvedType,
+        from_uri: &Url,
+    ) -> Vec<Location> {
+        self.find_member_of_type_with_io(name, receiver, from_uri, true)
+    }
+
+    fn find_member_of_type_with_io(
+        &self,
+        name: &str,
+        receiver: &ResolvedType,
+        from_uri: &Url,
+        index_only: bool,
+    ) -> Vec<Location> {
+        let type_scope = receiver.resolution_scope(from_uri);
+        self.find_qualified_in_type_scope(
+            name,
+            &receiver.type_path(),
+            type_scope,
+            from_uri,
+            index_only,
+        )
+    }
+
     fn find_definition_qualified_with_io(
         &self,
         name: &str,
@@ -76,15 +117,34 @@ impl Indexer {
         from_uri: &Url,
         index_only: bool,
     ) -> Vec<Location> {
-        let locations = if index_only {
-            self.resolve_symbol_index_only(name, qualifier, from_uri)
+        match qualifier {
+            Some(qualifier) => {
+                self.find_qualified_in_type_scope(name, qualifier, from_uri, from_uri, index_only)
+            }
+            None if index_only => self.resolve_symbol_index_only(name, None, from_uri),
+            None => self.resolve_symbol(name, None, from_uri),
+        }
+    }
+
+    fn find_qualified_in_type_scope(
+        &self,
+        name: &str,
+        qualifier: &str,
+        type_scope: &Url,
+        from_uri: &Url,
+        index_only: bool,
+    ) -> Vec<Location> {
+        let io = if index_only {
+            ResolveIo::IndexOnly
         } else {
-            self.resolve_symbol(name, qualifier, from_uri)
+            ResolveIo::Full
         };
+        let locations =
+            resolve_symbol_in_type_scope(self, name, qualifier, type_scope, from_uri, io);
         if !locations.is_empty() {
             return locations;
         }
-        if qualifier.is_some() && SCOPE_FUNCTIONS.contains(&name) {
+        if SCOPE_FUNCTIONS.contains(&name) {
             return if index_only {
                 self.resolve_symbol_index_only(name, None, from_uri)
             } else {

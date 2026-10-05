@@ -74,5 +74,6 @@ pub(crate) use infer_lines::{
 pub(crate) use platform_types::resolve_kotlin_builtin_type_platform_equivalent;
 #[cfg(test)]
 pub(crate) use resolve::resolve_symbol;
+pub(crate) use resolve::resolve_symbol_in_type_scope;
 #[cfg(test)]
 pub(crate) use resolve::resolve_symbol_index_only;

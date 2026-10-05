@@ -10492,6 +10492,7 @@ fn anchors_for_a_nested_type_path_anchors_on_the_leaf_not_the_root() {
         &idx,
         &parse_qualifier("Outer.Inner"),
         &caller_uri,
+        &caller_uri,
         ResolveIo::Full,
     );
     assert_eq!(
@@ -10553,6 +10554,7 @@ fn anchors_for_a_missing_nested_segment_yields_no_anchor_not_a_root_fallback() {
         &idx,
         &parse_qualifier("Outer.Missing"),
         &caller_uri,
+        &caller_uri,
         ResolveIo::Full,
     );
     assert!(
@@ -10582,6 +10584,7 @@ fn anchors_for_a_value_path_anchors_on_the_inferred_receiver_type() {
     let anchors = anchors_for(
         &idx,
         &parse_qualifier("account"),
+        &caller_uri,
         &caller_uri,
         ResolveIo::Full,
     );
@@ -10621,6 +10624,7 @@ fn anchors_for_an_unindexed_type_root_still_yields_a_declaration_less_anchor() {
     let anchors = anchors_for(
         &idx,
         &parse_qualifier("Unindexed"),
+        &caller_uri,
         &caller_uri,
         ResolveIo::Full,
     );

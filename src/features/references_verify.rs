@@ -103,7 +103,7 @@ pub(crate) fn verify_candidates(
                         continue;
                     }
                 }
-                let candidate_type = ReceiverType::from_raw(receiver_type.clone()).leaf;
+                let candidate_type = ReceiverType::from_raw(receiver_type.type_path()).leaf;
                 // Only charge the agreement-walk unit when a walk will
                 // actually run: `Exact` (same type, string equality) and
                 // `Unresolvable` (candidate type not indexed) both return

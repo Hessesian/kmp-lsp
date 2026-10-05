@@ -72,6 +72,24 @@ pub(super) fn resolve_qualified(
     from_uri: &Url,
     io: ResolveIo,
 ) -> Vec<Location> {
+    resolve_qualified_in_type_scope(indexer, name, qualifier, from_uri, from_uri, io)
+}
+
+/// [`resolve_qualified`] for a qualifier whose TYPE NAME was written in a file
+/// other than the caller's (an inferred receiver: `holder.model.text`, where
+/// `ScreenFlowModel` is spelled in `Holder.kt`'s imports, not the caller's).
+///
+/// `type_scope` is the file whose imports/package resolve the qualifier's type
+/// root; `from_uri` stays the CALLER, because which extensions are in scope is
+/// a property of the call site, not of where the receiver's type was written.
+pub(super) fn resolve_qualified_in_type_scope(
+    indexer: &Indexer,
+    name: &str,
+    qualifier: &str,
+    type_scope: &Url,
+    from_uri: &Url,
+    io: ResolveIo,
+) -> Vec<Location> {
     let parsed = parse_qualifier(qualifier);
 
     // ── Keyword roots ────────────────────────────────────────────────────────
@@ -100,7 +118,7 @@ pub(super) fn resolve_qualified(
     // companion-member access rather than protecting anything.
     let companion_applies = matches!(&parsed, QualifierRoot::TypePath { .. });
 
-    for anchor in anchors_for(indexer, &parsed, from_uri, io) {
+    for anchor in anchors_for(indexer, &parsed, type_scope, from_uri, io) {
         if companion_applies {
             let companion_locations = companion_member_on(indexer, &anchor, name);
             if !companion_locations.is_empty() {
@@ -183,6 +201,7 @@ pub(super) struct ReceiverAnchor {
 pub(super) fn anchors_for(
     indexer: &Indexer,
     root: &QualifierRoot<'_>,
+    type_scope: &Url,
     from_uri: &Url,
     io: ResolveIo,
 ) -> Vec<ReceiverAnchor> {
@@ -190,7 +209,7 @@ pub(super) fn anchors_for(
         // Dispatched by `resolve_qualified` before it ever gets here.
         QualifierRoot::This | QualifierRoot::Super => vec![],
         QualifierRoot::TypePath { root, nested } => {
-            type_path_anchors(indexer, root, nested, from_uri, io)
+            type_path_anchors(indexer, root, nested, type_scope, io)
         }
         QualifierRoot::ValuePath { root, rest } => value_path_anchor(indexer, root, rest, from_uri)
             .into_iter()
@@ -205,7 +224,7 @@ fn type_path_anchors(
     indexer: &Indexer,
     root: &str,
     nested: &[&str],
-    from_uri: &Url,
+    type_scope: &Url,
     io: ResolveIo,
 ) -> Vec<ReceiverAnchor> {
     // Honors the caller's IO policy — an IndexOnly caller (the
@@ -213,9 +232,9 @@ fn type_path_anchors(
     // rg/fd resolving the qualifier root any more than it may for a bare
     // reference.
     let root_locations = if matches!(io, ResolveIo::IndexOnly) {
-        resolve_symbol_index_only(indexer, root, None, from_uri)
+        resolve_symbol_index_only(indexer, root, None, type_scope)
     } else {
-        resolve_symbol(indexer, root, None, from_uri)
+        resolve_symbol(indexer, root, None, type_scope)
     };
 
     let anchors: Vec<ReceiverAnchor> = root_locations

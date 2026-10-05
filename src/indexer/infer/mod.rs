@@ -105,26 +105,55 @@ impl<T> Resolution<T> {
 }
 
 /// A resolved expression type. Carries the inferred type *as-written*
-/// (no lossy normalization); the RawTypeName/TypeName split is slice 5.
+/// (no lossy normalization; the RawTypeName/TypeName split is slice 5) and the
+/// file it was written in.
+#[derive(Debug, Clone)]
 pub(crate) struct ResolvedType {
     type_name: String,
     nullable: bool,
+    declaring_uri: Url,
 }
 
 impl ResolvedType {
-    /// Construct from an inferred type string.
+    /// Construct from an inferred type string and the file that spelled it.
     /// Nullability is derived via `StrExt::is_nullable` (the canonical place).
-    pub(crate) fn from_inferred(raw: String) -> Self {
+    pub(crate) fn from_inferred(raw: String, declaring_uri: Url) -> Self {
         let nullable = raw.is_nullable();
         ResolvedType {
             type_name: raw,
             nullable,
+            declaring_uri,
         }
     }
 
     /// The type as-written (what the old `Option<String>` callers consumed).
     pub(crate) fn as_type_str(&self) -> &str {
         &self.type_name
+    }
+
+    /// The type's own, possibly nested/qualified, name: no type arguments, no
+    /// `?`. What a member lookup and a known-type gate are keyed by.
+    pub(crate) fn type_path(&self) -> String {
+        self.type_name.dotted_ident_prefix()
+    }
+
+    /// The file whose imports and package resolve [`Self::type_path`] — where
+    /// the type name was written, which is NOT the call site for an inferred
+    /// receiver (`loadScreenData(..)`'s return type is spelled in the callee's
+    /// file, where it is imported).
+    pub(crate) fn declaring_uri(&self) -> &Url {
+        &self.declaring_uri
+    }
+
+    /// The file to resolve [`Self::type_path`] in: where the name was written,
+    /// or `caller` when that is a `jar:` file — a jar has no import list to
+    /// resolve a name against, so the caller's scope stays (pre-existing behaviour).
+    pub(crate) fn resolution_scope<'a>(&'a self, caller: &'a Url) -> &'a Url {
+        if self.declaring_uri().scheme() == "file" {
+            self.declaring_uri()
+        } else {
+            caller
+        }
     }
 
     #[allow(dead_code)] // read only by tests pinning `from_inferred`'s nullable computation
@@ -181,13 +210,15 @@ impl<'a, D: InferDeps> CstQuery<'a, D> {
     /// boolean operators, `if` expressions, and `this`.  Returns
     /// `Resolution::Unresolved` for compound forms not yet handled.
     pub(crate) fn expr_type(&self) -> Resolution<ResolvedType> {
-        match crate::indexer::infer::expr_type::infer_expr_type(
+        match crate::indexer::infer::expr_type::infer_expr_type_with_origin(
             self.node,
             &self.doc.bytes,
             self.deps,
             self.uri,
         ) {
-            Some(raw) => Resolution::Resolved(ResolvedType::from_inferred(raw)),
+            Some((raw, declaring_uri)) => {
+                Resolution::Resolved(ResolvedType::from_inferred(raw, declaring_uri))
+            }
             None => Resolution::Unresolved,
         }
     }

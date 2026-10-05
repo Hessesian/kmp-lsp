@@ -49,7 +49,8 @@ pub(crate) async fn find_implementation_at(
         } = &sym.role
         {
             if let Some(response) =
-                find_method_implementations(&sym.name, receiver_type, indexer, uri).await
+                find_method_implementations(&sym.name, &receiver_type.type_path(), indexer, uri)
+                    .await
             {
                 return Some(response);
             }
