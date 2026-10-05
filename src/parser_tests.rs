@@ -2080,3 +2080,24 @@ fn enclosing_extension_receiver_is_none_outside_any_extension_function() {
         "a non-extension function has no receiver to find"
     );
 }
+
+/// `fun <T> T?.required()` and `fun <T> T.echo()` bind `T` differently at a call
+/// (non-null vs the receiver's own nullability), so the declared nullability of a
+/// plain receiver must survive indexing.
+#[test]
+fn nullable_plain_receiver_keeps_its_marker_in_extension_receiver_type() {
+    let data = crate::parser::parse_kotlin(
+        "fun <T : Any> T?.required(field: String): T = TODO()\nfun <T> T.echo(): T = this\n",
+    );
+    let receiver_type_of = |name: &str| {
+        data.symbols
+            .iter()
+            .find(|symbol| symbol.name == name)
+            .unwrap_or_else(|| panic!("{name} should be parsed"))
+            .extension_receiver_type()
+            .to_owned()
+    };
+
+    assert_eq!(receiver_type_of("required"), "T?");
+    assert_eq!(receiver_type_of("echo"), "");
+}

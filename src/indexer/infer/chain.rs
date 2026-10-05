@@ -601,7 +601,7 @@ impl StrategyOutcome {
             StrategyOutcome::Final(s) => s,
             StrategyOutcome::SignatureDerived(raw_return) => {
                 let has_explicit_receiver = ctx.callee.kind() == KIND_NAV_EXPR;
-                let subst = if has_explicit_receiver {
+                let substitution = if has_explicit_receiver {
                     callee_receiver_type(ctx)
                         .map(|receiver_type| {
                             extension_receiver_type_param_subst(ctx, &receiver_type)
@@ -610,7 +610,7 @@ impl StrategyOutcome {
                 } else {
                     Default::default()
                 };
-                let substituted = crate::indexer::apply_type_subst(&raw_return, &subst);
+                let substituted = crate::indexer::apply_type_subst(&raw_return, &substitution);
                 apply_call_site_type_args(substituted, ctx)
             }
             StrategyOutcome::ReceiverDerived {
@@ -618,11 +618,12 @@ impl StrategyOutcome {
                 effective_type,
                 receiver_type,
             } => {
-                let mut subst = build_type_arg_subst(ctx.deps, &effective_type, &receiver_type);
+                let mut substitution =
+                    build_type_arg_subst(ctx.deps, &effective_type, &receiver_type);
                 for (param, concrete) in extension_receiver_type_param_subst(ctx, &receiver_type) {
-                    subst.entry(param).or_insert(concrete);
+                    substitution.entry(param).or_insert(concrete);
                 }
-                let substituted = crate::indexer::apply_type_subst(&raw_return, &subst);
+                let substituted = crate::indexer::apply_type_subst(&raw_return, &substitution);
                 apply_call_site_type_args(substituted, ctx)
             }
         }

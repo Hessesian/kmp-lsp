@@ -522,8 +522,18 @@ impl InferDeps for Indexer {
         )
     }
     fn find_fun_callable_info(&self, fn_name: &str, uri: &Url) -> Option<CallableInfo> {
-        // Workspace definitions first (scoped + capped — see find_in_workspace_defs).
-        let from_workspace = self.find_in_workspace_defs(fn_name, |loc| {
+        // Workspace definitions first. The declaration the call actually binds
+        // to (import/package-reachable from `uri`) decides; only when nothing
+        // is reachable do the capped by-name candidates stand in — an
+        // unrelated same-named generic must not donate its type parameters to
+        // a callee that declares none.
+        let reachable = crate::resolver::resolve_symbol_scoped_only(self, fn_name, uri);
+        let candidates = if reachable.is_empty() {
+            self.workspace_def_candidates(fn_name)
+        } else {
+            reachable
+        };
+        let from_workspace = candidates.iter().find_map(|loc| {
             let file_data = self.files.get(loc.uri.as_str())?;
             let sym = file_data
                 .symbols

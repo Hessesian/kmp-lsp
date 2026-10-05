@@ -3556,8 +3556,45 @@ fn callable_info_reports_a_non_generic_type_param_receiver() {
 
     assert_eq!(info.type_params, vec!["T".to_string()]);
     assert_eq!(
-        info.extension_receiver_type, "T",
+        info.extension_receiver_type, "T?",
         "the receiver `T?` has no generics, but substitution still needs to know \
-         the extension's own type parameter IS the whole receiver"
+         the extension's own type parameter IS the whole receiver, and that it is nullable"
+    );
+}
+
+#[test]
+fn callable_info_reports_a_plain_type_param_receiver_without_a_nullable_marker() {
+    let idx = Indexer::new();
+    let uri = Url::parse("file:///t/Echo.kt").unwrap();
+    idx.index_content(&uri, "package p\nfun <T> T.echo(): T = this\n");
+
+    let info = idx
+        .find_fun_callable_info("echo", &uri)
+        .expect("`echo` declares a type parameter");
+
+    assert_eq!(info.extension_receiver_type, "T");
+}
+
+/// Review finding on #328: callable metadata was the first generic same-named
+/// workspace definition, regardless of which `foo` the call actually binds to.
+/// Here the reachable `foo` (same package, non-generic) is NOT the generic one
+/// in an unrelated package, so substituting from the latter's `<T> T.foo(): T`
+/// would bind a type parameter the real callee never declared.
+#[test]
+fn callable_info_prefers_the_reachable_declaration_over_an_unrelated_generic_one() {
+    let idx = Indexer::new();
+    let unrelated = Url::parse("file:///t/a/Generic.kt").unwrap();
+    idx.index_content(&unrelated, "package a\nfun <T> T.foo(): T = this\n");
+    let reachable = Url::parse("file:///t/b/Reachable.kt").unwrap();
+    idx.index_content(&reachable, "package b\nfun Int.foo(): String = \"\"\n");
+    let caller = Url::parse("file:///t/b/Caller.kt").unwrap();
+    idx.index_content(&caller, "package b\nfun use() { 1.foo() }\n");
+
+    let info = idx.find_fun_callable_info("foo", &caller);
+
+    assert!(
+        info.is_none(),
+        "the call binds to the non-generic same-package `foo`, which declares no \
+         type parameters; got {info:?}"
     );
 }

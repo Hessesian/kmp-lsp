@@ -2878,3 +2878,16 @@ fn nested_generic_it_resolves_to_the_concrete_inner_type() {
     assert_eq!(resolved.as_deref(), Some("Optional<Foo>"));
     assert_ne!(resolved.as_deref(), Some("T"));
 }
+
+/// A plain `T` receiver binds `T` to the concrete type INCLUDING its nullability
+/// (`Foo?` -> `Foo?`); a `T?` receiver binds the non-null type (`Foo?` -> `Foo`).
+#[test]
+fn build_ext_fn_type_subst_binds_a_whole_receiver_param_by_declared_nullability() {
+    let type_params = ["T".to_owned()];
+
+    let plain = build_ext_fn_type_subst("T", "Foo?", &type_params);
+    let nullable = build_ext_fn_type_subst("T?", "Foo?", &type_params);
+
+    assert_eq!(plain.get("T").map(String::as_str), Some("Foo?"));
+    assert_eq!(nullable.get("T").map(String::as_str), Some("Foo"));
+}
