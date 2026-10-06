@@ -835,13 +835,13 @@ fn infer_var_from_rhs_data(
 /// exact composite the CST engine's `resolve_call_expr_type`
 /// (`indexer/infer/chain.rs`) reaches for the same receiver-method shape --
 /// rather than hand-chaining `find_method_return_type` and
-/// `find_method_return_type_via_supertypes` here too. Shared by both STRING
+/// `find_method_return_type_via_supertypes_declared` here too. Shared by both STRING
 /// call sites below (`infer_var_from_rhs_data`'s `method_match` branch and
 /// `infer_method_return_type`'s line-scan fallback) so a future change to
 /// that fallback policy can't silently diverge between the two STRING call
 /// sites, or between the STRING and CST engines -- which is exactly how the
 /// supertype-walk fallback itself went missing from this file before it was
-/// added back (see `find_method_return_type_via_supertypes`'s callers).
+/// added back (see `find_method_return_type_via_supertypes_declared`'s callers).
 fn resolve_method_return_type_substituted(
     indexer: &Indexer,
     recv_type_raw: &str,
@@ -1234,7 +1234,7 @@ fn find_field_type_in_class_impl(
 /// workspace search and finally `lookup_definitions` (the only one of the
 /// three that promotes a not-yet-materialized JAR) when nothing reachable is
 /// found. Shared by [`find_field_type_via_supertypes`] and
-/// [`find_method_return_type_via_supertypes`] so neither anchors its walk on
+/// [`find_method_return_type_via_supertypes_declared`] so neither anchors its walk on
 /// an unrelated same-named class elsewhere in the workspace.
 fn reachable_class_candidates(
     indexer: &Indexer,
@@ -1254,7 +1254,7 @@ fn reachable_class_candidates(
 }
 
 /// Resolve `field_name`'s declared type by walking `class_name`'s ancestors —
-/// the field-typed sibling of [`find_method_return_type_via_supertypes`].
+/// the field-typed sibling of [`find_method_return_type_via_supertypes_declared`].
 /// [`find_field_type_in_class`] only reads `class_name`'s own body, so a
 /// field declared only on a generic superclass (`viewModel.uiState` where
 /// `uiState` lives on `MviViewModel<State, Effect>`, not the specific
@@ -2150,19 +2150,8 @@ fn find_extension_fn_return_type_global(
     })
 }
 
-#[cfg(test)]
-pub(crate) fn find_method_return_type_via_supertypes(
-    indexer: &Indexer,
-    class_name: &str,
-    method_name: &str,
-    from_uri: Option<&Url>,
-) -> Option<String> {
-    find_method_return_type_via_supertypes_declared(indexer, class_name, method_name, from_uri)
-        .map(|declared| declared.type_name)
-}
-
-/// [`find_method_return_type_via_supertypes`], keeping the file the return type
-/// was written in.
+/// The supertype walk behind `Resolver::method_return_type_declared`: the return
+/// type of `method_name` inherited by `class_name`, with the file it was written in.
 pub(crate) fn find_method_return_type_via_supertypes_declared(
     indexer: &Indexer,
     class_name: &str,
