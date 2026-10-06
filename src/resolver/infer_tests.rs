@@ -1990,6 +1990,96 @@ fn undeclared_return_of_a_block_bodied_or_bodyless_kotlin_method_is_unit() {
     assert_eq!(bodyless.as_deref(), Some("Unit"));
 }
 
+#[test]
+fn signature_body_kind_sees_an_equals_only_after_the_parameter_list() {
+    use super::{signature_body_kind as kind, SignatureBodyKind::*};
+
+    assert_eq!(kind("fun f() = 1"), Expression);
+    assert_eq!(kind("fun f(a: Int): Int ="), Expression);
+    assert_eq!(kind("fun <T> T.f(a: Int = 1) = a"), Expression);
+    assert_eq!(kind("fun f()"), BlockOrNone);
+    assert_eq!(kind("fun f(a: Int = 1)"), BlockOrNone);
+    assert_eq!(kind("fun f(a: (Int) -> Int = { it })"), BlockOrNone);
+}
+
+/// A multi-line parameter list pushes the declared `: Flow<T>` past the indexed
+/// `detail`'s reach. A DECLARED return type must never be mistaken for "no type
+/// declared" (and answered `Unit`/inferred from the body) just because `detail`
+/// was cut short — Moneta's `safeFlow` regressed `startScoring().collectEmit`.
+#[test]
+fn top_level_return_type_declared_after_a_multi_line_parameter_list_is_not_unit() {
+    use crate::indexer::Indexer;
+    use tower_lsp::lsp_types::Url;
+
+    let idx = Indexer::new();
+    let uri = Url::parse("file:///t/Flow.kt").unwrap();
+    let source = "package p\n\
+         class Flow<T>\n\
+         class FlowCollector<T>\n\
+         class CoroutineScope\n\
+         fun <T> safeFlow(\n\
+             action: suspend FlowCollector<T>.(CoroutineScope) -> Unit,\n\
+             catchAction: suspend FlowCollector<T>.(Throwable) -> Unit,\n\
+         ): Flow<T> {\n\
+             return Flow()\n\
+         }\n";
+    idx.index_content(&uri, source);
+    idx.store_live_tree(&uri, source);
+
+    let return_type =
+        crate::resolver::infer::find_fun_return_type_reachable(&idx, "safeFlow", &uri);
+
+    assert_eq!(return_type.as_deref(), Some("Flow<T>"));
+}
+
+/// A Java method with a long parameter list loses its return type from the indexed
+/// `detail`; "no declared type" is Kotlin's rule (`Unit`) and must never be applied
+/// to a Java declaration (Moneta: `FormatUtil.formatAmount` came out `Unit`).
+#[test]
+fn undeclared_return_inference_never_applies_to_a_java_method() {
+    use crate::indexer::Indexer;
+    use tower_lsp::lsp_types::Url;
+
+    let idx = Indexer::new();
+    let uri = Url::parse("file:///t/FormatUtil.java").unwrap();
+    let source = "package p;\n\
+         public class FormatUtil {\n\
+             public static String formatAmount(java.math.BigDecimal amount, String currency, int fractionDigits, boolean grouping, java.util.Locale locale) {\n\
+                 return \"\";\n\
+             }\n\
+         }\n";
+    idx.index_content(&uri, source);
+
+    let return_type = crate::resolver::infer::find_method_return_type(
+        &idx,
+        "FormatUtil",
+        "formatAmount",
+        Some(&uri),
+    );
+
+    assert_ne!(return_type.as_deref(), Some("Unit"));
+}
+
+/// Review finding on slice 2b: `collect_signature` stops after 15 lines, so an
+/// over-long parameter list yields a signature whose parameter list never closes.
+/// That must read as UNKNOWN, never as "no body" (`Unit`).
+#[test]
+fn a_signature_whose_parameter_list_never_closes_has_an_unknown_body_kind() {
+    use super::{signature_body_kind, SignatureBodyKind};
+
+    let unfinished = format!("fun f(\n{}", "    a: Int,\n".repeat(15));
+
+    assert_eq!(signature_body_kind(&unfinished), SignatureBodyKind::Unknown);
+    assert_eq!(
+        signature_body_kind("fun f() = 1"),
+        SignatureBodyKind::Expression
+    );
+    assert_eq!(
+        signature_body_kind("fun f(a: Int = 1)"),
+        SignatureBodyKind::BlockOrNone
+    );
+}
+
 /// A package-qualified return type (`types.Payload`) is a type: its LAST segment
 /// is the type name, so a lowercase package prefix must not make the whole
 /// annotation read as "no declared type".

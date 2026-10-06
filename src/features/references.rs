@@ -225,10 +225,11 @@ pub(crate) async fn verified_references_for(
                 receiver_type: Some(receiver_type),
                 shape: Some(shape),
                 ..
-            } => crate::resolver::resolve_implicit_receiver_callee(
+            } => crate::resolver::resolve_receiver_callee_in_type_scope(
                 index,
                 &receiver_type.type_path(),
                 &symbol.name,
+                receiver_type.resolution_scope(uri),
                 uri,
                 *shape,
             )

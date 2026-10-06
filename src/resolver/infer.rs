@@ -1670,6 +1670,18 @@ pub(crate) fn find_fun_return_type_reachable(
     fn_name: &str,
     uri: &Url,
 ) -> Option<String> {
+    find_fun_return_type_reachable_declared(indexer, fn_name, uri)
+        .map(|declared| declared.type_name)
+}
+
+/// [`find_fun_return_type_reachable`], keeping the file the return type was
+/// written in. A bound declaration with no declared type gets the type of its
+/// body (or `Unit`), like a member method.
+pub(crate) fn find_fun_return_type_reachable_declared(
+    indexer: &Indexer,
+    fn_name: &str,
+    uri: &Url,
+) -> Option<DeclaredReturn> {
     // Promotion MUST happen before `resolve_symbol_scoped_only` at this call
     // site — unlike `find_extension_fn_return_type_scoped` below, where the
     // check guards a `jar_files` read that happens *after* it in the same
@@ -1703,7 +1715,7 @@ pub(crate) fn find_fun_return_type_reachable(
     // completely unrelated, unimported library's same-named function ahead
     // of the actually-intended resolution.
     let locations = crate::resolver::resolve_symbol_scoped_only(indexer, fn_name, uri);
-    let mut fallback: Option<String> = None;
+    let mut fallback: Option<DeclaredReturn> = None;
     for loc in &locations {
         let Some(file_data) = indexer
             .files
@@ -1725,11 +1737,20 @@ pub(crate) fn find_fun_return_type_reachable(
             let ret = extract_return_type_from_detail(&symbol.detail);
             if symbol.selection_range.start == loc.range.start {
                 // The symbol the resolver actually bound to.
-                if ret.is_some() {
-                    return ret;
+                let declared = ret
+                    .map(|type_name| (type_name, loc.uri.clone()))
+                    .or_else(|| infer_undeclared_return_type(indexer, &loc.uri, symbol));
+                if let Some((type_name, written_in)) = declared {
+                    return Some(DeclaredReturn {
+                        type_name,
+                        declared_in: Some(written_in),
+                    });
                 }
             } else if fallback.is_none() {
-                fallback = ret;
+                fallback = ret.map(|type_name| DeclaredReturn {
+                    type_name,
+                    declared_in: Some(loc.uri.clone()),
+                });
             }
         }
     }
@@ -1796,17 +1817,54 @@ pub(crate) fn find_method_return_type_declared(
                     let full_sig = file_data.lines.collect_signature(start_line);
                     extract_return_type_from_detail(&full_sig)
                 })
+                .map(|type_name| (type_name, loc.uri.clone()))
                 // No declared type at all: the body's type, or `Unit`.
                 .or_else(|| infer_undeclared_return_type(indexer, &loc.uri, symbol));
-            if let Some(type_name) = declared_type {
+            if let Some((type_name, written_in)) = declared_type {
                 return Some(DeclaredReturn {
                     type_name,
-                    declared_in: Some(loc.uri.clone()),
+                    declared_in: Some(written_in),
                 });
             }
         }
         None
     })
+}
+
+/// What a collected function `signature` says about the function's body.
+#[derive(Debug, PartialEq, Eq)]
+enum SignatureBodyKind {
+    /// An `=` follows the parameter list (`fun f() = …`, `fun f(): T = …`). A
+    /// default value inside the parameter list (`fun f(a: Int = 1) {`) does not count.
+    Expression,
+    /// The parameter list closed with no `=` after it: a block body, or none.
+    BlockOrNone,
+    /// The parameter list never closed in the collected text (`collect_signature`
+    /// stops after 15 lines), so nothing can be concluded about what follows it.
+    Unknown,
+}
+
+fn signature_body_kind(signature: &str) -> SignatureBodyKind {
+    let mut depth = 0i32;
+    let mut parameter_list_closed = false;
+    for char in signature.chars() {
+        match char {
+            '(' => depth += 1,
+            ')' => {
+                depth -= 1;
+                if depth == 0 {
+                    parameter_list_closed = true;
+                }
+            }
+            '=' if parameter_list_closed && depth == 0 => return SignatureBodyKind::Expression,
+            _ => {}
+        }
+    }
+    if parameter_list_closed {
+        SignatureBodyKind::BlockOrNone
+    } else {
+        SignatureBodyKind::Unknown
+    }
 }
 
 /// The return type of a Kotlin function that declares none: the type of its
@@ -1820,10 +1878,30 @@ fn infer_undeclared_return_type(
     indexer: &Indexer,
     uri: &Url,
     function: &crate::types::SymbolEntry,
-) -> Option<String> {
+) -> Option<(String, Url)> {
     use crate::queries::{KIND_EQ, KIND_FUN_BODY, KIND_FUN_DECL};
 
+    // "No declared type" means `Unit` or the body's type only in Kotlin; a Java
+    // (or Swift) declaration whose type is missing from the indexed `detail`
+    // is merely unknown.
+    if crate::Language::from_path(uri.path()) != crate::Language::Kotlin {
+        return None;
+    }
     let declaration_line = function.selection_start();
+    // A signature with no `=` after its parameter list has a block body or none:
+    // `Unit`, without parsing the declaring file (most calls hit this).
+    if let Some(file_data) = indexer.files.get(uri.as_str()) {
+        let signature = file_data.lines.collect_signature(declaration_line as usize);
+        // The indexed `detail` is cut at 120 chars, so a declared type after a
+        // long or multi-line parameter list can be missing from it: read the
+        // full signature before concluding nothing is declared.
+        if let Some(declared) = extract_return_type_from_detail(&signature) {
+            return Some((declared, uri.clone()));
+        }
+        if signature_body_kind(&signature) == SignatureBodyKind::BlockOrNone {
+            return Some(("Unit".to_owned(), uri.clone()));
+        }
+    }
     let _guard =
         ResolutionInFlight::enter(uri, &format!("fun {}@{declaration_line}", function.name))?;
     let doc = indexer.live_doc_or_parse(uri)?;
@@ -1842,13 +1920,15 @@ fn infer_undeclared_return_type(
         .children(&mut cursor)
         .find(|child| child.kind() == KIND_FUN_BODY);
     let Some(body) = body else {
-        return Some("Unit".to_owned());
+        return Some(("Unit".to_owned(), uri.clone()));
     };
     let is_expression_body = body.child(0).is_some_and(|first| first.kind() == KIND_EQ);
     if !is_expression_body {
-        return Some("Unit".to_owned());
+        return Some(("Unit".to_owned(), uri.clone()));
     }
-    crate::indexer::infer_expr_type(body.child(1)?, bytes, indexer, uri)
+    // The body's own origin: `fun wrapper() = importedFactory()` is whatever
+    // `importedFactory()` returns, spelled where IT was declared.
+    crate::indexer::infer_expr_type_with_origin(body.child(1)?, bytes, indexer, uri)
 }
 
 /// Returns true when an extension function declared in `entry_package` is

@@ -153,12 +153,27 @@ pub(crate) fn resolve_implicit_receiver_callee(
     from_uri: &Url,
     shape: CallShape,
 ) -> Vec<Location> {
+    resolve_receiver_callee_in_type_scope(indexer, receiver_base, name, from_uri, from_uri, shape)
+}
+
+/// [`resolve_implicit_receiver_callee`] for a receiver whose TYPE NAME was
+/// written in `type_scope` rather than in the caller (`from_uri`) — an inferred
+/// receiver. `type_scope` resolves `receiver_base` to its declaring file;
+/// which extensions are in scope stays a property of the caller.
+pub(crate) fn resolve_receiver_callee_in_type_scope(
+    indexer: &Indexer,
+    receiver_base: &str,
+    name: &str,
+    type_scope: &Url,
+    from_uri: &Url,
+    shape: CallShape,
+) -> Vec<Location> {
     if let Some(loc) =
         implicit_receiver_extension_match(indexer, receiver_base, name, from_uri, shape)
     {
         return vec![loc];
     }
-    implicit_receiver_member_match(indexer, receiver_base, name, from_uri, shape)
+    implicit_receiver_member_match(indexer, receiver_base, name, type_scope, shape)
         .map(|loc| vec![loc])
         .unwrap_or_default()
 }
@@ -233,10 +248,10 @@ fn implicit_receiver_member_match(
     indexer: &Indexer,
     receiver_base: &str,
     name: &str,
-    from_uri: &Url,
+    type_scope: &Url,
     shape: CallShape,
 ) -> Option<Location> {
-    for type_loc in resolve_symbol(indexer, receiver_base, None, from_uri) {
+    for type_loc in resolve_symbol(indexer, receiver_base, None, type_scope) {
         let Some(symbol) = indexer
             .files
             .get(type_loc.uri.as_str())

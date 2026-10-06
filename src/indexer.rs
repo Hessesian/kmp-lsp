@@ -44,7 +44,7 @@ pub(crate) use self::infer::{
         shape_filter_locations, NavigationSource, SymbolAtCursor, SymbolRole,
     },
     deps::{CallShape, CallableInfo, InferDeps, OuterScopedParams, ShapeFiltered},
-    expr_type::infer_expr_type,
+    expr_type::{infer_expr_type, infer_expr_type_with_origin},
     it_this::{
         all_lambda_receivers_at, find_it_element_type, find_named_lambda_param_type,
         find_this_context, find_this_element_type, is_lambda_param, lambda_brace_pos_for_param,
@@ -444,6 +444,16 @@ impl InferDeps for Indexer {
         crate::resolver::infer::find_fun_return_type_by_name(self, fn_name, uri)
     }
 
+    fn find_fun_return_type_reachable_with_origin(
+        &self,
+        fn_name: &str,
+        uri: &Url,
+    ) -> Option<(String, Url)> {
+        let declared =
+            crate::resolver::infer::find_fun_return_type_reachable_declared(self, fn_name, uri)?;
+        let declared_in = declared.declared_in.unwrap_or_else(|| uri.clone());
+        Some((declared.type_name, declared_in))
+    }
     fn find_fun_return_type_reachable(&self, fn_name: &str, uri: &Url) -> Option<String> {
         crate::resolver::infer::find_fun_return_type_reachable(self, fn_name, uri)
     }

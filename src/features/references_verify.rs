@@ -119,9 +119,22 @@ pub(crate) fn verify_candidates(
                     }
                     io_budget -= 1;
                 }
+                // The supertype walk reads the receiver type's OWN declaration
+                // for its supertypes, so it must start from the file that
+                // declares that type — not from the call site, which declares
+                // nothing of the kind. An unresolvable declaration is kept,
+                // never rejected.
+                let Some(candidate_declaration_uri) = (if will_walk {
+                    receiver_type_declaration_uri(indexer, receiver_type, &candidate.uri)
+                } else {
+                    Some(candidate.uri.to_string())
+                }) else {
+                    kept.push(NavigationSource::NameScan(candidate));
+                    continue;
+                };
                 match indexer.receiver_type_agreement(
                     &candidate_type,
-                    candidate.uri.as_str(),
+                    &candidate_declaration_uri,
                     &query_declaring_type,
                     sidecar_budget,
                 ) {
@@ -217,6 +230,24 @@ pub(crate) fn verify_candidates(
     }
 }
 
+/// The file declaring `receiver`'s type, resolved where the type name was
+/// written (`call_site` when that is a `jar:` file).
+fn receiver_type_declaration_uri(
+    indexer: &Indexer,
+    receiver: &crate::indexer::ResolvedType,
+    call_site: &tower_lsp::lsp_types::Url,
+) -> Option<String> {
+    crate::resolver::resolve_type_path_declarations(
+        indexer,
+        &receiver.type_path(),
+        receiver.resolution_scope(call_site),
+        crate::resolver::ResolveIo::IndexOnly,
+    )
+    .into_iter()
+    .next()
+    .map(|location| location.uri.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use tower_lsp::lsp_types::{Position, Range, Url};
@@ -270,6 +301,56 @@ mod tests {
             vec![candidate],
             "must be in rejected, not silently absent"
         );
+    }
+
+    /// Slice 3: a call site on a SUBTYPE of the query's declaring type, in a file
+    /// that declares neither. The supertype walk must start from the file that
+    /// declares the receiver's type (`Derived`, in its own package), not from
+    /// the call site — which has no `Derived` declaration to read supertypes from.
+    #[test]
+    fn subtype_call_site_in_a_file_that_declares_neither_type_is_kept() {
+        let base_uri = uri("/types/Base.kt");
+        let derived_uri = uri("/impl/Derived.kt");
+        let caller_uri = uri("/app/Use.kt");
+        let caller_source = "package app
+                   import impl.Derived
+                   fun f(derived: Derived) { derived.save() }
+";
+        let indexer = Indexer::new();
+        indexer.index_content(
+            &base_uri,
+            "package types\nopen class Base { fun save() {} }\n",
+        );
+        indexer.index_content(
+            &derived_uri,
+            "package impl\nimport types.*\nclass Derived : Base()\n",
+        );
+        indexer.index_content(&caller_uri, caller_source);
+        indexer.store_live_tree(&caller_uri, caller_source);
+        let Some(column) = caller_source
+            .lines()
+            .nth(2)
+            .and_then(|line| line.find("save"))
+        else {
+            panic!("fixture line missing `save`");
+        };
+        let candidate = location(&caller_uri, 2, column as u32, column as u32 + 4);
+
+        let result = verify_candidates(
+            &indexer,
+            Some("Base"),
+            None,
+            None,
+            MAX_VERIFICATION_IO_OPERATIONS,
+            vec![candidate.clone()],
+        );
+
+        assert!(
+            result.rejected.is_empty(),
+            "a Derived receiver inherits Base.save, got rejected: {:?}",
+            result.rejected
+        );
+        assert_eq!(result.kept.len(), 1);
     }
 
     /// A call site whose receiver type agrees with the query's declaring

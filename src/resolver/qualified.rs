@@ -412,8 +412,10 @@ fn value_path_anchor(
             class_name = segment.to_owned();
         } else {
             // Field access: infer the declared type of this field.
+            // The field's type name was written in the file that declares the
+            // field, so it resolves against THAT file's imports, not the caller's.
             let field_type = infer_field_type(indexer, current_uri.as_str(), segment)?;
-            declaration = resolve_symbol(indexer, &field_type, None, from_uri)
+            declaration = resolve_symbol(indexer, &field_type, None, &current_uri)
                 .into_iter()
                 .next();
             class_name = field_type.strip_nullable().last_segment().to_owned();
