@@ -62,6 +62,18 @@ pub(crate) fn infer_expr_type(
     infer_expr_type_at_depth(node, bytes, deps, uri, 0).map(|(type_name, _)| type_name)
 }
 
+/// [`infer_expr_type`] together with the file the answer was written in — the
+/// anchor a lookup of the type's NAME must be resolved against. `uri` itself
+/// when the type has no better origin (a literal, an unannotated local).
+pub(crate) fn infer_expr_type_with_origin(
+    node: Node<'_>,
+    bytes: &[u8],
+    deps: &impl InferDeps,
+    uri: &Url,
+) -> Option<(String, Url)> {
+    infer_expr_type_at_depth(node, bytes, deps, uri, 0)
+}
+
 /// Depth-guarded implementation of [`infer_expr_type`].
 ///
 /// `infer_expr_type` and its helpers (`infer_navigation_expr_type`,
@@ -112,9 +124,7 @@ fn infer_expr_type_at_depth(
             infer_this_expr_type(node, bytes, deps, uri).map(|type_name| (type_name, uri.clone()))
         }
         k if k == KIND_NAV_EXPR => infer_navigation_expr_type(node, bytes, deps, uri, depth),
-        k if k == KIND_CALL_EXPR => {
-            infer_call_expr_type(node, bytes, deps, uri).map(|type_name| (type_name, uri.clone()))
-        }
+        k if k == KIND_CALL_EXPR => infer_call_expr_type(node, bytes, deps, uri),
         k if k == KIND_CHECK_EXPR
             || k == KIND_COMPARISON_EXPR
             || k == KIND_DISJUNCTION_EXPR
@@ -163,8 +173,8 @@ fn infer_call_expr_type(
     bytes: &[u8],
     deps: &impl InferDeps,
     uri: &Url,
-) -> Option<String> {
-    super::chain::resolve_call_expr_type(node, bytes, deps, uri)
+) -> Option<(String, Url)> {
+    super::chain::resolve_call_expr_type_with_origin(node, bytes, deps, uri)
 }
 
 /// Resolve the type of a `simple_identifier` or `type_identifier`.

@@ -17,7 +17,7 @@ mod package;
 mod package_scope;
 mod platform_types;
 mod qualified;
-pub(crate) use qualified::resolve_type_path_declarations;
+pub(crate) use qualified::{resolve_type_path_declarations, split_package_prefix, TypeScope};
 pub(crate) use resolve::ResolveIo;
 pub(crate) mod resolve;
 mod scope_check;
@@ -29,7 +29,7 @@ mod tie_break;
 
 // ─── re-exports ───────────────────────────────────────────────────────────────
 
-pub(crate) use api::{Resolver, ReturnType};
+pub(crate) use api::Resolver;
 pub(crate) use complete::symbols_from_uri_as_completions_pub;
 #[cfg(test)]
 pub(crate) use complete::{complete_symbol, complete_symbol_with_context, is_annotation_context};
@@ -74,5 +74,6 @@ pub(crate) use infer_lines::{
 pub(crate) use platform_types::resolve_kotlin_builtin_type_platform_equivalent;
 #[cfg(test)]
 pub(crate) use resolve::resolve_symbol;
+pub(crate) use resolve::resolve_symbol_in_type_scope;
 #[cfg(test)]
 pub(crate) use resolve::resolve_symbol_index_only;

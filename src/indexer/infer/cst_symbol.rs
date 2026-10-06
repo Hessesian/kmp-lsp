@@ -9,7 +9,9 @@
 
 use tree_sitter::Node;
 
-use crate::indexer::{CallShape, CstQuery, Indexer, NodeExt, Resolution, ShapeFiltered};
+use crate::indexer::{
+    CallShape, CstQuery, Indexer, NodeExt, Resolution, ResolvedType, ShapeFiltered,
+};
 use crate::queries::{
     KIND_BINDING_PATTERN_KIND, KIND_CALL_EXPR, KIND_CATCH_BLOCK, KIND_CLASS_DECL, KIND_CLASS_PARAM,
     KIND_COMPANION_OBJ, KIND_CONTROL_STRUCTURE_BODY, KIND_ENUM_ENTRY, KIND_FINALLY_BLOCK,
@@ -20,7 +22,6 @@ use crate::queries::{
 };
 use crate::resolver::api::Definitions;
 use crate::semantic_tokens::is_named_argument_label;
-use crate::str_ext::StrExt as _;
 use crate::types::CursorPos;
 use tower_lsp::lsp_types::{Location, Position, Url};
 
@@ -204,7 +205,7 @@ pub(crate) enum SymbolRole {
     /// wrong-arity candidate on the same receiver type (an explicit-receiver
     /// counterpart to `resolve_callee_definition`'s bare-call arity filter).
     Reference {
-        receiver_type: Option<String>,
+        receiver_type: Option<ResolvedType>,
         is_call: bool,
         shape: Option<CallShape>,
     },
@@ -309,10 +310,12 @@ pub(crate) fn classify_symbol_at(
                 return None;
             };
             // The inferred type is as-written (`Box<out Texts>`, `User?`);
-            // the member lookup and the known-type gate both want the
-            // type's own name, not its type arguments or nullability.
-            let type_path = resolved.as_type_str().dotted_ident_prefix();
-            names_a_known_type(indexer, &type_path, uri).then_some(type_path)
+            // the known-type gate wants the type's own name, not its type
+            // arguments or nullability; a qualified name is validated where
+            // it was written.
+            let type_path = resolved.type_path();
+            names_a_known_type(indexer, &type_path, resolved.resolution_scope(uri))
+                .then_some(resolved)
         });
         return Some(SymbolAtCursor {
             name,
@@ -405,7 +408,11 @@ pub(crate) fn resolve_identity_with_io(
             shape,
             ..
         } => {
-            let locations = find_definition_qualified(&symbol.name, Some(receiver_type), uri);
+            let locations = if index_only {
+                indexer.find_member_of_type_index_only(&symbol.name, receiver_type, uri)
+            } else {
+                indexer.find_member_of_type(&symbol.name, receiver_type, uri)
+            };
             // A call's own shape rules out a same-named, wrong-arity member/
             // extension on the same receiver type — e.g. `triggers.collect {
             // trigger -> }` (1 arg via trailing lambda) must not resolve to a

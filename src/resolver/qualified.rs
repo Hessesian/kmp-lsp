@@ -65,10 +65,79 @@ pub(super) fn parse_qualifier(qualifier: &str) -> QualifierRoot<'_> {
     }
 }
 
+/// Where a qualifier's TYPE NAME is resolved: the file whose imports/package
+/// resolve it, optionally constrained to a declared package (`types` in the
+/// package-qualified spelling `types.Payload`).
+#[derive(Clone, Copy)]
+pub(crate) struct TypeScope<'a> {
+    pub(crate) file: &'a Url,
+    pub(crate) package: Option<&'a str>,
+}
+
+impl<'a> TypeScope<'a> {
+    pub(crate) fn in_file(file: &'a Url) -> Self {
+        TypeScope {
+            file,
+            package: None,
+        }
+    }
+}
+
+/// Splits a type path that may start with package segments
+/// (`com.example.Outer.Inner`) into `(package, type path)`. Package segments
+/// are the leading lowercase ones, and only when a type segment follows.
+pub(crate) fn split_package_prefix(type_path: &str) -> (Option<&str>, &str) {
+    let mut offset = 0;
+    for segment in type_path.split('.') {
+        if segment.starts_with_uppercase() {
+            return match offset {
+                0 => (None, type_path),
+                _ => (Some(&type_path[..offset - 1]), &type_path[offset..]),
+            };
+        }
+        offset += segment.len() + 1;
+    }
+    (None, type_path)
+}
+
+/// The package a declaration's file declares.
+fn declared_package(indexer: &Indexer, location: &Location) -> Option<String> {
+    indexer
+        .files
+        .get(location.uri.as_str())
+        .or_else(|| indexer.jar_files.get(location.uri.as_str()))
+        .and_then(|file_data| file_data.package.clone())
+}
+
 pub(super) fn resolve_qualified(
     indexer: &Indexer,
     name: &str,
     qualifier: &str,
+    from_uri: &Url,
+    io: ResolveIo,
+) -> Vec<Location> {
+    resolve_qualified_in_type_scope(
+        indexer,
+        name,
+        qualifier,
+        &TypeScope::in_file(from_uri),
+        from_uri,
+        io,
+    )
+}
+
+/// [`resolve_qualified`] for a qualifier whose TYPE NAME was written in a file
+/// other than the caller's (an inferred receiver: `holder.model.text`, where
+/// `ScreenFlowModel` is spelled in `Holder.kt`'s imports, not the caller's).
+///
+/// `type_scope` is the file whose imports/package resolve the qualifier's type
+/// root; `from_uri` stays the CALLER, because which extensions are in scope is
+/// a property of the call site, not of where the receiver's type was written.
+pub(super) fn resolve_qualified_in_type_scope(
+    indexer: &Indexer,
+    name: &str,
+    qualifier: &str,
+    type_scope: &TypeScope<'_>,
     from_uri: &Url,
     io: ResolveIo,
 ) -> Vec<Location> {
@@ -100,7 +169,7 @@ pub(super) fn resolve_qualified(
     // companion-member access rather than protecting anything.
     let companion_applies = matches!(&parsed, QualifierRoot::TypePath { .. });
 
-    for anchor in anchors_for(indexer, &parsed, from_uri, io) {
+    for anchor in anchors_for(indexer, &parsed, type_scope, from_uri, io) {
         if companion_applies {
             let companion_locations = companion_member_on(indexer, &anchor, name);
             if !companion_locations.is_empty() {
@@ -139,10 +208,15 @@ pub(crate) fn resolve_type_path_declarations(
     scope_uri: &Url,
     io: ResolveIo,
 ) -> Vec<Location> {
-    let QualifierRoot::TypePath { root, nested } = parse_qualifier(type_path) else {
+    let (package, bare_path) = split_package_prefix(type_path);
+    let QualifierRoot::TypePath { root, nested } = parse_qualifier(bare_path) else {
         return vec![];
     };
-    type_path_anchors(indexer, root, &nested, scope_uri, io)
+    let type_scope = TypeScope {
+        file: scope_uri,
+        package,
+    };
+    type_path_anchors(indexer, root, &nested, &type_scope, io)
         .into_iter()
         .filter_map(|anchor| anchor.declaration)
         .collect()
@@ -183,6 +257,7 @@ pub(super) struct ReceiverAnchor {
 pub(super) fn anchors_for(
     indexer: &Indexer,
     root: &QualifierRoot<'_>,
+    type_scope: &TypeScope<'_>,
     from_uri: &Url,
     io: ResolveIo,
 ) -> Vec<ReceiverAnchor> {
@@ -190,7 +265,7 @@ pub(super) fn anchors_for(
         // Dispatched by `resolve_qualified` before it ever gets here.
         QualifierRoot::This | QualifierRoot::Super => vec![],
         QualifierRoot::TypePath { root, nested } => {
-            type_path_anchors(indexer, root, nested, from_uri, io)
+            type_path_anchors(indexer, root, nested, type_scope, io)
         }
         QualifierRoot::ValuePath { root, rest } => value_path_anchor(indexer, root, rest, from_uri)
             .into_iter()
@@ -205,18 +280,37 @@ fn type_path_anchors(
     indexer: &Indexer,
     root: &str,
     nested: &[&str],
-    from_uri: &Url,
+    type_scope: &TypeScope<'_>,
     io: ResolveIo,
 ) -> Vec<ReceiverAnchor> {
     // Honors the caller's IO policy — an IndexOnly caller (the
     // resolution-accuracy benchmark's own index-only path) must not spawn
     // rg/fd resolving the qualifier root any more than it may for a bare
     // reference.
-    let root_locations = if matches!(io, ResolveIo::IndexOnly) {
-        resolve_symbol_index_only(indexer, root, None, from_uri)
+    let mut root_locations = if matches!(io, ResolveIo::IndexOnly) {
+        resolve_symbol_index_only(indexer, root, None, type_scope.file)
     } else {
-        resolve_symbol(indexer, root, None, from_uri)
+        resolve_symbol(indexer, root, None, type_scope.file)
     };
+    if let Some(package) = type_scope.package {
+        // A package-qualified spelling names its type exactly: the fully
+        // qualified index answers it even where the simple name is not
+        // imported; otherwise the scope's candidates must at least declare
+        // that package.
+        let fully_qualified = indexer
+            .qualified
+            .get(&format!("{package}.{root}"))
+            .and_then(|symbol_loc| indexer.file_table.location(*symbol_loc.value()));
+        root_locations = match fully_qualified {
+            Some(location) => vec![location],
+            None => {
+                root_locations.retain(|location| {
+                    declared_package(indexer, location).as_deref() == Some(package)
+                });
+                root_locations
+            }
+        };
+    }
 
     let anchors: Vec<ReceiverAnchor> = root_locations
         .iter()

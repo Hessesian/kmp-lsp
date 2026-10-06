@@ -194,7 +194,7 @@ pub(crate) async fn verified_references_for(
             SymbolRole::Reference {
                 receiver_type: Some(receiver_type),
                 ..
-            } => (Some(receiver_type.clone()), None),
+            } => (Some(receiver_type.type_path()), None),
             _ => (None, None),
         },
         None => (None, None),
@@ -227,7 +227,7 @@ pub(crate) async fn verified_references_for(
                 ..
             } => crate::resolver::resolve_implicit_receiver_callee(
                 index,
-                receiver_type,
+                &receiver_type.type_path(),
                 &symbol.name,
                 uri,
                 *shape,

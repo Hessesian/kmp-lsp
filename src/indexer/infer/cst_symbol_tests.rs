@@ -59,7 +59,7 @@ fn classifies_a_typed_member_reference() {
             receiver_type: Some(t),
             is_call: true,
             ..
-        } => assert_eq!(t, "User"),
+        } => assert_eq!(t.type_path(), "User"),
         other => panic!("expected typed call reference, got {other:?}"),
     }
 }
@@ -681,7 +681,9 @@ fn receiver_type_at(src: &str, line: u32, member: &str) -> Option<String> {
     )
     .unwrap();
     match symbol.role {
-        SymbolRole::Reference { receiver_type, .. } => receiver_type,
+        SymbolRole::Reference { receiver_type, .. } => {
+            receiver_type.as_ref().map(ResolvedType::type_path)
+        }
         other => panic!("expected a reference, got {other:?}"),
     }
 }
@@ -747,4 +749,274 @@ fn qualified_annotation_naming_a_real_nested_type_keeps_its_receiver_type() {
         receiver_type_at(src, 3, "save").as_deref(),
         Some("Outer.Inner")
     );
+}
+
+/// Index each `(path, source)` under one `Indexer`; returns the caller's Url
+/// with a live tree stored for it.
+fn indexed_workspace(files: &[(&str, &str)], caller_path: &str) -> (Url, Indexer) {
+    let indexer = Indexer::new();
+    for (path, source) in files {
+        indexer.index_content(&uri(path), source);
+    }
+    let caller_uri = uri(caller_path);
+    let caller_source = files
+        .iter()
+        .find(|(path, _)| *path == caller_path)
+        .map(|(_, source)| *source)
+        .unwrap();
+    indexer.store_live_tree(&caller_uri, caller_source);
+    (caller_uri, indexer)
+}
+
+/// Resolve the one `member` on `line` of the caller to its definition files.
+fn definition_paths_at(
+    files: &[(&str, &str)],
+    caller_path: &str,
+    line: u32,
+    member: &str,
+) -> Vec<String> {
+    let (caller_uri, indexer) = indexed_workspace(files, caller_path);
+    let caller_source = files
+        .iter()
+        .find(|(path, _)| *path == caller_path)
+        .map(|(_, source)| *source)
+        .unwrap();
+    let column = caller_source
+        .lines()
+        .nth(line as usize)
+        .unwrap()
+        .find(member)
+        .unwrap();
+    let symbol = classify_symbol_at(
+        &indexer,
+        &caller_uri,
+        CursorPos {
+            line: line as usize,
+            utf16_col: column,
+        },
+    )
+    .unwrap();
+    match resolve_identity(&symbol, &indexer, &caller_uri) {
+        NavigationSource::CstResolved(definitions) => definitions
+            .0
+            .iter()
+            .map(|location| location.uri.path().to_owned())
+            .collect(),
+        NavigationSource::NameScan(_) => vec![],
+    }
+}
+
+/// Slice 1 of the receiver-origin work: the receiver's type name (`ScreenFlowModel`)
+/// was written in `Holder.kt`, which imports it. The CALLER never imports it, and a
+/// same-named decoy with the same member lives in a third package — the member
+/// lookup must be rooted in the file the type was written in, not the caller's.
+#[test]
+fn field_hop_member_resolves_in_the_file_the_receiver_type_was_written_in() {
+    let files = [
+        (
+            "/types/Types.kt",
+            "package types\nclass ScreenFlowModel<T>(val text: T)\n",
+        ),
+        (
+            "/impl/Holder.kt",
+            "package impl\nimport types.*\nclass Holder { val model: ScreenFlowModel<String> = TODO() }\n",
+        ),
+        (
+            "/app/Use.kt",
+            "package app\nimport impl.Holder\nfun f(holder: Holder) { holder.model.text }\n",
+        ),
+        (
+            "/r/Decoy.kt",
+            "package r\nclass Nav { class ScreenFlowModel(val text: String) }\n",
+        ),
+    ];
+
+    let definitions = definition_paths_at(&files, "/app/Use.kt", 2, "text");
+
+    assert_eq!(
+        definitions,
+        vec!["/t/types/Types.kt".to_owned()],
+        "`text` must resolve to the real ScreenFlowModel, not the same-named decoy"
+    );
+}
+
+/// The origin the member lookup above relies on: a field hop's receiver type
+/// is attributed to the file that declares the field, not to the caller.
+#[test]
+fn field_hop_receiver_type_carries_the_declaring_file_as_its_origin() {
+    let files = [
+        (
+            "/types/Types.kt",
+            "package types\nclass ScreenFlowModel<T>(val text: T)\n",
+        ),
+        (
+            "/impl/Holder.kt",
+            "package impl\nimport types.*\nclass Holder { val model: ScreenFlowModel<String> = TODO() }\n",
+        ),
+        (
+            "/app/Use.kt",
+            "package app\nimport impl.Holder\nfun f(holder: Holder) { holder.model.text }\n",
+        ),
+    ];
+    let (caller_uri, indexer) = indexed_workspace(&files, "/app/Use.kt");
+    let column = files[2].1.lines().nth(2).unwrap().find("text").unwrap();
+    let symbol = classify_symbol_at(
+        &indexer,
+        &caller_uri,
+        CursorPos {
+            line: 2,
+            utf16_col: column,
+        },
+    )
+    .unwrap();
+
+    let SymbolRole::Reference {
+        receiver_type: Some(receiver),
+        ..
+    } = symbol.role
+    else {
+        panic!("expected a typed member reference, got {symbol:?}");
+    };
+
+    assert_eq!(receiver.type_path(), "ScreenFlowModel");
+    assert_eq!(receiver.declaring_uri(), &uri("/impl/Holder.kt"));
+}
+
+/// The Moneta shape (`screenFlowInteractor.loadScreenData(..).text.scenes`): the
+/// call's return type `ScreenFlowModel<out IProductScreenTexts>` is spelled in
+/// `Impl.kt`, which imports both types; the caller imports neither. Decoys in
+/// package `r` give BOTH names a same-named, member-bearing competitor.
+fn call_hop_files() -> [(&'static str, &'static str); 5] {
+    [
+        (
+            "/types/Types.kt",
+            "package types\nclass ScreenFlowModel<Texts>(val text: Texts)\n",
+        ),
+        (
+            "/texts/Texts.kt",
+            "package texts\ninterface IProductScreenTexts { val scenes: String }\n",
+        ),
+        (
+            "/impl/Impl.kt",
+            "package impl\nimport types.*\nimport texts.*\n\
+             class ProcessInteractor {\n\
+                 suspend fun loadScreenData(refresh: Boolean): ScreenFlowModel<out IProductScreenTexts> = TODO()\n\
+             }\n",
+        ),
+        (
+            "/app/Use.kt",
+            "package app\nimport impl.ProcessInteractor\n\
+             class Use(private val interactor: ProcessInteractor) {\n\
+                 suspend fun go() { interactor.loadScreenData(refresh = false).text.scenes }\n\
+             }\n",
+        ),
+        (
+            "/r/Decoy.kt",
+            "package r\nclass Nav { class ScreenFlowModel(val text: String) }\n\
+             interface IProductScreenTexts { val scenes: Int }\n",
+        ),
+    ]
+}
+
+#[test]
+fn call_hop_member_resolves_in_the_file_the_return_type_was_written_in() {
+    let definitions = definition_paths_at(&call_hop_files(), "/app/Use.kt", 3, "text");
+
+    assert_eq!(definitions, vec!["/t/types/Types.kt".to_owned()]);
+}
+
+/// Second hop: `IProductScreenTexts` was substituted into `ScreenFlowModel<Texts>.text`
+/// from the call's return type, so it was written in `Impl.kt` — NOT in `Types.kt`
+/// (which declares `text`) and not in the caller.
+#[test]
+fn member_of_a_substituted_type_argument_resolves_in_the_receivers_origin() {
+    let definitions = definition_paths_at(&call_hop_files(), "/app/Use.kt", 3, "scenes");
+
+    assert_eq!(definitions, vec!["/t/texts/Texts.kt".to_owned()]);
+}
+
+/// Review finding on slice 2: a SOURCE extension function's return type is spelled in
+/// the extension's own file (which imports `Payload`); the caller imports only
+/// the extension itself.
+#[test]
+fn extension_call_member_resolves_in_the_file_the_extension_was_declared() {
+    let files = [
+        (
+            "/types/Types.kt",
+            "package types\nclass Payload(val text: String)\n",
+        ),
+        ("/impl/Holder.kt", "package impl\nclass Holder\n"),
+        (
+            "/ext/Ext.kt",
+            "package ext\nimport impl.*\nimport types.*\nfun Holder.make(): Payload = TODO()\n",
+        ),
+        (
+            "/app/Use.kt",
+            "package app\nimport impl.Holder\nimport ext.make\nfun f(holder: Holder) { holder.make().text }\n",
+        ),
+        (
+            "/r/Decoy.kt",
+            "package r\nclass Payload(val text: Int)\n",
+        ),
+    ];
+
+    let definitions = definition_paths_at(&files, "/app/Use.kt", 3, "text");
+
+    assert_eq!(definitions, vec!["/t/types/Types.kt".to_owned()]);
+}
+
+/// Review finding on slice 2: when an explicit call-site type argument replaces
+/// the return type's head (`create<Foo>()` for `fun <T> create(): T`), `Foo` was
+/// spelled at the CALL SITE, not in the factory's file.
+#[test]
+fn call_site_type_argument_is_resolved_in_the_callers_scope() {
+    let files = [
+        (
+            "/foos/Foo.kt",
+            "package foos\nclass Foo(val member: String)\n",
+        ),
+        (
+            "/impl/Factory.kt",
+            "package impl\nclass Factory { fun <T> create(): T = TODO() }\n",
+        ),
+        (
+            "/app/Use.kt",
+            "package app\nimport impl.Factory\nimport foos.Foo\nfun f(factory: Factory) { factory.create<Foo>().member }\n",
+        ),
+        (
+            "/r/Decoy.kt",
+            "package r\nclass Foo(val member: Int)\n",
+        ),
+    ];
+
+    let definitions = definition_paths_at(&files, "/app/Use.kt", 3, "member");
+
+    assert_eq!(definitions, vec!["/t/foos/Foo.kt".to_owned()]);
+}
+
+/// Review finding on slice 1: a package-qualified return type (`types.Payload`) was
+/// misrouted — `parse_qualifier` took the lowercase `types` root for a value, so
+/// the type scope was ignored. The package constrains WHICH `Payload`, and the
+/// caller star-imports a same-named decoy.
+#[test]
+fn package_qualified_return_type_resolves_to_the_named_package() {
+    let files = [
+        (
+            "/types/Types.kt",
+            "package types\nclass Payload(val text: String)\n",
+        ),
+        (
+            "/impl/Factory.kt",
+            "package impl\nfun makePayload(): types.Payload = TODO()\n",
+        ),
+        (
+            "/app/Use.kt",
+            "package app\nimport impl.makePayload\nimport r.*\nfun go() { makePayload().text }\n",
+        ),
+        ("/r/Decoy.kt", "package r\nclass Payload(val text: Int)\n"),
+    ];
+
+    let definitions = definition_paths_at(&files, "/app/Use.kt", 3, "text");
+
+    assert_eq!(definitions, vec!["/t/types/Types.kt".to_owned()]);
 }

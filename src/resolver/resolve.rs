@@ -36,7 +36,9 @@ use super::package_scope::{
     find_in_star_imports, resolve_same_package, resolve_star_imports, star_import_packages,
 };
 use super::platform_types::resolve_kotlin_builtin_type_platform_equivalent;
-use super::qualified::{resolve_from_class_hierarchy, resolve_qualified};
+use super::qualified::{
+    resolve_from_class_hierarchy, resolve_qualified, resolve_qualified_in_type_scope, TypeScope,
+};
 use super::tie_break::ambiguity_safe_tail_with_denylist;
 
 /// Return `FileData` for `uri` — from the live index if indexed, otherwise parse from disk.
@@ -142,6 +144,29 @@ pub(crate) fn resolve_symbol_index_only(
     from_uri: &Url,
 ) -> Vec<Location> {
     resolve_symbol_with_io(indexer, name, qualifier, from_uri, ResolveIo::IndexOnly)
+}
+
+/// [`resolve_symbol`] for `name` accessed through `qualifier`, where the
+/// qualifier's TYPE NAME was written in `type_scope` rather than in the caller
+/// (`from_uri`) — see [`super::qualified::resolve_qualified_in_type_scope`].
+/// Same fall-through contract as the qualified branch of `resolve_symbol_with_io`.
+pub(crate) fn resolve_symbol_in_type_scope(
+    indexer: &Indexer,
+    name: &str,
+    qualifier: &str,
+    type_scope: &TypeScope<'_>,
+    from_uri: &Url,
+    io: ResolveIo,
+) -> Vec<Location> {
+    let in_scope =
+        resolve_qualified_in_type_scope(indexer, name, qualifier, type_scope, from_uri, io);
+    if !in_scope.is_empty() {
+        return in_scope;
+    }
+    if qualifier.starts_with_uppercase() {
+        return vec![];
+    }
+    resolve_symbol_with_io(indexer, name, Some(qualifier), from_uri, io)
 }
 
 fn resolve_symbol_with_io(

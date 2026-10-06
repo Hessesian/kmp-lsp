@@ -513,7 +513,11 @@ pub(crate) fn extract_return_type_from_detail(detail: &str) -> Option<String> {
         if after.starts_with(':') {
             let type_part = after.strip_prefix(':').map(str::trim_start).unwrap_or("");
             let type_name = extract_type_with_generics(type_part);
-            if !type_name.is_empty() && type_name.starts_with_uppercase() {
+            // A type name starts uppercase; a package-qualified one
+            // (`types.Payload`) starts with its lowercase package, so judge the
+            // LAST dotted segment.
+            let type_path = type_name.dotted_ident_prefix();
+            if !type_path.is_empty() && type_path.last_segment().starts_with_uppercase() {
                 return Some(type_name);
             }
         }

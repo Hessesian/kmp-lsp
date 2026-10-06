@@ -60,7 +60,7 @@ pub(crate) use self::infer::{
     },
     type_subst::{build_type_arg_subst, find_last_dot_at_depth_zero},
 };
-pub(crate) use self::infer::{CstQuery, Resolution};
+pub(crate) use self::infer::{CstQuery, Resolution, ResolvedType};
 
 mod cache;
 pub(crate) use self::cache::workspace_cache_path;
@@ -485,26 +485,38 @@ impl InferDeps for Indexer {
         }
         Vec::new()
     }
+    fn find_method_return_type_with_origin_for_type(
+        &self,
+        class_name: &str,
+        method_name: &str,
+        uri: &Url,
+    ) -> Option<(String, Url)> {
+        if let Some(type_name) = synthetic_enum_method(self, class_name, method_name) {
+            return Some((type_name, uri.clone()));
+        }
+        // Member fns, extension fns, and supertype inheritance in one pass —
+        // the catalogue composite. The calling file's uri is load-bearing for
+        // jar receivers: it drives import-reachability AND on-demand Tier-2
+        // materialization of jar extension sets (a `None` here left
+        // `Modifier.fillMaxSize()`-style receivers unresolvable until some
+        // other feature happened to promote the same symbols).
+        let declared = crate::resolver::Resolver::method_return_type_declared(
+            self,
+            class_name,
+            method_name,
+            Some(uri),
+        )?;
+        let declared_in = declared.declared_in.unwrap_or_else(|| uri.clone());
+        Some((declared.type_name, declared_in))
+    }
     fn find_method_return_type_for_type(
         &self,
         class_name: &str,
         method_name: &str,
         uri: &Url,
     ) -> Option<String> {
-        if let Some(type_name) = synthetic_enum_method(self, class_name, method_name) {
-            return Some(type_name);
-        }
-        // The catalog composite covers member fns, extension fns, and supertype
-        // inheritance in one call (see `Resolver::method_return_type`); the
-        // previous explicit `find_extension_fn_return_type` step here was dead —
-        // `find_method_return_type` already probes extensions first.
-        // The calling file's uri is load-bearing for jar receivers: it drives
-        // import-reachability AND on-demand Tier-2 materialization of jar
-        // extension sets (a `None` here left `Modifier.fillMaxSize()`-style
-        // receivers unresolvable until some other feature happened to promote
-        // the same symbols — live-probe scenario C).
-        crate::resolver::Resolver::method_return_type(self, class_name, method_name, Some(uri))
-            .map(crate::resolver::ReturnType::into_inner)
+        self.find_method_return_type_with_origin_for_type(class_name, method_name, uri)
+            .map(|(type_name, _)| type_name)
     }
     fn find_method_params_text(
         &self,

@@ -16,8 +16,8 @@ use tree_sitter::Node;
 
 use crate::indexer::live_tree::LiveDoc;
 use crate::indexer::{
-    classify_cursor, resolve_identity_with_io, Indexer, NavigationSource, SymbolAtCursor,
-    SymbolRole,
+    classify_cursor, resolve_identity_with_io, Indexer, NavigationSource, ResolvedType,
+    SymbolAtCursor, SymbolRole,
 };
 use crate::queries::{KIND_IMPORT_HEADER, KIND_PACKAGE_HEADER, KIND_SIMPLE_IDENT, KIND_TYPE_IDENT};
 
@@ -119,7 +119,9 @@ pub(crate) fn collect_resolution_outcomes(
             continue;
         };
         let receiver_type = match &symbol.role {
-            SymbolRole::Reference { receiver_type, .. } => receiver_type.clone(),
+            SymbolRole::Reference { receiver_type, .. } => {
+                receiver_type.as_ref().map(ResolvedType::type_path)
+            }
             SymbolRole::Declaration { .. } | SymbolRole::ImportSegment => continue,
         };
         let name = symbol.name.clone();
