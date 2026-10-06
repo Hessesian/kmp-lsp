@@ -890,12 +890,14 @@ fn receiver_based_method<D: InferDeps>(ctx: &CallCtx<'_, D>) -> StrategyVerdict 
 fn reachable_return_type<D: InferDeps>(ctx: &CallCtx<'_, D>) -> StrategyVerdict {
     match ctx
         .deps
-        .find_fun_return_type_reachable(ctx.fn_name, ctx.uri)
+        .find_fun_return_type_reachable_with_origin(ctx.fn_name, ctx.uri)
     {
-        Some(raw_return) => StrategyVerdict::Terminal(Some(StrategyOutcome::SignatureDerived {
-            raw_return,
-            origin: ctx.uri.clone(),
-        })),
+        Some((raw_return, origin)) => {
+            StrategyVerdict::Terminal(Some(StrategyOutcome::SignatureDerived {
+                raw_return,
+                origin,
+            }))
+        }
         None => StrategyVerdict::NotApplicable,
     }
 }

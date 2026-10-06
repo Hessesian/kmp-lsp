@@ -935,6 +935,79 @@ fn member_of_a_substituted_type_argument_resolves_in_the_receivers_origin() {
     assert_eq!(definitions, vec!["/t/texts/Texts.kt".to_owned()]);
 }
 
+fn top_level_call_files(factory_source: &'static str) -> [(&'static str, &'static str); 4] {
+    [
+        (
+            "/types/Types.kt",
+            "package types\nclass Payload(val text: String)\n",
+        ),
+        ("/impl/Factory.kt", factory_source),
+        (
+            "/app/Use.kt",
+            "package app\nimport impl.makePayload\nfun go() { makePayload().text }\n",
+        ),
+        (
+            "/r/Decoy.kt",
+            "package r\nclass Payload(val text: Int)\nfun makePayload(): Payload = TODO()\n",
+        ),
+    ]
+}
+
+/// Slice 2b: a top-level call's return type is spelled in the function's own
+/// file (which imports `Payload`); the caller imports only the function.
+#[test]
+fn top_level_call_member_resolves_in_the_file_the_return_type_was_written_in() {
+    let files =
+        top_level_call_files("package impl\nimport types.*\nfun makePayload(): Payload = TODO()\n");
+
+    let definitions = definition_paths_at(&files, "/app/Use.kt", 2, "text");
+
+    assert_eq!(definitions, vec!["/t/types/Types.kt".to_owned()]);
+}
+
+/// Same shape with NO declared return type: the body's type is the answer, and it
+/// is spelled in the function's file too.
+#[test]
+fn top_level_expression_body_call_member_resolves_through_the_inferred_return() {
+    let files =
+        top_level_call_files("package impl\nimport types.*\nfun makePayload() = Payload(\"x\")\n");
+
+    let definitions = definition_paths_at(&files, "/app/Use.kt", 2, "text");
+
+    assert_eq!(definitions, vec!["/t/types/Types.kt".to_owned()]);
+}
+
+/// Review finding on slice 2b: the origin of a body-inferred return type is the
+/// ORIGIN OF THE BODY EXPRESSION, not the file of the function whose body it is.
+/// `wrapper()` is `importedFactory()`'s `Payload`, spelled in `Factory.kt`; the
+/// wrapper's own file imports only the factory function.
+#[test]
+fn body_inferred_return_keeps_the_origin_of_the_body_expression() {
+    let files = [
+        (
+            "/types/Types.kt",
+            "package types\nclass Payload(val text: String)\n",
+        ),
+        (
+            "/impl/Factory.kt",
+            "package impl\nimport types.*\nfun importedFactory(): Payload = TODO()\n",
+        ),
+        (
+            "/app/Wrapper.kt",
+            "package app\nimport impl.importedFactory\nfun wrapper() = importedFactory()\n",
+        ),
+        (
+            "/use/Use.kt",
+            "package use\nimport app.wrapper\nfun go() { wrapper().text }\n",
+        ),
+        ("/r/Decoy.kt", "package r\nclass Payload(val text: Int)\n"),
+    ];
+
+    let definitions = definition_paths_at(&files, "/use/Use.kt", 2, "text");
+
+    assert_eq!(definitions, vec!["/t/types/Types.kt".to_owned()]);
+}
+
 /// Review finding on slice 2: a SOURCE extension function's return type is spelled in
 /// the extension's own file (which imports `Payload`); the caller imports only
 /// the extension itself.

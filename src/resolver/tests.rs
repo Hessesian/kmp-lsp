@@ -11534,3 +11534,72 @@ fn an_implicit_receiver_call_reaches_the_arity_matching_extension_overload() {
         locations[0].range
     );
 }
+
+/// Slice 3: `holder.model.text` through the string-qualifier path. `ScreenFlowModel`
+/// is the type of `Holder.model`, spelled in `Holder.kt` (which imports it); the
+/// caller imports neither it nor anything of `types`. A same-named decoy with a
+/// `text` member sits in a third package.
+#[test]
+fn value_path_field_type_is_resolved_in_the_fields_declaring_file() {
+    let indexer = Indexer::new();
+    indexer.index_content(
+        &uri("/types/Types.kt"),
+        "package types\nclass ScreenFlowModel<T>(val text: T)\n",
+    );
+    indexer.index_content(
+        &uri("/impl/Holder.kt"),
+        "package impl\nimport types.*\nclass Holder { val model: ScreenFlowModel<String> = TODO() }\n",
+    );
+    indexer.index_content(
+        &uri("/r/Decoy.kt"),
+        "package r\nclass Nav { class ScreenFlowModel(val text: String) }\n",
+    );
+    let caller = uri("/app/Use.kt");
+    indexer.index_content(
+        &caller,
+        "package app\nimport impl.Holder\nfun f(holder: Holder) { holder.model.text }\n",
+    );
+
+    let locations = indexer.resolve_member_only("text", "holder.model", &caller);
+
+    let paths: Vec<&str> = locations
+        .iter()
+        .map(|location| location.uri.path())
+        .collect();
+    assert_eq!(paths, vec!["/test/types/Types.kt"]);
+}
+
+/// Slice 3: the implicit-receiver member match resolves the receiver TYPE NAME
+/// (`Box`) in the scope given for it, not the caller's. `Box` here was spelled in
+/// `Holder.kt` (which imports `types.*`); the caller imports nothing, and a
+/// same-named decoy with a same-shaped member is indexed first.
+#[test]
+fn receiver_callee_resolves_the_receiver_type_name_in_its_own_scope() {
+    let indexer = Indexer::new();
+    indexer.index_content(
+        &uri("/r/Decoy.kt"),
+        "package r\nclass Box { fun put(value: Int) {} }\n",
+    );
+    indexer.index_content(
+        &uri("/types/Box.kt"),
+        "package types\nclass Box { fun put(value: Int) {} }\n",
+    );
+    let holder = uri("/impl/Holder.kt");
+    indexer.index_content(&holder, "package impl\nimport types.*\nclass Holder\n");
+    let caller = uri("/app/Use.kt");
+    indexer.index_content(&caller, "package app\nfun use() {}\n");
+    let shape = CallShape {
+        arg_count: 1,
+        trailing_lambda: false,
+    };
+
+    let locations = crate::resolver::resolve_receiver_callee_in_type_scope(
+        &indexer, "Box", "put", &holder, &caller, shape,
+    );
+
+    let paths: Vec<&str> = locations
+        .iter()
+        .map(|location| location.uri.path())
+        .collect();
+    assert_eq!(paths, vec!["/test/types/Box.kt"]);
+}

@@ -225,6 +225,17 @@ pub(crate) trait InferDeps {
         None
     }
 
+    /// [`Self::find_fun_return_type_reachable`] together with the file the return
+    /// type was written in; `uri` (the caller) when no file is reported.
+    fn find_fun_return_type_reachable_with_origin(
+        &self,
+        fn_name: &str,
+        uri: &Url,
+    ) -> Option<(String, Url)> {
+        self.find_fun_return_type_reachable(fn_name, uri)
+            .map(|type_name| (type_name, uri.clone()))
+    }
+
     /// [`Self::find_method_return_type_for_type`] together with the file the
     /// return type was written in — the scope its type NAME must be resolved
     /// against (see `ResolvedType::declaring_uri`). `uri` (the caller) when the
