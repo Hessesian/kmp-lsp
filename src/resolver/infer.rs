@@ -1766,11 +1766,10 @@ pub(crate) fn find_method_return_type_declared(
     let type_base = type_name.last_segment();
 
     // Extension functions take precedence over member functions.
-    if let Some(ret) = find_extension_fn_return_type(indexer, type_base, method_name, from_uri) {
-        return Some(DeclaredReturn {
-            type_name: ret,
-            declared_in: None,
-        });
+    if let Some(declared) =
+        find_extension_fn_return_type_declared(indexer, type_base, method_name, from_uri)
+    {
+        return Some(declared);
     }
 
     // Then check member functions (container-based), scoped + capped via the helper.
@@ -2007,12 +2006,26 @@ pub(crate) fn extension_declaration_matches(
 ///
 /// Example: `receiver_base = "Optional"`, `method_name = "getOrNull"` →
 /// finds `public fun <T : Any> Optional<T>.getOrNull(): T?` and returns `"T?"`.
+#[cfg(test)]
 pub(crate) fn find_extension_fn_return_type(
     indexer: &Indexer,
     receiver_base: &str,
     method_name: &str,
     from_uri: Option<&Url>,
 ) -> Option<String> {
+    find_extension_fn_return_type_declared(indexer, receiver_base, method_name, from_uri)
+        .map(|declared| declared.type_name)
+}
+
+/// [`find_extension_fn_return_type`], keeping the file of the extension
+/// declaration the answer came from (the file its return type's name was
+/// written in).
+pub(crate) fn find_extension_fn_return_type_declared(
+    indexer: &Indexer,
+    receiver_base: &str,
+    method_name: &str,
+    from_uri: Option<&Url>,
+) -> Option<DeclaredReturn> {
     if let Some(uri) = from_uri {
         return find_extension_fn_return_type_scoped(indexer, receiver_base, method_name, uri);
     }
@@ -2024,7 +2037,7 @@ fn find_extension_fn_return_type_scoped(
     receiver_base: &str,
     method_name: &str,
     from_uri: &Url,
-) -> Option<String> {
+) -> Option<DeclaredReturn> {
     // Promotion MUST happen before the `extension_by_receiver` read below —
     // `extension_by_receiver` is populated exclusively by Tier-2
     // materialization (`build_jar_file_data`); Tier 1
@@ -2065,8 +2078,12 @@ fn find_extension_fn_return_type_scoped(
             continue;
         }
         // Try detail first; fall back to source lines when detail is truncated.
+        let declaring_file = Url::parse(&entry.file_uri).ok();
         if let Some(ret) = extract_return_type_from_detail(&entry.detail) {
-            return Some(ret);
+            return Some(DeclaredReturn {
+                type_name: ret,
+                declared_in: declaring_file,
+            });
         }
         // detail may be truncated (120 char limit) — try the source lines.
         // No promotion check needed here: reaching this `entry` at all means
@@ -2103,7 +2120,10 @@ fn find_extension_fn_return_type_scoped(
         let start_line = declaring_symbol.selection_start() as usize;
         let full_sig = file_data.lines.collect_signature(start_line);
         if let Some(ret) = extract_return_type_from_detail(&full_sig) {
-            return Some(ret);
+            return Some(DeclaredReturn {
+                type_name: ret,
+                declared_in: declaring_file,
+            });
         }
     }
     None
@@ -2122,7 +2142,7 @@ fn find_extension_fn_return_type_global(
     indexer: &Indexer,
     receiver_base: &str,
     method_name: &str,
-) -> Option<String> {
+) -> Option<DeclaredReturn> {
     // Global extension-fn lookup by bare method name: scoped + capped via the helper.
     indexer.find_in_workspace_defs(method_name, |loc| {
         let file_data = indexer.files.get(loc.uri.as_str())?;
@@ -2137,13 +2157,15 @@ fn find_extension_fn_return_type_global(
             if symbol.extension_receiver() != receiver_base {
                 continue;
             }
-            if let Some(ret) = extract_return_type_from_detail(&symbol.detail) {
-                return Some(ret);
-            }
             let start_line = symbol.selection_start() as usize;
             let full_sig = file_data.lines.collect_signature(start_line);
-            if let Some(ret) = extract_return_type_from_detail(&full_sig) {
-                return Some(ret);
+            let declared_type = extract_return_type_from_detail(&symbol.detail)
+                .or_else(|| extract_return_type_from_detail(&full_sig));
+            if let Some(type_name) = declared_type {
+                return Some(DeclaredReturn {
+                    type_name,
+                    declared_in: Some(loc.uri.clone()),
+                });
             }
         }
         None

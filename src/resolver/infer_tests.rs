@@ -1989,3 +1989,21 @@ fn undeclared_return_of_a_block_bodied_or_bodyless_kotlin_method_is_unit() {
     assert_eq!(block_bodied.as_deref(), Some("Unit"));
     assert_eq!(bodyless.as_deref(), Some("Unit"));
 }
+
+/// A package-qualified return type (`types.Payload`) is a type: its LAST segment
+/// is the type name, so a lowercase package prefix must not make the whole
+/// annotation read as "no declared type".
+#[test]
+fn return_type_extraction_accepts_a_package_qualified_type() {
+    use super::super::infer_lines::extract_return_type_from_detail as extract;
+
+    assert_eq!(
+        extract("fun make(): types.Payload = TODO()").as_deref(),
+        Some("types.Payload")
+    );
+    assert_eq!(
+        extract("fun make(): kotlin.collections.List<String>").as_deref(),
+        Some("kotlin.collections.List<String>")
+    );
+    assert_eq!(extract("fun make(): lowercase").as_deref(), None);
+}

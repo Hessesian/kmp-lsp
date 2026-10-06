@@ -934,3 +934,89 @@ fn member_of_a_substituted_type_argument_resolves_in_the_receivers_origin() {
 
     assert_eq!(definitions, vec!["/t/texts/Texts.kt".to_owned()]);
 }
+
+/// Review finding on slice 2: a SOURCE extension function's return type is spelled in
+/// the extension's own file (which imports `Payload`); the caller imports only
+/// the extension itself.
+#[test]
+fn extension_call_member_resolves_in_the_file_the_extension_was_declared() {
+    let files = [
+        (
+            "/types/Types.kt",
+            "package types\nclass Payload(val text: String)\n",
+        ),
+        ("/impl/Holder.kt", "package impl\nclass Holder\n"),
+        (
+            "/ext/Ext.kt",
+            "package ext\nimport impl.*\nimport types.*\nfun Holder.make(): Payload = TODO()\n",
+        ),
+        (
+            "/app/Use.kt",
+            "package app\nimport impl.Holder\nimport ext.make\nfun f(holder: Holder) { holder.make().text }\n",
+        ),
+        (
+            "/r/Decoy.kt",
+            "package r\nclass Payload(val text: Int)\n",
+        ),
+    ];
+
+    let definitions = definition_paths_at(&files, "/app/Use.kt", 3, "text");
+
+    assert_eq!(definitions, vec!["/t/types/Types.kt".to_owned()]);
+}
+
+/// Review finding on slice 2: when an explicit call-site type argument replaces
+/// the return type's head (`create<Foo>()` for `fun <T> create(): T`), `Foo` was
+/// spelled at the CALL SITE, not in the factory's file.
+#[test]
+fn call_site_type_argument_is_resolved_in_the_callers_scope() {
+    let files = [
+        (
+            "/foos/Foo.kt",
+            "package foos\nclass Foo(val member: String)\n",
+        ),
+        (
+            "/impl/Factory.kt",
+            "package impl\nclass Factory { fun <T> create(): T = TODO() }\n",
+        ),
+        (
+            "/app/Use.kt",
+            "package app\nimport impl.Factory\nimport foos.Foo\nfun f(factory: Factory) { factory.create<Foo>().member }\n",
+        ),
+        (
+            "/r/Decoy.kt",
+            "package r\nclass Foo(val member: Int)\n",
+        ),
+    ];
+
+    let definitions = definition_paths_at(&files, "/app/Use.kt", 3, "member");
+
+    assert_eq!(definitions, vec!["/t/foos/Foo.kt".to_owned()]);
+}
+
+/// Review finding on slice 1: a package-qualified return type (`types.Payload`) was
+/// misrouted — `parse_qualifier` took the lowercase `types` root for a value, so
+/// the type scope was ignored. The package constrains WHICH `Payload`, and the
+/// caller star-imports a same-named decoy.
+#[test]
+fn package_qualified_return_type_resolves_to_the_named_package() {
+    let files = [
+        (
+            "/types/Types.kt",
+            "package types\nclass Payload(val text: String)\n",
+        ),
+        (
+            "/impl/Factory.kt",
+            "package impl\nfun makePayload(): types.Payload = TODO()\n",
+        ),
+        (
+            "/app/Use.kt",
+            "package app\nimport impl.makePayload\nimport r.*\nfun go() { makePayload().text }\n",
+        ),
+        ("/r/Decoy.kt", "package r\nclass Payload(val text: Int)\n"),
+    ];
+
+    let definitions = definition_paths_at(&files, "/app/Use.kt", 3, "text");
+
+    assert_eq!(definitions, vec!["/t/types/Types.kt".to_owned()]);
+}

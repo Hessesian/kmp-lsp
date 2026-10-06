@@ -37,7 +37,7 @@ use super::package_scope::{
 };
 use super::platform_types::resolve_kotlin_builtin_type_platform_equivalent;
 use super::qualified::{
-    resolve_from_class_hierarchy, resolve_qualified, resolve_qualified_in_type_scope,
+    resolve_from_class_hierarchy, resolve_qualified, resolve_qualified_in_type_scope, TypeScope,
 };
 use super::tie_break::ambiguity_safe_tail_with_denylist;
 
@@ -154,7 +154,7 @@ pub(crate) fn resolve_symbol_in_type_scope(
     indexer: &Indexer,
     name: &str,
     qualifier: &str,
-    type_scope: &Url,
+    type_scope: &TypeScope<'_>,
     from_uri: &Url,
     io: ResolveIo,
 ) -> Vec<Location> {

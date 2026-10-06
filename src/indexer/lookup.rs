@@ -15,7 +15,7 @@ use tower_lsp::lsp_types::*;
 
 use super::infer::lambda::SCOPE_FUNCTIONS;
 use super::{Indexer, ResolvedType};
-use crate::resolver::{resolve_symbol_in_type_scope, ResolveIo};
+use crate::resolver::{resolve_symbol_in_type_scope, split_package_prefix, ResolveIo, TypeScope};
 use crate::types::SymbolEntry;
 use crate::StrExt;
 
@@ -100,14 +100,13 @@ impl Indexer {
         from_uri: &Url,
         index_only: bool,
     ) -> Vec<Location> {
-        let type_scope = receiver.resolution_scope(from_uri);
-        self.find_qualified_in_type_scope(
-            name,
-            &receiver.type_path(),
-            type_scope,
-            from_uri,
-            index_only,
-        )
+        let type_path = receiver.type_path();
+        let (package, bare_path) = split_package_prefix(&type_path);
+        let type_scope = TypeScope {
+            file: receiver.resolution_scope(from_uri),
+            package,
+        };
+        self.find_qualified_in_type_scope(name, bare_path, &type_scope, from_uri, index_only)
     }
 
     fn find_definition_qualified_with_io(
@@ -118,9 +117,13 @@ impl Indexer {
         index_only: bool,
     ) -> Vec<Location> {
         match qualifier {
-            Some(qualifier) => {
-                self.find_qualified_in_type_scope(name, qualifier, from_uri, from_uri, index_only)
-            }
+            Some(qualifier) => self.find_qualified_in_type_scope(
+                name,
+                qualifier,
+                &TypeScope::in_file(from_uri),
+                from_uri,
+                index_only,
+            ),
             None if index_only => self.resolve_symbol_index_only(name, None, from_uri),
             None => self.resolve_symbol(name, None, from_uri),
         }
@@ -130,7 +133,7 @@ impl Indexer {
         &self,
         name: &str,
         qualifier: &str,
-        type_scope: &Url,
+        type_scope: &TypeScope<'_>,
         from_uri: &Url,
         index_only: bool,
     ) -> Vec<Location> {

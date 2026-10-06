@@ -689,7 +689,7 @@ impl StrategyOutcome {
                 };
                 let origin = origin_after_substitution(&raw_return, &substitution, origin, ctx);
                 let substituted = crate::indexer::apply_type_subst(&raw_return, &substitution);
-                (apply_call_site_type_args(substituted, ctx), origin)
+                apply_call_site_type_args(substituted, origin, ctx)
             }
             StrategyOutcome::ReceiverDerived {
                 raw_return,
@@ -705,7 +705,7 @@ impl StrategyOutcome {
                 let origin =
                     origin_after_substitution(&raw_return, &substitution, return_origin, ctx);
                 let substituted = crate::indexer::apply_type_subst(&raw_return, &substitution);
-                (apply_call_site_type_args(substituted, ctx), origin)
+                apply_call_site_type_args(substituted, origin, ctx)
             }
         }
     }
@@ -799,18 +799,30 @@ enum StrategyVerdict {
 /// caller's explicit `<T>`, never derivable from the (possibly
 /// star-projected) receiver. The one place this runs, so every strategy
 /// that goes through `StrategyOutcome::finalize` gets it for free.
-fn apply_call_site_type_args<D: InferDeps>(ret: String, ctx: &CallCtx<'_, D>) -> String {
+fn apply_call_site_type_args<D: InferDeps>(
+    ret: String,
+    origin: Url,
+    ctx: &CallCtx<'_, D>,
+) -> (String, Url) {
     let Some(call_type_args) = ctx.node.call_site_type_arg_strings(ctx.bytes) else {
-        return ret;
+        return (ret, origin);
     };
     let Some(callable_info) = ctx.deps.find_fun_callable_info(ctx.fn_name, ctx.uri) else {
-        return ret;
+        return (ret, origin);
     };
     if callable_info.type_params.is_empty() {
-        return ret;
+        return (ret, origin);
     }
     let fn_subst = build_fn_subst(&callable_info.type_params, &call_type_args);
-    apply_simple_subst(&ret, &fn_subst)
+    // An explicit type argument that replaces the return type's head was
+    // spelled at the call site (`create<Foo>()`), not where the signature was.
+    let head_path = ret.strip_nullable().dotted_ident_prefix();
+    let origin = if fn_subst.contains_key(&head_path) {
+        ctx.uri.clone()
+    } else {
+        origin
+    };
+    (apply_simple_subst(&ret, &fn_subst), origin)
 }
 
 /// Scope functions (`let`/`also`/`run`/`apply`/`takeIf`/`takeUnless`): the
