@@ -24,6 +24,9 @@ kmp-lsp is a Kotlin Language Server Protocol implementation in Rust. The binary 
 - **Reach for a type before reaching for a comment.** When you feel the need to explain control flow — why a fallback exists, what a `None`/empty result means, which order branches run, whether a string is still a placeholder — first ask whether an enum, newtype, or struct would encode that meaning so the compiler carries it and the signature tells the story. Prefer `enum Outcome { Resolved(T), KeepWalking }` over `Option<T>` + a comment; prefer a `ResolvedType` that distinguishes concrete vs. generic over an `is_generic(&str)` sniff. Keep comments for irreducible domain knowledge (e.g. *why* `apply` means `this` = receiver), not for scaffolding the types should hold.
 - **No abbreviated names.** Never use single-letter or short variable names like `s`, `c`, `ty`, `rt`, `sym`, `loc`, `p`, `diags`. Use full words: `string`, `char`, `type`, `receiver`, `symbol`, `location`, `package`, `diagnostics`.
 - **Explicit over clever.** Split compound boolean expressions into named variables. Avoid chained combinators when a simple conditional is clearer.
+- **Features ask, they don't dig.** No `Indexer` map reads or `resolver::infer*` calls from
+  `src/features`; `tests/architecture_ratchet.rs` counts them — lower a baseline, never raise it.
+  When an existing primitive is almost right, extend its return type; don't write a sibling.
 - **Every fix must include a test.** If a bug slips through, the test should have caught it.
 - **Write tests that prove correctness**, not just verify happy-path. Include competing/misleading definitions to catch regressions.
 - **`and` in a function name means it's doing two things.** Split into two functions.
@@ -42,6 +45,10 @@ kmp-lsp is a Kotlin Language Server Protocol implementation in Rust. The binary 
 - `src/indexer/infer/cst_symbol.rs` — CST identifier classification (declaration vs. reference,
   receiver type) shared by go-to-def/goto-implementation/highlight/find-references/rename;
   `local_scope_occurrences` is the local-variable rename fast path (full Kotlin block scoping)
+- `src/indexer/infer/mod.rs` — `CstQuery`: ask it "what is the type of this expression node?"
+  (`expr_type`) or "which lambda receivers are in scope here?" before writing a resolver
+- `src/indexer/node_ext.rs`, `src/str_ext.rs` — `NodeExt` / `StrExt`: CST child and call-argument
+  lookups, type-string slicing (`last_segment`, `strip_nullable`); check both before writing a helper
 - `src/features/call_arg_diagnostics.rs` — parameter count diagnostics
 - `src/features/missing_import_diagnostics.rs` — missing-import diagnostic + its "Import 'Fqn'"
   code action; shares detection logic with the `missing-imports` CLI precision harness
