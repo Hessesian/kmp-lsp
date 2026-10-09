@@ -44,6 +44,7 @@ kmp-lsp is a Kotlin Language Server Protocol implementation in Rust. The binary 
   `local_scope_occurrences` is the local-variable rename fast path (full Kotlin block scoping);
   `local_binding_at` answers "which declaration binds this name *here*, and how is it typed?" —
   use it instead of any by-name or line-text search for a local's declaration
+  (`infer_local_type_at(name, point, ..)` when you only need the type)
 - `src/features/call_arg_diagnostics.rs` — parameter count diagnostics
 - `src/features/missing_import_diagnostics.rs` — missing-import diagnostic + its "Import 'Fqn'"
   code action; shares detection logic with the `missing-imports` CLI precision harness

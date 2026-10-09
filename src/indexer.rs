@@ -44,7 +44,7 @@ pub(crate) use self::infer::{
         shape_filter_locations, NavigationSource, SymbolAtCursor, SymbolRole,
     },
     deps::{CallShape, CallableInfo, InferDeps, OuterScopedParams, ShapeFiltered},
-    expr_type::{infer_expr_type, infer_expr_type_with_origin},
+    expr_type::{infer_expr_type, infer_expr_type_with_origin, infer_local_type_at},
     it_this::{
         all_lambda_receivers_at, find_it_element_type, find_named_lambda_param_type,
         find_this_context, find_this_element_type, is_lambda_param, lambda_brace_pos_for_param,
