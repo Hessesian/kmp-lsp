@@ -296,6 +296,7 @@ pub(crate) const KIND_METHOD_DECL: &str = "method_declaration";
 pub(crate) const KIND_CTOR_DECL: &str = "constructor_declaration";
 pub(crate) const KIND_SECONDARY_CTOR: &str = "secondary_constructor";
 pub(crate) const KIND_SETTER: &str = "setter";
+pub(crate) const KIND_ANONYMOUS_INITIALIZER: &str = "anonymous_initializer";
 pub(crate) const KIND_PARAM_WITH_OPTIONAL_TYPE: &str = "parameter_with_optional_type";
 pub(crate) const KIND_FIELD_DECL: &str = "field_declaration";
 pub(crate) const KIND_IMPORT_DECL: &str = "import_declaration";
