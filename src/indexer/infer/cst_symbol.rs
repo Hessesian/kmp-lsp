@@ -14,11 +14,13 @@ use crate::indexer::{
 };
 use crate::queries::{
     KIND_BINDING_PATTERN_KIND, KIND_CALL_EXPR, KIND_CATCH_BLOCK, KIND_CLASS_DECL, KIND_CLASS_PARAM,
-    KIND_COMPANION_OBJ, KIND_CONTROL_STRUCTURE_BODY, KIND_ENUM_ENTRY, KIND_FINALLY_BLOCK,
-    KIND_FOR_STMT, KIND_FUN_DECL, KIND_IDENTIFIER, KIND_IMPORT_HEADER, KIND_LAMBDA_LIT,
-    KIND_NAV_EXPR, KIND_NAV_SUFFIX, KIND_OBJECT_DECL, KIND_PARAMETER, KIND_SIMPLE_IDENT,
-    KIND_STATEMENTS, KIND_TRY_EXPR, KIND_TYPE_ALIAS, KIND_TYPE_IDENT, KIND_TYPE_PARAM,
-    KIND_VAR_DECL, KIND_WHEN_EXPR,
+    KIND_COMPANION_OBJ, KIND_CONTROL_STRUCTURE_BODY, KIND_ENUM_ENTRY, KIND_EQ, KIND_FINALLY_BLOCK,
+    KIND_FOR_STMT, KIND_FUN_DECL, KIND_FUN_VALUE_PARAMS, KIND_IDENTIFIER, KIND_IMPORT_HEADER,
+    KIND_LAMBDA_LIT, KIND_LAMBDA_PARAMS, KIND_MULTI_VAR_DECL, KIND_NAV_EXPR, KIND_NAV_SUFFIX,
+    KIND_OBJECT_DECL, KIND_PARAMETER, KIND_PARAM_WITH_OPTIONAL_TYPE, KIND_PRIMARY_CTOR,
+    KIND_PROP_DECL, KIND_SETTER, KIND_SIMPLE_IDENT, KIND_STATEMENTS, KIND_TRY_EXPR,
+    KIND_TYPE_ALIAS, KIND_TYPE_IDENT, KIND_TYPE_PARAM, KIND_VAR_DECL, KIND_WHEN_EXPR,
+    KIND_WHEN_SUBJECT,
 };
 use crate::resolver::api::Definitions;
 use crate::semantic_tokens::is_named_argument_label;
@@ -674,6 +676,190 @@ fn declares_name_directly<'a>(scope: Node<'a>, name: &str, bytes: &[u8]) -> Opti
         }
     }
     None
+}
+
+/// How the declaration that binds a name at one use site states the name's
+/// type. Answers "which declaration does this identifier refer to *here*?" —
+/// a by-name lookup over the file cannot, because unrelated functions reuse
+/// parameter and local names freely.
+pub(crate) enum LocalBinding<'tree> {
+    /// `name: Type` — a function, constructor, or `catch` parameter, or an
+    /// annotated `val`/`var`. `declared_type` keeps its `?` and type arguments.
+    Annotated { declared_type: Node<'tree> },
+    /// `val name = <initializer>` with no annotation.
+    Initialized { initializer: Node<'tree> },
+    /// Bound in an enclosing local scope whose type this walk does not read:
+    /// a lambda parameter, `for` variable, destructured component, `when`
+    /// subject, or a delegated/uninitialised property.
+    Untyped,
+    /// No enclosing local scope binds the name — a member, top-level
+    /// declaration, import, or inherited symbol.
+    NotLocal,
+}
+
+/// The binding of the identifier `use_site`, searching outward through its
+/// enclosing scopes and stopping at the first one that declares the name.
+///
+/// Declaration order is respected: inside a statement list only declarations
+/// *before* the use are in scope, so a later `val` of the same name, and a
+/// declaration's own initializer, both see the previous binding.
+pub(crate) fn local_binding_at<'tree>(use_site: Node<'tree>, bytes: &[u8]) -> LocalBinding<'tree> {
+    let Some(name) = use_site.utf8_text_owned(bytes) else {
+        return LocalBinding::NotLocal;
+    };
+    let mut inner = use_site;
+    // ponytail: `Node::parent()` is O(depth), so this climb is O(depth²) per
+    // identifier. Fine at real nesting depths; if it shows up in a profile,
+    // thread the root through `infer_expr_type` and descend once with a cursor.
+    while let Some(scope) = inner.parent() {
+        let is_own_declared_name = scope.kind() == KIND_VAR_DECL && inner.id() == use_site.id();
+        if is_own_declared_name {
+            return binding_of_declared_name(scope, &name, bytes);
+        }
+        if let Some(binding) = binding_introduced_by(scope, inner, &name, bytes) {
+            return binding;
+        }
+        inner = scope;
+    }
+    LocalBinding::NotLocal
+}
+
+/// The binding when the use site is itself the name in `variable_declaration`.
+fn binding_of_declared_name<'tree>(
+    variable_declaration: Node<'tree>,
+    name: &str,
+    bytes: &[u8],
+) -> LocalBinding<'tree> {
+    variable_declaration
+        .parent()
+        .filter(|parent| parent.kind() == KIND_PROP_DECL)
+        .and_then(|property| property_binding(property, name, bytes))
+        .unwrap_or(LocalBinding::Untyped)
+}
+
+/// The binding `scope` introduces for `name` as seen from its child `inner`,
+/// or `None` when `scope` does not bind `name` there.
+fn binding_introduced_by<'tree>(
+    scope: Node<'tree>,
+    inner: Node<'tree>,
+    name: &str,
+    bytes: &[u8],
+) -> Option<LocalBinding<'tree>> {
+    // Functions, secondary constructors and anonymous functions all carry
+    // their parameters in a `function_value_parameters` child.
+    let value_parameter = scope
+        .first_child_of_kind(KIND_FUN_VALUE_PARAMS)
+        .and_then(|parameters| parameter_binding(parameters, KIND_PARAMETER, name, bytes));
+    if value_parameter.is_some() {
+        return value_parameter;
+    }
+    match scope.kind() {
+        KIND_STATEMENTS => nearest_earlier_property_binding(scope, inner, name, bytes),
+        KIND_SETTER => parameter_binding(scope, KIND_PARAM_WITH_OPTIONAL_TYPE, name, bytes),
+        KIND_CLASS_DECL => scope
+            .first_child_of_kind(KIND_PRIMARY_CTOR)
+            .and_then(|parameters| parameter_binding(parameters, KIND_CLASS_PARAM, name, bytes)),
+        KIND_CATCH_BLOCK => named_identifier_child(scope, name, bytes).map(annotated_binding),
+        KIND_LAMBDA_LIT => lambda_binds(scope, name, bytes).then_some(LocalBinding::Untyped),
+        KIND_FOR_STMT => {
+            let in_loop_body = inner.kind() == KIND_CONTROL_STRUCTURE_BODY;
+            let header_binds = [KIND_VAR_DECL, KIND_MULTI_VAR_DECL]
+                .into_iter()
+                .filter_map(|kind| scope.first_child_of_kind(kind))
+                .any(|declaration| declares_name_directly(declaration, name, bytes).is_some());
+            (in_loop_body && header_binds).then_some(LocalBinding::Untyped)
+        }
+        KIND_WHEN_EXPR => scope
+            .first_child_of_kind(KIND_WHEN_SUBJECT)
+            .filter(|subject| subject.id() != inner.id())
+            .and_then(|subject| declares_name_directly(subject, name, bytes))
+            .map(|_| LocalBinding::Untyped),
+        _ => None,
+    }
+}
+
+/// The last `val`/`var` of `name` among `statements`' children that come
+/// before `inner` — the one in scope at `inner`.
+fn nearest_earlier_property_binding<'tree>(
+    statements: Node<'tree>,
+    inner: Node<'tree>,
+    name: &str,
+    bytes: &[u8],
+) -> Option<LocalBinding<'tree>> {
+    let mut cursor = statements.walk();
+    statements
+        .children(&mut cursor)
+        .take_while(|statement| statement.id() != inner.id())
+        .filter(|statement| statement.kind() == KIND_PROP_DECL)
+        .filter_map(|property| property_binding(property, name, bytes))
+        .last()
+}
+
+/// The binding a `property_declaration` gives `name`, or `None` when it
+/// declares some other name.
+fn property_binding<'tree>(
+    property: Node<'tree>,
+    name: &str,
+    bytes: &[u8],
+) -> Option<LocalBinding<'tree>> {
+    if let Some(destructuring) = property.first_child_of_kind(KIND_MULTI_VAR_DECL) {
+        return declares_name_directly(destructuring, name, bytes).map(|_| LocalBinding::Untyped);
+    }
+    let variable_declaration = property.first_child_of_kind(KIND_VAR_DECL)?;
+    let name_identifier = named_identifier_child(variable_declaration, name, bytes)?;
+    if name_identifier.next_named_sibling().is_some() {
+        return Some(annotated_binding(name_identifier));
+    }
+    let initializer = property
+        .first_child_of_kind(KIND_EQ)
+        .and_then(|equals| equals.next_named_sibling());
+    Some(match initializer {
+        Some(initializer) => LocalBinding::Initialized { initializer },
+        None => LocalBinding::Untyped,
+    })
+}
+
+/// The binding for the `parameter_kind` child of `parameters` named `name`.
+fn parameter_binding<'tree>(
+    parameters: Node<'tree>,
+    parameter_kind: &str,
+    name: &str,
+    bytes: &[u8],
+) -> Option<LocalBinding<'tree>> {
+    parameters
+        .children_of_kind(parameter_kind)
+        .into_iter()
+        .find_map(|parameter| named_identifier_child(parameter, name, bytes))
+        .map(annotated_binding)
+}
+
+/// `declaration`'s own `simple_identifier` child, when it spells `name`.
+fn named_identifier_child<'tree>(
+    declaration: Node<'tree>,
+    name: &str,
+    bytes: &[u8],
+) -> Option<Node<'tree>> {
+    declaration
+        .first_child_of_kind(KIND_SIMPLE_IDENT)
+        .filter(|identifier| identifier.utf8_text(bytes) == Ok(name))
+}
+
+/// In every `name: Type` declaration shape the type is the named sibling
+/// right after the name.
+fn annotated_binding(name_identifier: Node<'_>) -> LocalBinding<'_> {
+    match name_identifier.next_named_sibling() {
+        Some(declared_type) => LocalBinding::Annotated { declared_type },
+        None => LocalBinding::Untyped,
+    }
+}
+
+/// Whether `lambda` binds `name`: one of its explicit parameters, or the
+/// implicit `it` of a lambda that declares none.
+fn lambda_binds(lambda: Node<'_>, name: &str, bytes: &[u8]) -> bool {
+    match lambda.first_child_of_kind(KIND_LAMBDA_PARAMS) {
+        Some(parameters) => declares_name_directly(parameters, name, bytes).is_some(),
+        None => name == "it",
+    }
 }
 
 /// Whether a scope walk saw every occurrence of the name, or stopped early at

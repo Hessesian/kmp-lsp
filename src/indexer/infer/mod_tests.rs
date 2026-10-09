@@ -459,3 +459,116 @@ fn scope_fn_callee_nav_resolves_via_the_segment_walk() {
         "scope-fn callee nav must resolve via the segment walk"
     );
 }
+
+// ─── identifier → the declaration that binds it at that node ─────────────────
+
+/// `expr_type` of the `occurrence`-th (0-based) `name` identifier in `source`.
+fn identifier_type(source: &str, name: &str, occurrence: usize) -> Option<String> {
+    let live_doc = live_doc_for(source);
+    let indexer = Indexer::new();
+    let uri = test_url("/Binding.kt");
+    indexer.index_content(&uri, source);
+    let identifier = crate::indexer::walk::descendants(live_doc.tree.root_node())
+        .filter(|node| node.kind() == crate::queries::KIND_SIMPLE_IDENT)
+        .filter(|node| node.utf8_text(&live_doc.bytes) == Ok(name))
+        .nth(occurrence)
+        .expect("identifier occurrence");
+    CstQuery::new(identifier, &live_doc, &indexer, &uri)
+        .expr_type()
+        .resolved()
+        .map(|resolved| resolved.as_type_str().to_owned())
+}
+
+/// A file-wide by-name lookup answers with the first `item` it finds — the
+/// other function's parameter.
+#[test]
+fn expr_type_binds_a_parameter_to_its_own_function() {
+    let source = "class Apple\n\
+                  class Banana\n\
+                  fun first(item: Apple) = item\n\
+                  fun second(item: Banana) = item\n";
+    assert_eq!(
+        identifier_type(source, "item", 3).as_deref(),
+        Some("Banana")
+    );
+}
+
+#[test]
+fn expr_type_infers_an_unannotated_local_from_its_own_initializer() {
+    let source = "class Apple\n\
+                  class Banana\n\
+                  fun first(item: Apple) = item\n\
+                  fun second() {\n\
+                  \x20   val item = Banana()\n\
+                  \x20   item\n\
+                  }\n";
+    assert_eq!(
+        identifier_type(source, "item", 3).as_deref(),
+        Some("Banana")
+    );
+}
+
+/// A local declared after the use site is not in scope there; the
+/// constructor property is.
+#[test]
+fn expr_type_ignores_a_local_declared_after_the_use() {
+    let source = "class Apple\n\
+                  class Banana\n\
+                  class Holder(val item: Apple) {\n\
+                  \x20   fun use() {\n\
+                  \x20       item\n\
+                  \x20       val item: Banana = Banana()\n\
+                  \x20   }\n\
+                  }\n";
+    assert_eq!(identifier_type(source, "item", 1).as_deref(), Some("Apple"));
+}
+
+/// A redeclaration's own initializer still sees the previous binding.
+#[test]
+fn expr_type_inside_a_redeclaration_initializer_sees_the_previous_binding() {
+    let source = "class Apple\n\
+                  class Banana\n\
+                  fun convert(apple: Apple): Banana = Banana()\n\
+                  fun use(item: Apple) {\n\
+                  \x20   val item: Banana = convert(item)\n\
+                  \x20   item\n\
+                  }\n";
+    assert_eq!(identifier_type(source, "item", 2).as_deref(), Some("Apple"));
+    assert_eq!(
+        identifier_type(source, "item", 3).as_deref(),
+        Some("Banana")
+    );
+}
+
+#[test]
+fn expr_type_prefers_a_nested_block_local_over_the_parameter() {
+    let source = "class Apple\n\
+                  class Banana\n\
+                  fun use(item: Apple, ripe: Boolean) {\n\
+                  \x20   if (ripe) {\n\
+                  \x20       val item: Banana = Banana()\n\
+                  \x20       item\n\
+                  \x20   }\n\
+                  \x20   item\n\
+                  }\n";
+    assert_eq!(
+        identifier_type(source, "item", 2).as_deref(),
+        Some("Banana")
+    );
+    assert_eq!(identifier_type(source, "item", 3).as_deref(), Some("Apple"));
+}
+
+/// A sibling `for` loop's variable is out of scope after the loop.
+#[test]
+fn expr_type_does_not_bind_to_a_finished_for_loop_variable() {
+    let source = "class Apple\n\
+                  class Banana\n\
+                  fun use(item: Banana, apples: List<Apple>) {\n\
+                  \x20   for (item in apples) {}\n\
+                  \x20   item\n\
+                  }\n";
+    assert_eq!(
+        identifier_type(source, "item", 2).as_deref(),
+        Some("Banana")
+    );
+}
