@@ -1,6 +1,6 @@
 use tower_lsp::lsp_types::{Location, Position, SymbolKind, Url};
 
-use crate::indexer::{Indexer, InferDeps, NodeExt};
+use crate::indexer::{infer_local_type_at, Indexer, InferDeps, NodeExt};
 use crate::types::FileData;
 use crate::LinesExt;
 use crate::StrExt;
@@ -181,14 +181,14 @@ pub(crate) fn infer_field_chain_type(
             }
         }
         // No prefix is smart-cast-narrowed — fall back to the root's plain
-        // declared type. With a CST node, prefer the scope-correct
-        // `resolve_declared_type_from_cst` (a whole-file scan can find an
-        // unrelated same-named parameter/local in a *different* function —
-        // see its own doc comment) before the line-scanning smart-cast check
-        // and the unscoped whole-file scan.
+        // declared type. With a CST node, prefer the binding in scope at it
+        // (a whole-file scan can find an unrelated same-named parameter/local
+        // in a *different* function — see `LocalBinding`) before the
+        // line-scanning smart-cast check and the unscoped whole-file scan.
         let root = segments.first()?;
         let declared_type = match cst_point {
-            Some((point, source)) => resolve_declared_type_from_cst(point, root, source)
+            Some((point, source)) => infer_local_type_at(root, point, source, indexer, uri)
+                .map(|(type_name, _declaring_uri)| type_name)
                 .or_else(|| smart_cast_narrowed_type(indexer, root, uri, line, None))
                 .or_else(|| infer_variable_type(indexer, root, uri))?,
             None => smart_cast_narrowed_type(indexer, root, uri, line, None)
@@ -476,135 +476,6 @@ fn ancestor_of_kind<'tree>(
             return Some(candidate);
         }
         current = candidate.parent();
-    }
-    None
-}
-
-/// Resolve `var_name`'s *declared* type by walking up from `point` through the
-/// CST — sibling `val`/`var` declarations in the same statement block, then
-/// the enclosing function's parameters, then the enclosing class's primary
-/// constructor parameters — stopping at the first match.
-///
-/// This is scope-correct where a whole-file text/line scan (`infer_variable_type`)
-/// is not: a file with many functions can have several unrelated parameters or
-/// locals named the same thing (`event`, `state`, …), and a whole-file scan has
-/// no way to prefer the one actually in scope at `point`. Callers with a CST
-/// node in hand should try this first and fall back to `infer_variable_type`
-/// only when it finds nothing (e.g. `var_name` comes from an outer/captured
-/// scope this walk doesn't reach).
-pub(crate) fn resolve_declared_type_from_cst(
-    point: tree_sitter::Node,
-    var_name: &str,
-    source: &[u8],
-) -> Option<String> {
-    use crate::queries::{
-        KIND_BOOLEAN_LITERAL, KIND_CLASS_DECL, KIND_CLASS_PARAM, KIND_FUN_DECL,
-        KIND_FUN_VALUE_PARAMS, KIND_NULLABLE_TYPE, KIND_PARAMETER, KIND_PRIMARY_CTOR,
-        KIND_PROP_DECL, KIND_SIMPLE_IDENT, KIND_STATEMENTS, KIND_TYPE_IDENT, KIND_USER_TYPE,
-        KIND_VAR_DECL,
-    };
-
-    fn full_type_name(user_type: tree_sitter::Node, source: &[u8]) -> Option<String> {
-        let parts: Vec<&str> = user_type
-            .children(&mut user_type.walk())
-            .filter(|child| child.kind() == KIND_TYPE_IDENT)
-            .map(|child| child.utf8_text(source))
-            .collect::<Result<_, _>>()
-            .ok()?;
-        (!parts.is_empty()).then(|| parts.join("."))
-    }
-
-    fn type_from_nullable(nullable: tree_sitter::Node, source: &[u8]) -> Option<String> {
-        nullable
-            .first_child_of_kind(KIND_USER_TYPE)
-            .and_then(|user_type| full_type_name(user_type, source))
-    }
-
-    // Shared by a `parameter`/`class_parameter` node (`name: Type`) and a
-    // `variable_declaration` node (same shape, plus an inferred-Boolean case
-    // for `val x = false`/`true` handled by the caller).
-    fn type_after_matching_name(
-        node: tree_sitter::Node,
-        var_name: &str,
-        source: &[u8],
-    ) -> Option<String> {
-        let mut name_matched = false;
-        for child in node.children(&mut node.walk()) {
-            if child.kind() == KIND_SIMPLE_IDENT && child.utf8_text(source).ok() == Some(var_name) {
-                name_matched = true;
-            }
-            if name_matched {
-                if child.kind() == KIND_USER_TYPE {
-                    return full_type_name(child, source);
-                }
-                if child.kind() == KIND_NULLABLE_TYPE {
-                    return type_from_nullable(child, source);
-                }
-            }
-        }
-        None
-    }
-
-    fn find_in_sibling_declarations(
-        statements: tree_sitter::Node,
-        var_name: &str,
-        source: &[u8],
-    ) -> Option<String> {
-        statements
-            .children(&mut statements.walk())
-            .filter(|child| child.kind() == KIND_PROP_DECL)
-            .find_map(|prop| {
-                let var_decl = prop.first_child_of_kind(KIND_VAR_DECL)?;
-                type_after_matching_name(var_decl, var_name, source).or_else(|| {
-                    // `val x = false`/`true` — no annotation, inferred Boolean.
-                    let name_matches = var_decl
-                        .first_child_of_kind(KIND_SIMPLE_IDENT)
-                        .and_then(|ident| ident.utf8_text(source).ok())
-                        == Some(var_name);
-                    let has_boolean_literal = prop
-                        .children(&mut prop.walk())
-                        .any(|child| child.kind() == KIND_BOOLEAN_LITERAL);
-                    (name_matches && has_boolean_literal).then(|| "Boolean".to_owned())
-                })
-            })
-    }
-
-    fn find_in_parameters(
-        function_declaration: tree_sitter::Node,
-        var_name: &str,
-        source: &[u8],
-    ) -> Option<String> {
-        let params = function_declaration.first_child_of_kind(KIND_FUN_VALUE_PARAMS)?;
-        params
-            .children(&mut params.walk())
-            .filter(|child| child.kind() == KIND_PARAMETER)
-            .find_map(|param| type_after_matching_name(param, var_name, source))
-    }
-
-    fn find_in_constructor(
-        class_declaration: tree_sitter::Node,
-        var_name: &str,
-        source: &[u8],
-    ) -> Option<String> {
-        let primary_constructor = class_declaration.first_child_of_kind(KIND_PRIMARY_CTOR)?;
-        primary_constructor
-            .children(&mut primary_constructor.walk())
-            .filter(|child| child.kind() == KIND_CLASS_PARAM)
-            .find_map(|param| type_after_matching_name(param, var_name, source))
-    }
-
-    let mut current = point.parent();
-    while let Some(node) = current {
-        let found = match node.kind() {
-            KIND_STATEMENTS => find_in_sibling_declarations(node, var_name, source),
-            KIND_FUN_DECL => find_in_parameters(node, var_name, source),
-            KIND_CLASS_DECL => find_in_constructor(node, var_name, source),
-            _ => None,
-        };
-        if found.is_some() {
-            return found;
-        }
-        current = node.parent();
     }
     None
 }
