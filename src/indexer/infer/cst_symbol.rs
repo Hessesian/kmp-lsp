@@ -698,32 +698,45 @@ pub(crate) enum LocalBinding<'tree> {
     NotLocal,
 }
 
-/// The binding of the identifier `use_site`, searching outward through its
-/// enclosing scopes and stopping at the first one that declares the name.
-///
-/// Declaration order is respected: inside a statement list only declarations
-/// *before* the use are in scope, so a later `val` of the same name, and a
-/// declaration's own initializer, both see the previous binding.
+/// The binding of the identifier `use_site` — see [`local_binding_of`].
 pub(crate) fn local_binding_at<'tree>(use_site: Node<'tree>, bytes: &[u8]) -> LocalBinding<'tree> {
     let Some(name) = use_site.utf8_text_owned(bytes) else {
         return LocalBinding::NotLocal;
     };
-    let mut inner = use_site;
+    let own_declaration = use_site
+        .parent()
+        .filter(|parent| parent.kind() == KIND_VAR_DECL);
+    match own_declaration {
+        Some(variable_declaration) => binding_of_declared_name(variable_declaration, &name, bytes),
+        None => local_binding_of(&name, use_site, bytes),
+    }
+}
+
+/// The binding of `name` as seen from `point`, searching outward through the
+/// scopes enclosing `point` and stopping at the first one that declares it.
+/// For callers that hold a name and a position rather than the identifier
+/// node itself (a `when` subject's root segment, say).
+///
+/// Declaration order is respected: inside a statement list only declarations
+/// *before* `point` are in scope, so a later `val` of the same name, and a
+/// declaration's own initializer, both see the previous binding.
+pub(crate) fn local_binding_of<'tree>(
+    name: &str,
+    point: Node<'tree>,
+    bytes: &[u8],
+) -> LocalBinding<'tree> {
+    let mut inner = point;
     let mut below_inner = None;
     // ponytail: `Node::parent()` is O(depth), so this climb is O(depth²) per
-    // identifier. Fine at real nesting depths; if it shows up in a profile,
+    // lookup. Fine at real nesting depths; if it shows up in a profile,
     // thread the root through `infer_expr_type` and descend once with a cursor.
     while let Some(scope) = inner.parent() {
-        let is_own_declared_name = scope.kind() == KIND_VAR_DECL && inner.id() == use_site.id();
-        if is_own_declared_name {
-            return binding_of_declared_name(scope, &name, bytes);
-        }
         let enclosure = Enclosure {
             scope,
             inner,
             below_inner,
         };
-        if let Some(binding) = binding_introduced_by(enclosure, &name, bytes) {
+        if let Some(binding) = binding_introduced_by(enclosure, name, bytes) {
             return binding;
         }
         below_inner = Some(inner);

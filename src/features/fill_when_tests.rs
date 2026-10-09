@@ -1153,3 +1153,91 @@ fn diagnostics_survives_a_pathologically_deep_when_subject_chain() {
     // matter since the subject type can never resolve.
     let _ = when_diagnostics(&idx, &uri("/main.kt"));
 }
+
+// ─── subject bound by the declaration in scope at the `when` ─────────────────
+
+const SIZE_SRC: &str = "\
+enum class Size {
+    SMALL, LARGE
+}
+";
+
+fn missing_branch_messages(main_source: &str) -> Vec<String> {
+    let idx = setup(&[
+        ("/Color.kt", ENUM_SRC),
+        ("/Size.kt", SIZE_SRC),
+        ("/main.kt", main_source),
+    ]);
+    when_diagnostics(&idx, &uri("/main.kt"))
+        .into_iter()
+        .map(|diagnostic| diagnostic.message)
+        .collect()
+}
+
+/// A same-named local declared *after* the `when` is not in scope at it.
+#[test]
+fn diagnostics_subject_ignores_a_local_declared_after_the_when() {
+    let messages = missing_branch_messages(
+        "\
+fun handle(value: Color) {
+    when (value) {
+        Color.RED -> {}
+    }
+    val value: Size = Size.SMALL
+}
+",
+    );
+    assert_eq!(messages.len(), 1, "expected one diagnostic: {messages:?}");
+    assert!(
+        messages[0].contains("GREEN") && !messages[0].contains("LARGE"),
+        "subject is the Color parameter, not the later Size local: {}",
+        messages[0]
+    );
+}
+
+/// An unannotated local is typed from its own initializer, not from another
+/// function's same-named parameter.
+#[test]
+fn diagnostics_subject_is_typed_from_its_own_initializer() {
+    let messages = missing_branch_messages(
+        "\
+fun pick(): Size = Size.SMALL
+fun other(value: Color) {}
+fun handle() {
+    val value = pick()
+    when (value) {
+        Size.SMALL -> {}
+    }
+}
+",
+    );
+    assert_eq!(messages.len(), 1, "expected one diagnostic: {messages:?}");
+    assert!(
+        messages[0].contains("LARGE") && !messages[0].contains("GREEN"),
+        "subject is the Size local, not other()'s Color parameter: {}",
+        messages[0]
+    );
+}
+
+/// The root of a field-chain subject follows the same scoping.
+#[test]
+fn diagnostics_field_chain_root_ignores_a_local_declared_after_the_when() {
+    let messages = missing_branch_messages(
+        "\
+class First(val shade: Color)
+class Second(val shade: Size)
+fun handle(holder: First) {
+    when (holder.shade) {
+        Color.RED -> {}
+    }
+    val holder: Second = Second(Size.SMALL)
+}
+",
+    );
+    assert_eq!(messages.len(), 1, "expected one diagnostic: {messages:?}");
+    assert!(
+        messages[0].contains("GREEN") && !messages[0].contains("LARGE"),
+        "chain root is the First parameter, not the later Second local: {}",
+        messages[0]
+    );
+}
