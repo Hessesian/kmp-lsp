@@ -31,7 +31,10 @@
 //!   resolution, out of `CstQuery`'s "type of a bound node" remit.
 //! - `cst_symbol` (`classify_cursor`, `resolve_identity`, navigation helpers) — the symbol-identity
 //!   navigation family's own facade (design doc step 6, already CST-first with string+rg
-//!   fallback); intentionally a peer of `CstQuery`, not a submodule of it.
+//!   fallback); intentionally a peer of `CstQuery`, not a submodule of it. Its
+//!   `local_binding_at` is what `expr_type` asks for an identifier's declaration in scope; a
+//!   binding it reports as `Untyped` (lambda parameter, `for` variable, destructuring) still
+//!   falls back to the by-name `find_var_type`, which can pick a same-named declaration elsewhere.
 //! - `args`, `type_subst`, `lambda` — low-level primitives (`extract_first_arg`,
 //!   generic-substitution string ops, lambda-type-string decomposition) consumed mostly *by* the
 //!   CST engine's own submodules (`cst_lambda.rs`, `chain.rs`); the one exception is

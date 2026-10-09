@@ -1093,3 +1093,198 @@ fn package_qualified_return_type_resolves_to_the_named_package() {
 
     assert_eq!(definitions, vec!["/t/types/Types.kt".to_owned()]);
 }
+
+// ─── local_binding_at ────────────────────────────────────────────────────────
+
+/// The binding of the `occurrence`-th (0-based) `name` identifier in `source`,
+/// rendered as `Annotated(<type text>)`, `Initialized(<initializer text>)`,
+/// `Untyped`, or `NotLocal`.
+fn binding_of(source: &str, name: &str, occurrence: usize) -> String {
+    let doc = crate::indexer::live_tree::parse_live(source, tree_sitter_kotlin::LANGUAGE.into())
+        .expect("kotlin parse");
+    let identifier = crate::indexer::walk::descendants(doc.tree.root_node())
+        .filter(|node| node.kind() == KIND_SIMPLE_IDENT)
+        .filter(|node| node.utf8_text(&doc.bytes) == Ok(name))
+        .nth(occurrence)
+        .expect("identifier occurrence");
+    let text_of = |node: Node<'_>| node.utf8_text(&doc.bytes).unwrap().to_owned();
+    match local_binding_at(identifier, &doc.bytes) {
+        LocalBinding::Annotated { declared_type } => {
+            format!("Annotated({})", text_of(declared_type))
+        }
+        LocalBinding::Initialized { initializer } => {
+            format!("Initialized({})", text_of(initializer))
+        }
+        LocalBinding::Untyped => "Untyped".to_owned(),
+        LocalBinding::NotLocal => "NotLocal".to_owned(),
+    }
+}
+
+/// The user-visible symptom: go-to-definition on `item.save()` landed on the
+/// `save` of whichever class another function's same-named parameter had.
+#[test]
+fn member_call_on_a_parameter_resolves_on_its_own_type_not_a_same_named_parameter() {
+    let source = "class Apple { fun save() {} }\n\
+                  class Banana { fun save() {} }\n\
+                  fun first(item: Apple) { item.save() }\n\
+                  fun second(item: Banana) { item.save() }\n";
+    let (file_uri, indexer) = indexed_with_live("/D.kt", source);
+    let column = source.lines().nth(3).unwrap().find("save").unwrap();
+    let symbol = classify_symbol_at(
+        &indexer,
+        &file_uri,
+        CursorPos {
+            line: 3,
+            utf16_col: column,
+        },
+    )
+    .unwrap();
+    match resolve_identity(&symbol, &indexer, &file_uri) {
+        NavigationSource::CstResolved(definitions) => {
+            assert_eq!(definitions.len(), 1);
+            assert_eq!(
+                definitions[0].range.start.line, 1,
+                "must resolve to Banana.save, not Apple.save"
+            );
+        }
+        NavigationSource::NameScan(_) => panic!("typed receiver should resolve CST-resolved"),
+    }
+}
+
+#[test]
+fn annotated_binding_keeps_the_declared_type_text_whole() {
+    let source = "fun use(item: List<Apple>?) { item }\n";
+    assert_eq!(binding_of(source, "item", 1), "Annotated(List<Apple>?)");
+}
+
+#[test]
+fn catch_parameter_is_annotated_with_its_exception_type() {
+    let source = "fun use(failure: Apple) {\n\
+                  \x20   try {} catch (failure: IllegalStateException) { failure }\n\
+                  }\n";
+    assert_eq!(
+        binding_of(source, "failure", 2),
+        "Annotated(IllegalStateException)"
+    );
+}
+
+#[test]
+fn unannotated_local_binds_to_its_initializer() {
+    let source = "fun use(item: Apple) {\n\
+                  \x20   val item = Banana()\n\
+                  \x20   item\n\
+                  }\n";
+    assert_eq!(binding_of(source, "item", 2), "Initialized(Banana())");
+    assert_eq!(
+        binding_of(source, "item", 1),
+        "Initialized(Banana())",
+        "the declared name itself binds to its own declaration"
+    );
+}
+
+/// Binders this walk does not type must still stop the search — otherwise the
+/// enclosing function's same-named parameter would answer for them.
+#[test]
+fn untyped_binders_shadow_an_outer_annotated_parameter() {
+    let lambda = "fun use(item: Apple, all: List<Banana>) { all.forEach { item -> item } }\n";
+    assert_eq!(binding_of(lambda, "item", 2), "Untyped");
+
+    let destructured_lambda =
+        "fun use(item: Apple, all: Map<Int, Banana>) { all.forEach { (key, item) -> item } }\n";
+    assert_eq!(binding_of(destructured_lambda, "item", 2), "Untyped");
+
+    let for_loop = "fun use(item: Apple, all: List<Banana>) { for (item in all) { item } }\n";
+    assert_eq!(binding_of(for_loop, "item", 2), "Untyped");
+
+    let destructured = "fun use(item: Apple, pair: Pair<Int, Banana>) {\n\
+                        \x20   val (count, item) = pair\n\
+                        \x20   item\n\
+                        }\n";
+    assert_eq!(binding_of(destructured, "item", 2), "Untyped");
+
+    let delegated = "fun use(item: Apple) {\n\
+                     \x20   val item by lazy { Banana() }\n\
+                     \x20   item\n\
+                     }\n";
+    assert_eq!(binding_of(delegated, "item", 2), "Untyped");
+}
+
+#[test]
+fn implicit_it_is_bound_by_its_lambda_not_an_outer_parameter() {
+    let source = "fun use(it: Apple, all: List<Banana>) { all.forEach { it } }\n";
+    assert_eq!(binding_of(source, "it", 1), "Untyped");
+}
+
+/// The loop variable is not in scope in the loop's own range expression.
+#[test]
+fn for_loop_range_expression_sees_the_outer_binding() {
+    let source = "fun use(item: Apple) { for (item in item) {} }\n";
+    assert_eq!(binding_of(source, "item", 2), "Annotated(Apple)");
+}
+
+#[test]
+fn names_declared_outside_any_local_scope_are_not_local() {
+    let source = "val shared: Apple = Apple()\n\
+                  class Holder { val owned: Banana = Banana()\n\
+                  \x20   fun use() { shared; owned }\n\
+                  }\n";
+    assert_eq!(binding_of(source, "shared", 1), "NotLocal");
+    assert_eq!(binding_of(source, "owned", 1), "NotLocal");
+}
+
+/// Each of these scopes binds its own `item`; none may fall through to the
+/// primary constructor's same-named parameter.
+#[test]
+fn every_parameter_list_kind_shadows_the_primary_constructor() {
+    let source = "class Holder(item: Apple) {\n\
+                  \x20   constructor(item: Banana, extra: Int) : this(Apple()) { item }\n\
+                  \x20   var owned: Apple = Apple()\n\
+                  \x20       set(item) { item }\n\
+                  \x20   val block = fun(item: Cherry) { item }\n\
+                  }\n";
+    assert_eq!(binding_of(source, "item", 2), "Annotated(Banana)");
+    assert_eq!(binding_of(source, "item", 4), "Untyped");
+    assert_eq!(binding_of(source, "item", 6), "Annotated(Cherry)");
+}
+
+/// A default value sees the parameters before it, not the ones after.
+#[test]
+fn parameter_default_value_sees_only_preceding_parameters() {
+    let later_parameter = "fun outer(later: Apple) {\n\
+                           \x20   fun inner(first: Banana = later, later: Cherry = Cherry()) {}\n\
+                           }\n";
+    assert_eq!(binding_of(later_parameter, "later", 1), "Annotated(Apple)");
+
+    let earlier_parameter = "fun outer(first: Apple) {\n\
+                             \x20   fun inner(first: Banana, second: Banana = first) {}\n\
+                             }\n";
+    assert_eq!(
+        binding_of(earlier_parameter, "first", 2),
+        "Annotated(Banana)"
+    );
+}
+
+/// A constructor parameter without `val`/`var` exists only while the class is
+/// being initialised; a member function cannot see it.
+#[test]
+fn plain_constructor_parameter_is_out_of_scope_in_member_functions() {
+    let source = "class Holder(item: Apple, val kept: Banana, copy: Apple = item) : Base(item) {\n\
+                  \x20   init { item }\n\
+                  \x20   val stored = item\n\
+                  \x20   fun use() { item; kept }\n\
+                  }\n";
+    assert_eq!(binding_of(source, "item", 1), "Annotated(Apple)", "default");
+    assert_eq!(
+        binding_of(source, "item", 2),
+        "Annotated(Apple)",
+        "supertype"
+    );
+    assert_eq!(binding_of(source, "item", 3), "Annotated(Apple)", "init");
+    assert_eq!(
+        binding_of(source, "item", 4),
+        "Annotated(Apple)",
+        "property"
+    );
+    assert_eq!(binding_of(source, "item", 5), "NotLocal", "member function");
+    assert_eq!(binding_of(source, "kept", 1), "Annotated(Banana)");
+}
