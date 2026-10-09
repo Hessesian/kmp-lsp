@@ -1124,26 +1124,26 @@ fn binding_of(source: &str, name: &str, occurrence: usize) -> String {
 /// `save` of whichever class another function's same-named parameter had.
 #[test]
 fn member_call_on_a_parameter_resolves_on_its_own_type_not_a_same_named_parameter() {
-    let src = "class Apple { fun save() {} }\n\
-               class Banana { fun save() {} }\n\
-               fun first(item: Apple) { item.save() }\n\
-               fun second(item: Banana) { item.save() }\n";
-    let (u, idx) = indexed_with_live("/D.kt", src);
-    let col = src.lines().nth(3).unwrap().find("save").unwrap();
-    let sym = classify_symbol_at(
-        &idx,
-        &u,
+    let source = "class Apple { fun save() {} }\n\
+                  class Banana { fun save() {} }\n\
+                  fun first(item: Apple) { item.save() }\n\
+                  fun second(item: Banana) { item.save() }\n";
+    let (file_uri, indexer) = indexed_with_live("/D.kt", source);
+    let column = source.lines().nth(3).unwrap().find("save").unwrap();
+    let symbol = classify_symbol_at(
+        &indexer,
+        &file_uri,
         CursorPos {
             line: 3,
-            utf16_col: col,
+            utf16_col: column,
         },
     )
     .unwrap();
-    match resolve_identity(&sym, &idx, &u) {
-        NavigationSource::CstResolved(defs) => {
-            assert_eq!(defs.len(), 1);
+    match resolve_identity(&symbol, &indexer, &file_uri) {
+        NavigationSource::CstResolved(definitions) => {
+            assert_eq!(definitions.len(), 1);
             assert_eq!(
-                defs[0].range.start.line, 1,
+                definitions[0].range.start.line, 1,
                 "must resolve to Banana.save, not Apple.save"
             );
         }
@@ -1245,4 +1245,46 @@ fn every_parameter_list_kind_shadows_the_primary_constructor() {
     assert_eq!(binding_of(source, "item", 2), "Annotated(Banana)");
     assert_eq!(binding_of(source, "item", 4), "Untyped");
     assert_eq!(binding_of(source, "item", 6), "Annotated(Cherry)");
+}
+
+/// A default value sees the parameters before it, not the ones after.
+#[test]
+fn parameter_default_value_sees_only_preceding_parameters() {
+    let later_parameter = "fun outer(later: Apple) {\n\
+                           \x20   fun inner(first: Banana = later, later: Cherry = Cherry()) {}\n\
+                           }\n";
+    assert_eq!(binding_of(later_parameter, "later", 1), "Annotated(Apple)");
+
+    let earlier_parameter = "fun outer(first: Apple) {\n\
+                             \x20   fun inner(first: Banana, second: Banana = first) {}\n\
+                             }\n";
+    assert_eq!(
+        binding_of(earlier_parameter, "first", 2),
+        "Annotated(Banana)"
+    );
+}
+
+/// A constructor parameter without `val`/`var` exists only while the class is
+/// being initialised; a member function cannot see it.
+#[test]
+fn plain_constructor_parameter_is_out_of_scope_in_member_functions() {
+    let source = "class Holder(item: Apple, val kept: Banana, copy: Apple = item) : Base(item) {\n\
+                  \x20   init { item }\n\
+                  \x20   val stored = item\n\
+                  \x20   fun use() { item; kept }\n\
+                  }\n";
+    assert_eq!(binding_of(source, "item", 1), "Annotated(Apple)", "default");
+    assert_eq!(
+        binding_of(source, "item", 2),
+        "Annotated(Apple)",
+        "supertype"
+    );
+    assert_eq!(binding_of(source, "item", 3), "Annotated(Apple)", "init");
+    assert_eq!(
+        binding_of(source, "item", 4),
+        "Annotated(Apple)",
+        "property"
+    );
+    assert_eq!(binding_of(source, "item", 5), "NotLocal", "member function");
+    assert_eq!(binding_of(source, "kept", 1), "Annotated(Banana)");
 }
