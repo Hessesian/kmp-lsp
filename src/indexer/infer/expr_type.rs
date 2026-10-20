@@ -45,7 +45,7 @@ use crate::queries::{
 use crate::StrExt as _;
 
 use super::chain::{resolve_field_type_on, resolve_method_return_type_on};
-use super::cst_symbol::{local_binding_at, LocalBinding};
+use super::cst_symbol::{local_binding_at, local_binding_of, LocalBinding};
 use super::deps::InferDeps;
 
 // ─── public API ───────────────────────────────────────────────────────────────
@@ -200,7 +200,8 @@ fn infer_ident_type(
     if let Some(inferred) = deps.find_contextual_type(&name, uri, start.row, col) {
         return Some((inferred, uri.clone()));
     }
-    if let Some(bound) = infer_bound_local_type(node, bytes, deps, uri, depth) {
+    let binding = local_binding_at(node, bytes);
+    if let Some(bound) = infer_binding_type(binding, bytes, deps, uri, depth) {
         return Some(bound);
     }
     if let Some(inferred) = deps.find_var_type(&name, uri) {
@@ -220,22 +221,36 @@ fn infer_ident_type(
     None
 }
 
-/// The type of an identifier bound by an enclosing local scope, read from the
-/// declaration in scope at `node` itself rather than from the first
-/// declaration of that name anywhere in the file. `None` when no local scope
-/// binds it, or when the binding's type is not written down here — the caller
-/// then falls back to the by-name lookup.
+/// The type of the local `name` in scope at `point`, with the file that type
+/// was written in — read from the declaration that binds it *there*, not from
+/// the first declaration of that name anywhere in the file. Generic arguments
+/// and nullability are stripped.
 ///
-/// Generic arguments are stripped for the same reason as the by-name branch
-/// of [`infer_ident_type`].
-fn infer_bound_local_type(
-    node: Node<'_>,
+/// `None` when no enclosing local scope binds `name`, or when the binding's
+/// type is not written down (a lambda parameter, `for` variable,
+/// destructuring, or an initializer this engine cannot type). Callers fall
+/// back to a by-name lookup in that case.
+pub(crate) fn infer_local_type_at(
+    name: &str,
+    point: Node<'_>,
+    bytes: &[u8],
+    deps: &impl InferDeps,
+    uri: &Url,
+) -> Option<(String, Url)> {
+    infer_binding_type(local_binding_of(name, point, bytes), bytes, deps, uri, 0)
+}
+
+/// The type a [`LocalBinding`] states, for [`infer_ident_type`] and
+/// [`infer_local_type_at`]. Generic arguments are stripped for the same
+/// reason as the by-name branch of [`infer_ident_type`].
+fn infer_binding_type(
+    binding: LocalBinding<'_>,
     bytes: &[u8],
     deps: &impl InferDeps,
     uri: &Url,
     depth: usize,
 ) -> Option<(String, Url)> {
-    let (type_name, declaring_uri) = match local_binding_at(node, bytes) {
+    let (type_name, declaring_uri) = match binding {
         LocalBinding::Annotated { declared_type } => {
             (declared_type.utf8_text_owned(bytes)?, uri.clone())
         }

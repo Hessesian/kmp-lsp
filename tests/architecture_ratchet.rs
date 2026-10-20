@@ -29,7 +29,7 @@ const BYPASSES: &[Bypass] = &[
     Bypass {
         pattern: "resolver::infer::",
         allowed: &[
-            ("src/features/fill_when.rs", 4),
+            ("src/features/fill_when.rs", 3),
             ("src/features/hover.rs", 1),
             ("src/features/nullable_call_diagnostics.rs", 1),
             ("src/semantic_tokens/resolve.rs", 1),

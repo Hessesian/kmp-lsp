@@ -61,23 +61,22 @@ fn analyze_when<'a>(
     }
 
     // The file whose imports/package should be used to resolve `subject_type`'s
-    // own members below. For a plain `when (var)` it's always the caller's own
-    // file. For a chained `when (var.field)` it must be the *leaf field's own
+    // own members below. For a plain `when (var)` it's the file the binding's
+    // type was written in: the caller's own file for an annotated or fallback
+    // subject, the declaration's file for an inferred one. For a chained `when (var.field)` it must be the *leaf field's own
     // declaring file* instead — the leaf type can be a class duplicated
     // workspace-wide and reachable only through the chain, never imported by
     // the caller directly (see `infer::infer_field_chain_type`'s doc comment).
     let (subject_type, members_uri) = match subject_segments.as_slice() {
         // A local or parameter: prefer the declaration the CST can see over a
         // whole-file name scan.
-        [subject_var] => (
-            crate::resolver::infer::resolve_declared_type_from_cst(
-                when_node,
-                subject_var,
-                source_bytes,
-            )
-            .or_else(|| crate::resolver::infer::infer_variable_type(indexer, subject_var, uri))?,
-            uri.clone(),
-        ),
+        [subject_var] => {
+            crate::indexer::infer_local_type_at(subject_var, when_node, source_bytes, indexer, uri)
+                .or_else(|| {
+                    crate::resolver::infer::infer_variable_type(indexer, subject_var, uri)
+                        .map(|type_name| (type_name, uri.clone()))
+                })?
+        }
         // `userData.themeBrand` — walk the field chain to its leaf type.
         // `infer_field_chain_type` itself finds the longest smart-cast-narrowed
         // prefix of the chain from the CST (Kotlin narrows whole stable
