@@ -457,6 +457,16 @@ Examples of duplication caught too late in this project:
 config, or deduplicates a collection — grep for the concept first. If a function already
 exists, call it or extend it; don't write a parallel one.
 
+**A private helper that a second feature needs moves next to its input type** (`NodeExt`,
+`StrExt`, `cst_symbol.rs`) in that PR. A helper private to another feature is invisible to the
+next author, so it gets rewritten — `param_names_from_sig` (`features/completion.rs`) and
+`enclosing_class_name` (`indexer/infer/chain.rs`) were both reimplemented this way.
+
+**"Almost right" means extend, not fork.** If an existing primitive returns too little (an
+`Option<String>` where you need to tell "found, untyped" from "not found"), widen its return
+type to an enum and update its callers. `tests/architecture_ratchet.rs` fails feature code that
+reaches past the catalogue into `resolver::infer` or the raw index maps instead.
+
 ### 12a. Refactoring tasks move code — they don't rewrite it
 
 When a task says "extract X into its own module/struct", the implementation is:
