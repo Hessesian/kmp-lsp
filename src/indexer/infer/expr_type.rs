@@ -45,6 +45,7 @@ use crate::queries::{
 use crate::StrExt as _;
 
 use super::chain::{resolve_field_type_on, resolve_method_return_type_on};
+use super::cst_symbol::{local_binding_at, LocalBinding};
 use super::deps::InferDeps;
 
 // ─── public API ───────────────────────────────────────────────────────────────
@@ -118,7 +119,7 @@ fn infer_expr_type_at_depth(
         KIND_NULL_LITERAL => Some(("Nothing?".to_owned(), uri.clone())),
         KIND_CHARACTER_LITERAL => Some(("Char".to_owned(), uri.clone())),
         k if k == KIND_SIMPLE_IDENT || k == KIND_TYPE_IDENT => {
-            infer_ident_type(node, bytes, deps, uri).map(|type_name| (type_name, uri.clone()))
+            infer_ident_type(node, bytes, deps, uri, depth)
         }
         k if k == KIND_THIS_EXPR => {
             infer_this_expr_type(node, bytes, deps, uri).map(|type_name| (type_name, uri.clone()))
@@ -191,12 +192,16 @@ fn infer_ident_type(
     bytes: &[u8],
     deps: &impl InferDeps,
     uri: &Url,
-) -> Option<String> {
+    depth: usize,
+) -> Option<(String, Url)> {
     let name = node.utf8_text_owned(bytes)?;
     let start = node.start_position();
     let col = crate::inlay_hints::ts_byte_col_to_utf16(bytes, &[], start.row, start.column);
     if let Some(inferred) = deps.find_contextual_type(&name, uri, start.row, col) {
-        return Some(inferred);
+        return Some((inferred, uri.clone()));
+    }
+    if let Some(bound) = infer_bound_local_type(node, bytes, deps, uri, depth) {
+        return Some(bound);
     }
     if let Some(inferred) = deps.find_var_type(&name, uri) {
         // Strip generic parameters from the raw type (e.g. "List<String>" → "List",
@@ -207,12 +212,40 @@ fn infer_ident_type(
         // `dotted_ident_prefix` stops at `<` while preserving dotted type names.
         // Chain inference (`chain.rs`, `type_subst.rs`) still gets the raw form via
         // `find_var_type` directly — this strip is local to `infer_ident_type` only.
-        return Some(inferred.dotted_ident_prefix());
+        return Some((inferred.dotted_ident_prefix(), uri.clone()));
     }
     if name.starts_with_uppercase() && deps.has_type_definition(&name) {
-        return Some(name);
+        return Some((name, uri.clone()));
     }
     None
+}
+
+/// The type of an identifier bound by an enclosing local scope, read from the
+/// declaration in scope at `node` itself rather than from the first
+/// declaration of that name anywhere in the file. `None` when no local scope
+/// binds it, or when the binding's type is not written down here — the caller
+/// then falls back to the by-name lookup.
+///
+/// Generic arguments are stripped for the same reason as the by-name branch
+/// of [`infer_ident_type`].
+fn infer_bound_local_type(
+    node: Node<'_>,
+    bytes: &[u8],
+    deps: &impl InferDeps,
+    uri: &Url,
+    depth: usize,
+) -> Option<(String, Url)> {
+    let (type_name, declaring_uri) = match local_binding_at(node, bytes) {
+        LocalBinding::Annotated { declared_type } => {
+            (declared_type.utf8_text_owned(bytes)?, uri.clone())
+        }
+        LocalBinding::Initialized { initializer } => {
+            infer_expr_type_at_depth(initializer, bytes, deps, uri, depth + 1)?
+        }
+        LocalBinding::Untyped | LocalBinding::NotLocal => return None,
+    };
+    let type_name = type_name.dotted_ident_prefix();
+    (!type_name.is_empty()).then_some((type_name, declaring_uri))
 }
 
 /// Resolve the type of a `this_expression`.
