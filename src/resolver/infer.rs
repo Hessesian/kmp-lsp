@@ -172,12 +172,12 @@ pub(crate) fn infer_field_chain_type(
     // the type it narrows to — the un-narrowed declared type would send the
     // field lookup below down the wrong, far more collision-prone bare-name
     // class (see `smart_cast_narrowed_type` doc comment).
-    let (narrowed_prefix_len, mut current) = 'narrowed: {
+    let (narrowed_prefix_len, mut current, root_anchor_uri) = 'narrowed: {
         if let Some((point, source)) = cst_point {
             if let Some((narrowed_type, prefix_len)) =
                 enclosing_smart_cast_type(point, segments, source)
             {
-                break 'narrowed (prefix_len, narrowed_type);
+                break 'narrowed (prefix_len, narrowed_type, uri.clone());
             }
         }
         // No prefix is smart-cast-narrowed — fall back to the root's plain
@@ -186,15 +186,21 @@ pub(crate) fn infer_field_chain_type(
         // in a *different* function — see `LocalBinding`) before the
         // line-scanning smart-cast check and the unscoped whole-file scan.
         let root = segments.first()?;
-        let declared_type = match cst_point {
+        let (declared_type, anchor_uri) = match cst_point {
             Some((point, source)) => infer_local_type_at(root, point, source, indexer, uri)
-                .map(|(type_name, _declaring_uri)| type_name)
-                .or_else(|| smart_cast_narrowed_type(indexer, root, uri, line, None))
-                .or_else(|| infer_variable_type(indexer, root, uri))?,
+                .or_else(|| {
+                    smart_cast_narrowed_type(indexer, root, uri, line, None)
+                        .map(|type_name| (type_name, uri.clone()))
+                })
+                .or_else(|| {
+                    infer_variable_type(indexer, root, uri)
+                        .map(|type_name| (type_name, uri.clone()))
+                })?,
             None => smart_cast_narrowed_type(indexer, root, uri, line, None)
-                .or_else(|| infer_variable_type(indexer, root, uri))?,
+                .or_else(|| infer_variable_type(indexer, root, uri))
+                .map(|type_name| (type_name, uri.clone()))?,
         };
-        (1, declared_type)
+        (1, declared_type, anchor_uri)
     };
     // The file whose imports/package govern the *next* lookup's reachability.
     // Starts as the caller's own file (correct for the root: its declared type
@@ -204,7 +210,7 @@ pub(crate) fn infer_field_chain_type(
     // original caller's (see `find_field_type_in_class`). A *qualified*
     // narrowed type (`Event.OverdraftInput`) carries its own reachability
     // signal, resolved here up front.
-    let mut reachability_uri = declaring_uri_for_type(indexer, &current, uri);
+    let mut reachability_uri = declaring_uri_for_type(indexer, &current, &root_anchor_uri);
     let mut leaf_raw = current.clone();
     for field in &segments[narrowed_prefix_len..] {
         // Reduce the running type to a bare class name for the field lookup:

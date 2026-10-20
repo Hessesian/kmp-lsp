@@ -1163,12 +1163,12 @@ enum class Size {
 ";
 
 fn missing_branch_messages(main_source: &str) -> Vec<String> {
-    let idx = setup(&[
+    let indexer = setup(&[
         ("/Color.kt", ENUM_SRC),
         ("/Size.kt", SIZE_SRC),
         ("/main.kt", main_source),
     ]);
-    when_diagnostics(&idx, &uri("/main.kt"))
+    when_diagnostics(&indexer, &uri("/main.kt"))
         .into_iter()
         .map(|diagnostic| diagnostic.message)
         .collect()
@@ -1238,6 +1238,39 @@ fun handle(holder: First) {
     assert!(
         messages[0].contains("GREEN") && !messages[0].contains("LARGE"),
         "chain root is the First parameter, not the later Second local: {}",
+        messages[0]
+    );
+}
+
+/// An unannotated chain root is anchored on the file its inferred type was
+/// written in, so a bare `Holder` returned by an imported function does not
+/// resolve to a same-named class in the caller's own package.
+#[test]
+fn diagnostics_field_chain_root_inferred_type_ignores_homonymous_class() {
+    let indexer = setup(&[
+        ("/Color.kt", ENUM_SRC),
+        ("/Size.kt", SIZE_SRC),
+        (
+            "/decoy/Holder.kt",
+            "package app\nimport Size\nclass Holder(val shade: Size)\n",
+        ),
+        (
+            "/real/Holder.kt",
+            "package real\nimport Color\nclass Holder(val shade: Color)\nfun makeHolder(): Holder = Holder(Color.RED)\n",
+        ),
+        (
+            "/main.kt",
+            "package app\nimport Color\nimport real.makeHolder\nfun handle() {\n    val holder = makeHolder()\n    when (holder.shade) {\n        Color.RED -> {}\n    }\n}\n",
+        ),
+    ]);
+    let messages: Vec<String> = when_diagnostics(&indexer, &uri("/main.kt"))
+        .into_iter()
+        .map(|diagnostic| diagnostic.message)
+        .collect();
+    assert_eq!(messages.len(), 1, "expected one diagnostic: {messages:?}");
+    assert!(
+        messages[0].contains("GREEN") && !messages[0].contains("LARGE"),
+        "shade is real.Holder's Color, not decoy.Holder's Size: {}",
         messages[0]
     );
 }
