@@ -327,6 +327,9 @@ pub(crate) const KIND_TYPE_MODIFIERS: &str = "type_modifiers";
 // ─── Kotlin property / navigation / call node kinds ──────────────────────────
 pub(crate) const KIND_PROP_DECL: &str = "property_declaration";
 pub(crate) const KIND_PROP_DELEGATE: &str = "property_delegate";
+pub(crate) const KIND_ELVIS_EXPR: &str = "elvis_expression";
+/// `return`, `throw`, `break`, `continue` — an expression of type `Nothing`.
+pub(crate) const KIND_JUMP_EXPR: &str = "jump_expression";
 pub(crate) const KIND_TYPE_ALIAS: &str = "type_alias";
 pub(crate) const KIND_VAR_DECL: &str = "variable_declaration";
 pub(crate) const KIND_MULTI_VAR_DECL: &str = "multi_variable_declaration";

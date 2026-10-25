@@ -196,9 +196,20 @@ fn additive_no_hint() {
     assert_eq!(infer("a + b"), None);
 }
 
+/// Elvis is typed only when its left side is: `a` is unknown here.
 #[test]
-fn elvis_no_hint() {
+fn elvis_with_an_untypable_left_side_no_hint() {
     assert_eq!(infer("a ?: 0"), None);
+}
+
+#[test]
+fn elvis_with_matching_sides_takes_that_type() {
+    assert_eq!(infer(r#""a" ?: "b""#).as_deref(), Some("String"));
+}
+
+#[test]
+fn elvis_with_mismatched_sides_no_hint() {
+    assert_eq!(infer(r#""a" ?: 0"#), None);
 }
 
 #[test]

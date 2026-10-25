@@ -37,10 +37,11 @@ use crate::indexer::NodeExt;
 use crate::queries::{
     KIND_ADDITIVE_EXPR, KIND_AS_EXPR, KIND_BOOLEAN_LITERAL, KIND_CALL_EXPR, KIND_CHARACTER_LITERAL,
     KIND_CHECK_EXPR, KIND_COMPARISON_EXPR, KIND_CONJUNCTION_EXPR, KIND_CONTROL_STRUCTURE_BODY,
-    KIND_DISJUNCTION_EXPR, KIND_ELSE, KIND_IF_EXPR, KIND_INTEGER_LITERAL, KIND_LONG_LITERAL,
-    KIND_MULTILINE_STRING_LITERAL, KIND_MULTIPLICATIVE_EXPR, KIND_NAV_EXPR, KIND_NAV_SUFFIX,
-    KIND_NULL_LITERAL, KIND_PARENTHESIZED_EXPR, KIND_PREFIX_EXPR, KIND_RANGE_EXPR,
-    KIND_REAL_LITERAL, KIND_SIMPLE_IDENT, KIND_STRING_LITERAL, KIND_THIS_EXPR, KIND_TYPE_IDENT,
+    KIND_DISJUNCTION_EXPR, KIND_ELSE, KIND_ELVIS_EXPR, KIND_IF_EXPR, KIND_INTEGER_LITERAL,
+    KIND_JUMP_EXPR, KIND_LONG_LITERAL, KIND_MULTILINE_STRING_LITERAL, KIND_MULTIPLICATIVE_EXPR,
+    KIND_NAV_EXPR, KIND_NAV_SUFFIX, KIND_NULL_LITERAL, KIND_PARENTHESIZED_EXPR, KIND_PREFIX_EXPR,
+    KIND_RANGE_EXPR, KIND_REAL_LITERAL, KIND_SIMPLE_IDENT, KIND_STRING_LITERAL, KIND_THIS_EXPR,
+    KIND_TYPE_IDENT,
 };
 use crate::StrExt as _;
 
@@ -151,8 +152,47 @@ fn infer_expr_type_at_depth(
             infer_parenthesized_expr_type(node, bytes, deps, uri, depth)
                 .map(|type_name| (type_name, uri.clone()))
         }
+        KIND_ELVIS_EXPR => infer_elvis_type(node, bytes, deps, uri, depth),
         _ => None,
     }
+}
+
+/// `left ?: right` is the non-null type of `left` when `right` cannot
+/// complete normally (`Nothing`) or has that same type. Otherwise it is their
+/// common supertype, which this engine does not compute.
+fn infer_elvis_type(
+    node: Node<'_>,
+    bytes: &[u8],
+    deps: &impl InferDeps,
+    uri: &Url,
+    depth: usize,
+) -> Option<(String, Url)> {
+    let mut cursor = node.walk();
+    let mut operands = node.named_children(&mut cursor);
+    let left = operands.next()?;
+    let right = operands.last()?;
+    let (left_type, left_uri) = infer_initializer_type(left, bytes, deps, uri, depth + 1)?;
+    let non_null_left = left_type.strip_nullable().to_owned();
+    let right_agrees = if is_nothing_typed(right, bytes) {
+        true
+    } else {
+        let (right_type, _) = infer_expr_type_at_depth(right, bytes, deps, uri, depth + 1)?;
+        right_type.bare_type_name() == non_null_left.bare_type_name()
+    };
+    right_agrees.then_some((non_null_left, left_uri))
+}
+
+/// `return`/`throw`/`break`/`continue`, or a call to `error(..)` / `TODO(..)`.
+fn is_nothing_typed(expression: Node<'_>, bytes: &[u8]) -> bool {
+    if expression.kind() == KIND_JUMP_EXPR {
+        return true;
+    }
+    let is_call = expression.kind() == KIND_CALL_EXPR;
+    let callee = expression
+        .named_child(0)
+        .filter(|callee| callee.kind() == KIND_SIMPLE_IDENT)
+        .and_then(|callee| callee.utf8_text(bytes).ok());
+    is_call && matches!(callee, Some("error" | "TODO"))
 }
 
 // ─── private helpers ──────────────────────────────────────────────────────────
@@ -332,6 +372,7 @@ fn infer_initializer_type(
             depth,
             DeclaredTypeForm::AsWritten,
         ),
+        KIND_ELVIS_EXPR => infer_elvis_type(initializer, bytes, deps, uri, depth),
         _ => infer_expr_type_at_depth(initializer, bytes, deps, uri, depth),
     }
 }

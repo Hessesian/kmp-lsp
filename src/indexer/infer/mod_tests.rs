@@ -641,3 +641,61 @@ fn local_type_at_reads_an_annotated_type_past_its_annotation() {
                   fun use(item: @Ann Apple) { item }\n";
     assert_eq!(local_type_at(source, "item", 1).as_deref(), Some("Apple"));
 }
+
+// ─── elvis initializers ──────────────────────────────────────────────────────
+
+/// `val item = pick() ?: <rhs>` in `second`, with a same-named `Banana`
+/// parameter in `first`; the type `expr_type` gives the use of `item`.
+fn elvis_local_type(right_side: &str) -> Option<String> {
+    let source = format!(
+        "class Apple\n\
+         class Banana\n\
+         fun pick(): Apple? = null\n\
+         fun first(item: Banana) = item\n\
+         fun second() {{\n\
+         \x20   val item = pick() ?: {right_side}\n\
+         \x20   item\n\
+         }}\n"
+    );
+    identifier_type(&source, "item", 3)
+}
+
+#[test]
+fn elvis_with_a_jump_takes_the_non_null_left_type() {
+    assert_eq!(elvis_local_type("return").as_deref(), Some("Apple"));
+    assert_eq!(
+        elvis_local_type("throw IllegalStateException()").as_deref(),
+        Some("Apple")
+    );
+}
+
+#[test]
+fn elvis_with_error_or_todo_takes_the_non_null_left_type() {
+    assert_eq!(
+        elvis_local_type("error(\"none\")").as_deref(),
+        Some("Apple")
+    );
+    assert_eq!(elvis_local_type("TODO()").as_deref(), Some("Apple"));
+}
+
+#[test]
+fn elvis_with_a_same_typed_default_takes_that_type() {
+    assert_eq!(elvis_local_type("Apple()").as_deref(), Some("Apple"));
+}
+
+/// The result is the common supertype, which this engine does not compute.
+#[test]
+fn elvis_with_a_differently_typed_default_is_unknown() {
+    assert_eq!(elvis_local_type("Banana()"), None);
+}
+
+#[test]
+fn elvis_initializer_keeps_type_arguments_and_drops_nullability() {
+    let source = "class Apple\n\
+                  fun first(copy: Apple) {}\n\
+                  fun use(items: List<Apple>?) { val copy = items ?: return; copy }\n";
+    assert_eq!(
+        local_type_at(source, "copy", 2).as_deref(),
+        Some("List<Apple>")
+    );
+}
