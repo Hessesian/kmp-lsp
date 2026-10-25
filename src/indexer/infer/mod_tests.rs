@@ -700,6 +700,62 @@ fn elvis_initializer_keeps_type_arguments_and_drops_nullability() {
     );
 }
 
+// ─── delegated locals ────────────────────────────────────────────────────────
+
+const STATE_DECLARATIONS: &str = "class Apple\n\
+     class Banana\n\
+     interface State<out T> { val value: T }\n\
+     interface MutableState<T> : State<T>\n\
+     class StateFlow<T>\n\
+     fun <T> StateFlow<T>.collectAsStateWithLifecycle(): State<T> = TODO()\n\
+     fun appleState(): MutableState<Apple> = TODO()\n\
+     class Model { val uiState: StateFlow<Apple> = TODO() }\n\
+     fun first(item: Banana) = item\n";
+
+#[test]
+fn expr_type_unwraps_a_state_delegate() {
+    let source = format!(
+        "{STATE_DECLARATIONS}\
+         fun second(model: Model) {{\n\
+         \x20   val item by model.uiState.collectAsStateWithLifecycle()\n\
+         \x20   item\n\
+         }}\n"
+    );
+    assert_eq!(
+        identifier_type(&source, "item", 3).as_deref(),
+        Some("Apple")
+    );
+}
+
+#[test]
+fn expr_type_unwraps_a_mutable_state_delegate() {
+    let source = format!(
+        "{STATE_DECLARATIONS}\
+         fun second() {{\n\
+         \x20   var item by appleState()\n\
+         \x20   item\n\
+         }}\n"
+    );
+    assert_eq!(
+        identifier_type(&source, "item", 3).as_deref(),
+        Some("Apple")
+    );
+}
+
+/// A delegate whose `getValue` type this engine does not know stays unknown,
+/// never borrowing `first`'s `item: Banana`.
+#[test]
+fn expr_type_leaves_an_unknown_delegate_untyped() {
+    let source = format!(
+        "{STATE_DECLARATIONS}\
+         fun second() {{\n\
+         \x20   val item by mystery()\n\
+         \x20   item\n\
+         }}\n"
+    );
+    assert_eq!(identifier_type(&source, "item", 3), None);
+}
+
 #[test]
 fn expr_type_types_a_when_subject_binding_from_its_subject() {
     let source = "class Apple\n\

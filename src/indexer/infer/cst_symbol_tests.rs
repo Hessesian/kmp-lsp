@@ -1115,6 +1115,7 @@ fn binding_of(source: &str, name: &str, occurrence: usize) -> String {
         LocalBinding::Initialized { initializer } => {
             format!("Initialized({})", text_of(initializer))
         }
+        LocalBinding::Delegated { delegate } => format!("Delegated({})", text_of(delegate)),
         LocalBinding::Untyped => "Untyped".to_owned(),
         LocalBinding::NotLocal => "NotLocal".to_owned(),
     }
@@ -1201,12 +1202,19 @@ fn untyped_binders_shadow_an_outer_annotated_parameter() {
                         \x20   item\n\
                         }\n";
     assert_eq!(binding_of(destructured, "item", 2), "Untyped");
+}
 
+/// A delegated local shadows the outer parameter and is typed by its delegate.
+#[test]
+fn delegated_local_binds_to_its_delegate() {
     let delegated = "fun use(item: Apple) {\n\
                      \x20   val item by lazy { Banana() }\n\
                      \x20   item\n\
                      }\n";
-    assert_eq!(binding_of(delegated, "item", 2), "Untyped");
+    assert_eq!(
+        binding_of(delegated, "item", 2),
+        "Delegated(lazy { Banana() })"
+    );
 }
 
 #[test]
@@ -1328,6 +1336,11 @@ fn declaring_identifier(binding: LocalBinding<'_>) -> Option<Node<'_>> {
             .find(|node| node.kind() == KIND_SIMPLE_IDENT)
         }
         LocalBinding::Initialized { initializer } => initializer
+            .parent()?
+            .first_child_of_kind(KIND_VAR_DECL)?
+            .first_child_of_kind(KIND_SIMPLE_IDENT),
+        LocalBinding::Delegated { delegate } => delegate
+            .parent()?
             .parent()?
             .first_child_of_kind(KIND_VAR_DECL)?
             .first_child_of_kind(KIND_SIMPLE_IDENT),

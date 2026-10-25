@@ -48,6 +48,7 @@ use crate::StrExt as _;
 use super::chain::{resolve_field_type_on, resolve_method_return_type_on};
 use super::cst_symbol::{local_binding_at, local_binding_of, LocalBinding};
 use super::deps::InferDeps;
+use super::type_subst::first_type_arg_raw;
 
 // ─── public API ───────────────────────────────────────────────────────────────
 
@@ -338,6 +339,9 @@ fn infer_binding_type(
         LocalBinding::Initialized { initializer } => {
             infer_initializer_type(initializer, bytes, deps, uri, depth + 1)
         }
+        LocalBinding::Delegated { delegate } => {
+            infer_delegated_value_type(delegate, bytes, deps, uri, depth + 1)
+        }
         LocalBinding::Untyped => None,
         LocalBinding::NotLocal => return BindingType::NotLocal,
     };
@@ -348,6 +352,28 @@ fn infer_binding_type(
         },
         None => BindingType::LocalUnknown,
     }
+}
+
+/// The type a `by <delegate>` local reads as, for the delegates whose
+/// `getValue` returns their own type argument: Compose `State`/`MutableState`
+/// (`by remember { mutableStateOf(..) }`, `by flow.collectAsState()`) and
+/// `Lazy` (`by lazy { .. }`). Any other delegate is unknown.
+fn infer_delegated_value_type(
+    delegate: Node<'_>,
+    bytes: &[u8],
+    deps: &impl InferDeps,
+    uri: &Url,
+    depth: usize,
+) -> Option<(String, Url)> {
+    let (delegate_type, declaring_uri) =
+        infer_expr_type_at_depth(delegate, bytes, deps, uri, depth)?;
+    let holder = delegate_type.bare_type_name()?;
+    let returns_its_type_argument =
+        matches!(holder.last_segment(), "State" | "MutableState" | "Lazy");
+    if !returns_its_type_argument {
+        return None;
+    }
+    first_type_arg_raw(&delegate_type).map(|value_type| (value_type, declaring_uri))
 }
 
 /// The type of a local's initializer, keeping `?` and type arguments where

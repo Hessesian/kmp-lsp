@@ -19,9 +19,9 @@ use crate::queries::{
     KIND_FINALLY_BLOCK, KIND_FOR_STMT, KIND_FUN_DECL, KIND_FUN_VALUE_PARAMS, KIND_IDENTIFIER,
     KIND_IMPORT_HEADER, KIND_LAMBDA_LIT, KIND_LAMBDA_PARAMS, KIND_MULTI_VAR_DECL, KIND_NAV_EXPR,
     KIND_NAV_SUFFIX, KIND_OBJECT_DECL, KIND_PARAMETER, KIND_PARAM_WITH_OPTIONAL_TYPE,
-    KIND_PRIMARY_CTOR, KIND_PROP_DECL, KIND_SETTER, KIND_SIMPLE_IDENT, KIND_STATEMENTS,
-    KIND_TRY_EXPR, KIND_TYPE_ALIAS, KIND_TYPE_IDENT, KIND_TYPE_MODIFIERS, KIND_TYPE_PARAM,
-    KIND_VAR_DECL, KIND_WHEN_EXPR, KIND_WHEN_SUBJECT,
+    KIND_PRIMARY_CTOR, KIND_PROP_DECL, KIND_PROP_DELEGATE, KIND_SETTER, KIND_SIMPLE_IDENT,
+    KIND_STATEMENTS, KIND_TRY_EXPR, KIND_TYPE_ALIAS, KIND_TYPE_IDENT, KIND_TYPE_MODIFIERS,
+    KIND_TYPE_PARAM, KIND_VAR_DECL, KIND_WHEN_EXPR, KIND_WHEN_SUBJECT,
 };
 use crate::resolver::api::Definitions;
 use crate::semantic_tokens::is_named_argument_label;
@@ -689,9 +689,12 @@ pub(crate) enum LocalBinding<'tree> {
     Annotated { declared_type: Node<'tree> },
     /// `val name = <initializer>` with no annotation.
     Initialized { initializer: Node<'tree> },
+    /// `val name by <delegate>` with no annotation: the type is what the
+    /// delegate's `getValue` returns, not the delegate's own type.
+    Delegated { delegate: Node<'tree> },
     /// Bound in an enclosing local scope whose type this walk does not read:
-    /// a lambda parameter, `for` variable, destructured component, `when`
-    /// subject, or a delegated/uninitialised property.
+    /// an unannotated lambda parameter or `for` variable, a destructured
+    /// component, or an uninitialised property.
     Untyped,
     /// No enclosing local scope binds the name — a member, top-level
     /// declaration, import, or inherited symbol.
@@ -887,11 +890,17 @@ fn property_binding<'tree>(
     if name_identifier.next_named_sibling().is_some() {
         return Some(annotated_binding(name_identifier));
     }
-    let initializer = property
+    if let Some(initializer) = property
         .first_child_of_kind(KIND_EQ)
-        .and_then(|equals| equals.next_named_sibling());
-    Some(match initializer {
-        Some(initializer) => LocalBinding::Initialized { initializer },
+        .and_then(|equals| equals.next_named_sibling())
+    {
+        return Some(LocalBinding::Initialized { initializer });
+    }
+    let delegate = property
+        .first_child_of_kind(KIND_PROP_DELEGATE)
+        .and_then(|property_delegate| property_delegate.named_child(0));
+    Some(match delegate {
+        Some(delegate) => LocalBinding::Delegated { delegate },
         None => LocalBinding::Untyped,
     })
 }
