@@ -1210,6 +1210,12 @@ fn untyped_binders_shadow_an_outer_annotated_parameter() {
 }
 
 #[test]
+fn annotated_lambda_parameter_is_annotated_with_its_declared_type() {
+    let source = "fun use(item: Apple) { mystery { item: Banana? -> item } }\n";
+    assert_eq!(binding_of(source, "item", 2), "Annotated(Banana?)");
+}
+
+#[test]
 fn implicit_it_is_bound_by_its_lambda_not_an_outer_parameter() {
     let source = "fun use(it: Apple, all: List<Banana>) { all.forEach { it } }\n";
     assert_eq!(binding_of(source, "it", 1), "Untyped");

@@ -782,7 +782,7 @@ fn binding_introduced_by<'tree>(
         KIND_CLASS_DECL => constructor_parameter_binding(enclosure, name, bytes),
         KIND_SETTER => parameter_binding(scope, KIND_PARAM_WITH_OPTIONAL_TYPE, name, bytes),
         KIND_CATCH_BLOCK => named_identifier_child(scope, name, bytes).map(annotated_binding),
-        KIND_LAMBDA_LIT => lambda_binds(scope, name, bytes).then_some(LocalBinding::Untyped),
+        KIND_LAMBDA_LIT => lambda_binding(scope, name, bytes),
         KIND_FOR_STMT => {
             let in_loop_body = inner.kind() == KIND_CONTROL_STRUCTURE_BODY;
             let header_binds = [KIND_VAR_DECL, KIND_MULTI_VAR_DECL]
@@ -946,12 +946,17 @@ fn annotated_binding(name_identifier: Node<'_>) -> LocalBinding<'_> {
     }
 }
 
-/// Whether `lambda` binds `name`: one of its explicit parameters, or the
-/// implicit `it` of a lambda that declares none.
-fn lambda_binds(lambda: Node<'_>, name: &str, bytes: &[u8]) -> bool {
+/// The binding `lambda` gives `name`: one of its explicit parameters
+/// (`Annotated` when written `name: Type`), or the implicit `it` of a lambda
+/// that declares none.
+fn lambda_binding<'tree>(
+    lambda: Node<'tree>,
+    name: &str,
+    bytes: &[u8],
+) -> Option<LocalBinding<'tree>> {
     match lambda.first_child_of_kind(KIND_LAMBDA_PARAMS) {
-        Some(parameters) => declares_name_directly(parameters, name, bytes).is_some(),
-        None => name == "it",
+        Some(parameters) => declares_name_directly(parameters, name, bytes).map(annotated_binding),
+        None => (name == "it").then_some(LocalBinding::Untyped),
     }
 }
 
