@@ -194,13 +194,34 @@ fn infer_ident_type(
     uri: &Url,
     depth: usize,
 ) -> Option<(String, Url)> {
+    infer_ident_type_in_form(node, bytes, deps, uri, depth, DeclaredTypeForm::BareName)
+}
+
+/// How [`infer_ident_type_in_form`] reports a type read from a declaration.
+#[derive(Clone, Copy)]
+enum DeclaredTypeForm {
+    /// The bare name (`"List"` for `List<Apple>?`): the expression-type
+    /// consumers look a receiver's type up by exact name.
+    BareName,
+    /// The text as written, for a local's binding type.
+    AsWritten,
+}
+
+fn infer_ident_type_in_form(
+    node: Node<'_>,
+    bytes: &[u8],
+    deps: &impl InferDeps,
+    uri: &Url,
+    depth: usize,
+    form: DeclaredTypeForm,
+) -> Option<(String, Url)> {
     let name = node.utf8_text_owned(bytes)?;
     let start = node.start_position();
     let col = crate::inlay_hints::ts_byte_col_to_utf16(bytes, &[], start.row, start.column);
     if let Some(inferred) = deps.find_contextual_type(&name, uri, start.row, col) {
         return Some((inferred, uri.clone()));
     }
-    let inferred = match infer_binding_type(local_binding_at(node, bytes), bytes, deps, uri, depth)
+    let declared = match infer_binding_type(local_binding_at(node, bytes), bytes, deps, uri, depth)
     {
         BindingType::Typed {
             type_text,
@@ -211,12 +232,12 @@ fn infer_ident_type(
             .find_var_type(&name, uri)
             .map(|type_text| (type_text, uri.clone())),
     };
-    if let Some((type_text, declaring_uri)) = inferred {
-        // The member-classification path downstream does an exact-key lookup
-        // by bare type name: "List<String>" or "Apple?" would find nothing.
-        // Chain inference reads the raw form itself.
-        let type_name = type_text.dotted_ident_prefix();
-        return (!type_name.is_empty()).then_some((type_name, declaring_uri));
+    if let Some((type_text, declaring_uri)) = declared {
+        let type_text = match form {
+            DeclaredTypeForm::BareName => type_text.bare_type_name()?,
+            DeclaredTypeForm::AsWritten => type_text,
+        };
+        return Some((type_text, declaring_uri));
     }
     if name.starts_with_uppercase() && deps.has_type_definition(&name) {
         return Some((name, uri.clone()));
@@ -269,7 +290,7 @@ fn infer_binding_type(
             .utf8_text_owned(bytes)
             .map(|type_text| (type_text, uri.clone())),
         LocalBinding::Initialized { initializer } => {
-            infer_expr_type_at_depth(initializer, bytes, deps, uri, depth + 1)
+            infer_initializer_type(initializer, bytes, deps, uri, depth + 1)
         }
         LocalBinding::Untyped => None,
         LocalBinding::NotLocal => return BindingType::NotLocal,
@@ -280,6 +301,32 @@ fn infer_binding_type(
             declaring_uri,
         },
         None => BindingType::LocalUnknown,
+    }
+}
+
+/// The type of a local's initializer, keeping `?` and type arguments where
+/// the initializer names another binding (`val copy = items`).
+fn infer_initializer_type(
+    initializer: Node<'_>,
+    bytes: &[u8],
+    deps: &impl InferDeps,
+    uri: &Url,
+    depth: usize,
+) -> Option<(String, Url)> {
+    if depth >= crate::util::MAX_CST_DESCENT_DEPTH {
+        crate::util::report_cst_depth_exceeded!("infer_initializer_type", initializer);
+        return None;
+    }
+    match initializer.kind() {
+        KIND_SIMPLE_IDENT => infer_ident_type_in_form(
+            initializer,
+            bytes,
+            deps,
+            uri,
+            depth,
+            DeclaredTypeForm::AsWritten,
+        ),
+        _ => infer_expr_type_at_depth(initializer, bytes, deps, uri, depth),
     }
 }
 

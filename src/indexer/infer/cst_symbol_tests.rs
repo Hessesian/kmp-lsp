@@ -1216,6 +1216,18 @@ fn annotated_lambda_parameter_is_annotated_with_its_declared_type() {
 }
 
 #[test]
+fn annotated_for_variable_is_annotated_with_its_declared_type() {
+    let source = "fun use(item: Apple, all: List<Banana>) { for (item: Banana in all) { item } }\n";
+    assert_eq!(binding_of(source, "item", 2), "Annotated(Banana)");
+}
+
+#[test]
+fn annotated_parameter_type_skips_its_type_annotation() {
+    let source = "fun use(item: @Ann Apple?) { item }\n";
+    assert_eq!(binding_of(source, "item", 1), "Annotated(Apple?)");
+}
+
+#[test]
 fn implicit_it_is_bound_by_its_lambda_not_an_outer_parameter() {
     let source = "fun use(it: Apple, all: List<Banana>) { all.forEach { it } }\n";
     assert_eq!(binding_of(source, "it", 1), "Untyped");
@@ -1300,7 +1312,12 @@ fn plain_constructor_parameter_is_out_of_scope_in_member_functions() {
 /// The name identifier of the declaration a typed binding came from.
 fn declaring_identifier(binding: LocalBinding<'_>) -> Option<Node<'_>> {
     match binding {
-        LocalBinding::Annotated { declared_type } => declared_type.prev_named_sibling(),
+        LocalBinding::Annotated { declared_type } => {
+            std::iter::successors(declared_type.prev_named_sibling(), |node| {
+                node.prev_named_sibling()
+            })
+            .find(|node| node.kind() == KIND_SIMPLE_IDENT)
+        }
         LocalBinding::Initialized { initializer } => initializer
             .parent()?
             .first_child_of_kind(KIND_VAR_DECL)?
@@ -1391,6 +1408,13 @@ fn local_binding_agrees_with_rename_scope_on_sibling_for_when_and_catch() {
     assert_binding_agrees_with_rename_scope(when_subjects, "item", 1);
     assert_binding_agrees_with_rename_scope(when_subjects, "item", 3);
 
+    let annotated_for_loops = "fun use(apples: List<Apple>, bananas: List<Banana>) {\n\
+                               \x20   for (item: Apple in apples) { item }\n\
+                               \x20   for (item: Banana in bananas) { item }\n\
+                               }\n";
+    assert_binding_agrees_with_rename_scope(annotated_for_loops, "item", 1);
+    assert_binding_agrees_with_rename_scope(annotated_for_loops, "item", 3);
+
     let catches = "fun use() {\n\
                    \x20   try {} catch (item: IllegalStateException) { item }\n\
                    \x20   try {} catch (item: IllegalArgumentException) { item }\n\
@@ -1416,6 +1440,18 @@ fn local_binding_agrees_with_rename_scope_on_a_same_named_parameter_in_a_sibling
                   fun second(item: Banana) { item }\n";
     assert_binding_agrees_with_rename_scope(source, "item", 1);
     assert_binding_agrees_with_rename_scope(source, "item", 3);
+}
+
+#[test]
+fn local_binding_agrees_with_rename_scope_on_annotated_lambda_parameters() {
+    let source = "fun use(item: Apple) {\n\
+                  \x20   mystery { item: Banana -> item }\n\
+                  \x20   mystery { item: Cherry -> item }\n\
+                  \x20   item\n\
+                  }\n";
+    assert_binding_agrees_with_rename_scope(source, "item", 2);
+    assert_binding_agrees_with_rename_scope(source, "item", 4);
+    assert_binding_agrees_with_rename_scope(source, "item", 5);
 }
 
 #[test]

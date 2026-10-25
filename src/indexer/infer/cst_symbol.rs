@@ -20,8 +20,8 @@ use crate::queries::{
     KIND_IMPORT_HEADER, KIND_LAMBDA_LIT, KIND_LAMBDA_PARAMS, KIND_MULTI_VAR_DECL, KIND_NAV_EXPR,
     KIND_NAV_SUFFIX, KIND_OBJECT_DECL, KIND_PARAMETER, KIND_PARAM_WITH_OPTIONAL_TYPE,
     KIND_PRIMARY_CTOR, KIND_PROP_DECL, KIND_SETTER, KIND_SIMPLE_IDENT, KIND_STATEMENTS,
-    KIND_TRY_EXPR, KIND_TYPE_ALIAS, KIND_TYPE_IDENT, KIND_TYPE_PARAM, KIND_VAR_DECL,
-    KIND_WHEN_EXPR, KIND_WHEN_SUBJECT,
+    KIND_TRY_EXPR, KIND_TYPE_ALIAS, KIND_TYPE_IDENT, KIND_TYPE_MODIFIERS, KIND_TYPE_PARAM,
+    KIND_VAR_DECL, KIND_WHEN_EXPR, KIND_WHEN_SUBJECT,
 };
 use crate::resolver::api::Definitions;
 use crate::semantic_tokens::is_named_argument_label;
@@ -784,12 +784,14 @@ fn binding_introduced_by<'tree>(
         KIND_CATCH_BLOCK => named_identifier_child(scope, name, bytes).map(annotated_binding),
         KIND_LAMBDA_LIT => lambda_binding(scope, name, bytes),
         KIND_FOR_STMT => {
-            let in_loop_body = inner.kind() == KIND_CONTROL_STRUCTURE_BODY;
-            let header_binds = [KIND_VAR_DECL, KIND_MULTI_VAR_DECL]
+            if inner.kind() != KIND_CONTROL_STRUCTURE_BODY {
+                return None;
+            }
+            [KIND_VAR_DECL, KIND_MULTI_VAR_DECL]
                 .into_iter()
                 .filter_map(|kind| scope.first_child_of_kind(kind))
-                .any(|declaration| declares_name_directly(declaration, name, bytes).is_some());
-            (in_loop_body && header_binds).then_some(LocalBinding::Untyped)
+                .find_map(|declaration| declares_name_directly(declaration, name, bytes))
+                .map(annotated_binding)
         }
         KIND_WHEN_EXPR => scope
             .first_child_of_kind(KIND_WHEN_SUBJECT)
@@ -938,9 +940,13 @@ fn named_identifier_child<'tree>(
 }
 
 /// In every `name: Type` declaration shape the type is the named sibling
-/// right after the name.
+/// after the name, past any annotations written on the type (`@Ann Type`).
 fn annotated_binding(name_identifier: Node<'_>) -> LocalBinding<'_> {
-    match name_identifier.next_named_sibling() {
+    let declared_type = std::iter::successors(name_identifier.next_named_sibling(), |node| {
+        node.next_named_sibling()
+    })
+    .find(|node| node.kind() != KIND_TYPE_MODIFIERS);
+    match declared_type {
         Some(declared_type) => LocalBinding::Annotated { declared_type },
         None => LocalBinding::Untyped,
     }

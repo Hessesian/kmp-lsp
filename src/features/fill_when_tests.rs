@@ -1316,10 +1316,11 @@ fun handle() {
     );
 }
 
-/// The common real-world shape: `forEach`'s parameter must not take another
-/// function's same-named `value: Size` (it used to report SMALL/LARGE).
+/// The common real-world shape: `forEach`'s parameter is typed from its
+/// receiver, never from another function's same-named `value: Size` (it used
+/// to report SMALL/LARGE).
 #[test]
-fn diagnostics_for_each_lambda_parameter_subject_borrows_no_sibling_type() {
+fn diagnostics_for_each_lambda_parameter_subject_is_typed_from_its_receiver() {
     let messages = missing_branch_messages(
         "\
 fun other(value: Size) {}
@@ -1332,8 +1333,56 @@ fun handle(colors: List<Color>) {
 }
 ",
     );
+    assert_eq!(messages.len(), 1, "expected one diagnostic: {messages:?}");
     assert!(
-        messages.iter().all(|message| !message.contains("LARGE")),
-        "subject is a Color, never other()'s Size: {messages:?}"
+        messages[0].contains("GREEN") && !messages[0].contains("LARGE"),
+        "subject is a Color, never other()'s Size: {}",
+        messages[0]
+    );
+}
+
+/// A type annotation (`@Ann Color`) is not the type.
+#[test]
+fn diagnostics_annotated_parameter_subject_is_typed_past_its_annotation() {
+    let messages = missing_branch_messages(
+        "\
+annotation class Ann
+fun other(value: Size) {}
+fun handle(value: @Ann Color) {
+    when (value) {
+        Color.RED -> {}
+    }
+}
+",
+    );
+    assert_eq!(messages.len(), 1, "expected one diagnostic: {messages:?}");
+    assert!(
+        messages[0].contains("GREEN") && !messages[0].contains("LARGE"),
+        "subject is the annotated Color parameter: {}",
+        messages[0]
+    );
+}
+
+/// The same for the root of a field-chain subject.
+#[test]
+fn diagnostics_annotated_chain_root_is_typed_past_its_annotation() {
+    let messages = missing_branch_messages(
+        "\
+annotation class Ann
+class First(val shade: Color)
+class Second(val shade: Size)
+fun other(holder: Second) {}
+fun handle(holder: @Ann First) {
+    when (holder.shade) {
+        Color.RED -> {}
+    }
+}
+",
+    );
+    assert_eq!(messages.len(), 1, "expected one diagnostic: {messages:?}");
+    assert!(
+        messages[0].contains("GREEN") && !messages[0].contains("LARGE"),
+        "chain root is the annotated First parameter: {}",
+        messages[0]
     );
 }

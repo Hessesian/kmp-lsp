@@ -32,8 +32,10 @@
 //! - `cst_symbol` (`classify_cursor`, `resolve_identity`, navigation helpers) — the symbol-identity
 //!   navigation family's own facade (design doc step 6, already CST-first with string+rg
 //!   fallback); intentionally a peer of `CstQuery`, not a submodule of it. Its
-//!   `local_binding_at` is what `expr_type` asks for an identifier's declaration in scope; only
-//!   a name no local binds (`BindingType::NotLocal`) reaches the by-name `find_var_type`.
+//!   `local_binding_at` is what `expr_type` asks for an identifier's declaration in scope; on
+//!   that path only a name no local binds (`BindingType::NotLocal`) reaches the by-name
+//!   `find_var_type`. `chain.rs`, `cst_lambda.rs` and `type_subst.rs` still call
+//!   `find_var_type` directly and can pick a same-named declaration elsewhere.
 //! - `args`, `type_subst`, `lambda` — low-level primitives (`extract_first_arg`,
 //!   generic-substitution string ops, lambda-type-string decomposition) consumed mostly *by* the
 //!   CST engine's own submodules (`cst_lambda.rs`, `chain.rs`); the one exception is

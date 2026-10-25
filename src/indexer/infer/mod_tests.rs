@@ -622,3 +622,22 @@ fn local_type_at_keeps_nullability_and_type_arguments() {
         Some("List<Apple>")
     );
 }
+
+#[test]
+fn local_type_at_keeps_type_arguments_through_an_identifier_initializer() {
+    let source = "class Apple\n\
+                  fun first(copy: Apple) {}\n\
+                  fun use(items: List<Apple>?) { val copy = items; copy }\n";
+    assert_eq!(
+        local_type_at(source, "copy", 2).as_deref(),
+        Some("List<Apple>?")
+    );
+}
+
+#[test]
+fn local_type_at_reads_an_annotated_type_past_its_annotation() {
+    let source = "annotation class Ann\n\
+                  class Apple\n\
+                  fun use(item: @Ann Apple) { item }\n";
+    assert_eq!(local_type_at(source, "item", 1).as_deref(), Some("Apple"));
+}

@@ -187,20 +187,24 @@ pub(crate) fn infer_field_chain_type(
         // line-scanning smart-cast check; the unscoped whole-file scan only
         // runs for a root no local binds.
         let root = segments.first()?;
-        let binding = match cst_point {
-            Some((point, source)) => infer_local_type_at(root, point, source, indexer, uri),
-            None => BindingType::NotLocal,
-        };
-        let (declared_type, anchor_uri) = match binding {
-            BindingType::Typed {
+        // `None`: no syntax tree to ask, so whether a local binds the root is
+        // unknown and only the line-based lookups can answer.
+        let scoped_binding: Option<BindingType> =
+            cst_point.map(|(point, source)| infer_local_type_at(root, point, source, indexer, uri));
+        let (declared_type, anchor_uri) = match scoped_binding {
+            Some(BindingType::Typed {
                 type_text,
                 declaring_uri,
-            } => (type_text.dotted_ident_prefix(), declaring_uri),
-            BindingType::LocalUnknown => smart_cast_narrowed_type(indexer, root, uri, line, None)
-                .map(|type_name| (type_name, uri.clone()))?,
-            BindingType::NotLocal => smart_cast_narrowed_type(indexer, root, uri, line, None)
-                .or_else(|| infer_variable_type(indexer, root, uri))
-                .map(|type_name| (type_name, uri.clone()))?,
+            }) => (type_text.bare_type_name()?, declaring_uri),
+            Some(BindingType::LocalUnknown) => {
+                smart_cast_narrowed_type(indexer, root, uri, line, None)
+                    .map(|type_name| (type_name, uri.clone()))?
+            }
+            Some(BindingType::NotLocal) | None => {
+                smart_cast_narrowed_type(indexer, root, uri, line, None)
+                    .or_else(|| infer_variable_type(indexer, root, uri))
+                    .map(|type_name| (type_name, uri.clone()))?
+            }
         };
         (1, declared_type, anchor_uri)
     };
