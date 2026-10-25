@@ -200,20 +200,23 @@ fn infer_ident_type(
     if let Some(inferred) = deps.find_contextual_type(&name, uri, start.row, col) {
         return Some((inferred, uri.clone()));
     }
-    let binding = local_binding_at(node, bytes);
-    if let Some(bound) = infer_binding_type(binding, bytes, deps, uri, depth) {
-        return Some(bound);
-    }
-    if let Some(inferred) = deps.find_var_type(&name, uri) {
-        // Strip generic parameters from the raw type (e.g. "List<String>" → "List",
-        // "Outer.Inner<T>" → "Outer.Inner") to match the output of the old
-        // `infer_variable_type` (keep_generics=false).  The downstream member-
-        // classification path does an exact-key HashMap lookup via
-        // `definition_locations(receiver_leaf)` — "List<String>" would find nothing.
-        // `dotted_ident_prefix` stops at `<` while preserving dotted type names.
-        // Chain inference (`chain.rs`, `type_subst.rs`) still gets the raw form via
-        // `find_var_type` directly — this strip is local to `infer_ident_type` only.
-        return Some((inferred.dotted_ident_prefix(), uri.clone()));
+    let inferred = match infer_binding_type(local_binding_at(node, bytes), bytes, deps, uri, depth)
+    {
+        BindingType::Typed {
+            type_text,
+            declaring_uri,
+        } => Some((type_text, declaring_uri)),
+        BindingType::LocalUnknown => return None,
+        BindingType::NotLocal => deps
+            .find_var_type(&name, uri)
+            .map(|type_text| (type_text, uri.clone())),
+    };
+    if let Some((type_text, declaring_uri)) = inferred {
+        // The member-classification path downstream does an exact-key lookup
+        // by bare type name: "List<String>" or "Apple?" would find nothing.
+        // Chain inference reads the raw form itself.
+        let type_name = type_text.dotted_ident_prefix();
+        return (!type_name.is_empty()).then_some((type_name, declaring_uri));
     }
     if name.starts_with_uppercase() && deps.has_type_definition(&name) {
         return Some((name, uri.clone()));
@@ -221,46 +224,63 @@ fn infer_ident_type(
     None
 }
 
-/// The type of the local `name` in scope at `point`, with the file that type
-/// was written in — read from the declaration that binds it *there*, not from
-/// the first declaration of that name anywhere in the file. Generic arguments
-/// and nullability are stripped.
-///
-/// `None` when no enclosing local scope binds `name`, or when the binding's
-/// type is not written down (a lambda parameter, `for` variable,
-/// destructuring, or an initializer this engine cannot type). Callers fall
-/// back to a by-name lookup in that case.
+/// What the declaration binding a name at one point says about its type.
+pub(crate) enum BindingType {
+    /// The binding's type as written or inferred, with its `?` and type
+    /// arguments, and the file it was written in.
+    Typed {
+        type_text: String,
+        declaring_uri: Url,
+    },
+    /// A local binds the name here, but its type is not written down (a
+    /// lambda parameter, `for` variable, destructuring) or is an initializer
+    /// this engine cannot type. A by-name lookup would find some *other*
+    /// declaration of the name.
+    LocalUnknown,
+    /// No enclosing local scope binds the name: a member, top-level
+    /// declaration, import, or inherited symbol, which a by-name lookup finds.
+    NotLocal,
+}
+
+/// The type of the local `name` in scope at `point` — read from the
+/// declaration that binds it *there*, not from the first declaration of that
+/// name anywhere in the file.
 pub(crate) fn infer_local_type_at(
     name: &str,
     point: Node<'_>,
     bytes: &[u8],
     deps: &impl InferDeps,
     uri: &Url,
-) -> Option<(String, Url)> {
+) -> BindingType {
     infer_binding_type(local_binding_of(name, point, bytes), bytes, deps, uri, 0)
 }
 
 /// The type a [`LocalBinding`] states, for [`infer_ident_type`] and
-/// [`infer_local_type_at`]. Generic arguments are stripped for the same
-/// reason as the by-name branch of [`infer_ident_type`].
+/// [`infer_local_type_at`].
 fn infer_binding_type(
     binding: LocalBinding<'_>,
     bytes: &[u8],
     deps: &impl InferDeps,
     uri: &Url,
     depth: usize,
-) -> Option<(String, Url)> {
-    let (type_name, declaring_uri) = match binding {
-        LocalBinding::Annotated { declared_type } => {
-            (declared_type.utf8_text_owned(bytes)?, uri.clone())
-        }
+) -> BindingType {
+    let typed = match binding {
+        LocalBinding::Annotated { declared_type } => declared_type
+            .utf8_text_owned(bytes)
+            .map(|type_text| (type_text, uri.clone())),
         LocalBinding::Initialized { initializer } => {
-            infer_expr_type_at_depth(initializer, bytes, deps, uri, depth + 1)?
+            infer_expr_type_at_depth(initializer, bytes, deps, uri, depth + 1)
         }
-        LocalBinding::Untyped | LocalBinding::NotLocal => return None,
+        LocalBinding::Untyped => None,
+        LocalBinding::NotLocal => return BindingType::NotLocal,
     };
-    let type_name = type_name.dotted_ident_prefix();
-    (!type_name.is_empty()).then_some((type_name, declaring_uri))
+    match typed {
+        Some((type_text, declaring_uri)) => BindingType::Typed {
+            type_text,
+            declaring_uri,
+        },
+        None => BindingType::LocalUnknown,
+    }
 }
 
 /// Resolve the type of a `this_expression`.

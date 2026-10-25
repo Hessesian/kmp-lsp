@@ -572,3 +572,53 @@ fn expr_type_does_not_bind_to_a_finished_for_loop_variable() {
         Some("Banana")
     );
 }
+
+/// A lambda parameter the engine cannot type is still the binding in scope:
+/// the by-name lookup must not answer with another function's `item: Apple`.
+#[test]
+fn expr_type_does_not_borrow_a_sibling_functions_parameter_for_a_lambda_parameter() {
+    let source = "class Apple\n\
+                  class Banana\n\
+                  fun first(item: Apple) = item\n\
+                  fun second() { mystery { item -> item } }\n";
+    assert_eq!(identifier_type(source, "item", 3), None);
+}
+
+/// Same for a `for` variable whose iterable the engine cannot type.
+#[test]
+fn expr_type_does_not_borrow_a_sibling_functions_parameter_for_a_for_variable() {
+    let source = "class Apple\n\
+                  class Banana\n\
+                  fun first(item: Apple) = item\n\
+                  fun second() { for (item in mystery()) { item } }\n";
+    assert_eq!(identifier_type(source, "item", 3), None);
+}
+
+/// The type [`crate::indexer::infer_local_type_at`] reports for local `name`
+/// in scope at its `occurrence`-th (0-based) identifier.
+fn local_type_at(source: &str, name: &str, occurrence: usize) -> Option<String> {
+    let live_doc = live_doc_for(source);
+    let indexer = Indexer::new();
+    let uri = test_url("/Binding.kt");
+    indexer.index_content(&uri, source);
+    let identifier = crate::indexer::walk::descendants(live_doc.tree.root_node())
+        .filter(|node| node.kind() == crate::queries::KIND_SIMPLE_IDENT)
+        .filter(|node| node.utf8_text(&live_doc.bytes) == Ok(name))
+        .nth(occurrence)
+        .expect("identifier occurrence");
+    match crate::indexer::infer_local_type_at(name, identifier, &live_doc.bytes, &indexer, &uri) {
+        crate::indexer::BindingType::Typed { type_text, .. } => Some(type_text),
+        crate::indexer::BindingType::LocalUnknown | crate::indexer::BindingType::NotLocal => None,
+    }
+}
+
+#[test]
+fn local_type_at_keeps_nullability_and_type_arguments() {
+    let source = "class Apple\n\
+                  fun use(item: Apple?, items: List<Apple>) { item; items }\n";
+    assert_eq!(local_type_at(source, "item", 1).as_deref(), Some("Apple?"));
+    assert_eq!(
+        local_type_at(source, "items", 1).as_deref(),
+        Some("List<Apple>")
+    );
+}

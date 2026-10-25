@@ -1274,3 +1274,66 @@ fn diagnostics_field_chain_root_inferred_type_ignores_homonymous_class() {
         messages[0]
     );
 }
+
+/// A lambda parameter the engine cannot type is the subject; another
+/// function's same-named `value: Color` must not stand in for it.
+#[test]
+fn diagnostics_untypable_lambda_parameter_subject_borrows_no_sibling_type() {
+    let messages = missing_branch_messages(
+        "\
+fun other(value: Color) {}
+fun handle() {
+    mystery { value ->
+        when (value) {
+            Color.RED -> {}
+        }
+    }
+}
+",
+    );
+    assert!(messages.is_empty(), "subject type is unknown: {messages:?}");
+}
+
+/// The same for the root of a field-chain subject.
+#[test]
+fn diagnostics_untypable_lambda_parameter_chain_root_borrows_no_sibling_type() {
+    let messages = missing_branch_messages(
+        "\
+class First(val shade: Color)
+fun other(holder: First) {}
+fun handle() {
+    mystery { holder ->
+        when (holder.shade) {
+            Color.RED -> {}
+        }
+    }
+}
+",
+    );
+    assert!(
+        messages.is_empty(),
+        "chain root type is unknown: {messages:?}"
+    );
+}
+
+/// The common real-world shape: `forEach`'s parameter must not take another
+/// function's same-named `value: Size` (it used to report SMALL/LARGE).
+#[test]
+fn diagnostics_for_each_lambda_parameter_subject_borrows_no_sibling_type() {
+    let messages = missing_branch_messages(
+        "\
+fun other(value: Size) {}
+fun handle(colors: List<Color>) {
+    colors.forEach { value ->
+        when (value) {
+            Color.RED -> {}
+        }
+    }
+}
+",
+    );
+    assert!(
+        messages.iter().all(|message| !message.contains("LARGE")),
+        "subject is a Color, never other()'s Size: {messages:?}"
+    );
+}

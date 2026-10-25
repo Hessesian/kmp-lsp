@@ -8,7 +8,7 @@
 use tower_lsp::lsp_types::*;
 
 use crate::indexer::live_tree::utf16_col_to_byte;
-use crate::indexer::Indexer;
+use crate::indexer::{BindingType, Indexer};
 use crate::queries::{
     KIND_BOOLEAN_LITERAL, KIND_ELSE, KIND_LBRACE, KIND_NAV_EXPR, KIND_NAV_SUFFIX, KIND_RBRACE,
     KIND_SIMPLE_IDENT, KIND_TYPE_IDENT, KIND_TYPE_TEST, KIND_USER_TYPE, KIND_WHEN_CONDITION,
@@ -68,14 +68,26 @@ fn analyze_when<'a>(
     // workspace-wide and reachable only through the chain, never imported by
     // the caller directly (see `infer::infer_field_chain_type`'s doc comment).
     let (subject_type, members_uri) = match subject_segments.as_slice() {
-        // A local or parameter: prefer the declaration the CST can see over a
-        // whole-file name scan.
+        // A local or parameter is typed from the declaration in scope at the
+        // `when`; only a non-local name falls back to a whole-file name scan.
         [subject_var] => {
-            crate::indexer::infer_local_type_at(subject_var, when_node, source_bytes, indexer, uri)
-                .or_else(|| {
+            match crate::indexer::infer_local_type_at(
+                subject_var,
+                when_node,
+                source_bytes,
+                indexer,
+                uri,
+            ) {
+                BindingType::Typed {
+                    type_text,
+                    declaring_uri,
+                } => (type_text.dotted_ident_prefix(), declaring_uri),
+                BindingType::LocalUnknown => return None,
+                BindingType::NotLocal => {
                     crate::resolver::infer::infer_variable_type(indexer, subject_var, uri)
-                        .map(|type_name| (type_name, uri.clone()))
-                })?
+                        .map(|type_name| (type_name, uri.clone()))?
+                }
+            }
         }
         // `userData.themeBrand` — walk the field chain to its leaf type.
         // `infer_field_chain_type` itself finds the longest smart-cast-narrowed

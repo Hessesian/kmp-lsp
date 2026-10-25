@@ -1288,3 +1288,135 @@ fn plain_constructor_parameter_is_out_of_scope_in_member_functions() {
     assert_eq!(binding_of(source, "item", 5), "NotLocal", "member function");
     assert_eq!(binding_of(source, "kept", 1), "Annotated(Banana)");
 }
+
+// ─── local_binding_at agrees with local_scope_occurrences ───────────────────
+
+/// The name identifier of the declaration a typed binding came from.
+fn declaring_identifier(binding: LocalBinding<'_>) -> Option<Node<'_>> {
+    match binding {
+        LocalBinding::Annotated { declared_type } => declared_type.prev_named_sibling(),
+        LocalBinding::Initialized { initializer } => initializer
+            .parent()?
+            .first_child_of_kind(KIND_VAR_DECL)?
+            .first_child_of_kind(KIND_SIMPLE_IDENT),
+        LocalBinding::Untyped | LocalBinding::NotLocal => None,
+    }
+}
+
+/// Two scope walks coexist until rename is rebuilt on the binding: the
+/// declaration `local_binding_at` picks for the `occurrence`-th `name` must be
+/// one of the occurrences `local_scope_occurrences` renames from that site,
+/// and both must agree on whether the name is local at all.
+fn assert_binding_agrees_with_rename_scope(source: &str, name: &str, occurrence: usize) {
+    let (file_uri, indexer) = indexed_with_live("/Agree.kt", source);
+    let doc = crate::indexer::live_tree::parse_live(source, tree_sitter_kotlin::LANGUAGE.into())
+        .expect("kotlin parse");
+    let use_site = crate::indexer::walk::descendants(doc.tree.root_node())
+        .filter(|node| node.kind() == KIND_SIMPLE_IDENT)
+        .filter(|node| node.utf8_text(&doc.bytes) == Ok(name))
+        .nth(occurrence)
+        .expect("identifier occurrence");
+    let start = use_site.start_position();
+    let use_position = Position::new(start.row as u32, start.column as u32);
+    let occurrences = local_scope_occurrences(&indexer, &file_uri, use_position);
+    let binding = local_binding_at(use_site, &doc.bytes);
+    let is_local = !matches!(binding, LocalBinding::NotLocal);
+    assert_eq!(
+        is_local,
+        occurrences.is_some(),
+        "`{name}` #{occurrence}: binding and rename scope disagree on locality"
+    );
+    let Some(declaration) = declaring_identifier(binding) else {
+        return;
+    };
+    let declaration_start = declaration.start_position();
+    let declaration_position = Position::new(
+        declaration_start.row as u32,
+        declaration_start.column as u32,
+    );
+    let renamed = occurrences.unwrap_or_default();
+    assert!(
+        renamed
+            .iter()
+            .any(|location| location.range.start == declaration_position),
+        "`{name}` #{occurrence}: binding declares at {declaration_position:?}, \
+         rename scope covers {renamed:?}"
+    );
+}
+
+#[test]
+fn local_binding_agrees_with_rename_scope_on_shadowing() {
+    let source = "fun use(item: Apple) {\n\
+                  \x20   mystery {\n\
+                  \x20       val item: Banana = Banana()\n\
+                  \x20       item\n\
+                  \x20   }\n\
+                  \x20   item\n\
+                  }\n";
+    assert_binding_agrees_with_rename_scope(source, "item", 2);
+    assert_binding_agrees_with_rename_scope(source, "item", 3);
+}
+
+#[test]
+fn local_binding_agrees_with_rename_scope_on_sequential_redeclaration() {
+    let source = "fun use() {\n\
+                  \x20   val item = Apple()\n\
+                  \x20   item\n\
+                  \x20   val item = Banana()\n\
+                  \x20   item\n\
+                  }\n";
+    assert_binding_agrees_with_rename_scope(source, "item", 1);
+    assert_binding_agrees_with_rename_scope(source, "item", 3);
+}
+
+#[test]
+fn local_binding_agrees_with_rename_scope_on_sibling_for_when_and_catch() {
+    let for_loops = "fun use(apples: List<Apple>, bananas: List<Banana>) {\n\
+                     \x20   for (item in apples) { item }\n\
+                     \x20   for (item in bananas) { item }\n\
+                     }\n";
+    assert_binding_agrees_with_rename_scope(for_loops, "item", 1);
+    assert_binding_agrees_with_rename_scope(for_loops, "item", 3);
+
+    let when_subjects = "fun use() {\n\
+                         \x20   when (val item = Apple()) { else -> item }\n\
+                         \x20   when (val item = Banana()) { else -> item }\n\
+                         }\n";
+    assert_binding_agrees_with_rename_scope(when_subjects, "item", 1);
+    assert_binding_agrees_with_rename_scope(when_subjects, "item", 3);
+
+    let catches = "fun use() {\n\
+                   \x20   try {} catch (item: IllegalStateException) { item }\n\
+                   \x20   try {} catch (item: IllegalArgumentException) { item }\n\
+                   }\n";
+    assert_binding_agrees_with_rename_scope(catches, "item", 1);
+    assert_binding_agrees_with_rename_scope(catches, "item", 3);
+}
+
+#[test]
+fn local_binding_agrees_with_rename_scope_on_a_captured_outer_local() {
+    let source = "fun use() {\n\
+                  \x20   val item = Apple()\n\
+                  \x20   mystery {\n\
+                  \x20       item\n\
+                  \x20   }\n\
+                  }\n";
+    assert_binding_agrees_with_rename_scope(source, "item", 1);
+}
+
+#[test]
+fn local_binding_agrees_with_rename_scope_on_a_same_named_parameter_in_a_sibling_function() {
+    let source = "fun first(item: Apple) { item }\n\
+                  fun second(item: Banana) { item }\n";
+    assert_binding_agrees_with_rename_scope(source, "item", 1);
+    assert_binding_agrees_with_rename_scope(source, "item", 3);
+}
+
+#[test]
+fn local_binding_agrees_with_rename_scope_on_a_member_property() {
+    let source = "class Holder {\n\
+                  \x20   val item: Apple = Apple()\n\
+                  \x20   fun use() { item }\n\
+                  }\n";
+    assert_binding_agrees_with_rename_scope(source, "item", 1);
+}

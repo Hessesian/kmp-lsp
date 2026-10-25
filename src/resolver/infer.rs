@@ -1,6 +1,6 @@
 use tower_lsp::lsp_types::{Location, Position, SymbolKind, Url};
 
-use crate::indexer::{infer_local_type_at, Indexer, InferDeps, NodeExt};
+use crate::indexer::{infer_local_type_at, BindingType, Indexer, InferDeps, NodeExt};
 use crate::types::FileData;
 use crate::LinesExt;
 use crate::StrExt;
@@ -184,19 +184,21 @@ pub(crate) fn infer_field_chain_type(
         // declared type. With a CST node, prefer the binding in scope at it
         // (a whole-file scan can find an unrelated same-named parameter/local
         // in a *different* function — see `LocalBinding`) before the
-        // line-scanning smart-cast check and the unscoped whole-file scan.
+        // line-scanning smart-cast check; the unscoped whole-file scan only
+        // runs for a root no local binds.
         let root = segments.first()?;
-        let (declared_type, anchor_uri) = match cst_point {
-            Some((point, source)) => infer_local_type_at(root, point, source, indexer, uri)
-                .or_else(|| {
-                    smart_cast_narrowed_type(indexer, root, uri, line, None)
-                        .map(|type_name| (type_name, uri.clone()))
-                })
-                .or_else(|| {
-                    infer_variable_type(indexer, root, uri)
-                        .map(|type_name| (type_name, uri.clone()))
-                })?,
-            None => smart_cast_narrowed_type(indexer, root, uri, line, None)
+        let binding = match cst_point {
+            Some((point, source)) => infer_local_type_at(root, point, source, indexer, uri),
+            None => BindingType::NotLocal,
+        };
+        let (declared_type, anchor_uri) = match binding {
+            BindingType::Typed {
+                type_text,
+                declaring_uri,
+            } => (type_text.dotted_ident_prefix(), declaring_uri),
+            BindingType::LocalUnknown => smart_cast_narrowed_type(indexer, root, uri, line, None)
+                .map(|type_name| (type_name, uri.clone()))?,
+            BindingType::NotLocal => smart_cast_narrowed_type(indexer, root, uri, line, None)
                 .or_else(|| infer_variable_type(indexer, root, uri))
                 .map(|type_name| (type_name, uri.clone()))?,
         };
