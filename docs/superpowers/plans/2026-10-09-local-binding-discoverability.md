@@ -111,7 +111,7 @@ Scans `src/features`, `src/semantic_tokens`, `src/inlay_hints.rs` (excluding `*t
 ### H. PR #329 remainder (open decision)
 
 - #329 (author abilliontokens, CONFLICTING) has three commits: pull diagnostics / unified diagnostic sets; stdlib top-level missing-import exemption; nullable leak + arity override-defaults false positive. B covers the nullable half.
-- Not scheduled: the arity override-defaults fix (`call_arg_diagnostics.rs`, 3 tests) and the first two commits. Owner decides: port with `Co-authored-by` credit, ask the contributor to rebase those parts on their own, or close with an explanation. Any port must pass the ratchet without raising a baseline.
+- Decision (2026-10-25): port with `Co-authored-by` credit. Scope: the arity override-defaults fix (`call_arg_diagnostics.rs`, 3 tests) and, after a per-commit review, the stdlib missing-import exemption and pull diagnostics. Independent of A-F; one PR per #329 commit, each passing the ratchet without raising a baseline. Close #329 with a note linking the ported PRs.
 
 ### I. `local_scope_occurrences` as a projection (deferred, decision 4)
 
