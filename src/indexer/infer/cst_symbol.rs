@@ -762,7 +762,7 @@ fn binding_of_declared_name<'tree>(
 ) -> LocalBinding<'tree> {
     variable_declaration
         .parent()
-        .filter(|parent| parent.kind() == KIND_PROP_DECL)
+        .filter(|parent| parent.kind() == KIND_PROP_DECL || parent.kind() == KIND_WHEN_SUBJECT)
         .and_then(|property| property_binding(property, name, bytes))
         .unwrap_or(LocalBinding::Untyped)
 }
@@ -796,8 +796,7 @@ fn binding_introduced_by<'tree>(
         KIND_WHEN_EXPR => scope
             .first_child_of_kind(KIND_WHEN_SUBJECT)
             .filter(|subject| subject.id() != inner.id())
-            .and_then(|subject| declares_name_directly(subject, name, bytes))
-            .map(|_| LocalBinding::Untyped),
+            .and_then(|subject| property_binding(subject, name, bytes)),
         _ => value_parameter_binding(scope, inner, name, bytes),
     }
 }
@@ -872,8 +871,9 @@ fn nearest_earlier_property_binding<'tree>(
         .last()
 }
 
-/// The binding a `property_declaration` gives `name`, or `None` when it
-/// declares some other name.
+/// The binding a `property_declaration` — or a `when (val name = ..)`
+/// subject, which has the same `variable_declaration` `=` initializer shape —
+/// gives `name`, or `None` when it declares some other name.
 fn property_binding<'tree>(
     property: Node<'tree>,
     name: &str,

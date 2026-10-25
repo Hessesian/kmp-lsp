@@ -1222,6 +1222,15 @@ fn annotated_for_variable_is_annotated_with_its_declared_type() {
 }
 
 #[test]
+fn when_subject_binding_is_initialized_from_its_subject_expression() {
+    let source = "fun use(item: Apple) { when (val item = pick()) { else -> item } }\n";
+    assert_eq!(binding_of(source, "item", 2), "Initialized(pick())");
+
+    let annotated = "fun use(item: Apple) { when (val item: Banana = pick()) { else -> item } }\n";
+    assert_eq!(binding_of(annotated, "item", 2), "Annotated(Banana)");
+}
+
+#[test]
 fn annotated_parameter_type_skips_its_type_annotation() {
     let source = "fun use(item: @Ann Apple?) { item }\n";
     assert_eq!(binding_of(source, "item", 1), "Annotated(Apple?)");

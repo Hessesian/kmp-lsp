@@ -699,3 +699,13 @@ fn elvis_initializer_keeps_type_arguments_and_drops_nullability() {
         Some("List<Apple>")
     );
 }
+
+#[test]
+fn expr_type_types_a_when_subject_binding_from_its_subject() {
+    let source = "class Apple\n\
+                  class Banana\n\
+                  fun pick(): Apple = Apple()\n\
+                  fun first(item: Banana) = item\n\
+                  fun second() = when (val item = pick()) { else -> item }\n";
+    assert_eq!(identifier_type(source, "item", 3).as_deref(), Some("Apple"));
+}
