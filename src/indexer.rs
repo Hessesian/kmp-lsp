@@ -543,7 +543,18 @@ impl InferDeps for Indexer {
             shape,
         )
     }
-    fn find_fun_callable_info(&self, fn_name: &str, uri: &Url) -> Option<CallableInfo> {
+    fn find_fun_callable_info(
+        &self,
+        fn_name: &str,
+        receiver_type: Option<&str>,
+        uri: &Url,
+    ) -> Option<CallableInfo> {
+        if let Some(receiver_type) = receiver_type {
+            match receiver_bound_callable(self, fn_name, receiver_type, uri) {
+                ReceiverBoundCallable::Extension(info) => return info,
+                ReceiverBoundCallable::NoApplicableExtension => {}
+            }
+        }
         // Workspace definitions first. The declaration the call actually binds
         // to (import/package-reachable from `uri`) decides; only when nothing
         // is reachable do the capped by-name candidates stand in — an
@@ -662,6 +673,40 @@ impl InferDeps for Indexer {
                 .unwrap_or(false)
         })
     }
+}
+
+/// What a call on a known receiver type binds `fn_name` to, as far as the
+/// extension registry can tell.
+enum ReceiverBoundCallable {
+    /// An extension declared on the receiver (or its nearest supertype)
+    /// applies; carries its generic metadata, `None` when it declares no
+    /// type parameters. Final: a same-named overload for another receiver
+    /// must not stand in.
+    Extension(Option<CallableInfo>),
+    /// No in-scope extension applies — a member, or an unindexed hierarchy.
+    NoApplicableExtension,
+}
+
+fn receiver_bound_callable(
+    indexer: &Indexer,
+    fn_name: &str,
+    receiver_type: &str,
+    uri: &Url,
+) -> ReceiverBoundCallable {
+    let declarations =
+        crate::resolver::extension_declarations_on(indexer, receiver_type, fn_name, uri);
+    if declarations.is_empty() {
+        return ReceiverBoundCallable::NoApplicableExtension;
+    }
+    let generic = declarations
+        .iter()
+        .filter_map(|declaration| declaration.symbol.as_ref())
+        .find(|symbol| !symbol.type_params().is_empty())
+        .map(|symbol| CallableInfo {
+            type_params: symbol.type_params().to_vec(),
+            extension_receiver_type: symbol.declared_extension_receiver().to_owned(),
+        });
+    ReceiverBoundCallable::Extension(generic)
 }
 
 // ─── Synthetic enum members ──────────────────────────────────────────────────

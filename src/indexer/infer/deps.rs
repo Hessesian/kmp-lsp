@@ -269,12 +269,21 @@ pub(crate) trait InferDeps {
         None
     }
 
-    /// Return callable metadata (type params + extension receiver type) for a
-    /// function resolved by name.  Used to apply generic type substitution when
-    /// a lambda parameter type is a generic type parameter.
+    /// Return callable metadata (type params + extension receiver type) for
+    /// `fn_name`.  Used to apply generic type substitution when a lambda
+    /// parameter type is a generic type parameter.
+    ///
+    /// With the call's `receiver_type`, the metadata is the extension that
+    /// receiver binds to (its own type, else nearest supertype); without one,
+    /// or when no extension applies, the function is resolved by name.
     ///
     /// The default implementation returns `None`; overridden by `Indexer`.
-    fn find_fun_callable_info(&self, _fn_name: &str, _uri: &Url) -> Option<CallableInfo> {
+    fn find_fun_callable_info(
+        &self,
+        _fn_name: &str,
+        _receiver_type: Option<&str>,
+        _uri: &Url,
+    ) -> Option<CallableInfo> {
         None
     }
 
@@ -538,7 +547,12 @@ impl InferDeps for TestDeps {
             .get(&(class_name.to_string(), method_name.to_string()))
             .cloned()
     }
-    fn find_fun_callable_info(&self, fn_name: &str, _uri: &Url) -> Option<CallableInfo> {
+    fn find_fun_callable_info(
+        &self,
+        fn_name: &str,
+        _receiver_type: Option<&str>,
+        _uri: &Url,
+    ) -> Option<CallableInfo> {
         self.callable_infos.get(fn_name).cloned()
     }
     fn find_contextual_type(

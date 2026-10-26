@@ -752,8 +752,33 @@ pub(crate) fn find_method_params_in_class(
             }
         }
     }
+    if candidates.is_empty() {
+        candidates = inherited_extension_params(idx, type_base, method_name, caller_uri);
+    }
 
     pick_candidate_matching_shape(candidates, shape)
+}
+
+/// Parameter texts of the extension `method_name` declared on `type_base`'s
+/// nearest supertype — `List<X>.joinToString` binds `Iterable<T>.joinToString`.
+fn inherited_extension_params(
+    idx: &Indexer,
+    type_base: &str,
+    method_name: &str,
+    caller_uri: &Url,
+) -> Vec<(String, (u8, u8))> {
+    crate::resolver::extension_declarations_on(idx, type_base, method_name, caller_uri)
+        .into_iter()
+        .filter_map(|declaration| {
+            let symbol = declaration.symbol?;
+            let file_data = idx
+                .files
+                .get(declaration.uri.as_str())
+                .or_else(|| idx.jar_files.get(declaration.uri.as_str()))?;
+            let params = extract_params_or_fallback(&symbol, &file_data.lines)?;
+            Some((params, symbol.param_counts))
+        })
+        .collect()
 }
 
 /// Choose the candidate whose signature best matches how the call was

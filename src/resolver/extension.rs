@@ -88,6 +88,33 @@ pub(super) fn resolve_extension_in_scope(
     name: &str,
     from_uri: &Url,
 ) -> Vec<Location> {
+    extension_declarations_in_scope(indexer, receiver_base, name, from_uri)
+        .into_iter()
+        .map(|declaration| Location {
+            uri: declaration.uri,
+            range: declaration
+                .symbol
+                .map(|symbol| symbol.selection_range)
+                .unwrap_or_default(),
+        })
+        .collect()
+}
+
+/// One in-scope extension registry entry for `receiver_base.name`, with its
+/// declaring symbol when the declaring file is loaded.
+pub(crate) struct ExtensionDeclaration {
+    pub(crate) uri: Url,
+    pub(crate) symbol: Option<SymbolEntry>,
+}
+
+/// The registry walk behind [`resolve_extension_in_scope`]: every in-scope
+/// extension `name` declared on exactly `receiver_base`.
+fn extension_declarations_in_scope(
+    indexer: &Indexer,
+    receiver_base: &str,
+    name: &str,
+    from_uri: &Url,
+) -> Vec<ExtensionDeclaration> {
     // Atomic promote+read (zero budget): this helper serves goto-definition
     // AND the per-call-site diagnostics path (`resolve_member`), so blocking
     // sidecar IPC is forbidden here — cache-backed promotions are still free.
@@ -114,23 +141,69 @@ pub(super) fn resolve_extension_in_scope(
         let Ok(uri) = Url::parse(&entry.file_uri) else {
             continue;
         };
-        let range = indexer
+        let symbol = indexer
             .files
             .get(&entry.file_uri)
             .or_else(|| indexer.jar_files.get(&entry.file_uri))
-            .map(|fd| {
-                select_extension_symbol_range(
-                    &fd,
+            .and_then(|file_data| {
+                select_extension_symbol(
+                    &file_data,
                     name,
                     receiver_base,
                     entry.container.as_ref(),
                     &entry.detail,
                 )
-            })
-            .unwrap_or_default();
-        matches.push(Location { uri, range });
+                .cloned()
+            });
+        matches.push(ExtensionDeclaration { uri, symbol });
     }
     matches
+}
+
+/// The in-scope extension declarations `receiver.name(...)` can bind to, by
+/// Kotlin's most-specific-receiver rule: those declared on `receiver_type`'s
+/// own type, else on its nearest supertype level (breadth-first, so
+/// `List<X>.mapIndexed` reaches `Iterable<T>.mapIndexed` and never a
+/// same-named `Array`/`CharSequence` overload). Empty when no extension
+/// applies — a member, or an unindexed receiver hierarchy.
+pub(crate) fn extension_declarations_on(
+    indexer: &Indexer,
+    receiver_type: &str,
+    name: &str,
+    from_uri: &Url,
+) -> Vec<ExtensionDeclaration> {
+    use crate::StrExt;
+
+    let receiver_base = receiver_type
+        .dotted_ident_prefix()
+        .last_segment()
+        .to_owned();
+    let own = extension_declarations_in_scope(indexer, &receiver_base, name, from_uri);
+    if !own.is_empty() {
+        return own;
+    }
+    let caller = crate::types::CallerContext {
+        uri: Some(from_uri.as_str()),
+        cursor_line: None,
+    };
+    super::infer::reachable_class_candidates(indexer, &receiver_base, Some(from_uri))
+        .into_iter()
+        .take(crate::indexer::MAX_BY_NAME_DEFS)
+        .map(|class_location| {
+            super::hierarchy::walk_hierarchy_breadth_first(
+                indexer,
+                &receiver_base,
+                class_location.uri.as_str(),
+                caller,
+                12,
+                super::MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK,
+                |idx, super_name, _, _| {
+                    extension_declarations_in_scope(idx, super_name, name, from_uri)
+                },
+            )
+        })
+        .find(|declarations| !declarations.is_empty())
+        .unwrap_or_default()
 }
 
 /// Resolve `name(...)` as an implicit `this.name(...)` against `receiver_base`

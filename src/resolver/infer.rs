@@ -1113,7 +1113,7 @@ fn find_field_type_in_class_impl(
 /// found. Shared by [`find_field_type_via_supertypes`] and
 /// [`find_method_return_type_via_supertypes_declared`] so neither anchors its walk on
 /// an unrelated same-named class elsewhere in the workspace.
-fn reachable_class_candidates(
+pub(super) fn reachable_class_candidates(
     indexer: &Indexer,
     class_base: &str,
     from_uri: Option<&Url>,

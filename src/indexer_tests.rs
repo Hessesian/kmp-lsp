@@ -3524,7 +3524,7 @@ fn jar_callable_info_prefers_an_importable_declaration_over_build_tooling() {
     );
 
     let info = idx
-        .find_fun_callable_info("collect", &caller_uri)
+        .find_fun_callable_info("collect", None, &caller_uri)
         .expect("one of the two declarations must resolve");
     assert_eq!(
         info.type_params,
@@ -3552,7 +3552,7 @@ fn callable_info_reports_a_non_generic_type_param_receiver() {
     );
 
     let info = idx
-        .find_fun_callable_info("required", &uri)
+        .find_fun_callable_info("required", None, &uri)
         .expect("`required` declares a type parameter");
 
     assert_eq!(info.type_params, vec!["T".to_string()]);
@@ -3570,7 +3570,7 @@ fn callable_info_reports_a_plain_type_param_receiver_without_a_nullable_marker()
     idx.index_content(&uri, "package p\nfun <T> T.echo(): T = this\n");
 
     let info = idx
-        .find_fun_callable_info("echo", &uri)
+        .find_fun_callable_info("echo", None, &uri)
         .expect("`echo` declares a type parameter");
 
     assert_eq!(info.extension_receiver_type, "T");
@@ -3591,11 +3591,95 @@ fn callable_info_prefers_the_reachable_declaration_over_an_unrelated_generic_one
     let caller = Url::parse("file:///t/b/Caller.kt").unwrap();
     idx.index_content(&caller, "package b\nfun use() { 1.foo() }\n");
 
-    let info = idx.find_fun_callable_info("foo", &caller);
+    let info = idx.find_fun_callable_info("foo", None, &caller);
 
     assert!(
         info.is_none(),
         "the call binds to the non-generic same-package `foo`, which declares no \
          type parameters; got {info:?}"
     );
+}
+
+// ── Lambda parameter of a same-named, receiver-overloaded extension ─────────
+//
+// `mapIndexed` / `joinToString` exist for many receivers (`Iterable<T>`,
+// `Array<out T>`, `CharSequence`, primitive arrays, ...). The lambda's
+// parameter type must come from the overload the call's receiver binds to —
+// the receiver's own type, else its nearest supertype — never from whichever
+// same-named declaration a by-name scan meets first (JAR load order, which
+// varies between sessions).
+
+const OVERLOADED_EXTENSIONS_CALLER: &str = concat!(
+    "package app\n",
+    "import lib.Lst\n",
+    "import lib.mapIndexed\n",
+    "import lib.joinStr\n",
+    "class Bullet(val text: String)\n",
+    "class Texts(val bullets: Lst<Bullet>, val words: Lst<String>)\n",
+    "fun render(texts: Texts) {\n",
+    "    texts.bullets.mapIndexed { index, bullet ->\n",
+    "        bullet.text\n",
+    "    }\n",
+    "    texts.words.joinStr(separator = \"\") {\n",
+    "        it.length\n",
+    "    }\n",
+    "}\n",
+);
+
+/// Index `lib` with the competing `CharSequence`/`Array` overloads declared
+/// before (`competing_first`) or after the `Iterable` ones the calls bind to.
+fn index_overloaded_extensions(competing_first: bool) -> (Indexer, Url) {
+    let idx = Indexer::new();
+    let types = concat!(
+        "package lib\n",
+        "interface Iter<out T>\n",
+        "interface Lst<out E> : Iter<E>\n",
+        "class Arr<T>\n",
+    );
+    let competing = concat!(
+        "fun <R> CharSequence.mapIndexed(transform: (Int, Char) -> R): Lst<R> = TODO()\n",
+        "fun <T> Arr<out T>.joinStr(separator: CharSequence = \"\"): String = TODO()\n",
+    );
+    let bound = concat!(
+        "fun <T, R> Iter<T>.mapIndexed(transform: (Int, T) -> R): Lst<R> = TODO()\n",
+        "fun <T> Iter<T>.joinStr(separator: CharSequence = \"\", transform: ((T) -> CharSequence)? = null): String = TODO()\n",
+    );
+    let library = if competing_first {
+        format!("{types}{competing}{bound}")
+    } else {
+        format!("{types}{bound}{competing}")
+    };
+    idx.index_content(&uri("/lib/Collections.kt"), &library);
+    let caller = uri("/app/Render.kt");
+    idx.index_content(&caller, OVERLOADED_EXTENSIONS_CALLER);
+    idx.store_live_tree(&caller, OVERLOADED_EXTENSIONS_CALLER);
+    (idx, caller)
+}
+
+fn assert_lambda_params_bind_to_receiver_overload(competing_first: bool) {
+    let (idx, caller) = index_overloaded_extensions(competing_first);
+    let bullet = idx.infer_lambda_param_type_at("bullet", &caller, Position::new(8, 8));
+    assert_eq!(
+        bullet.as_deref(),
+        Some("Bullet"),
+        "`Lst<Bullet>.mapIndexed` binds to `Iter<T>.mapIndexed` (Lst's supertype), \
+         not `CharSequence.mapIndexed`; got {bullet:?}"
+    );
+    let it = idx.infer_lambda_param_type_at("it", &caller, Position::new(11, 8));
+    assert_eq!(
+        it.as_deref(),
+        Some("String"),
+        "`Lst<String>.joinStr {{ }}` binds to `Iter<T>.joinStr(.., transform)`, \
+         not the lambda-less `Arr<out T>.joinStr`; got {it:?}"
+    );
+}
+
+#[test]
+fn lambda_param_binds_to_receiver_overload_when_competing_overload_is_declared_first() {
+    assert_lambda_params_bind_to_receiver_overload(true);
+}
+
+#[test]
+fn lambda_param_binds_to_receiver_overload_when_competing_overload_is_declared_last() {
+    assert_lambda_params_bind_to_receiver_overload(false);
 }
