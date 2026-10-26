@@ -49,7 +49,7 @@ use super::chain::{
     resolve_field_type_on, resolve_method_return_type_on, trailing_lambda_last_expression,
 };
 use super::cst_symbol::{local_binding_at, local_binding_of, LocalBinding};
-use super::deps::InferDeps;
+use super::deps::{CallShape, InferDeps, ReceiverCall};
 use super::lambda::LAMBDA_RESULT_FNS;
 use super::type_subst::build_ext_fn_type_subst;
 
@@ -471,6 +471,9 @@ fn infer_get_value_type(
         .then(|| (value_type, uri.clone()))
 }
 
+/// `getValue(thisRef, property)`: what a `by` delegate is asked for.
+const GET_VALUE_ARGUMENT_COUNT: usize = 2;
+
 /// The `getValue` extension operator reachable from `uri`, when its receiver
 /// is the delegate's own type: its return type with the extension's type
 /// parameters bound from `delegate_type`.
@@ -480,7 +483,14 @@ fn extension_get_value_type(
     deps: &impl InferDeps,
     uri: &Url,
 ) -> Option<String> {
-    let callable = deps.find_fun_callable_info("getValue", uri)?;
+    let get_value_call = ReceiverCall {
+        receiver_type: delegate_type,
+        shape: CallShape {
+            arg_count: GET_VALUE_ARGUMENT_COUNT,
+            trailing_lambda: false,
+        },
+    };
+    let callable = deps.find_fun_callable_info("getValue", Some(get_value_call), uri)?;
     let extension_receiver = callable.extension_receiver_type.bare_type_name()?;
     if extension_receiver.last_segment() != holder.last_segment() {
         return None;
