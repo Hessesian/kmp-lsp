@@ -366,17 +366,18 @@ fun use() { lazyLoad { it. }
 #[test]
 fn nested_class_qualified_key() {
     // AccountContract.kt defines a sealed class State nested inside it.
-    // The qualified index should store BOTH:
-    //   "com.example.State"                    (primary)
-    //   "com.example.AccountContract.State"    (nested — matches import path)
+    // The qualified index stores it under its import path
+    //   "com.example.AccountContract.State"
+    // and NOT under "com.example.State": that FQN names a top-level `State`,
+    // and a nested class claiming it would race one for the key.
     let uri = uri("/AccountContract.kt");
     let idx = Indexer::new();
     idx.index_content(&uri,
         "package com.example\nclass AccountContract {\n  sealed class State\n  sealed class Event\n}");
 
     assert!(
-        idx.qualified.contains_key("com.example.State"),
-        "primary qualified key missing"
+        !idx.qualified.contains_key("com.example.State"),
+        "a nested class must not own the top-level FQN"
     );
     assert!(
         idx.qualified

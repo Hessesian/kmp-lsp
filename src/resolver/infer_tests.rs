@@ -478,6 +478,63 @@ fn return_type_reachable_prefers_imported_symbol() {
     );
 }
 
+/// A class member must never own the `pkg.name` qualified key: Kotlin cannot
+/// import a member as `pkg.member`, and a same-named top-level function in the
+/// same package owns that FQN. Before the fix the last-applied file won, so
+/// workspace indexing (parallel apply) bound the import nondeterministically.
+/// Both apply orders are forced here, and the member file is re-indexed last
+/// so its stale-key removal must not evict the top-level entry either.
+#[test]
+fn qualified_key_belongs_to_top_level_fun_not_same_named_member() {
+    use super::find_fun_return_type_reachable;
+    use crate::indexer::Indexer;
+    use tower_lsp::lsp_types::Url;
+
+    let top_level = Url::parse("file:///app/src/main/util/ResultState.kt").unwrap();
+    let top_level_source = "package app.util\nfun <T> safeFlowResultState(): Flow<T> = TODO()\n";
+    let member = Url::parse("file:///app/src/test/util/ResultStateKtTest.kt").unwrap();
+    let member_source = "package app.util\nclass ResultStateKtTest {\n    fun safeFlowResultState(): Unit = runBlocking {}\n}\n";
+    let caller = Url::parse("file:///app/src/main/feature/Screen.kt").unwrap();
+    let caller_source = "package app.feature\nimport app.util.safeFlowResultState\nfun s() { val x = safeFlowResultState<Int>() }\n";
+
+    let member_first = [(&member, member_source), (&top_level, top_level_source)];
+    let top_level_first = [(&top_level, top_level_source), (&member, member_source)];
+    for (order_name, order) in [
+        ("member first", member_first),
+        ("top-level first", top_level_first),
+    ] {
+        let idx = Indexer::new();
+        for (uri, source) in order {
+            idx.index_content(uri, source);
+        }
+        idx.index_content(&caller, caller_source);
+
+        let owner_uri = || {
+            idx.qualified
+                .get("app.util.safeFlowResultState")
+                .and_then(|symbol_loc| idx.file_table.location(*symbol_loc))
+                .map(|location| location.uri)
+        };
+        assert_eq!(
+            owner_uri(),
+            Some(top_level.clone()),
+            "{order_name}: `app.util.safeFlowResultState` must point at the top-level fun"
+        );
+        assert_eq!(
+            find_fun_return_type_reachable(&idx, "safeFlowResultState", &caller),
+            Some("Flow<T>".into()),
+            "{order_name}: the import must bind to the top-level fun's return type"
+        );
+
+        idx.index_content(&member, &format!("{member_source}// edited\n"));
+        assert_eq!(
+            owner_uri(),
+            Some(top_level.clone()),
+            "{order_name}: re-indexing the member file must not evict or replace the top-level key"
+        );
+    }
+}
+
 /// Promotion test for the Task 8 wiring in `find_fun_return_type_reachable`.
 /// This site runs with a ZERO sidecar-IPC budget (inference is called once
 /// per name on latency-critical paths like inlay hints — unbudgeted blocking
