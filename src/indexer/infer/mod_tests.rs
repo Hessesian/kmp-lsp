@@ -1465,3 +1465,44 @@ fn lambda_parameter_stays_unknown_when_no_argument_binds_its_type_parameter() {
     );
     assert_eq!(identifier_type(&source, "model", 3), None);
 }
+
+/// `ConfirmDataUseCase`: a property of a generic class read through a typed
+/// field (`Store<State>.currentState`).
+#[test]
+fn local_initialized_from_a_generic_property_chain_is_typed() {
+    let source = "class Personal(val street: String)\n\
+                  class BusinessState(val personalData: Personal)\n\
+                  class Store<T>(initial: T) { val currentState: T = initial }\n\
+                  fun sibling(data: Int) = data\n\
+                  class UseCase {\n\
+                  \x20   private val store: Store<BusinessState> = TODO()\n\
+                  \x20   fun read() {\n\
+                  \x20       val data = store.currentState.personalData\n\
+                  \x20       data\n\
+                  \x20   }\n\
+                  }\n";
+    assert_eq!(
+        identifier_type(source, "data", 3).as_deref(),
+        Some("Personal")
+    );
+}
+
+/// `PersonalDetailMapper`: a safe call keeps the member's type, nullable.
+#[test]
+fn local_initialized_from_a_safe_call_is_typed_nullable() {
+    let source = "class Address\n\
+                  class Scenes(val addressSection: Address)\n\
+                  fun sibling(addressTexts: Int) = addressTexts\n\
+                  fun prepare(texts: Scenes?) {\n\
+                  \x20   val addressTexts = texts?.addressSection\n\
+                  \x20   addressTexts\n\
+                  }\n";
+    assert_eq!(
+        local_type_at(source, "addressTexts", 3).as_deref(),
+        Some("Address?")
+    );
+    assert_eq!(
+        identifier_type(source, "addressTexts", 3).as_deref(),
+        Some("Address")
+    );
+}

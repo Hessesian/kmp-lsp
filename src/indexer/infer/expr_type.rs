@@ -792,10 +792,31 @@ fn infer_navigation_expr_type(
     uri: &Url,
     depth: usize,
 ) -> Option<(String, Url)> {
+    let (member_type, member_uri) = infer_member_access_type(node, bytes, deps, uri, depth)?;
+    let reads_through_safe_call = node
+        .first_child_of_kind(KIND_NAV_SUFFIX)
+        .and_then(|suffix| suffix.child(0))
+        .is_some_and(|operator| operator.kind() == "?.");
+    if reads_through_safe_call && !member_type.is_nullable() {
+        return Some((format!("{member_type}?"), member_uri));
+    }
+    Some((member_type, member_uri))
+}
+
+/// The declared type of the member a `navigation_expression` reads or calls.
+fn infer_member_access_type(
+    node: Node<'_>,
+    bytes: &[u8],
+    deps: &impl InferDeps,
+    uri: &Url,
+    depth: usize,
+) -> Option<(String, Url)> {
     let receiver = nav_receiver_node(node)?;
     let member = nav_member_ident(node)?.utf8_text_owned(bytes)?;
+    // As written: a receiver's type arguments substitute the member's type
+    // (`store.currentState` on `Store<State>` is `State`).
     let (receiver_type, receiver_uri) =
-        infer_expr_type_at_depth(receiver, bytes, deps, uri, depth + 1)?;
+        infer_initializer_type(receiver, bytes, deps, uri, depth + 1)?;
 
     // The type's own (possibly nested/qualified) name: no type arguments, no `?`.
     let lookup_name = receiver_type.dotted_ident_prefix();
