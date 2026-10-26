@@ -1418,9 +1418,26 @@ pub(crate) fn enclosing_extension_receiver_at(
     root: Node,
     bytes: &[u8],
     position: Range,
-) -> Option<String> {
-    let (base, _receiver_type) = extract_extension_receiver_from_cst(root, bytes, &position);
-    (!base.is_empty()).then_some(base)
+) -> Option<ExtensionReceiver> {
+    let (base, receiver_type) = extract_extension_receiver_from_cst(root, bytes, &position);
+    if base.is_empty() {
+        return None;
+    }
+    let written = if receiver_type.is_empty() {
+        base.clone()
+    } else {
+        receiver_type
+    };
+    Some(ExtensionReceiver { base, written })
+}
+
+/// The receiver of an extension function or property.
+pub(crate) struct ExtensionReceiver {
+    /// The receiver type's own simple name: `"List"` for `List<Apple>?`.
+    pub(crate) base: String,
+    /// The receiver type with its type arguments and `?` (`"List<Apple>?"`);
+    /// the simple name alone when it has neither.
+    pub(crate) written: String,
 }
 
 /// Find the declaration node at `range` in the tree and extract the text inside

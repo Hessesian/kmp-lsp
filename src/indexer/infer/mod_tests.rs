@@ -1374,3 +1374,41 @@ fn elvis_with_an_error_function_returning_nullable_nothing_is_unknown() {
                   fun use(left: Apple?) { val result = left ?: error(\"missing\"); result }\n";
     assert_eq!(identifier_type(source, "result", 2), None);
 }
+
+
+// ─── Moneta loss shapes (slice A round 4) ────────────────────────────────────
+
+const COLLECTION_DECLARATIONS: &str = "class Apple(val amount: Int)\n\
+     class Banana\n\
+     fun <T> Iterable<T>.firstOrNull(predicate: (T) -> Boolean): T? = TODO()\n\
+     fun <T> Iterable<T>.sumOf(selector: (T) -> Int): Int = TODO()\n";
+
+/// `RetentionOfferTextsInteractor`: a named lambda parameter of a call on the
+/// extension receiver `this`.
+#[test]
+fn lambda_parameter_on_an_extension_receiver_is_typed_from_its_element() {
+    let source = format!(
+        "{COLLECTION_DECLARATIONS}\
+         fun sibling(offer: Banana) = offer\n\
+         fun List<Apple>.findOffer() = this.firstOrNull {{ offer ->\n\
+         \x20   offer\n\
+         }}\n"
+    );
+    assert_eq!(
+        identifier_type(&source, "offer", 3).as_deref(),
+        Some("Apple")
+    );
+}
+
+/// `ChartsOverviewMapper`: `it` of a call on a field read through the
+/// extension receiver's implicit `this`.
+#[test]
+fn it_on_an_implicit_receiver_field_is_typed_from_its_element() {
+    let source = format!(
+        "{COLLECTION_DECLARATIONS}\
+         class ItemsList(val items: List<Apple>)\n\
+         fun sibling(it: Banana) = it\n\
+         fun ItemsList.total() = items.sumOf {{ it.amount }}\n"
+    );
+    assert_eq!(identifier_type(&source, "it", 2).as_deref(), Some("Apple"));
+}

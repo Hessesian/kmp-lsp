@@ -5,8 +5,8 @@ use tower_lsp::lsp_types::Url;
 use crate::indexer::NodeExt;
 use crate::queries::{
     KIND_CALL_EXPR, KIND_CALL_SUFFIX, KIND_CLASS_DECL, KIND_LAMBDA_LIT, KIND_NAV_EXPR,
-    KIND_NAV_SUFFIX, KIND_OBJECT_DECL, KIND_SIMPLE_IDENT, KIND_STATEMENTS, KIND_TYPE_IDENT,
-    KIND_VALUE_ARGS,
+    KIND_NAV_SUFFIX, KIND_OBJECT_DECL, KIND_SIMPLE_IDENT, KIND_STATEMENTS, KIND_THIS_EXPR,
+    KIND_TYPE_IDENT, KIND_VALUE_ARGS,
 };
 use crate::resolver::extract_collection_element_type;
 use crate::StrExt;
@@ -585,15 +585,15 @@ pub(super) fn resolve_root_node_type(
             // Implicit lambda parameters ("it", "this") are not declared as variables
             // — resolve them via contextual lambda-param inference at their position.
             if name == "it" || name == "this" {
-                let start = node.start_position();
-                let utf16_col =
-                    crate::inlay_hints::ts_byte_col_to_utf16(bytes, &[], start.row, start.column);
-                if let Some(resolved) = deps.find_contextual_type(&name, uri, start.row, utf16_col)
-                {
+                if let Some(resolved) = contextual_type_at(&name, node, bytes, deps, uri) {
                     return Some(resolved);
                 }
             }
             Some(name)
+        }
+        // A labelled `this@Outer` names an outer receiver, not the innermost one.
+        k if k == KIND_THIS_EXPR && node.utf8_text(bytes) == Ok("this") => {
+            contextual_type_at("this", node, bytes, deps, uri)
         }
         k if k == KIND_NAV_EXPR => {
             let segments = collect_nav_segments(node, bytes);
@@ -602,6 +602,19 @@ pub(super) fn resolve_root_node_type(
         k if k == KIND_CALL_EXPR => resolve_call_expr_type(node, bytes, deps, uri),
         _ => None,
     }
+}
+
+/// The type of the implicit `name` (`it` / `this`) at `node`'s position.
+fn contextual_type_at(
+    name: &str,
+    node: tree_sitter::Node<'_>,
+    bytes: &[u8],
+    deps: &impl InferDeps,
+    uri: &Url,
+) -> Option<String> {
+    let start = node.start_position();
+    let utf16_col = crate::inlay_hints::ts_byte_col_to_utf16(bytes, &[], start.row, start.column);
+    deps.find_contextual_type(name, uri, start.row, utf16_col)
 }
 
 // ─── resolve_call_expr_type: strategy list ───────────────────────────────────

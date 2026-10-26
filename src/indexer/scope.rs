@@ -201,6 +201,18 @@ impl Indexer {
         Some((word, qualifier))
     }
 
+    /// The receiver type, as written, of the extension function or property
+    /// whose body encloses `position`.
+    fn enclosing_extension_receiver_type(&self, uri: &Url, position: Position) -> Option<String> {
+        let doc = self.live_doc_or_parse(uri)?;
+        let range = tower_lsp::lsp_types::Range {
+            start: position,
+            end: position,
+        };
+        crate::parser::enclosing_extension_receiver_at(doc.tree.root_node(), &doc.bytes, range)
+            .map(|receiver| receiver.written)
+    }
+
     /// If `name` at `position` is `it` or a named lambda parameter, return the
     /// inferred element/receiver type name (e.g. `"Product"`, `"User"`).
     ///
@@ -243,10 +255,12 @@ impl Indexer {
             if let Some(ty) = find_as_call_arg_type(&lines, pos, self, uri) {
                 return Some(ty);
             }
-            // Fallback for `this` in a regular class method body (not a lambda):
-            // scan backward for the enclosing class/object declaration.
+            // `this` in an extension function's body is its receiver; in a
+            // regular class method body, the enclosing class/object.
             if name == "this" {
-                return self.enclosing_class_at(uri, position.line);
+                return self
+                    .enclosing_extension_receiver_type(uri, position)
+                    .or_else(|| self.enclosing_class_at(uri, position.line));
             }
             None
         } else {

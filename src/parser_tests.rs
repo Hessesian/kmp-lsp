@@ -2051,6 +2051,28 @@ fn enclosing_receiver_at(src: &str, line: u32, character: u32) -> Option<String>
         end: tower_lsp::lsp_types::Position { line, character },
     };
     enclosing_extension_receiver_at(doc.tree.root_node(), &doc.bytes, position)
+        .map(|receiver| receiver.base)
+}
+
+#[test]
+fn enclosing_extension_receiver_keeps_the_written_receiver_type() {
+    let src = "fun <T> List<Apple>?.find() {\n    this\n}\n";
+    let doc = crate::indexer::live_tree::parse_live(src, tree_sitter_kotlin::LANGUAGE.into())
+        .expect("must parse");
+    let position = tower_lsp::lsp_types::Range {
+        start: tower_lsp::lsp_types::Position {
+            line: 1,
+            character: 4,
+        },
+        end: tower_lsp::lsp_types::Position {
+            line: 1,
+            character: 4,
+        },
+    };
+    let receiver = enclosing_extension_receiver_at(doc.tree.root_node(), &doc.bytes, position)
+        .expect("inside an extension function");
+    assert_eq!(receiver.base, "List");
+    assert_eq!(receiver.written, "List<Apple>?");
 }
 
 #[test]
