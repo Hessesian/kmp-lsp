@@ -797,37 +797,84 @@ fn finalize_resolution<'tree>(
     match kind {
         ExtractedTypeKind::Concrete => Some(extracted_type),
         ExtractedTypeKind::GenericParam(source) => {
-            // If we couldn't resolve the receiver type in stage 1, there's no
-            // point trying substitution — the "receiver" is an unresolved name.
-            let receiver_type = receiver_type?;
-            substitute_generic(
-                extracted_type,
-                source,
-                callable?,
-                call_expr,
-                &receiver_type,
-                bytes,
-                deps,
-                uri,
-            )
+            let callable = callable?;
+            // An unresolved receiver is only a name, not a type to substitute from.
+            let from_receiver = receiver_type.and_then(|receiver_type| {
+                substitute_from_receiver(
+                    extracted_type.clone(),
+                    source,
+                    callable.clone(),
+                    &receiver_type,
+                )
+            });
+            from_receiver.or_else(|| {
+                type_parameter_bound_by_arguments(
+                    &extracted_type,
+                    &callable.type_params,
+                    call_expr,
+                    bytes,
+                    deps,
+                    uri,
+                )
+            })
         }
     }
 }
 
-/// Resolve a generic lambda parameter type to a concrete type via receiver substitution.
+/// The concrete type a function's own type parameter `extracted` takes at
+/// `call_expr`, bound by the value arguments: each declared parameter that
+/// mentions a type parameter (`data: StatefulModel<T>`) is unified with its
+/// argument's written type (`StatefulModel<Content>` binds `T` to
+/// `Content`). The answer must name a type `uri` can see, since it is looked
+/// up there; otherwise, and when no argument binds it, unknown.
+fn type_parameter_bound_by_arguments(
+    extracted: &str,
+    type_params: &[String],
+    call_expr: tree_sitter::Node<'_>,
+    bytes: &[u8],
+    deps: &impl InferDeps,
+    uri: &Url,
+) -> Option<String> {
+    let signature = receiver_aware_params(
+        call_expr,
+        bytes,
+        deps,
+        uri,
+        None,
+        call_shape_of(call_expr, bytes),
+    )?;
+    let arguments = call_expr.find_value_arguments()?;
+    let bound = arguments
+        .children_of_kind(KIND_VALUE_ARG)
+        .into_iter()
+        .find_map(|argument| {
+            let declared = match argument.named_arg_label(bytes) {
+                Some(label) => find_named_param_type_in_sig(&signature, &label)?,
+                None => nth_fun_param_type_str(&signature, argument.value_arg_position())?,
+            };
+            let mut cursor = argument.walk();
+            let expression = argument.named_children(&mut cursor).last()?;
+            let (written, _) =
+                super::expr_type::infer_expr_type_as_written(expression, bytes, deps, uri)?;
+            let substitution = build_ext_fn_type_subst(&declared, &written, type_params);
+            substitution
+                .get(extracted)
+                .filter(|concrete| concrete.as_str() != extracted)
+                .cloned()
+        })?;
+    deps.names_type_in_scope(&bound, uri).then_some(bound)
+}
+
+/// Resolve a generic lambda parameter type to a concrete type via the
+/// callable's extension receiver.
 ///
 /// `receiver_type` is pre-resolved by `locate_and_extract` — this function
 /// will never see a raw name masquerading as a type.
-#[allow(clippy::too_many_arguments)]
-fn substitute_generic(
+fn substitute_from_receiver(
     extracted: String,
     source: GenericParamSource,
     info: CallableInfo,
-    _call_expr: tree_sitter::Node<'_>,
     receiver_type: &str,
-    _bytes: &[u8],
-    _deps: &impl InferDeps,
-    _uri: &Url,
 ) -> Option<String> {
     if info.extension_receiver_type.is_empty() {
         return match source {

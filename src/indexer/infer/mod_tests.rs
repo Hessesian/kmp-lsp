@@ -1412,3 +1412,56 @@ fn it_on_an_implicit_receiver_field_is_typed_from_its_element() {
     );
     assert_eq!(identifier_type(&source, "it", 2).as_deref(), Some("Apple"));
 }
+
+/// Compose `CStateful(data: StatefulModel<T>, ..) { model: T -> }`: `T` is
+/// bound by the `data` argument.
+const STATEFUL_DECLARATIONS: &str = "class StatefulModel<T>(val data: T)\n\
+     class Content(val title: String)\n\
+     class Banana\n\
+     class State(val content: StatefulModel<Content>)\n\
+     fun <T> CStateful(data: StatefulModel<T>, loading: (T?) -> Unit = {}, content: (T) -> Unit) {}\n\
+     fun sibling(model: Banana) = model\n";
+
+#[test]
+fn lambda_parameter_is_typed_from_a_named_argument_binding_its_type_parameter() {
+    let source = format!(
+        "{STATEFUL_DECLARATIONS}\
+         fun screen(state: State) {{\n\
+         \x20   CStateful(\n\
+         \x20       data = state.content,\n\
+         \x20   ) {{ model ->\n\
+         \x20       model\n\
+         \x20   }}\n\
+         }}\n"
+    );
+    assert_eq!(
+        identifier_type(&source, "model", 3).as_deref(),
+        Some("Content")
+    );
+}
+
+#[test]
+fn lambda_parameter_is_typed_from_a_positional_argument_binding_its_type_parameter() {
+    let source = format!(
+        "{STATEFUL_DECLARATIONS}\
+         fun screen(state: State) {{\n\
+         \x20   CStateful(state.content) {{ model -> model }}\n\
+         }}\n"
+    );
+    assert_eq!(
+        identifier_type(&source, "model", 3).as_deref(),
+        Some("Content")
+    );
+}
+
+/// An argument whose type is unknown binds nothing: unknown, never `Banana`.
+#[test]
+fn lambda_parameter_stays_unknown_when_no_argument_binds_its_type_parameter() {
+    let source = format!(
+        "{STATEFUL_DECLARATIONS}\
+         fun screen() {{\n\
+         \x20   CStateful(mystery()) {{ model -> model }}\n\
+         }}\n"
+    );
+    assert_eq!(identifier_type(&source, "model", 3), None);
+}

@@ -713,6 +713,18 @@ fn extension_get_value_type(
     Some((value_type, written_in))
 }
 
+/// The type of `expression` as written, type arguments and `?` kept — what a
+/// generic parameter is unified against (`StatefulModel<Content>` binds the
+/// `T` of `data: StatefulModel<T>`).
+pub(super) fn infer_expr_type_as_written(
+    expression: Node<'_>,
+    bytes: &[u8],
+    deps: &impl InferDeps,
+    uri: &Url,
+) -> Option<(String, Url)> {
+    infer_initializer_type(expression, bytes, deps, uri, 0)
+}
+
 /// The type of a local's initializer, keeping `?` and type arguments where
 /// the initializer names another binding (`val copy = items`).
 fn infer_initializer_type(
