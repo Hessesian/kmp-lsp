@@ -48,10 +48,10 @@ use crate::StrExt as _;
 use super::chain::{
     resolve_field_type_on, resolve_method_return_type_on, trailing_lambda_last_expression,
 };
-use super::cst_symbol::{local_binding_at, local_binding_of, LocalBinding};
+use super::cst_symbol::{local_binding_at, local_binding_of, DestructuredValue, LocalBinding};
 use super::deps::{CallShape, InferDeps, ReceiverCall};
 use super::lambda::LAMBDA_RESULT_FNS;
-use super::type_subst::build_ext_fn_type_subst;
+use super::type_subst::{build_ext_fn_type_subst, split_top_level_commas, type_args_inner};
 use crate::resolver::ReturnNullability;
 
 // ─── public API ───────────────────────────────────────────────────────────────
@@ -452,12 +452,21 @@ fn infer_binding_type(
             infer_delegated_value_type(delegate, bytes, deps, uri, depth + 1)
         }
         LocalBinding::Iterated { iterable } => {
-            infer_initializer_type(iterable, bytes, deps, uri, depth + 1).and_then(
-                |(iterable_type, iterable_uri)| {
-                    iterated_element_type(&iterable_type)
-                        .map(|element_type| (element_type, iterable_uri))
-                },
-            )
+            infer_iterated_element_type(iterable, bytes, deps, uri, depth + 1)
+        }
+        LocalBinding::Destructured { whole, component } => {
+            let whole_type = match whole {
+                DestructuredValue::Initializer(initializer) => {
+                    infer_initializer_type(initializer, bytes, deps, uri, depth + 1)
+                }
+                DestructuredValue::ElementOf(iterable) => {
+                    infer_iterated_element_type(iterable, bytes, deps, uri, depth + 1)
+                }
+            };
+            whole_type.and_then(|(whole_type, whole_uri)| {
+                destructured_component_type(&whole_type, component)
+                    .map(|component_type| (component_type, whole_uri))
+            })
         }
         LocalBinding::Untyped => None,
         LocalBinding::NotLocal => return BindingType::NotLocal,
@@ -469,6 +478,41 @@ fn infer_binding_type(
         },
         None => BindingType::LocalUnknown,
     }
+}
+
+/// The type of one element of `iterable`, as a `for` loop reads it.
+fn infer_iterated_element_type(
+    iterable: Node<'_>,
+    bytes: &[u8],
+    deps: &impl InferDeps,
+    uri: &Url,
+    depth: usize,
+) -> Option<(String, Url)> {
+    let (iterable_type, iterable_uri) = infer_initializer_type(iterable, bytes, deps, uri, depth)?;
+    iterated_element_type(&iterable_type).map(|element_type| (element_type, iterable_uri))
+}
+
+/// The type of the `component`-th (0-based) `componentN()` of `whole_type`,
+/// for the types whose components are their type arguments: `Pair`,
+/// `Triple` and `Map.Entry`. Unknown for anything else, including data
+/// classes (their components are primary-constructor properties, which
+/// this engine does not read).
+fn destructured_component_type(whole_type: &str, component: usize) -> Option<String> {
+    let holder = whole_type.bare_type_name()?;
+    let arity = match holder.as_str() {
+        "Map.Entry" | "MutableMap.MutableEntry" => 2,
+        _ => match holder.last_segment() {
+            "Pair" => 2,
+            "Triple" => 3,
+            _ => return None,
+        },
+    };
+    let arguments = split_top_level_commas(type_args_inner(whole_type)?);
+    if arguments.len() != arity {
+        return None;
+    }
+    let argument = arguments.get(component)?.trim().strip_variance();
+    (!argument.is_empty()).then(|| argument.to_owned())
 }
 
 /// The element a `for` loop reads from an iterable of type `iterable_type`:
@@ -495,9 +539,7 @@ fn iterated_element_type(iterable_type: &str) -> Option<String> {
         "Map" | "MutableMap" | "HashMap" | "LinkedHashMap" | "ImmutableMap" | "PersistentMap"
     );
     if is_map {
-        let open = iterable_type.find('<')?;
-        let close = iterable_type.rfind('>')?;
-        let key_and_value = iterable_type.get(open + 1..close)?;
+        let key_and_value = type_args_inner(iterable_type)?;
         return Some(format!("Map.Entry<{key_and_value}>"));
     }
     crate::resolver::extract_collection_element_type(iterable_type)

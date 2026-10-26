@@ -1556,3 +1556,86 @@ fn for_variable_over_an_unknown_iterable_stays_unknown() {
                   }\n";
     assert_eq!(identifier_type(source, "widget", 3), None);
 }
+
+// ─── destructuring ───────────────────────────────────────────────────────────
+
+const DESTRUCTURING_DECLARATIONS: &str = "class Apple\n\
+     class Banana\n\
+     class Cherry\n\
+     fun pair(): Pair<Apple, Banana> = TODO()\n\
+     fun triple(): Triple<Apple, Banana, Cherry> = TODO()\n\
+     fun sibling(first: Banana, second: Apple, third: Apple) = first\n";
+
+#[test]
+fn destructured_pair_components_are_its_type_arguments() {
+    let source = format!(
+        "{DESTRUCTURING_DECLARATIONS}\
+         fun use() {{\n\
+         \x20   val (first, second) = pair()\n\
+         \x20   first; second\n\
+         }}\n"
+    );
+    assert_eq!(
+        identifier_type(&source, "first", 3).as_deref(),
+        Some("Apple")
+    );
+    assert_eq!(
+        identifier_type(&source, "second", 2).as_deref(),
+        Some("Banana")
+    );
+}
+
+#[test]
+fn destructured_triple_components_are_its_type_arguments() {
+    let source = format!(
+        "{DESTRUCTURING_DECLARATIONS}\
+         fun use() {{\n\
+         \x20   val (first, _, third) = triple()\n\
+         \x20   first; third\n\
+         }}\n"
+    );
+    assert_eq!(
+        identifier_type(&source, "first", 3).as_deref(),
+        Some("Apple")
+    );
+    assert_eq!(
+        identifier_type(&source, "third", 2).as_deref(),
+        Some("Cherry")
+    );
+}
+
+#[test]
+fn destructured_map_entry_in_a_for_loop_is_key_and_value() {
+    let source = "class Apple\n\
+                  class Banana\n\
+                  fun sibling(key: Banana, value: Banana) = key\n\
+                  fun walk(prices: Map<String, Apple>) {\n\
+                  \x20   for ((key, value) in prices) { key; value }\n\
+                  }\n";
+    assert_eq!(identifier_type(source, "key", 3).as_deref(), Some("String"));
+    assert_eq!(
+        identifier_type(source, "value", 2).as_deref(),
+        Some("Apple")
+    );
+}
+
+/// A source of unknown type, or one whose components this engine cannot
+/// read (a data class), leaves the components unknown, never `Banana`.
+#[test]
+fn destructured_components_of_an_unknown_source_stay_unknown() {
+    let source = format!(
+        "{DESTRUCTURING_DECLARATIONS}\
+         data class Basket(val first: Apple, val second: Banana)\n\
+         fun basket(): Basket = TODO()\n\
+         fun use() {{\n\
+         \x20   val (first, second) = mystery()\n\
+         \x20   first\n\
+         }}\n\
+         fun other() {{\n\
+         \x20   val (first, second) = basket()\n\
+         \x20   second\n\
+         }}\n"
+    );
+    assert_eq!(identifier_type(&source, "first", 4), None);
+    assert_eq!(identifier_type(&source, "second", 4), None);
+}

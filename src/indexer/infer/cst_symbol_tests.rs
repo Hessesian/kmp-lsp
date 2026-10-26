@@ -1214,6 +1214,14 @@ fn binding_of(source: &str, name: &str, occurrence: usize) -> String {
         }
         LocalBinding::Delegated { delegate } => format!("Delegated({})", text_of(delegate)),
         LocalBinding::Iterated { iterable } => format!("Iterated({})", text_of(iterable)),
+        LocalBinding::Destructured { whole, component } => {
+            let whole_text = match whole {
+                DestructuredValue::Initializer(node) | DestructuredValue::ElementOf(node) => {
+                    text_of(node)
+                }
+            };
+            format!("Destructured({whole_text}, {component})")
+        }
         LocalBinding::Narrowed { narrowed_type } => format!("Narrowed({})", text_of(narrowed_type)),
         LocalBinding::Untyped => "Untyped".to_owned(),
         LocalBinding::NotLocal => "NotLocal".to_owned(),
@@ -1300,7 +1308,7 @@ fn untyped_binders_shadow_an_outer_annotated_parameter() {
                         \x20   val (count, item) = pair\n\
                         \x20   item\n\
                         }\n";
-    assert_eq!(binding_of(destructured, "item", 2), "Untyped");
+    assert_eq!(binding_of(destructured, "item", 2), "Destructured(pair, 1)");
 }
 
 /// A delegated local shadows the outer parameter and is typed by its delegate.
@@ -1528,8 +1536,12 @@ fn declaring_identifier(binding: LocalBinding<'_>) -> Option<Node<'_>> {
             .parent()?
             .first_child_of_kind(KIND_VAR_DECL)?
             .first_child_of_kind(KIND_SIMPLE_IDENT),
-        // A smart cast narrows a binding found further out; it declares nothing.
-        LocalBinding::Narrowed { .. } | LocalBinding::Untyped | LocalBinding::NotLocal => None,
+        // A destructured component's name is not reachable from its value
+        // node alone; a smart cast narrows a binding found further out.
+        LocalBinding::Destructured { .. }
+        | LocalBinding::Narrowed { .. }
+        | LocalBinding::Untyped
+        | LocalBinding::NotLocal => None,
     }
 }
 
