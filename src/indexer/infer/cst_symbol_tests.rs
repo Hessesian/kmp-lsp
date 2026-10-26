@@ -1213,6 +1213,7 @@ fn binding_of(source: &str, name: &str, occurrence: usize) -> String {
             format!("Initialized({})", text_of(initializer))
         }
         LocalBinding::Delegated { delegate } => format!("Delegated({})", text_of(delegate)),
+        LocalBinding::Narrowed { narrowed_type } => format!("Narrowed({})", text_of(narrowed_type)),
         LocalBinding::Untyped => "Untyped".to_owned(),
         LocalBinding::NotLocal => "NotLocal".to_owned(),
     }
@@ -1336,6 +1337,87 @@ fn when_subject_binding_is_initialized_from_its_subject_expression() {
 }
 
 #[test]
+fn is_branch_narrows_the_when_subject_inside_its_body_only() {
+    let source = "fun use(event: Event) {\n\
+                  \x20   when (event) {\n\
+                  \x20       is Event.Actions -> event\n\
+                  \x20       !is Event.Detail -> event\n\
+                  \x20       is Event.Open, is Event.Close -> event\n\
+                  \x20       else -> event\n\
+                  \x20   }\n\
+                  }\n";
+    assert_eq!(binding_of(source, "event", 2), "Narrowed(Event.Actions)");
+    assert_eq!(binding_of(source, "event", 3), "Annotated(Event)", "!is");
+    assert_eq!(
+        binding_of(source, "event", 4),
+        "Annotated(Event)",
+        "two conditions"
+    );
+    assert_eq!(binding_of(source, "event", 5), "Annotated(Event)", "else");
+}
+
+#[test]
+fn is_branch_narrows_a_when_subject_binding() {
+    let source = "fun use(sheet: Apple) {\n\
+                  \x20   when (val sheet = pick()) { is Sheet.Open -> sheet; else -> sheet }\n\
+                  }\n";
+    assert_eq!(binding_of(source, "sheet", 2), "Narrowed(Sheet.Open)");
+    assert_eq!(binding_of(source, "sheet", 3), "Initialized(pick())");
+}
+
+/// A redeclaration inside the branch shadows the narrowed subject.
+#[test]
+fn a_local_declared_in_the_is_branch_shadows_the_narrowed_subject() {
+    let source = "fun use(event: Event) {\n\
+                  \x20   when (event) {\n\
+                  \x20       is Event.Actions -> { val event = Apple(); event }\n\
+                  \x20       else -> {}\n\
+                  \x20   }\n\
+                  }\n";
+    assert_eq!(binding_of(source, "event", 3), "Initialized(Apple())");
+}
+
+/// The Moneta `MortgageReducer` shape: the sibling subclass declares a
+/// same-named member; the `is` branch decides which one is meant.
+#[test]
+fn member_of_a_narrowed_when_subject_binding_resolves_on_the_narrowed_type() {
+    let source = "sealed interface SheetEvent {\n\
+                  \x20   data class OnOpenStatements(val accountId: String, val isWustenrot: Boolean) : SheetEvent\n\
+                  \x20   data class OnOpenDetail(val mortgageId: String, val isWustenrot: Boolean) : SheetEvent\n\
+                  }\n\
+                  class Holder(val event: SheetEvent)\n\
+                  fun reduce(holder: Holder) {\n\
+                  \x20   when (val sheetEvent = holder.event) {\n\
+                  \x20       is SheetEvent.OnOpenDetail -> sheetEvent.isWustenrot\n\
+                  \x20       else -> {}\n\
+                  \x20   }\n\
+                  }\n";
+    let (file_uri, indexer) = indexed_with_live("/Reducer.kt", source);
+    let column = source.lines().nth(7).unwrap().find("isWustenrot").unwrap();
+    let symbol = classify_symbol_at(
+        &indexer,
+        &file_uri,
+        CursorPos {
+            line: 7,
+            utf16_col: column,
+        },
+    )
+    .unwrap();
+    let definition_lines: Vec<u32> = match resolve_identity(&symbol, &indexer, &file_uri) {
+        NavigationSource::CstResolved(definitions) => definitions
+            .0
+            .iter()
+            .map(|location| location.range.start.line)
+            .collect(),
+        NavigationSource::NameScan(_) => Vec::new(),
+    };
+    assert!(
+        definition_lines.iter().all(|line| *line == 2),
+        "must resolve to OnOpenDetail.isWustenrot (line 2), got lines {definition_lines:?}"
+    );
+}
+
+#[test]
 fn annotated_parameter_type_skips_its_type_annotation() {
     let source = "fun use(item: @Ann Apple?) { item }\n";
     assert_eq!(binding_of(source, "item", 1), "Annotated(Apple?)");
@@ -1441,7 +1523,8 @@ fn declaring_identifier(binding: LocalBinding<'_>) -> Option<Node<'_>> {
             .parent()?
             .first_child_of_kind(KIND_VAR_DECL)?
             .first_child_of_kind(KIND_SIMPLE_IDENT),
-        LocalBinding::Untyped | LocalBinding::NotLocal => None,
+        // A smart cast narrows a binding found further out; it declares nothing.
+        LocalBinding::Narrowed { .. } | LocalBinding::Untyped | LocalBinding::NotLocal => None,
     }
 }
 

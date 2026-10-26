@@ -347,7 +347,12 @@ fn infer_binding_type(
     depth: usize,
 ) -> BindingType {
     let typed = match binding {
-        LocalBinding::Annotated { declared_type } => declared_type
+        LocalBinding::Annotated {
+            declared_type: written_type,
+        }
+        | LocalBinding::Narrowed {
+            narrowed_type: written_type,
+        } => written_type
             .utf8_text_owned(bytes)
             .map(|type_text| (type_text, uri.clone())),
         LocalBinding::Initialized { initializer } => {

@@ -907,6 +907,29 @@ fn expr_type_substitutes_a_delegate_through_the_view_model_supertype() {
     assert_eq!(state_type.as_deref(), Some("Apple"));
 }
 
+/// The Moneta `FamilyCardDetailViewModel` shape: `event.event` inside
+/// `is Event.Actions ->` is `Actions.event`, not the first `event` property
+/// among `Event`'s subclasses.
+#[test]
+fn expr_type_types_a_chain_through_a_narrowed_subject() {
+    let source = "class DetailEvent\n\
+                  class ActionEvent\n\
+                  sealed interface Event {\n\
+                  \x20   data class Detail(val event: DetailEvent) : Event\n\
+                  \x20   data class Actions(val event: ActionEvent) : Event\n\
+                  }\n\
+                  fun handle(event: Event) {\n\
+                  \x20   when (event) {\n\
+                  \x20       is Event.Actions -> when (val actionEvent = event.event) { else -> actionEvent }\n\
+                  \x20       else -> {}\n\
+                  \x20   }\n\
+                  }\n";
+    assert_eq!(
+        identifier_type(source, "actionEvent", 1).as_deref(),
+        Some("ActionEvent")
+    );
+}
+
 #[test]
 fn expr_type_types_a_when_subject_binding_from_its_subject() {
     let source = "class Apple\n\
