@@ -689,6 +689,18 @@ fn elvis_with_a_differently_typed_default_is_unknown() {
     assert_eq!(elvis_local_type("Banana()"), None);
 }
 
+/// Same bare name, different type arguments: still not the left side's type.
+#[test]
+fn elvis_with_a_default_of_other_type_arguments_is_unknown() {
+    let source = "class Apple\n\
+                  class Banana\n\
+                  fun <T> listOf(vararg elements: T): List<T> = TODO()\n\
+                  fun pick(): List<Apple>? = null\n\
+                  fun first(copy: Apple) {}\n\
+                  fun use() { val copy = pick() ?: listOf(Banana()); copy }\n";
+    assert_eq!(local_type_at(source, "copy", 2), None);
+}
+
 #[test]
 fn elvis_initializer_keeps_type_arguments_and_drops_nullability() {
     let source = "class Apple\n\
@@ -706,6 +718,9 @@ const STATE_DECLARATIONS: &str = "class Apple\n\
      class Banana\n\
      interface State<out T> { val value: T }\n\
      interface MutableState<T> : State<T>\n\
+     operator fun <T> State<T>.getValue(thisObj: Any?, property: Any?): T = value\n\
+     fun <T> mutableStateOf(value: T): MutableState<T> = TODO()\n\
+     fun <T> remember(calculation: () -> T): T = calculation()\n\
      class StateFlow<T>\n\
      fun <T> StateFlow<T>.collectAsStateWithLifecycle(): State<T> = TODO()\n\
      fun appleState(): MutableState<Apple> = TODO()\n\
@@ -727,8 +742,11 @@ fn expr_type_unwraps_a_state_delegate() {
     );
 }
 
+/// `MutableState<T>` has no `getValue` of its own; it inherits `State<T>`'s
+/// through its supertype, which this lookup does not walk: unknown, never
+/// `first`'s `Banana`.
 #[test]
-fn expr_type_unwraps_a_mutable_state_delegate() {
+fn expr_type_leaves_a_mutable_state_value_unknown() {
     let source = format!(
         "{STATE_DECLARATIONS}\
          fun second() {{\n\
@@ -736,10 +754,7 @@ fn expr_type_unwraps_a_mutable_state_delegate() {
          \x20   item\n\
          }}\n"
     );
-    assert_eq!(
-        identifier_type(&source, "item", 3).as_deref(),
-        Some("Apple")
-    );
+    assert_eq!(identifier_type(&source, "item", 3), None);
 }
 
 /// A delegate whose `getValue` type this engine does not know stays unknown,
@@ -754,6 +769,142 @@ fn expr_type_leaves_an_unknown_delegate_untyped() {
          }}\n"
     );
     assert_eq!(identifier_type(&source, "item", 3), None);
+}
+
+/// `by lazy { .. }` reads as its lambda's result.
+#[test]
+fn expr_type_types_a_lazy_delegate_from_its_lambda() {
+    let source = "class Apple\n\
+                  class Banana\n\
+                  fun first(item: Banana) = item\n\
+                  fun second() {\n\
+                  \x20   val item by lazy { Apple() }\n\
+                  \x20   item\n\
+                  }\n";
+    assert_eq!(identifier_type(source, "item", 3).as_deref(), Some("Apple"));
+}
+
+#[test]
+fn expr_type_types_mutable_state_of_from_its_argument() {
+    let remembered = format!(
+        "{STATE_DECLARATIONS}\
+         fun second() {{\n\
+         \x20   val item by remember {{ mutableStateOf(Apple()) }}\n\
+         \x20   item\n\
+         }}\n"
+    );
+    assert_eq!(
+        identifier_type(&remembered, "item", 3).as_deref(),
+        Some("Apple")
+    );
+    let direct = format!(
+        "{STATE_DECLARATIONS}\
+         fun second() {{\n\
+         \x20   var item by mutableStateOf(Apple())\n\
+         \x20   item\n\
+         }}\n"
+    );
+    assert_eq!(
+        identifier_type(&direct, "item", 3).as_deref(),
+        Some("Apple")
+    );
+}
+
+/// The value type is what the delegate's own `getValue` returns, not its
+/// type argument, even for a class that happens to be called `State`.
+#[test]
+fn expr_type_reads_a_delegate_through_its_own_get_value() {
+    let source = "class Apple\n\
+                  class Banana\n\
+                  class State<T> { operator fun getValue(thisRef: Any?, property: Any?): Banana = TODO() }\n\
+                  fun make(): State<Apple> = TODO()\n\
+                  fun first(item: Apple) = item\n\
+                  fun second() {\n\
+                  \x20   val item by make()\n\
+                  \x20   item\n\
+                  }\n";
+    assert_eq!(
+        identifier_type(source, "item", 3).as_deref(),
+        Some("Banana")
+    );
+}
+
+/// `expr_type` of the `occurrence`-th `name` in `caller_path`, with every file
+/// in `files` indexed.
+fn identifier_type_in_workspace(
+    files: &[(&str, &str)],
+    caller_path: &str,
+    name: &str,
+    occurrence: usize,
+) -> Option<String> {
+    let indexer = Indexer::new();
+    for (path, source) in files {
+        indexer.index_content(&test_url(path), source);
+    }
+    let caller_source = files
+        .iter()
+        .find(|(path, _)| *path == caller_path)
+        .map(|(_, source)| *source)
+        .expect("caller file");
+    let uri = test_url(caller_path);
+    let live_doc = live_doc_for(caller_source);
+    let identifier = crate::indexer::walk::descendants(live_doc.tree.root_node())
+        .filter(|node| node.kind() == crate::queries::KIND_SIMPLE_IDENT)
+        .filter(|node| node.utf8_text(&live_doc.bytes) == Ok(name))
+        .nth(occurrence)
+        .expect("identifier occurrence");
+    CstQuery::new(identifier, &live_doc, &indexer, &uri)
+        .expr_type()
+        .resolved()
+        .map(|resolved| resolved.as_type_str().to_owned())
+}
+
+/// `uiState: StateFlow<State>` declared in a generic base class: the delegate
+/// reads as the subclass's type argument.
+#[test]
+fn expr_type_substitutes_a_delegate_through_the_view_model_supertype() {
+    let files = [
+        (
+            "/compose/State.kt",
+            "package androidx.compose.runtime\n\
+             interface State<out T> { val value: T }\n\
+             operator fun <T> State<T>.getValue(thisObj: Any?, property: Any?): T = value\n\
+             class StateFlow<T>\n\
+             fun <T> StateFlow<T>.collectAsStateWithLifecycle(): State<T> = TODO()\n",
+        ),
+        (
+            "/mvi/MviViewModel.kt",
+            "package app.mvi\n\
+             import androidx.compose.runtime.StateFlow\n\
+             interface UiState\n\
+             abstract class MviViewModel<Event, State : UiState> {\n\
+             \x20   val uiState: StateFlow<State> by lazy { TODO() }\n\
+             }\n",
+        ),
+        (
+            "/decoy/Decoy.kt",
+            "package app.decoy\n\
+             class State(val count: Int)\n\
+             private fun State.content(): Int = count\n",
+        ),
+        (
+            "/screen/Agreement.kt",
+            "package app.screen\n\
+             import androidx.compose.runtime.collectAsStateWithLifecycle\n\
+             import androidx.compose.runtime.getValue\n\
+             import app.mvi.MviViewModel\n\
+             import app.mvi.UiState\n\
+             class Apple : UiState\n\
+             class AgreementViewModel : MviViewModel<Int, Apple>()\n\
+             fun first(state: Int) {}\n\
+             fun screen(viewModel: AgreementViewModel) {\n\
+             \x20   val state by viewModel.uiState.collectAsStateWithLifecycle()\n\
+             \x20   state\n\
+             }\n",
+        ),
+    ];
+    let state_type = identifier_type_in_workspace(&files, "/screen/Agreement.kt", "state", 2);
+    assert_eq!(state_type.as_deref(), Some("Apple"));
 }
 
 #[test]

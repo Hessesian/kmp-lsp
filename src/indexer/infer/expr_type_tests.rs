@@ -212,6 +212,18 @@ fn elvis_with_mismatched_sides_no_hint() {
     assert_eq!(infer(r#""a" ?: 0"#), None);
 }
 
+/// As an expression, elvis reports the same bare form an identifier does, so
+/// a chain receiver `(items ?: return).size` looks `List` up like `items.size`.
+#[test]
+fn elvis_expression_reports_the_bare_form_of_its_left_side() {
+    let deps = TestDeps::new().with_var("file:///tmp/test.kt", "items", "List<Apple>?");
+    assert_eq!(infer_with_deps("items", &deps).as_deref(), Some("List"));
+    assert_eq!(
+        infer_with_deps("items ?: return", &deps).as_deref(),
+        Some("List")
+    );
+}
+
 #[test]
 fn when_expr_no_hint() {
     assert_eq!(infer(r#"when { x > 0 -> "pos"; else -> "neg" }"#), None);

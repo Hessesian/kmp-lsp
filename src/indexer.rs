@@ -674,6 +674,36 @@ impl InferDeps for Indexer {
                 .unwrap_or(false)
         })
     }
+    fn names_type_in_scope(&self, type_text: &str, uri: &Url) -> bool {
+        let Some(type_path) = crate::StrExt::bare_type_name(type_text) else {
+            return false;
+        };
+        let is_builtin = crate::features::text_utils::KOTLIN_BUILTIN_TYPES
+            .binary_search(&type_path.as_str())
+            .is_ok();
+        if is_builtin {
+            return true;
+        }
+        let path_resolves = || {
+            !crate::resolver::resolve_type_path_declarations(
+                self,
+                &type_path,
+                uri,
+                crate::resolver::ResolveIo::IndexOnly,
+            )
+            .is_empty()
+        };
+        // `resolve_type_path_declarations` falls back past `uri`'s scope for
+        // a bare root; a package-qualified path names its type outright.
+        let root = type_path.split('.').next().unwrap_or(&type_path);
+        let is_package_qualified = crate::StrExt::starts_with_lowercase(root);
+        if is_package_qualified {
+            return path_resolves();
+        }
+        let root_in_scope =
+            !crate::resolver::resolve_symbol_scoped_only(self, root, uri).is_empty();
+        root_in_scope && path_resolves()
+    }
 }
 
 /// What a call on a known receiver type binds `fn_name` to, as far as the

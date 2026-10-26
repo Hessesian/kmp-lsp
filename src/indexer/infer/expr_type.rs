@@ -41,14 +41,17 @@ use crate::queries::{
     KIND_JUMP_EXPR, KIND_LONG_LITERAL, KIND_MULTILINE_STRING_LITERAL, KIND_MULTIPLICATIVE_EXPR,
     KIND_NAV_EXPR, KIND_NAV_SUFFIX, KIND_NULL_LITERAL, KIND_PARENTHESIZED_EXPR, KIND_PREFIX_EXPR,
     KIND_RANGE_EXPR, KIND_REAL_LITERAL, KIND_SIMPLE_IDENT, KIND_STRING_LITERAL, KIND_THIS_EXPR,
-    KIND_TYPE_IDENT,
+    KIND_TYPE_IDENT, KIND_VALUE_ARG,
 };
 use crate::StrExt as _;
 
-use super::chain::{resolve_field_type_on, resolve_method_return_type_on};
+use super::chain::{
+    resolve_field_type_on, resolve_method_return_type_on, trailing_lambda_last_expression,
+};
 use super::cst_symbol::{local_binding_at, local_binding_of, LocalBinding};
 use super::deps::InferDeps;
-use super::type_subst::first_type_arg_raw;
+use super::lambda::LAMBDA_RESULT_FNS;
+use super::type_subst::build_ext_fn_type_subst;
 
 // ─── public API ───────────────────────────────────────────────────────────────
 
@@ -153,34 +156,44 @@ fn infer_expr_type_at_depth(
             infer_parenthesized_expr_type(node, bytes, deps, uri, depth)
                 .map(|type_name| (type_name, uri.clone()))
         }
-        KIND_ELVIS_EXPR => infer_elvis_type(node, bytes, deps, uri, depth),
+        KIND_ELVIS_EXPR => infer_elvis_type(node, bytes, deps, uri, depth, TypeTextForm::BareName),
         _ => None,
     }
 }
 
 /// `left ?: right` is the non-null type of `left` when `right` cannot
-/// complete normally (`Nothing`) or has that same type. Otherwise it is their
-/// common supertype, which this engine does not compute.
+/// complete normally (`Nothing`) or has exactly that type, type arguments
+/// included. Otherwise it is their common supertype, which this engine does
+/// not compute. `form` is how `left`'s type is reported: as an expression
+/// (the same form `infer_expr_type` gives `left` alone) or as a local's type.
 fn infer_elvis_type(
     node: Node<'_>,
     bytes: &[u8],
     deps: &impl InferDeps,
     uri: &Url,
     depth: usize,
+    form: TypeTextForm,
 ) -> Option<(String, Url)> {
     let mut cursor = node.walk();
     let mut operands = node.named_children(&mut cursor);
     let left = operands.next()?;
     let right = operands.last()?;
-    let (left_type, left_uri) = infer_initializer_type(left, bytes, deps, uri, depth + 1)?;
-    let non_null_left = left_type.strip_nullable().to_owned();
-    let right_agrees = if is_nothing_typed(right, bytes) {
-        true
-    } else {
-        let (right_type, _) = infer_expr_type_at_depth(right, bytes, deps, uri, depth + 1)?;
-        right_type.bare_type_name() == non_null_left.bare_type_name()
-    };
-    right_agrees.then_some((non_null_left, left_uri))
+    let (left_written, left_uri) = infer_initializer_type(left, bytes, deps, uri, depth + 1)?;
+    let non_null_left = left_written.strip_nullable();
+    let right_agrees = is_nothing_typed(right, bytes)
+        || infer_initializer_type(right, bytes, deps, uri, depth + 1)
+            .is_some_and(|(right_written, _)| right_written == non_null_left);
+    if !right_agrees {
+        return None;
+    }
+    match form {
+        TypeTextForm::AsWritten => Some((non_null_left.to_owned(), left_uri)),
+        TypeTextForm::BareName => {
+            let (left_type, left_uri) =
+                infer_expr_type_at_depth(left, bytes, deps, uri, depth + 1)?;
+            Some((left_type.strip_nullable().to_owned(), left_uri))
+        }
+    }
 }
 
 /// `return`/`throw`/`break`/`continue`, or a call to `error(..)` / `TODO(..)`.
@@ -235,14 +248,15 @@ fn infer_ident_type(
     uri: &Url,
     depth: usize,
 ) -> Option<(String, Url)> {
-    infer_ident_type_in_form(node, bytes, deps, uri, depth, DeclaredTypeForm::BareName)
+    infer_ident_type_in_form(node, bytes, deps, uri, depth, TypeTextForm::BareName)
 }
 
-/// How [`infer_ident_type_in_form`] reports a type read from a declaration.
+/// How a type read from a declaration is reported.
 #[derive(Clone, Copy)]
-enum DeclaredTypeForm {
-    /// The bare name (`"List"` for `List<Apple>?`): the expression-type
-    /// consumers look a receiver's type up by exact name.
+enum TypeTextForm {
+    /// As an expression's type: an identifier's declared type as its bare
+    /// name (`"List"` for `List<Apple>?`), which the expression-type
+    /// consumers look a receiver's type up by.
     BareName,
     /// The text as written, for a local's binding type.
     AsWritten,
@@ -254,7 +268,7 @@ fn infer_ident_type_in_form(
     deps: &impl InferDeps,
     uri: &Url,
     depth: usize,
-    form: DeclaredTypeForm,
+    form: TypeTextForm,
 ) -> Option<(String, Url)> {
     let name = node.utf8_text_owned(bytes)?;
     let start = node.start_position();
@@ -281,8 +295,8 @@ fn infer_ident_type_in_form(
     };
     if let Some((type_text, declaring_uri)) = declared {
         let type_text = match form {
-            DeclaredTypeForm::BareName => type_text.bare_type_name()?,
-            DeclaredTypeForm::AsWritten => type_text,
+            TypeTextForm::BareName => type_text.bare_type_name()?,
+            TypeTextForm::AsWritten => type_text,
         };
         return Some((type_text, declaring_uri));
     }
@@ -354,10 +368,50 @@ fn infer_binding_type(
     }
 }
 
-/// The type a `by <delegate>` local reads as, for the delegates whose
-/// `getValue` returns their own type argument: Compose `State`/`MutableState`
-/// (`by remember { mutableStateOf(..) }`, `by flow.collectAsState()`) and
-/// `Lazy` (`by lazy { .. }`). Any other delegate is unknown.
+/// How a `by <delegate>` expression determines the value its local reads as.
+enum DelegateShape<'tree> {
+    /// `lazy { .. }`: the lambda's value.
+    LazyLambda { result: Node<'tree> },
+    /// `remember { .. }`: the lambda's value is the real delegate.
+    RememberedDelegate { delegate: Node<'tree> },
+    /// `mutableStateOf(x)`: a state holding `x`.
+    MutableStateOf { initial_value: Node<'tree> },
+    /// Anything else: whatever its type's `getValue` operator returns.
+    GetValueOperator,
+}
+
+fn delegate_shape<'tree>(delegate: Node<'tree>, bytes: &[u8]) -> DelegateShape<'tree> {
+    if delegate.kind() != KIND_CALL_EXPR {
+        return DelegateShape::GetValueOperator;
+    }
+    let callee = delegate.call_fn_name(bytes);
+    let lambda_result = trailing_lambda_last_expression(delegate);
+    match (callee.as_deref(), lambda_result) {
+        (Some("lazy"), Some(result)) => DelegateShape::LazyLambda { result },
+        (Some(callee), Some(delegate)) if LAMBDA_RESULT_FNS.contains(&callee) => {
+            DelegateShape::RememberedDelegate { delegate }
+        }
+        (Some("mutableStateOf"), _) => match first_value_argument(delegate) {
+            Some(initial_value) => DelegateShape::MutableStateOf { initial_value },
+            None => DelegateShape::GetValueOperator,
+        },
+        _ => DelegateShape::GetValueOperator,
+    }
+}
+
+/// The expression of `call`'s first value argument.
+fn first_value_argument(call: Node<'_>) -> Option<Node<'_>> {
+    let argument = call
+        .find_value_arguments()?
+        .first_child_of_kind(KIND_VALUE_ARG)?;
+    let mut cursor = argument.walk();
+    let expression = argument.named_children(&mut cursor).last();
+    expression
+}
+
+/// The type a `by <delegate>` local reads as. A type that does not resolve
+/// from the file it was written in (an unsubstituted type parameter, say)
+/// is unknown rather than a name some unrelated class happens to share.
 fn infer_delegated_value_type(
     delegate: Node<'_>,
     bytes: &[u8],
@@ -365,15 +419,74 @@ fn infer_delegated_value_type(
     uri: &Url,
     depth: usize,
 ) -> Option<(String, Url)> {
-    let (delegate_type, declaring_uri) =
-        infer_expr_type_at_depth(delegate, bytes, deps, uri, depth)?;
-    let holder = delegate_type.bare_type_name()?;
-    let returns_its_type_argument =
-        matches!(holder.last_segment(), "State" | "MutableState" | "Lazy");
-    if !returns_its_type_argument {
+    if depth >= crate::util::MAX_CST_DESCENT_DEPTH {
+        crate::util::report_cst_depth_exceeded!("infer_delegated_value_type", delegate);
         return None;
     }
-    first_type_arg_raw(&delegate_type).map(|value_type| (value_type, declaring_uri))
+    match delegate_shape(delegate, bytes) {
+        DelegateShape::LazyLambda { result } => {
+            infer_initializer_type(result, bytes, deps, uri, depth + 1)
+        }
+        DelegateShape::RememberedDelegate { delegate } => {
+            infer_delegated_value_type(delegate, bytes, deps, uri, depth + 1)
+        }
+        DelegateShape::MutableStateOf { initial_value } => {
+            infer_initializer_type(initial_value, bytes, deps, uri, depth + 1)
+        }
+        DelegateShape::GetValueOperator => {
+            infer_get_value_type(delegate, bytes, deps, uri, depth + 1)
+        }
+    }
+}
+
+/// The return type of the delegate type's own `getValue` operator (a member,
+/// or an extension such as Compose's `State<T>.getValue`), its type
+/// arguments substituted.
+///
+/// The value type is usually one of the delegate type's type arguments, and
+/// this engine tracks only where a type's head was written, not its
+/// arguments (`State<State>`'s argument can come from a view model's
+/// supertype list two files away). So the name must resolve from the file
+/// the delegate is used in, which is also where it is then looked up;
+/// otherwise the value is unknown.
+fn infer_get_value_type(
+    delegate: Node<'_>,
+    bytes: &[u8],
+    deps: &impl InferDeps,
+    uri: &Url,
+    depth: usize,
+) -> Option<(String, Url)> {
+    let (delegate_type, delegate_uri) = infer_initializer_type(delegate, bytes, deps, uri, depth)?;
+    let holder = delegate_type.bare_type_name()?;
+    let value_type =
+        resolve_method_return_type_on(&holder, &delegate_type, "getValue", deps, &delegate_uri)
+            .map(|(value_type, _)| value_type)
+            .or_else(|| extension_get_value_type(&holder, &delegate_type, deps, uri))?;
+    deps.names_type_in_scope(&value_type, uri)
+        .then(|| (value_type, uri.clone()))
+}
+
+/// The `getValue` extension operator reachable from `uri`, when its receiver
+/// is the delegate's own type: its return type with the extension's type
+/// parameters bound from `delegate_type`.
+fn extension_get_value_type(
+    holder: &str,
+    delegate_type: &str,
+    deps: &impl InferDeps,
+    uri: &Url,
+) -> Option<String> {
+    let callable = deps.find_fun_callable_info("getValue", uri)?;
+    let extension_receiver = callable.extension_receiver_type.bare_type_name()?;
+    if extension_receiver.last_segment() != holder.last_segment() {
+        return None;
+    }
+    let raw_return = deps.find_fun_return_type_reachable("getValue", uri)?;
+    let substitution = build_ext_fn_type_subst(
+        &callable.extension_receiver_type,
+        delegate_type,
+        &callable.type_params,
+    );
+    Some(crate::indexer::apply_type_subst(&raw_return, &substitution))
 }
 
 /// The type of a local's initializer, keeping `?` and type arguments where
@@ -396,9 +509,16 @@ fn infer_initializer_type(
             deps,
             uri,
             depth,
-            DeclaredTypeForm::AsWritten,
+            TypeTextForm::AsWritten,
         ),
-        KIND_ELVIS_EXPR => infer_elvis_type(initializer, bytes, deps, uri, depth),
+        KIND_ELVIS_EXPR => infer_elvis_type(
+            initializer,
+            bytes,
+            deps,
+            uri,
+            depth,
+            TypeTextForm::AsWritten,
+        ),
         _ => infer_expr_type_at_depth(initializer, bytes, deps, uri, depth),
     }
 }

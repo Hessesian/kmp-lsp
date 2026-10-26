@@ -806,6 +806,103 @@ fn definition_paths_at(
     }
 }
 
+/// `val state by viewModel.uiState.collectAsStateWithLifecycle()`: the value
+/// type is the view model's type argument `State`, spelled (and imported) in
+/// `AgreementViewModel.kt`. The screen never imports it, and a decoy package
+/// declares another `State` with a private `content` extension; `state.content`
+/// must never land on the decoy.
+#[test]
+fn delegated_state_member_never_resolves_through_an_unrelated_same_named_type() {
+    let files = agreement_screen_files(
+        "package app.screen\n\
+         import androidx.compose.runtime.collectAsStateWithLifecycle\n\
+         import androidx.compose.runtime.getValue\n\
+         import app.viewmodel.AgreementViewModel\n\
+         fun screen(viewModel: AgreementViewModel) {\n\
+         \x20   val state by viewModel.uiState.collectAsStateWithLifecycle()\n\
+         \x20   state.content\n\
+         }\n",
+    );
+    let definitions = definition_paths_at(&files, "/screen/AgreementScreen.kt", 6, "content");
+    assert!(
+        definitions
+            .iter()
+            .all(|path| path.ends_with("/contract/AgreementContract.kt")),
+        "state.content resolved to {definitions:?}"
+    );
+}
+
+/// When the screen itself names the state type, the member resolves on it.
+#[test]
+fn delegated_state_member_resolves_on_the_type_the_screen_imports() {
+    let files = agreement_screen_files(
+        "package app.screen\n\
+         import androidx.compose.runtime.collectAsStateWithLifecycle\n\
+         import androidx.compose.runtime.getValue\n\
+         import app.contract.AgreementContract.State\n\
+         import app.viewmodel.AgreementViewModel\n\
+         fun screen(viewModel: AgreementViewModel) {\n\
+         \x20   val state by viewModel.uiState.collectAsStateWithLifecycle()\n\
+         \x20   state.content\n\
+         }\n",
+    );
+    let definitions = definition_paths_at(&files, "/screen/AgreementScreen.kt", 7, "content");
+    assert_eq!(
+        definitions.len(),
+        1,
+        "state.content resolved to {definitions:?}"
+    );
+    assert!(definitions[0].ends_with("/contract/AgreementContract.kt"));
+}
+
+/// The Moneta shape: `MviViewModel<Event, State>` declares
+/// `uiState: StateFlow<State>`, and `AgreementViewModel` binds `State` to
+/// `AgreementContract.State`. A decoy package declares another `State` with a
+/// private `content` extension.
+fn agreement_screen_files(screen_source: &'static str) -> [(&'static str, &'static str); 6] {
+    [
+        (
+            "/compose/State.kt",
+            "package androidx.compose.runtime\n\
+             interface State<out T> { val value: T }\n\
+             operator fun <T> State<T>.getValue(thisObj: Any?, property: Any?): T = value\n\
+             class StateFlow<T>\n\
+             fun <T> StateFlow<T>.collectAsStateWithLifecycle(): State<T> = TODO()\n",
+        ),
+        (
+            "/mvi/MviViewModel.kt",
+            "package app.mvi\n\
+             import androidx.compose.runtime.StateFlow\n\
+             interface UiState\n\
+             abstract class MviViewModel<Event, State : UiState> {\n\
+             \x20   val uiState: StateFlow<State> by lazy { TODO() }\n\
+             }\n",
+        ),
+        (
+            "/contract/AgreementContract.kt",
+            "package app.contract\n\
+             import app.mvi.UiState\n\
+             interface AgreementContract {\n\
+             \x20   data class State(val content: Int) : UiState\n\
+             }\n",
+        ),
+        (
+            "/viewmodel/AgreementViewModel.kt",
+            "package app.viewmodel\n\
+             import app.contract.AgreementContract.State\n\
+             import app.mvi.MviViewModel\n\
+             class AgreementViewModel : MviViewModel<Int, State>()\n",
+        ),
+        (
+            "/decoy/FamilyViewModel.kt",
+            "package app.decoy\n\
+             data class State(val count: Int)\n\
+             private fun State.content(): Int = count\n",
+        ),
+        ("/screen/AgreementScreen.kt", screen_source),
+    ]
+}
+
 /// Slice 1 of the receiver-origin work: the receiver's type name (`ScreenFlowModel`)
 /// was written in `Holder.kt`, which imports it. The CALLER never imports it, and a
 /// same-named decoy with the same member lives in a third package — the member

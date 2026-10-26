@@ -344,6 +344,17 @@ pub(crate) trait InferDeps {
     fn has_type_definition(&self, _name: &str) -> bool {
         false
     }
+
+    /// Whether the type `type_text` names resolves to a real type from
+    /// `uri`'s own declarations, package and imports, or is a Kotlin
+    /// built-in. A type parameter, or a name declared only somewhere `uri`
+    /// cannot see, does not — unlike [`Self::has_type_definition`], which
+    /// matches any same-named type anywhere.
+    ///
+    /// The default implementation returns `false`; overridden by `Indexer`.
+    fn names_type_in_scope(&self, _type_text: &str, _uri: &Url) -> bool {
+        false
+    }
 }
 
 // ─── Test stub ───────────────────────────────────────────────────────────────
