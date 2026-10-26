@@ -1118,16 +1118,28 @@ fn reachable_class_candidates(
     class_base: &str,
     from_uri: Option<&Url>,
 ) -> Vec<Location> {
-    let mut candidates = from_uri
-        .map(|uri| super::resolve::resolve_type_index_only(indexer, class_base, uri))
-        .unwrap_or_default();
-    if candidates.is_empty() {
-        candidates = indexer.workspace_def_candidates(class_base);
-    }
+    let mut candidates = reachable_workspace_class_candidates(indexer, class_base, from_uri);
     if candidates.is_empty() {
         candidates = indexer.lookup_definitions(class_base);
     }
     candidates
+}
+
+/// [`reachable_class_candidates`] without the JAR-promoting last resort: the
+/// declaration `from_uri`'s imports/package/star imports name, else every
+/// same-named workspace class in the index's deterministic order.
+fn reachable_workspace_class_candidates(
+    indexer: &Indexer,
+    class_base: &str,
+    from_uri: Option<&Url>,
+) -> Vec<Location> {
+    let reachable = from_uri
+        .map(|uri| super::resolve::resolve_type_index_only(indexer, class_base, uri))
+        .unwrap_or_default();
+    if reachable.is_empty() {
+        return indexer.workspace_def_candidates(class_base);
+    }
+    reachable
 }
 
 /// Resolve `field_name`'s declared type by walking `class_name`'s ancestors —
@@ -1670,8 +1682,10 @@ pub(crate) fn find_method_return_type_declared(
         return Some(declared);
     }
 
-    // Then check member functions (container-based), scoped + capped via the helper.
-    indexer.find_in_workspace_defs(type_base, |loc| {
+    // Then member functions of the `type_base` that `from_uri` names: dozens of
+    // features each declare their own same-named `TextsInteractor`.
+    let classes = reachable_workspace_class_candidates(indexer, type_base, from_uri);
+    classes.iter().find_map(|loc| {
         let file_data = indexer.files.get(loc.uri.as_str())?;
         for symbol in &file_data.symbols {
             if symbol.name != method_name {
@@ -2248,16 +2262,18 @@ fn substitute_direct_supertype_args(
     // -- see `supertype_targets` in hierarchy.rs), but `find_class_type_params`
     // matches against `FileData.symbols`' bare `name` field, so a qualified
     // spelling would silently miss and skip substitution entirely.
-    let super_type_params = find_class_type_params(indexer, super_name.last_segment());
+    let super_type_params = find_class_type_params(indexer, super_name.last_segment(), &uri);
     if super_type_params.is_empty() {
         return raw.to_owned();
     }
     apply_supertype_subst(raw, &super_type_params, type_args)
 }
 
-fn find_class_type_params(indexer: &Indexer, class_name: &str) -> Vec<String> {
-    indexer
-        .find_in_workspace_defs(class_name, |loc| {
+/// The type parameters of the `class_name` that `from_uri` names.
+fn find_class_type_params(indexer: &Indexer, class_name: &str, from_uri: &Url) -> Vec<String> {
+    reachable_workspace_class_candidates(indexer, class_name, Some(from_uri))
+        .iter()
+        .find_map(|loc| {
             let file_data = indexer.files.get(loc.uri.as_str())?;
             let symbol = file_data
                 .symbols

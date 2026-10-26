@@ -2154,3 +2154,133 @@ fn return_type_extraction_accepts_a_package_qualified_type() {
     );
     assert_eq!(extract("fun make(): lowercase").as_deref(), None);
 }
+
+// ─── member return type: the class the caller's file actually names ──────────
+
+/// Two `TextsInteractor`s in different packages, each declaring `loadData()`.
+const TEXTS_ONE: &str =
+    "package feature.one\nclass TextsInteractor {\n    fun loadData(): OneBody = TODO()\n}\n";
+const TEXTS_TWO: &str =
+    "package feature.two\nclass TextsInteractor {\n    fun loadData(): TwoBody = TODO()\n}\n";
+
+/// `loadData()`'s return type on `TextsInteractor` seen from `caller_source`,
+/// with the two same-named classes applied in both orders, three times each.
+/// Returns one labelled answer per (order, repetition).
+fn texts_interactor_load_data_in_every_order(caller_source: &str) -> Vec<(String, Option<String>)> {
+    use super::find_method_return_type;
+    use crate::indexer::Indexer;
+    use tower_lsp::lsp_types::Url;
+
+    let one = Url::parse("file:///feature/one/TextsInteractor.kt").unwrap();
+    let two = Url::parse("file:///feature/two/TextsInteractor.kt").unwrap();
+    let caller = Url::parse("file:///feature/caller/UseCase.kt").unwrap();
+    let mut answers = Vec::new();
+    for repetition in 0..3 {
+        for (order_name, order) in [
+            ("one first", [(&one, TEXTS_ONE), (&two, TEXTS_TWO)]),
+            ("two first", [(&two, TEXTS_TWO), (&one, TEXTS_ONE)]),
+        ] {
+            let idx = Indexer::new();
+            for (uri, source) in order {
+                idx.index_content(uri, source);
+            }
+            idx.index_content(&caller, caller_source);
+            let answer =
+                find_method_return_type(&idx, "TextsInteractor", "loadData", Some(&caller));
+            answers.push((format!("{order_name} #{repetition}"), answer));
+        }
+    }
+    answers
+}
+
+#[test]
+fn method_return_type_uses_the_imported_class_in_every_apply_order() {
+    let caller_source = "package feature.caller\nimport feature.two.TextsInteractor\n\
+         class UseCase(private val textsInteractor: TextsInteractor)\n";
+    for (run, answer) in texts_interactor_load_data_in_every_order(caller_source) {
+        assert_eq!(
+            answer.as_deref(),
+            Some("TwoBody"),
+            "{run}: the imported class decides"
+        );
+    }
+}
+
+#[test]
+fn method_return_type_uses_the_same_package_class_over_another_package() {
+    let caller_source =
+        "package feature.two\nclass UseCase(private val textsInteractor: TextsInteractor)\n";
+    for (run, answer) in texts_interactor_load_data_in_every_order(caller_source) {
+        assert_eq!(
+            answer.as_deref(),
+            Some("TwoBody"),
+            "{run}: same package decides"
+        );
+    }
+}
+
+#[test]
+fn method_return_type_uses_the_star_imported_class() {
+    let caller_source = "package feature.caller\nimport feature.two.*\n\
+         class UseCase(private val textsInteractor: TextsInteractor)\n";
+    for (run, answer) in texts_interactor_load_data_in_every_order(caller_source) {
+        assert_eq!(
+            answer.as_deref(),
+            Some("TwoBody"),
+            "{run}: the star import decides"
+        );
+    }
+}
+
+/// Neither class is reachable: the answer is a guess, but it must be the same
+/// guess regardless of the order files were applied in.
+#[test]
+fn method_return_type_for_unreachable_duplicates_does_not_depend_on_apply_order() {
+    let caller_source =
+        "package feature.caller\nclass UseCase(private val textsInteractor: TextsInteractor)\n";
+    let answers = texts_interactor_load_data_in_every_order(caller_source);
+    let first = answers[0].1.clone();
+    assert!(first.is_some(), "a by-name fallback still answers");
+    for (run, answer) in answers {
+        assert_eq!(answer, first, "{run}: same answer as the first run");
+    }
+}
+
+/// `class Derived : Base<Int, String>` imports `lib.Base<A, B>`; a decoy
+/// `other.Base<B, A>` declares its parameters the other way round. The
+/// supertype's type parameters must come from the `Base` that `Derived`'s file
+/// names, so `get(): B` substitutes to `String`, never the decoy's `Int`.
+#[test]
+fn supertype_substitution_reads_type_params_of_the_imported_base() {
+    use super::find_method_return_type_via_supertypes_declared;
+    use crate::indexer::Indexer;
+    use tower_lsp::lsp_types::Url;
+
+    let real = Url::parse("file:///lib/Base.kt").unwrap();
+    let real_source = "package lib\nopen class Base<A, B> {\n    fun get(): B = TODO()\n}\n";
+    let decoy = Url::parse("file:///aaa/Base.kt").unwrap();
+    let decoy_source = "package other\nopen class Base<B, A> {\n    fun get(): B = TODO()\n}\n";
+    let derived = Url::parse("file:///app/Derived.kt").unwrap();
+    let derived_source = "package app\nimport lib.Base\nclass Derived : Base<Int, String>()\n";
+    let caller = Url::parse("file:///app/Caller.kt").unwrap();
+    let caller_source = "package app\nfun use(derived: Derived) = derived.get()\n";
+
+    for (order_name, order) in [
+        (
+            "decoy first",
+            [(&decoy, decoy_source), (&real, real_source)],
+        ),
+        ("real first", [(&real, real_source), (&decoy, decoy_source)]),
+    ] {
+        let idx = Indexer::new();
+        for (uri, source) in order {
+            idx.index_content(uri, source);
+        }
+        idx.index_content(&derived, derived_source);
+        idx.index_content(&caller, caller_source);
+        let answer =
+            find_method_return_type_via_supertypes_declared(&idx, "Derived", "get", Some(&caller))
+                .map(|declared| declared.type_name);
+        assert_eq!(answer.as_deref(), Some("String"), "{order_name}");
+    }
+}

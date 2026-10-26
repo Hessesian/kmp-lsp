@@ -1176,23 +1176,36 @@ impl Indexer {
     /// library files by their interned URI first. Empty when `name` has no
     /// workspace definitions at all (as opposed to `find_in_workspace_defs`,
     /// which folds that into `None` via `f`).
+    ///
+    /// Ordered by URI, then position: `definitions` holds files in apply
+    /// order, which parallel indexing makes differ run to run, and every
+    /// caller takes the first usable candidate.
     pub(crate) fn workspace_def_candidates(&self, name: &str) -> Vec<Location> {
         let Some(locations) = self.definitions.get(name) else {
             return Vec::new();
         };
-        locations
+        let mut workspace_locations: Vec<_> = locations
             .iter()
             .filter_map(|sym_loc| {
                 let url = self.file_table.url(sym_loc.file)?;
                 if self.library_uris.contains(url.as_str()) {
                     return None;
                 }
-                Some(Location {
-                    uri: (*url).clone(),
-                    range: sym_loc.range,
-                })
+                Some((url, sym_loc.range))
             })
+            .collect();
+        workspace_locations.sort_unstable_by(|(left_url, left_range), (right_url, right_range)| {
+            let left_start = (left_range.start.line, left_range.start.character);
+            let right_start = (right_range.start.line, right_range.start.character);
+            (left_url.as_str(), left_start).cmp(&(right_url.as_str(), right_start))
+        });
+        workspace_locations
+            .into_iter()
             .take(MAX_BY_NAME_DEFS)
+            .map(|(url, range)| Location {
+                uri: (*url).clone(),
+                range,
+            })
             .collect()
     }
 
