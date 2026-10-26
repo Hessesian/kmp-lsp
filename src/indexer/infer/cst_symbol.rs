@@ -693,6 +693,8 @@ pub(crate) enum LocalBinding<'tree> {
     /// `val name by <delegate>` with no annotation: the type is what the
     /// delegate's `getValue` returns, not the delegate's own type.
     Delegated { delegate: Node<'tree> },
+    /// `for (name in <iterable>)` with no annotation: an element of `iterable`.
+    Iterated { iterable: Node<'tree> },
     /// Inside the body of a `when (name)` / `when (val name = ..)` branch
     /// whose one condition is `is Type`: smart-cast to `narrowed_type`,
     /// whatever `name` was declared as.
@@ -768,11 +770,15 @@ fn binding_of_declared_name<'tree>(
     name: &str,
     bytes: &[u8],
 ) -> LocalBinding<'tree> {
-    variable_declaration
-        .parent()
-        .filter(|parent| parent.kind() == KIND_PROP_DECL || parent.kind() == KIND_WHEN_SUBJECT)
-        .and_then(|property| property_binding(property, name, bytes))
-        .unwrap_or(LocalBinding::Untyped)
+    let Some(declaring) = variable_declaration.parent() else {
+        return LocalBinding::Untyped;
+    };
+    let binding = match declaring.kind() {
+        KIND_PROP_DECL | KIND_WHEN_SUBJECT => property_binding(declaring, name, bytes),
+        KIND_FOR_STMT => for_variable_binding(declaring, name, bytes),
+        _ => None,
+    };
+    binding.unwrap_or(LocalBinding::Untyped)
 }
 
 /// The binding `enclosure.scope` introduces for `name` as seen from the
@@ -795,11 +801,7 @@ fn binding_introduced_by<'tree>(
             if inner.kind() != KIND_CONTROL_STRUCTURE_BODY {
                 return None;
             }
-            [KIND_VAR_DECL, KIND_MULTI_VAR_DECL]
-                .into_iter()
-                .filter_map(|kind| scope.first_child_of_kind(kind))
-                .find_map(|declaration| declares_name_directly(declaration, name, bytes))
-                .map(annotated_binding)
+            for_variable_binding(scope, name, bytes)
         }
         KIND_WHEN_EXPR => scope
             .first_child_of_kind(KIND_WHEN_SUBJECT)
@@ -808,6 +810,31 @@ fn binding_introduced_by<'tree>(
         KIND_WHEN_ENTRY => is_branch_narrowing(scope, inner, name, bytes),
         _ => value_parameter_binding(scope, inner, name, bytes),
     }
+}
+
+/// The binding a `for` loop's header gives `name`: its annotation, else an
+/// element of the iterable (a destructured component stays untyped).
+fn for_variable_binding<'tree>(
+    for_statement: Node<'tree>,
+    name: &str,
+    bytes: &[u8],
+) -> Option<LocalBinding<'tree>> {
+    if let Some(variable) = for_statement.first_child_of_kind(KIND_VAR_DECL) {
+        let identifier = declares_name_directly(variable, name, bytes)?;
+        let binding = annotated_binding(identifier);
+        if !matches!(binding, LocalBinding::Untyped) {
+            return Some(binding);
+        }
+        let iterable = for_statement
+            .first_child_of_kind("in")
+            .and_then(|in_keyword| in_keyword.next_named_sibling());
+        return Some(match iterable {
+            Some(iterable) => LocalBinding::Iterated { iterable },
+            None => LocalBinding::Untyped,
+        });
+    }
+    let destructuring = for_statement.first_child_of_kind(KIND_MULTI_VAR_DECL)?;
+    declares_name_directly(destructuring, name, bytes).map(annotated_binding)
 }
 
 /// The smart cast a `when` branch gives `name` in its body: the branch's

@@ -451,6 +451,14 @@ fn infer_binding_type(
         LocalBinding::Delegated { delegate } => {
             infer_delegated_value_type(delegate, bytes, deps, uri, depth + 1)
         }
+        LocalBinding::Iterated { iterable } => {
+            infer_initializer_type(iterable, bytes, deps, uri, depth + 1).and_then(
+                |(iterable_type, iterable_uri)| {
+                    iterated_element_type(&iterable_type)
+                        .map(|element_type| (element_type, iterable_uri))
+                },
+            )
+        }
         LocalBinding::Untyped => None,
         LocalBinding::NotLocal => return BindingType::NotLocal,
     };
@@ -461,6 +469,38 @@ fn infer_binding_type(
         },
         None => BindingType::LocalUnknown,
     }
+}
+
+/// The element a `for` loop reads from an iterable of type `iterable_type`:
+/// a range's or primitive array's scalar, a map's `Map.Entry<K, V>`, or a
+/// collection's type argument. Unknown for anything else.
+fn iterated_element_type(iterable_type: &str) -> Option<String> {
+    let holder = iterable_type.bare_type_name()?;
+    let scalar = match holder.last_segment() {
+        "IntRange" | "IntProgression" | "IntArray" => Some("Int"),
+        "LongRange" | "LongProgression" | "LongArray" => Some("Long"),
+        "CharRange" | "CharProgression" | "CharArray" => Some("Char"),
+        "BooleanArray" => Some("Boolean"),
+        "ByteArray" => Some("Byte"),
+        "ShortArray" => Some("Short"),
+        "FloatArray" => Some("Float"),
+        "DoubleArray" => Some("Double"),
+        _ => None,
+    };
+    if let Some(scalar) = scalar {
+        return Some(scalar.to_owned());
+    }
+    let is_map = matches!(
+        holder.last_segment(),
+        "Map" | "MutableMap" | "HashMap" | "LinkedHashMap" | "ImmutableMap" | "PersistentMap"
+    );
+    if is_map {
+        let open = iterable_type.find('<')?;
+        let close = iterable_type.rfind('>')?;
+        let key_and_value = iterable_type.get(open + 1..close)?;
+        return Some(format!("Map.Entry<{key_and_value}>"));
+    }
+    crate::resolver::extract_collection_element_type(iterable_type)
 }
 
 /// How a `by <delegate>` expression determines the value its local reads as.

@@ -1506,3 +1506,53 @@ fn local_initialized_from_a_safe_call_is_typed_nullable() {
         Some("Address")
     );
 }
+
+/// `WidgetWorker`: a `for` variable over a typed list.
+#[test]
+fn for_variable_over_a_typed_list_is_typed_from_its_element() {
+    let source = "class Widget(val error: Int)\n\
+                  class Banana\n\
+                  fun sibling(widget: Banana) = widget\n\
+                  fun onSuccess(widgets: List<Widget>) {\n\
+                  \x20   for (widget in widgets) { widget }\n\
+                  }\n";
+    assert_eq!(
+        identifier_type(source, "widget", 3).as_deref(),
+        Some("Widget")
+    );
+}
+
+#[test]
+fn for_variable_over_a_range_is_an_int() {
+    let source = "class Banana\n\
+                  fun sibling(index: Banana) = index\n\
+                  fun walk() {\n\
+                  \x20   for (index in 0..10) { index }\n\
+                  }\n";
+    assert_eq!(identifier_type(source, "index", 3).as_deref(), Some("Int"));
+}
+
+#[test]
+fn for_variable_over_a_map_is_an_entry() {
+    let source = "class Apple\n\
+                  class Banana\n\
+                  fun sibling(entry: Banana) = entry\n\
+                  fun walk(prices: Map<String, Apple>) {\n\
+                  \x20   for (entry in prices) { entry }\n\
+                  }\n";
+    assert_eq!(
+        local_type_at(source, "entry", 3).as_deref(),
+        Some("Map.Entry<String, Apple>")
+    );
+}
+
+/// An iterable of unknown type leaves the variable unknown, never `Banana`.
+#[test]
+fn for_variable_over_an_unknown_iterable_stays_unknown() {
+    let source = "class Banana\n\
+                  fun sibling(widget: Banana) = widget\n\
+                  fun walk() {\n\
+                  \x20   for (widget in mystery()) { widget }\n\
+                  }\n";
+    assert_eq!(identifier_type(source, "widget", 3), None);
+}

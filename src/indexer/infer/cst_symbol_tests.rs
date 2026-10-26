@@ -1213,6 +1213,7 @@ fn binding_of(source: &str, name: &str, occurrence: usize) -> String {
             format!("Initialized({})", text_of(initializer))
         }
         LocalBinding::Delegated { delegate } => format!("Delegated({})", text_of(delegate)),
+        LocalBinding::Iterated { iterable } => format!("Iterated({})", text_of(iterable)),
         LocalBinding::Narrowed { narrowed_type } => format!("Narrowed({})", text_of(narrowed_type)),
         LocalBinding::Untyped => "Untyped".to_owned(),
         LocalBinding::NotLocal => "NotLocal".to_owned(),
@@ -1293,7 +1294,7 @@ fn untyped_binders_shadow_an_outer_annotated_parameter() {
     assert_eq!(binding_of(destructured_lambda, "item", 2), "Untyped");
 
     let for_loop = "fun use(item: Apple, all: List<Banana>) { for (item in all) { item } }\n";
-    assert_eq!(binding_of(for_loop, "item", 2), "Untyped");
+    assert_eq!(binding_of(for_loop, "item", 2), "Iterated(all)");
 
     let destructured = "fun use(item: Apple, pair: Pair<Int, Banana>) {\n\
                         \x20   val (count, item) = pair\n\
@@ -1520,6 +1521,10 @@ fn declaring_identifier(binding: LocalBinding<'_>) -> Option<Node<'_>> {
             .first_child_of_kind(KIND_SIMPLE_IDENT),
         LocalBinding::Delegated { delegate } => delegate
             .parent()?
+            .parent()?
+            .first_child_of_kind(KIND_VAR_DECL)?
+            .first_child_of_kind(KIND_SIMPLE_IDENT),
+        LocalBinding::Iterated { iterable } => iterable
             .parent()?
             .first_child_of_kind(KIND_VAR_DECL)?
             .first_child_of_kind(KIND_SIMPLE_IDENT),
