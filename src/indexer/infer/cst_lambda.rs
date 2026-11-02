@@ -800,12 +800,7 @@ fn finalize_resolution<'tree>(
             let callable = callable?;
             // An unresolved receiver is only a name, not a type to substitute from.
             let from_receiver = receiver_type.and_then(|receiver_type| {
-                substitute_from_receiver(
-                    extracted_type.clone(),
-                    source,
-                    callable.clone(),
-                    &receiver_type,
-                )
+                substitute_from_receiver(&extracted_type, source, &callable, &receiver_type)
             });
             from_receiver.or_else(|| {
                 type_parameter_bound_by_arguments(
@@ -871,16 +866,16 @@ fn type_parameter_bound_by_arguments(
 /// `receiver_type` is pre-resolved by `locate_and_extract` — this function
 /// will never see a raw name masquerading as a type.
 fn substitute_from_receiver(
-    extracted: String,
+    extracted: &str,
     source: GenericParamSource,
-    info: CallableInfo,
+    info: &CallableInfo,
     receiver_type: &str,
 ) -> Option<String> {
     if info.extension_receiver_type.is_empty() {
         return match source {
             // No extension receiver and no type params → the extracted name IS concrete
-            GenericParamSource::DeclaredInCallable if !is_generic_param(&extracted) => {
-                Some(extracted)
+            GenericParamSource::DeclaredInCallable if !is_generic_param(extracted) => {
+                Some(extracted.to_owned())
             }
             _ => None,
         };
@@ -894,14 +889,14 @@ fn substitute_from_receiver(
 
     if subst.is_empty() {
         return match source {
-            GenericParamSource::DeclaredInCallable if !is_generic_param(&extracted) => {
-                Some(extracted)
+            GenericParamSource::DeclaredInCallable if !is_generic_param(extracted) => {
+                Some(extracted.to_owned())
             }
             _ => None,
         };
     }
 
-    let resolved = subst.get(&extracted)?.clone();
+    let resolved = subst.get(extracted)?.clone();
     // If substitution didn't actually resolve the generic (T→T), fall through
     if resolved == extracted {
         return None;
