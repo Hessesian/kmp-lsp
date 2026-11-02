@@ -1826,6 +1826,35 @@ fn this_type(source: &str) -> Option<String> {
         .map(|resolved| resolved.as_type_str().to_owned())
 }
 
+/// `expr_type` of the `occurrence`-th (0-based) `this` expression in `source`.
+fn nth_this_type(source: &str, occurrence: usize) -> Option<String> {
+    let live_doc = live_doc_for(source);
+    let indexer = Indexer::new();
+    let uri = test_url("/Binding.kt");
+    indexer.index_content(&uri, source);
+    let this_expression = crate::indexer::walk::descendants(live_doc.tree.root_node())
+        .filter(|node| node.kind() == crate::queries::KIND_THIS_EXPR)
+        .nth(occurrence)
+        .expect("a this expression");
+    CstQuery::new(this_expression, &live_doc, &indexer, &uri)
+        .expr_type()
+        .resolved()
+        .map(|resolved| resolved.as_type_str().to_owned())
+}
+
+/// `this@Outer` names the outer class, not the extension's innermost receiver.
+#[test]
+fn labelled_this_in_an_extension_is_not_the_extension_receiver() {
+    let source = "class Inner\n\
+                  class Outer { fun Inner.read() { this; this@Outer } }\n";
+    assert_eq!(nth_this_type(source, 0).as_deref(), Some("Inner"));
+    let outer = nth_this_type(source, 1);
+    assert!(
+        matches!(outer.as_deref(), None | Some("Outer")),
+        "`this@Outer` is never the receiver `Inner`: {outer:?}"
+    );
+}
+
 /// `this` in `fun <A> A.show()` is the extension's own type parameter `A`,
 /// never the unrelated class of that name.
 #[test]

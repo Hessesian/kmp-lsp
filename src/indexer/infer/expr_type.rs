@@ -870,6 +870,11 @@ fn infer_this_expr_type(
     deps: &impl InferDeps,
     uri: &Url,
 ) -> Option<String> {
+    // A labelled `this@Outer` names an outer receiver, not the innermost one.
+    let is_unlabelled = node.utf8_text(bytes) == Ok("this");
+    if !is_unlabelled {
+        return None;
+    }
     let start = node.start_position();
     let col = crate::inlay_hints::ts_byte_col_to_utf16(bytes, &[], start.row, start.column);
     deps.find_contextual_type("this", uri, start.row, col)
