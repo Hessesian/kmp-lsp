@@ -180,9 +180,15 @@ fn infer_elvis_type(
     let right = operands.last()?;
     let (left_written, left_uri) = infer_initializer_type(left, bytes, deps, uri, depth + 1)?;
     let non_null_left = left_written.strip_nullable();
-    let right_agrees = is_nothing_typed(right, bytes)
-        || infer_initializer_type(right, bytes, deps, uri, depth + 1)
-            .is_some_and(|(right_written, _)| right_written == non_null_left);
+    let right_agrees = is_nothing_typed(right, bytes, deps, uri)
+        || infer_initializer_type(right, bytes, deps, uri, depth + 1).is_some_and(
+            |(right_written, right_uri)| {
+                let same_scope = left_uri == right_uri;
+                right_written == non_null_left
+                    && (same_scope
+                        || deps.same_type_in_scopes(non_null_left, &left_uri, &right_uri))
+            },
+        );
     if !right_agrees {
         return None;
     }
@@ -196,8 +202,10 @@ fn infer_elvis_type(
     }
 }
 
-/// `return`/`throw`/`break`/`continue`, or a call to `error(..)` / `TODO(..)`.
-fn is_nothing_typed(expression: Node<'_>, bytes: &[u8]) -> bool {
+/// `return`/`throw`/`break`/`continue`, or a call to the stdlib's
+/// `error(..)` / `TODO(..)` — not a reachable function of that name that
+/// returns a value.
+fn is_nothing_typed(expression: Node<'_>, bytes: &[u8], deps: &impl InferDeps, uri: &Url) -> bool {
     if expression.kind() == KIND_JUMP_EXPR {
         return true;
     }
@@ -206,7 +214,11 @@ fn is_nothing_typed(expression: Node<'_>, bytes: &[u8]) -> bool {
         .named_child(0)
         .filter(|callee| callee.kind() == KIND_SIMPLE_IDENT)
         .and_then(|callee| callee.utf8_text(bytes).ok());
-    is_call && matches!(callee, Some("error" | "TODO"))
+    let Some(callee @ ("error" | "TODO")) = callee.filter(|_| is_call) else {
+        return false;
+    };
+    let declared_return = deps.find_fun_return_type_reachable(callee, uri);
+    declared_return.is_none_or(|return_type| return_type == "Nothing")
 }
 
 // ─── private helpers ──────────────────────────────────────────────────────────
@@ -396,7 +408,7 @@ fn delegate_shape<'tree>(delegate: Node<'tree>, bytes: &[u8]) -> DelegateShape<'
         (Some(callee), Some(delegate)) if LAMBDA_RESULT_FNS.contains(&callee) => {
             DelegateShape::RememberedDelegate { delegate }
         }
-        (Some("mutableStateOf"), _) => match first_value_argument(delegate) {
+        (Some("mutableStateOf"), _) => match state_value_argument(delegate, bytes) {
             Some(initial_value) => DelegateShape::MutableStateOf { initial_value },
             None => DelegateShape::GetValueOperator,
         },
@@ -404,14 +416,32 @@ fn delegate_shape<'tree>(delegate: Node<'tree>, bytes: &[u8]) -> DelegateShape<'
     }
 }
 
-/// The expression of `call`'s first value argument.
-fn first_value_argument(call: Node<'_>) -> Option<Node<'_>> {
-    let argument = call
-        .find_value_arguments()?
-        .first_child_of_kind(KIND_VALUE_ARG)?;
-    let mut cursor = argument.walk();
-    let expression = argument.named_children(&mut cursor).last();
+/// The expression of `mutableStateOf`'s `value` parameter: the argument named
+/// `value`, else the first argument written without a name.
+fn state_value_argument<'tree>(call: Node<'tree>, bytes: &[u8]) -> Option<Node<'tree>> {
+    let arguments = call.find_value_arguments()?;
+    let value_arguments = arguments.children_of_kind(KIND_VALUE_ARG);
+    let value_argument = value_arguments
+        .iter()
+        .find(|argument| argument.named_arg_label(bytes).as_deref() == Some("value"))
+        .or_else(|| {
+            value_arguments
+                .iter()
+                .find(|argument| argument.named_arg_label(bytes).is_none())
+        })?;
+    let mut argument_cursor = value_argument.walk();
+    let expression = value_argument.named_children(&mut argument_cursor).last();
     expression
+}
+
+/// `lazy<Any> { .. }` / `mutableStateOf<Any>(..)`: the one type argument
+/// written at the call.
+fn explicit_value_type(call: Node<'_>, bytes: &[u8]) -> Option<String> {
+    let mut type_arguments = call.call_site_type_arg_strings(bytes)?;
+    if type_arguments.len() != 1 {
+        return None;
+    }
+    type_arguments.pop()
 }
 
 /// The type a `by <delegate>` local reads as. A type that does not resolve
@@ -428,7 +458,21 @@ fn infer_delegated_value_type(
         crate::util::report_cst_depth_exceeded!("infer_delegated_value_type", delegate);
         return None;
     }
-    match delegate_shape(delegate, bytes) {
+    let shape = delegate_shape(delegate, bytes);
+    let holds_a_value = matches!(
+        shape,
+        DelegateShape::LazyLambda { .. } | DelegateShape::MutableStateOf { .. }
+    );
+    if holds_a_value {
+        if let Some(explicit) = explicit_value_type(delegate, bytes) {
+            // Written at the call site, so resolved there; unresolved (a type
+            // parameter of the enclosing function, say) is unknown.
+            return deps
+                .names_type_in_scope(&explicit, uri)
+                .then(|| (explicit, uri.clone()));
+        }
+    }
+    match shape {
         DelegateShape::LazyLambda { result } => {
             infer_initializer_type(result, bytes, deps, uri, depth + 1)
         }
@@ -451,9 +495,9 @@ fn infer_delegated_value_type(
 /// The value type is usually one of the delegate type's type arguments, and
 /// this engine tracks only where a type's head was written, not its
 /// arguments (`State<State>`'s argument can come from a view model's
-/// supertype list two files away). So the name must resolve from the file
-/// the delegate is used in, which is also where it is then looked up;
-/// otherwise the value is unknown.
+/// supertype list two files away). So the name must name the same type from
+/// the file it was written in as from the file the delegate is used in,
+/// which is also where it is then looked up; otherwise the value is unknown.
 fn infer_get_value_type(
     delegate: Node<'_>,
     bytes: &[u8],
@@ -463,12 +507,15 @@ fn infer_get_value_type(
 ) -> Option<(String, Url)> {
     let (delegate_type, delegate_uri) = infer_initializer_type(delegate, bytes, deps, uri, depth)?;
     let holder = delegate_type.bare_type_name()?;
-    let value_type =
+    let (value_type, written_in) =
         resolve_method_return_type_on(&holder, &delegate_type, "getValue", deps, &delegate_uri)
-            .map(|(value_type, _)| value_type)
-            .or_else(|| extension_get_value_type(&holder, &delegate_type, deps, uri))?;
-    deps.names_type_in_scope(&value_type, uri)
-        .then(|| (value_type, uri.clone()))
+            .or_else(|| {
+                extension_get_value_type(&holder, &delegate_type, deps, uri)
+                    .map(|value_type| (value_type, uri.clone()))
+            })?;
+    let names_the_same_type = deps.names_type_in_scope(&value_type, uri)
+        && deps.same_type_in_scopes(&value_type, &written_in, uri);
+    names_the_same_type.then(|| (value_type, uri.clone()))
 }
 
 /// `getValue(thisRef, property)`: what a `by` delegate is asked for.
@@ -476,7 +523,8 @@ const GET_VALUE_ARGUMENT_COUNT: usize = 2;
 
 /// The `getValue` extension operator reachable from `uri`, when its receiver
 /// is the delegate's own type: its return type with the extension's type
-/// parameters bound from `delegate_type`.
+/// parameters (if any) bound from `delegate_type`, both read from the one
+/// declaration the delegate type selects.
 fn extension_get_value_type(
     holder: &str,
     delegate_type: &str,
@@ -490,18 +538,23 @@ fn extension_get_value_type(
             trailing_lambda: false,
         },
     };
-    let callable = deps.find_fun_callable_info("getValue", Some(get_value_call), uri)?;
-    let extension_receiver = callable.extension_receiver_type.bare_type_name()?;
+    let extension = deps.find_extension_callable("getValue", get_value_call, uri)?;
+    let extension_receiver = extension
+        .generics
+        .extension_receiver_type
+        .bare_type_name()?;
     if extension_receiver.last_segment() != holder.last_segment() {
         return None;
     }
-    let raw_return = deps.find_fun_return_type_reachable("getValue", uri)?;
     let substitution = build_ext_fn_type_subst(
-        &callable.extension_receiver_type,
+        &extension.generics.extension_receiver_type,
         delegate_type,
-        &callable.type_params,
+        &extension.generics.type_params,
     );
-    Some(crate::indexer::apply_type_subst(&raw_return, &substitution))
+    Some(crate::indexer::apply_type_subst(
+        &extension.return_type,
+        &substitution,
+    ))
 }
 
 /// The type of a local's initializer, keeping `?` and type arguments where
@@ -534,6 +587,10 @@ fn infer_initializer_type(
             depth,
             TypeTextForm::AsWritten,
         ),
+        KIND_PARENTHESIZED_EXPR => {
+            let inner = initializer.named_child(0)?;
+            infer_initializer_type(inner, bytes, deps, uri, depth + 1)
+        }
         _ => infer_expr_type_at_depth(initializer, bytes, deps, uri, depth),
     }
 }

@@ -32,6 +32,16 @@ pub(crate) struct CallableInfo {
     pub extension_receiver_type: String,
 }
 
+/// The extension declaration a call on a known receiver binds to: its
+/// generics and its declared return type, read from one declaration.
+#[derive(Clone, Debug)]
+pub(crate) struct ExtensionCallable {
+    /// Type parameters (possibly none) and the declared extension receiver.
+    pub(crate) generics: CallableInfo,
+    /// The return type as written in the declaration.
+    pub(crate) return_type: String,
+}
+
 /// A call on a known receiver type: what selects among same-named extensions
 /// declared on it.
 #[derive(Clone, Copy, Debug)]
@@ -354,6 +364,31 @@ pub(crate) trait InferDeps {
     /// The default implementation returns `false`; overridden by `Indexer`.
     fn names_type_in_scope(&self, _type_text: &str, _uri: &Url) -> bool {
         false
+    }
+
+    /// Whether `type_text`, written in `first_uri` and in `second_uri`, names
+    /// the same type — every class it mentions (type arguments included)
+    /// resolves to the same declaration from both files, or is a Kotlin
+    /// built-in. A type parameter, or a name neither file resolves, is not
+    /// the same type.
+    ///
+    /// The default implementation returns `false`; overridden by `Indexer`.
+    fn same_type_in_scopes(&self, _type_text: &str, _first_uri: &Url, _second_uri: &Url) -> bool {
+        false
+    }
+
+    /// The extension a call on `receiver` binds to — generic or not — with
+    /// its declared return type, from the one declaration the receiver and
+    /// call shape select.
+    ///
+    /// The default implementation returns `None`; overridden by `Indexer`.
+    fn find_extension_callable(
+        &self,
+        _fn_name: &str,
+        _receiver: ReceiverCall<'_>,
+        _uri: &Url,
+    ) -> Option<ExtensionCallable> {
+        None
     }
 }
 

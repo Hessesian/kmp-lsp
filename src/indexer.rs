@@ -43,7 +43,10 @@ pub(crate) use self::infer::{
         navigation_receiver_node, resolve_identity, resolve_identity_with_io,
         shape_filter_locations, NavigationSource, SymbolAtCursor, SymbolRole,
     },
-    deps::{CallShape, CallableInfo, InferDeps, OuterScopedParams, ReceiverCall, ShapeFiltered},
+    deps::{
+        CallShape, CallableInfo, ExtensionCallable, InferDeps, OuterScopedParams, ReceiverCall,
+        ShapeFiltered,
+    },
     expr_type::{infer_expr_type, infer_expr_type_with_origin, infer_local_type_at, BindingType},
     it_this::{
         all_lambda_receivers_at, find_it_element_type, find_named_lambda_param_type,
@@ -703,6 +706,77 @@ impl InferDeps for Indexer {
             !crate::resolver::resolve_symbol_scoped_only(self, root, uri).is_empty();
         root_in_scope && path_resolves()
     }
+    fn same_type_in_scopes(&self, type_text: &str, first_uri: &Url, second_uri: &Url) -> bool {
+        let declarations_of = |type_path: &str, uri: &Url| {
+            crate::resolver::resolve_type_path_declarations(
+                self,
+                type_path,
+                uri,
+                crate::resolver::ResolveIo::IndexOnly,
+            )
+        };
+        type_paths_in(type_text).into_iter().all(|type_path| {
+            let is_builtin =
+                crate::features::text_utils::KOTLIN_BUILTIN_TYPES.contains(&type_path.as_str());
+            let first = declarations_of(&type_path, first_uri);
+            is_builtin || (!first.is_empty() && first == declarations_of(&type_path, second_uri))
+        })
+    }
+    fn find_extension_callable(
+        &self,
+        fn_name: &str,
+        receiver: ReceiverCall<'_>,
+        uri: &Url,
+    ) -> Option<ExtensionCallable> {
+        let declarations = crate::resolver::extension_declarations_on(
+            self,
+            receiver.receiver_type,
+            fn_name,
+            uri,
+            receiver.shape,
+        );
+        let declaration = declaration_selected_by_shape(self, &declarations, receiver.shape)?;
+        let symbol = declaration.symbol.as_ref()?;
+        Some(ExtensionCallable {
+            generics: CallableInfo {
+                type_params: symbol.type_params().to_vec(),
+                extension_receiver_type: symbol.declared_extension_receiver().to_owned(),
+            },
+            return_type: declared_return_type(self, declaration)?,
+        })
+    }
+}
+
+/// The dotted type names a type text mentions, outermost first:
+/// `Map<a.Key, List<Value>?>` -> `Map`, `a.Key`, `List`, `Value`.
+fn type_paths_in(type_text: &str) -> Vec<String> {
+    type_text
+        .split(|char: char| !(char.is_alphanumeric() || char == '_' || char == '.'))
+        .filter(|segment| !segment.is_empty())
+        .map(str::to_owned)
+        .collect()
+}
+
+/// The return type an extension declaration states, from its detail or, when
+/// that is truncated, its source signature.
+fn declared_return_type(
+    indexer: &Indexer,
+    declaration: &crate::resolver::ExtensionDeclaration,
+) -> Option<String> {
+    let symbol = declaration.symbol.as_ref()?;
+    let from_detail = crate::resolver::extract_return_type_from_detail(&symbol.detail);
+    if from_detail.is_some() {
+        return from_detail;
+    }
+    let file_data = indexer
+        .files
+        .get(declaration.uri.as_str())
+        .or_else(|| indexer.jar_files.get(declaration.uri.as_str()))?;
+    use crate::lines_ext::LinesExt as _;
+    let signature = file_data
+        .lines
+        .collect_signature(symbol.selection_start() as usize);
+    crate::resolver::extract_return_type_from_detail(&signature)
 }
 
 /// What a call on a known receiver type binds `fn_name` to, as far as the
@@ -748,6 +822,7 @@ fn receiver_bound_callable(
         return ReceiverBoundCallable::NoApplicableExtension;
     }
     let generic = declaration_selected_by_shape(indexer, &declarations, receiver.shape)
+        .and_then(|declaration| declaration.symbol.as_ref())
         .filter(|symbol| !symbol.type_params().is_empty())
         .map(|symbol| CallableInfo {
             type_params: symbol.type_params().to_vec(),
@@ -763,23 +838,23 @@ fn declaration_selected_by_shape<'declarations>(
     indexer: &Indexer,
     declarations: &'declarations [crate::resolver::ExtensionDeclaration],
     shape: CallShape,
-) -> Option<&'declarations crate::types::SymbolEntry> {
-    let mut symbols = Vec::new();
+) -> Option<&'declarations crate::resolver::ExtensionDeclaration> {
+    let mut readable = Vec::new();
     let mut signatures = Vec::new();
     for declaration in declarations {
-        let Some(symbol) = declaration.symbol.as_ref() else {
+        if declaration.symbol.is_none() {
             continue;
-        };
+        }
         if let Some(signature) = infer::sig::declaration_signature(indexer, declaration) {
-            symbols.push(symbol);
+            readable.push(declaration);
             signatures.push(signature);
         }
     }
     match infer::sig::best_candidate_index(&signatures, shape) {
-        Some(index) => Some(symbols[index]),
+        Some(index) => Some(readable[index]),
         None => declarations
             .iter()
-            .find_map(|declaration| declaration.symbol.as_ref()),
+            .find(|declaration| declaration.symbol.is_some()),
     }
 }
 
