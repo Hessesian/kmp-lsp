@@ -201,16 +201,25 @@ impl Indexer {
         Some((word, qualifier))
     }
 
-    /// The receiver type, as written, of the extension function or property
-    /// whose body encloses `position`.
-    fn enclosing_extension_receiver_type(&self, uri: &Url, position: Position) -> Option<String> {
-        let doc = self.live_doc_or_parse(uri)?;
+    /// What `this` is at `position` when an extension function or property
+    /// encloses it.
+    fn extension_this_at(&self, uri: &Url, position: Position) -> ExtensionThis {
+        let Some(doc) = self.live_doc_or_parse(uri) else {
+            return ExtensionThis::NotInExtension;
+        };
         let range = tower_lsp::lsp_types::Range {
             start: position,
             end: position,
         };
-        crate::parser::enclosing_extension_receiver_at(doc.tree.root_node(), &doc.bytes, range)
-            .map(|receiver| receiver.written)
+        match crate::parser::enclosing_extension_receiver_at(
+            doc.tree.root_node(),
+            &doc.bytes,
+            range,
+        ) {
+            None => ExtensionThis::NotInExtension,
+            Some(receiver) if receiver.is_type_parameter => ExtensionThis::TypeParameter,
+            Some(receiver) => ExtensionThis::Receiver(receiver.written),
+        }
     }
 
     /// If `name` at `position` is `it` or a named lambda parameter, return the
@@ -258,9 +267,11 @@ impl Indexer {
             // `this` in an extension function's body is its receiver; in a
             // regular class method body, the enclosing class/object.
             if name == "this" {
-                return self
-                    .enclosing_extension_receiver_type(uri, position)
-                    .or_else(|| self.enclosing_class_at(uri, position.line));
+                return match self.extension_this_at(uri, position) {
+                    ExtensionThis::Receiver(receiver) => Some(receiver),
+                    ExtensionThis::TypeParameter => None,
+                    ExtensionThis::NotInExtension => self.enclosing_class_at(uri, position.line),
+                };
             }
             None
         } else {
@@ -773,3 +784,13 @@ fn callee_to_qualifier(full_callee: &str) -> Option<String> {
 #[cfg(test)]
 #[path = "scope_tests.rs"]
 mod scope_tests;
+
+/// What `this` is inside an extension function or property body.
+enum ExtensionThis {
+    /// The declared receiver type, as written.
+    Receiver(String),
+    /// The receiver is the declaration's own type parameter (`fun <T> T.show()`):
+    /// `this` has no known members.
+    TypeParameter,
+    NotInExtension,
+}

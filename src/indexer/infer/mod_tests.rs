@@ -1710,3 +1710,34 @@ fn member_of_a_raw_generic_receiver_is_unknown() {
     assert_eq!(local_type_at(source, "one", 1), None);
     assert_eq!(local_type_at(source, "many", 1).as_deref(), Some("List<*>"));
 }
+
+fn this_type(source: &str) -> Option<String> {
+    let live_doc = live_doc_for(source);
+    let indexer = Indexer::new();
+    let uri = test_url("/Binding.kt");
+    indexer.index_content(&uri, source);
+    let this_expression = crate::indexer::walk::descendants(live_doc.tree.root_node())
+        .find(|node| node.kind() == crate::queries::KIND_THIS_EXPR)
+        .expect("a this expression");
+    CstQuery::new(this_expression, &live_doc, &indexer, &uri)
+        .expr_type()
+        .resolved()
+        .map(|resolved| resolved.as_type_str().to_owned())
+}
+
+/// `this` in `fun <A> A.show()` is the extension's own type parameter `A`,
+/// never the unrelated class of that name.
+#[test]
+fn this_in_an_extension_on_a_type_parameter_is_unknown() {
+    let source = "class A { fun foo() {} }\n\
+                  fun <A> A.show() { this }\n";
+    assert_eq!(this_type(source), None);
+}
+
+/// A concrete extension receiver stays its written type.
+#[test]
+fn this_in_an_extension_on_a_class_is_that_class() {
+    let source = "class A { fun foo() {} }\n\
+                  fun A.show() { this }\n";
+    assert_eq!(this_type(source).as_deref(), Some("A"));
+}

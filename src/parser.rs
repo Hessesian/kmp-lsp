@@ -1428,7 +1428,25 @@ pub(crate) fn enclosing_extension_receiver_at(
     } else {
         receiver_type
     };
-    Some(ExtensionReceiver { base, written })
+    let is_type_parameter =
+        enclosing_declaration_type_params(root, bytes, &position).contains(&base);
+    Some(ExtensionReceiver {
+        base,
+        written,
+        is_type_parameter,
+    })
+}
+
+/// The type parameters declared by the function or property whose body
+/// encloses `range`.
+fn enclosing_declaration_type_params(root: Node, bytes: &[u8], range: &Range) -> Vec<String> {
+    let start_point = tree_sitter::Point {
+        row: range.start.line as usize,
+        column: range.start.character as usize,
+    };
+    crate::indexer::node_ext::descendant_for_point(root, bytes, start_point)
+        .map(|node| find_ancestor_decl(node).extract_type_params(bytes))
+        .unwrap_or_default()
 }
 
 /// The receiver of an extension function or property.
@@ -1438,6 +1456,9 @@ pub(crate) struct ExtensionReceiver {
     /// The receiver type with its type arguments and `?` (`"List<Apple>?"`);
     /// the simple name alone when it has neither.
     pub(crate) written: String,
+    /// The receiver is one of the declaration's own type parameters
+    /// (`fun <T> T.show()`): `this` has no members to look up.
+    pub(crate) is_type_parameter: bool,
 }
 
 /// Find the declaration node at `range` in the tree and extract the text inside
