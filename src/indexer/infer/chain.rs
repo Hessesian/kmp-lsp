@@ -748,10 +748,14 @@ fn extension_receiver_type_param_subst<D: InferDeps>(
     ctx: &CallCtx<'_, D>,
     receiver_type: &str,
 ) -> std::collections::HashMap<String, String> {
-    let Some(info) = ctx
-        .deps
-        .find_fun_callable_info(ctx.fn_name, Some(receiver_type), ctx.uri)
-    else {
+    let Some(info) = ctx.deps.find_fun_callable_info(
+        ctx.fn_name,
+        Some(super::deps::ReceiverCall {
+            receiver_type,
+            shape: super::cst_lambda::call_shape_of(ctx.node, ctx.bytes),
+        }),
+        ctx.uri,
+    ) else {
         return Default::default();
     };
     if info.extension_receiver_type.is_empty() || info.type_params.is_empty() {

@@ -722,7 +722,13 @@ fn locate_and_extract<'tree>(
     // Attempt to resolve the call-site receiver type now, in stage 1, so stage 2
     // can make a typed decision about whether substitution is meaningful.
     let receiver_type = resolve_receiver_type(&call_expr, bytes, deps, uri);
-    let callable = deps.find_fun_callable_info(&fn_name, receiver_type.as_deref(), uri);
+    let receiver_call = receiver_type
+        .as_deref()
+        .map(|receiver_type| super::deps::ReceiverCall {
+            receiver_type,
+            shape: call_shape_of(call_expr, bytes),
+        });
+    let callable = deps.find_fun_callable_info(&fn_name, receiver_call, uri);
     let kind = classify_extracted_type(&extracted, &callable);
 
     Some(LambdaParamResolution {

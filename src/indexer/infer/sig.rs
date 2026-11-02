@@ -660,35 +660,14 @@ pub(crate) fn find_fun_signature_with_receiver(
     find_fun_signature_full(name, idx, uri)
 }
 
-/// Receiver-aware params lookup: find `method_name`'s parameter text inside
-/// the class `class_name`.  Uses range containment to avoid picking a method
-/// from an unrelated class in the same file.
-///
-/// Supports dotted names like `"DepositAccountReducer.Factory"` — splits into
-/// container `"DepositAccountReducer"` and type_base `"Factory"`, then filters
-/// definitions to only those whose container matches.
-///
-/// Searches both members (`container == type_base`) and extension functions on
-/// the receiver (`extension_by_receiver`, member-less by definition) — a
-/// receiver type routinely has both, e.g. `Flow.collect(collector:
-/// FlowCollector<T>)` (member) alongside `Flow<T>.collect(action: suspend (T)
-/// -> Unit)` (extension), and only the caller's actual `shape` (arg count,
-/// trailing lambda) tells them apart; see [`CallShape`].
-///
-/// Deliberately gathers members by scanning files that declare `type_base`
-/// (bounded by how many classes share that name) rather than by scanning every
-/// file that declares a method named `method_name` — the latter is what makes
-/// `resolve_qualified` bail on ubiquitous names like `collect` (hundreds of
-/// unrelated declarations); this function has no such bail, so it must not
-/// take that path. The extension half is similarly cheap: `extension_by_receiver`
-/// is keyed by receiver type, not by method name.
-pub(crate) fn find_method_params_in_class(
+/// Parameter texts and `(required, total)` counts of `method_name` declared
+/// directly on the workspace class `class_name` (no extensions, no
+/// supertypes; JAR classes are not scanned).
+fn class_member_params(
     idx: &Indexer,
     class_name: &str,
     method_name: &str,
-    caller_uri: &Url,
-    shape: super::deps::CallShape,
-) -> Option<String> {
+) -> Vec<(String, (u8, u8))> {
     let (container, type_base) = match class_name.rsplit_once('.') {
         Some((container, base)) => (Some(container), base),
         None => (None, class_name),
@@ -733,6 +712,56 @@ pub(crate) fn find_method_params_in_class(
             }
         }
     }
+    candidates
+}
+
+/// Whether the workspace class `class_name` declares a member `method_name`
+/// that can take a call of `shape` — a member then wins over any same-named
+/// extension.
+pub(crate) fn member_takes_call(
+    idx: &Indexer,
+    class_name: &str,
+    method_name: &str,
+    shape: super::deps::CallShape,
+) -> bool {
+    class_member_params(idx, class_name, method_name)
+        .iter()
+        .any(|(params_text, counts)| candidate_applies_to_call(params_text, *counts, shape))
+}
+
+/// Receiver-aware params lookup: find `method_name`'s parameter text inside
+/// the class `class_name`.  Uses range containment to avoid picking a method
+/// from an unrelated class in the same file.
+///
+/// Supports dotted names like `"DepositAccountReducer.Factory"` — splits into
+/// container `"DepositAccountReducer"` and type_base `"Factory"`, then filters
+/// definitions to only those whose container matches.
+///
+/// Searches both members (`container == type_base`) and extension functions on
+/// the receiver (`extension_by_receiver`, member-less by definition) — a
+/// receiver type routinely has both, e.g. `Flow.collect(collector:
+/// FlowCollector<T>)` (member) alongside `Flow<T>.collect(action: suspend (T)
+/// -> Unit)` (extension), and only the caller's actual `shape` (arg count,
+/// trailing lambda) tells them apart; see [`CallShape`].
+///
+/// Deliberately gathers members by scanning files that declare `type_base`
+/// (bounded by how many classes share that name) rather than by scanning every
+/// file that declares a method named `method_name` — the latter is what makes
+/// `resolve_qualified` bail on ubiquitous names like `collect` (hundreds of
+/// unrelated declarations); this function has no such bail, so it must not
+/// take that path. The extension half is similarly cheap: `extension_by_receiver`
+/// is keyed by receiver type, not by method name.
+pub(crate) fn find_method_params_in_class(
+    idx: &Indexer,
+    class_name: &str,
+    method_name: &str,
+    caller_uri: &Url,
+    shape: super::deps::CallShape,
+) -> Option<String> {
+    let type_base = class_name
+        .rsplit_once('.')
+        .map_or(class_name, |(_, base)| base);
+    let mut candidates = class_member_params(idx, class_name, method_name);
 
     let mut cache_backed_only = 0usize;
     if let Some(entries) =
@@ -752,8 +781,17 @@ pub(crate) fn find_method_params_in_class(
             }
         }
     }
-    if candidates.is_empty() {
-        candidates = inherited_extension_params(idx, type_base, method_name, caller_uri);
+    let any_direct_candidate_applies = candidates
+        .iter()
+        .any(|(text, counts)| candidate_applies_to_call(text, *counts, shape));
+    if !any_direct_candidate_applies {
+        candidates.extend(inherited_extension_params(
+            idx,
+            type_base,
+            method_name,
+            caller_uri,
+            shape,
+        ));
     }
 
     pick_candidate_matching_shape(candidates, shape)
@@ -766,19 +804,41 @@ fn inherited_extension_params(
     type_base: &str,
     method_name: &str,
     caller_uri: &Url,
+    shape: super::deps::CallShape,
 ) -> Vec<(String, (u8, u8))> {
-    crate::resolver::extension_declarations_on(idx, type_base, method_name, caller_uri)
-        .into_iter()
-        .filter_map(|declaration| {
-            let symbol = declaration.symbol?;
-            let file_data = idx
-                .files
-                .get(declaration.uri.as_str())
-                .or_else(|| idx.jar_files.get(declaration.uri.as_str()))?;
-            let params = extract_params_or_fallback(&symbol, &file_data.lines)?;
-            Some((params, symbol.param_counts))
-        })
+    crate::resolver::extension_declarations_on(idx, type_base, method_name, caller_uri, shape)
+        .iter()
+        .filter_map(|declaration| declaration_signature(idx, declaration))
         .collect()
+}
+
+/// An extension declaration's parameter text and `(required, total)` counts.
+pub(crate) fn declaration_signature(
+    idx: &Indexer,
+    declaration: &crate::resolver::ExtensionDeclaration,
+) -> Option<(String, (u8, u8))> {
+    let symbol = declaration.symbol.as_ref()?;
+    let file_data = idx
+        .files
+        .get(declaration.uri.as_str())
+        .or_else(|| idx.jar_files.get(declaration.uri.as_str()))?;
+    let params = extract_params_or_fallback(symbol, &file_data.lines)?;
+    Some((params, symbol.param_counts))
+}
+
+/// Whether a signature could take the call at all: its arity admits the
+/// written arguments, and a trailing lambda lands on a function-typed last
+/// parameter.
+pub(crate) fn candidate_applies_to_call(
+    params_text: &str,
+    (required, total): (u8, u8),
+    shape: super::deps::CallShape,
+) -> bool {
+    let lambda_fits = !shape.trailing_lambda
+        || last_fun_param_type_str(params_text)
+            .map(|last_param| is_lambda_shaped(&last_param))
+            .unwrap_or(false);
+    shape.accepts(required, total) && lambda_fits
 }
 
 /// Choose the candidate whose signature best matches how the call was
@@ -793,8 +853,19 @@ fn pick_candidate_matching_shape(
     candidates: Vec<(String, (u8, u8))>,
     shape: super::deps::CallShape,
 ) -> Option<String> {
-    if candidates.len() <= 1 {
-        return candidates.into_iter().next().map(|(text, _)| text);
+    let index = best_candidate_index(&candidates, shape)?;
+    candidates.into_iter().nth(index).map(|(text, _)| text)
+}
+
+/// Index of the candidate [`pick_candidate_matching_shape`] chooses; the
+/// declaration at that index is the one a call's generic metadata must come
+/// from too.
+pub(crate) fn best_candidate_index(
+    candidates: &[(String, (u8, u8))],
+    shape: super::deps::CallShape,
+) -> Option<usize> {
+    if candidates.is_empty() {
+        return None;
     }
     let scored: Vec<(bool, bool)> = candidates
         .iter()
@@ -808,11 +879,11 @@ fn pick_candidate_matching_shape(
         })
         .collect();
     for wants in [(true, true), (false, true), (true, false)] {
-        if let Some(i) = scored.iter().position(|&s| s == wants) {
-            return Some(candidates[i].0.clone());
+        if let Some(index) = scored.iter().position(|&score| score == wants) {
+            return Some(index);
         }
     }
-    candidates.into_iter().next().map(|(text, _)| text)
+    Some(0)
 }
 
 /// Whether a parameter type string is a Kotlin function type (`(T) -> R`,

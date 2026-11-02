@@ -43,7 +43,7 @@ pub(crate) use self::infer::{
         navigation_receiver_node, resolve_identity, resolve_identity_with_io,
         shape_filter_locations, NavigationSource, SymbolAtCursor, SymbolRole,
     },
-    deps::{CallShape, CallableInfo, InferDeps, OuterScopedParams, ShapeFiltered},
+    deps::{CallShape, CallableInfo, InferDeps, OuterScopedParams, ReceiverCall, ShapeFiltered},
     expr_type::{infer_expr_type, infer_expr_type_with_origin, infer_local_type_at, BindingType},
     it_this::{
         all_lambda_receivers_at, find_it_element_type, find_named_lambda_param_type,
@@ -52,11 +52,11 @@ pub(crate) use self::infer::{
     },
     lambda::{lambda_type_nth_input, lambda_type_receiver, RECEIVER_THIS_FNS, SCOPE_FUNCTIONS},
     sig::{
-        collect_all_fun_params_texts, collect_params_from_line, collect_signature,
-        find_fun_params_text_fast, find_fun_signature_full, find_fun_signature_with_receiver,
-        is_import_reachable, last_fun_param_type_str, nth_fun_param_type_str,
-        resolve_call_signature, split_params_at_depth_zero, strip_trailing_call_args, CallSite,
-        ResolutionScope, Signature,
+        candidate_applies_to_call, collect_all_fun_params_texts, collect_params_from_line,
+        collect_signature, declaration_signature, find_fun_params_text_fast,
+        find_fun_signature_full, find_fun_signature_with_receiver, is_import_reachable,
+        last_fun_param_type_str, nth_fun_param_type_str, resolve_call_signature,
+        split_params_at_depth_zero, strip_trailing_call_args, CallSite, ResolutionScope, Signature,
     },
     type_subst::{build_type_arg_subst, find_last_dot_at_depth_zero},
 };
@@ -546,12 +546,13 @@ impl InferDeps for Indexer {
     fn find_fun_callable_info(
         &self,
         fn_name: &str,
-        receiver_type: Option<&str>,
+        receiver: Option<ReceiverCall<'_>>,
         uri: &Url,
     ) -> Option<CallableInfo> {
-        if let Some(receiver_type) = receiver_type {
-            match receiver_bound_callable(self, fn_name, receiver_type, uri) {
+        if let Some(receiver) = receiver {
+            match receiver_bound_callable(self, fn_name, receiver, uri) {
                 ReceiverBoundCallable::Extension(info) => return info,
+                ReceiverBoundCallable::Member => return None,
                 ReceiverBoundCallable::NoApplicableExtension => {}
             }
         }
@@ -683,30 +684,74 @@ enum ReceiverBoundCallable {
     /// type parameters. Final: a same-named overload for another receiver
     /// must not stand in.
     Extension(Option<CallableInfo>),
-    /// No in-scope extension applies — a member, or an unindexed hierarchy.
+    /// A member of the receiver's class takes the call and outranks any
+    /// extension: its generics are the class's own, substituted from the
+    /// receiver's type arguments, so there is no callable metadata.
+    Member,
+    /// No in-scope extension applies — an unindexed hierarchy.
     NoApplicableExtension,
 }
 
 fn receiver_bound_callable(
     indexer: &Indexer,
     fn_name: &str,
-    receiver_type: &str,
+    receiver: ReceiverCall<'_>,
     uri: &Url,
 ) -> ReceiverBoundCallable {
-    let declarations =
-        crate::resolver::extension_declarations_on(indexer, receiver_type, fn_name, uri);
+    use crate::StrExt as _;
+    let member_takes_the_call = infer::sig::member_takes_call(
+        indexer,
+        receiver.receiver_type.dotted_ident_prefix().as_str(),
+        fn_name,
+        receiver.shape,
+    );
+    if member_takes_the_call {
+        return ReceiverBoundCallable::Member;
+    }
+    let declarations = crate::resolver::extension_declarations_on(
+        indexer,
+        receiver.receiver_type,
+        fn_name,
+        uri,
+        receiver.shape,
+    );
     if declarations.is_empty() {
         return ReceiverBoundCallable::NoApplicableExtension;
     }
-    let generic = declarations
-        .iter()
-        .filter_map(|declaration| declaration.symbol.as_ref())
-        .find(|symbol| !symbol.type_params().is_empty())
+    let generic = declaration_selected_by_shape(indexer, &declarations, receiver.shape)
+        .filter(|symbol| !symbol.type_params().is_empty())
         .map(|symbol| CallableInfo {
             type_params: symbol.type_params().to_vec(),
             extension_receiver_type: symbol.declared_extension_receiver().to_owned(),
         });
     ReceiverBoundCallable::Extension(generic)
+}
+
+/// The declaring symbol of the extension overload a call of `shape` binds —
+/// the same pick `find_method_params_text` makes for the parameter list.
+/// Without readable signatures, the first declaration stands in.
+fn declaration_selected_by_shape<'declarations>(
+    indexer: &Indexer,
+    declarations: &'declarations [crate::resolver::ExtensionDeclaration],
+    shape: CallShape,
+) -> Option<&'declarations crate::types::SymbolEntry> {
+    let mut symbols = Vec::new();
+    let mut signatures = Vec::new();
+    for declaration in declarations {
+        let Some(symbol) = declaration.symbol.as_ref() else {
+            continue;
+        };
+        if let Some(signature) = infer::sig::declaration_signature(indexer, declaration) {
+            symbols.push(symbol);
+            signatures.push(signature);
+        }
+    }
+    match infer::sig::best_candidate_index(&signatures, shape) {
+        Some(index) => Some(symbols[index]),
+        None => declarations
+            .iter()
+            .find_map(|declaration| declaration.symbol.as_ref()),
+    }
 }
 
 // ─── Synthetic enum members ──────────────────────────────────────────────────

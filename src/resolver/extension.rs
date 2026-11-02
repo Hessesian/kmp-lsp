@@ -171,6 +171,7 @@ pub(crate) fn extension_declarations_on(
     receiver_type: &str,
     name: &str,
     from_uri: &Url,
+    shape: CallShape,
 ) -> Vec<ExtensionDeclaration> {
     use crate::StrExt;
 
@@ -179,7 +180,14 @@ pub(crate) fn extension_declarations_on(
         .last_segment()
         .to_owned();
     let own = extension_declarations_in_scope(indexer, &receiver_base, name, from_uri);
-    if !own.is_empty() {
+    let own_declaration_takes_the_call = own.iter().any(|declaration| {
+        crate::indexer::declaration_signature(indexer, declaration).is_none_or(
+            |(params_text, counts)| {
+                crate::indexer::candidate_applies_to_call(&params_text, counts, shape)
+            },
+        )
+    });
+    if own_declaration_takes_the_call {
         return own;
     }
     let caller = crate::types::CallerContext {
@@ -203,7 +211,7 @@ pub(crate) fn extension_declarations_on(
             )
         })
         .find(|declarations| !declarations.is_empty())
-        .unwrap_or_default()
+        .unwrap_or(own)
 }
 
 /// Resolve `name(...)` as an implicit `this.name(...)` against `receiver_base`
