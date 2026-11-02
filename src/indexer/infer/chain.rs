@@ -495,7 +495,14 @@ fn substitute_receiver_type_arguments(
     let class_path = lookup_name.dotted_ident_prefix();
     let substitution = build_type_arg_subst(deps, class_path.last_segment(), current_type);
     let head_path = declared_type.strip_nullable().dotted_ident_prefix();
-    let applied = crate::indexer::apply_type_subst(declared_type, &substitution);
+    let unbound_class_type_parameters: Vec<String> = deps
+        .find_class_type_params(class_path.last_segment())
+        .into_iter()
+        .filter(|parameter| !substitution.contains_key(parameter))
+        .collect();
+    let known_arguments =
+        star_unbound_type_arguments(declared_type, &unbound_class_type_parameters);
+    let applied = crate::indexer::apply_type_subst(&known_arguments, &substitution);
     if is_generic_param(applied.strip_nullable()) {
         return first_type_arg_raw(current_type)
             .map(|type_name| (type_name, SpelledIn::ReceiverTypeArguments));
@@ -701,7 +708,9 @@ impl StrategyOutcome {
                     Default::default()
                 };
                 let origin = origin_after_substitution(&raw_return, &substitution, origin, ctx);
-                let substituted = crate::indexer::apply_type_subst(&raw_return, &substitution);
+                let unbound = unbound_type_parameters(ctx, &[], &substitution);
+                let known_arguments = star_unbound_type_arguments(&raw_return, &unbound);
+                let substituted = crate::indexer::apply_type_subst(&known_arguments, &substitution);
                 apply_call_site_type_args(substituted, origin, ctx)
             }
             StrategyOutcome::ReceiverDerived {
@@ -717,7 +726,10 @@ impl StrategyOutcome {
                 }
                 let origin =
                     origin_after_substitution(&raw_return, &substitution, return_origin, ctx);
-                let substituted = crate::indexer::apply_type_subst(&raw_return, &substitution);
+                let class_type_parameters = ctx.deps.find_class_type_params(&effective_type);
+                let unbound = unbound_type_parameters(ctx, &class_type_parameters, &substitution);
+                let known_arguments = star_unbound_type_arguments(&raw_return, &unbound);
+                let substituted = crate::indexer::apply_type_subst(&known_arguments, &substitution);
                 apply_call_site_type_args(substituted, origin, ctx)
             }
         }
@@ -740,6 +752,51 @@ fn origin_after_substitution<D: InferDeps>(
     } else {
         signature_origin
     }
+}
+
+/// The declared type parameters of the called function (and of its
+/// `class_type_parameters`) that nothing at this call binds: not the
+/// receiver (`substitution`) and not an explicit `f<X>()` type argument.
+fn unbound_type_parameters<D: InferDeps>(
+    ctx: &CallCtx<'_, D>,
+    class_type_parameters: &[String],
+    substitution: &std::collections::HashMap<String, String>,
+) -> Vec<String> {
+    let function_type_parameters = ctx
+        .deps
+        .find_fun_callable_info(ctx.fn_name, None, ctx.uri)
+        .map(|callable_info| callable_info.type_params)
+        .unwrap_or_default();
+    let bound_by_call_site = match ctx.node.call_site_type_arg_strings(ctx.bytes) {
+        Some(call_type_args) => build_fn_subst(&function_type_parameters, &call_type_args),
+        None => Default::default(),
+    };
+    function_type_parameters
+        .iter()
+        .chain(class_type_parameters)
+        .filter(|parameter| !substitution.contains_key(*parameter))
+        .filter(|parameter| !bound_by_call_site.contains_key(*parameter))
+        .cloned()
+        .collect()
+}
+
+/// `raw_return` with each of the `unbound` type parameters inside its type
+/// arguments read as `*` (unknown): `Pair<A, B>` from an uninferred `await`
+/// is `Pair<*, *>`, not a pair of classes named `A` and `B`. A bare
+/// `T` return is left alone; its consumers already handle it.
+fn star_unbound_type_arguments(raw_return: &str, unbound: &[String]) -> String {
+    let Some(arguments_start) = raw_return.find('<') else {
+        return raw_return.to_owned();
+    };
+    let stars = unbound
+        .iter()
+        .map(|parameter| (parameter.clone(), "*".to_owned()))
+        .collect();
+    let (head, arguments) = raw_return.split_at(arguments_start);
+    format!(
+        "{head}{}",
+        crate::indexer::apply_type_subst(arguments, &stars)
+    )
 }
 
 /// The file the call's explicit receiver expression's type was spelled in

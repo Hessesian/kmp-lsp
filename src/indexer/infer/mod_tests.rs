@@ -1639,3 +1639,74 @@ fn destructured_components_of_an_unknown_source_stay_unknown() {
     assert_eq!(identifier_type(&source, "first", 4), None);
     assert_eq!(identifier_type(&source, "second", 4), None);
 }
+
+// ─── unbound type parameters ─────────────────────────────────────────────────
+
+/// `await`'s `A` and `B` are its own type parameters, never the unrelated
+/// classes of the same name, and nothing binds them from the arguments.
+#[test]
+fn destructured_component_of_an_unbound_function_type_parameter_is_unknown() {
+    let source = "class A { fun foo() {} }\n\
+                  class B { fun foo() {} }\n\
+                  class Deferred<T>\n\
+                  fun <A, B> both(first: Deferred<A>, second: Deferred<B>): Pair<A, B> = TODO()\n\
+                  fun use(left: Deferred<A>, right: Deferred<B>) {\n\
+                  \x20   val (setup, texts) = both(left, right)\n\
+                  \x20   setup; texts\n\
+                  }\n";
+    assert_eq!(local_type_at(source, "setup", 1), None);
+    assert_eq!(local_type_at(source, "texts", 1), None);
+}
+
+/// An explicit call-site type argument binds the parameter.
+#[test]
+fn destructured_component_of_an_explicitly_bound_type_parameter_is_that_type() {
+    let source = "class Apple\n\
+                  class Banana\n\
+                  class Deferred<T>\n\
+                  fun <A, B> both(first: Deferred<A>, second: Deferred<B>): Pair<A, B> = TODO()\n\
+                  fun use(left: Deferred<Apple>, right: Deferred<Banana>) {\n\
+                  \x20   val (setup, texts) = both<Apple, Banana>(left, right)\n\
+                  \x20   setup; texts\n\
+                  }\n";
+    assert_eq!(local_type_at(source, "setup", 1).as_deref(), Some("Apple"));
+    assert_eq!(local_type_at(source, "texts", 1).as_deref(), Some("Banana"));
+}
+
+/// A class's own type parameter, read through a raw receiver, is unbound too.
+#[test]
+fn destructured_component_of_an_unbound_class_type_parameter_is_unknown() {
+    let source = "class A { fun foo() {} }\n\
+                  class Holder<A> { fun twins(): Pair<A, A> = TODO() }\n\
+                  fun use(holder: Holder) {\n\
+                  \x20   val (left, right) = holder.twins()\n\
+                  \x20   left; right\n\
+                  }\n";
+    assert_eq!(local_type_at(source, "left", 1), None);
+}
+
+/// `items()` has nothing to infer `A` from: its elements are unknown, not the
+/// unrelated class `A`.
+#[test]
+fn for_variable_over_an_unbound_type_parameter_collection_is_unknown() {
+    let source = "class A { fun foo() {} }\n\
+                  fun <A> items(): List<A> = TODO()\n\
+                  fun walk() {\n\
+                  \x20   for (element in items()) { element }\n\
+                  }\n";
+    assert_eq!(local_type_at(source, "element", 1), None);
+}
+
+/// A raw `Holder` reads its `value: A` as unknown, not as class `A`.
+#[test]
+fn member_of_a_raw_generic_receiver_is_unknown() {
+    let source = "class A { fun foo() {} }\n\
+                  class Holder<A>(val value: A, val all: List<A>)\n\
+                  fun use(holder: Holder) {\n\
+                  \x20   val one = holder.value\n\
+                  \x20   val many = holder.all\n\
+                  \x20   one; many\n\
+                  }\n";
+    assert_eq!(local_type_at(source, "one", 1), None);
+    assert_eq!(local_type_at(source, "many", 1).as_deref(), Some("List<*>"));
+}

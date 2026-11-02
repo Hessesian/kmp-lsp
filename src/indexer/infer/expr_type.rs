@@ -511,7 +511,12 @@ fn destructured_component_type(whole_type: &str, component: usize) -> Option<Str
     if arguments.len() != arity {
         return None;
     }
-    let argument = arguments.get(component)?.trim().strip_variance();
+    let written_argument = arguments.get(component)?.trim();
+    let reads_as_unknown = written_argument == "*" || written_argument.starts_with("in ");
+    if reads_as_unknown {
+        return None;
+    }
+    let argument = written_argument.strip_variance();
     (!argument.is_empty()).then(|| argument.to_owned())
 }
 
