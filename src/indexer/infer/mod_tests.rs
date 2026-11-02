@@ -1465,6 +1465,71 @@ fn lambda_parameter_stays_unknown_when_no_argument_binds_its_type_parameter() {
     assert_eq!(identifier_type(&source, "model", 3), None);
 }
 
+/// `state.model` is a `lib.StatefulModel<lib.Content>`; the caller's own
+/// `Content` is a different class that merely shares the name.
+#[test]
+fn lambda_parameter_bound_from_an_argument_keeps_the_arguments_own_class() {
+    let files = [
+        (
+            "/lib/State.kt",
+            "package lib\nclass Content\nclass StatefulModel<T>(val data: T)\n\
+             class State(val model: StatefulModel<Content>)\n",
+        ),
+        (
+            "/app/Screen.kt",
+            "package app\nimport lib.State\nimport lib.StatefulModel\nclass Content\n\
+             fun <T> CStateful(data: StatefulModel<T>, content: (T) -> Unit) {}\n\
+             fun screen(state: State) { CStateful(state.model) { model -> model } }\n",
+        ),
+    ];
+    assert_eq!(
+        identifier_type_in_workspace(&files, "/app/Screen.kt", "model", 2),
+        None
+    );
+}
+
+/// `Reordered<X, Y> : Base<Y>`: the argument's first type argument is not
+/// `Base`'s.
+#[test]
+fn lambda_parameter_bound_from_an_argument_of_a_different_type_constructor_is_not_zipped() {
+    let source = "class Apple\n\
+                  class Banana\n\
+                  open class Base<T>\n\
+                  class Reordered<X, Y> : Base<Y>()\n\
+                  fun <T> consume(value: Base<T>, content: (T) -> Unit) {}\n\
+                  fun sibling(model: Int) = model\n\
+                  fun screen() { consume(Reordered<Apple, Banana>()) { model -> model } }\n";
+    let model = identifier_type(source, "model", 3);
+    assert!(
+        matches!(model.as_deref(), None | Some("Banana")),
+        "never Base's `T` read as Reordered's first argument: {model:?}"
+    );
+}
+
+/// `consume(first: T, second: T)` with unrelated arguments needs a common
+/// supertype, which this engine does not compute.
+#[test]
+fn lambda_parameter_bound_by_disagreeing_arguments_is_unknown() {
+    let source = "class Apple\n\
+                  class Banana\n\
+                  fun <T> consume(first: T, second: T, content: (T) -> Unit) {}\n\
+                  fun sibling(model: Int) = model\n\
+                  fun screen() { consume(Apple(), Banana()) { model -> model } }\n";
+    assert_eq!(identifier_type(source, "model", 3), None);
+}
+
+#[test]
+fn lambda_parameter_bound_by_agreeing_arguments_is_that_type() {
+    let source = "class Apple\n\
+                  fun <T> consume(first: T, second: T, content: (T) -> Unit) {}\n\
+                  fun sibling(model: Int) = model\n\
+                  fun screen() { consume(Apple(), Apple()) { model -> model } }\n";
+    assert_eq!(
+        identifier_type(source, "model", 3).as_deref(),
+        Some("Apple")
+    );
+}
+
 /// `ConfirmDataUseCase`: a property of a generic class read through a typed
 /// field (`Store<State>.currentState`).
 #[test]

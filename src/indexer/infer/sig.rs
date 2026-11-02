@@ -911,7 +911,7 @@ pub(crate) fn best_candidate_index(
 /// Whether a parameter type string is a Kotlin function type (`(T) -> R`,
 /// `suspend (T) -> R`, `() -> Unit`, …) — i.e. a trailing-lambda call could
 /// supply it.
-fn is_lambda_shaped(type_str: &str) -> bool {
+pub(crate) fn is_lambda_shaped(type_str: &str) -> bool {
     let t = type_str.trim();
     let t = t.strip_prefix("suspend").map(str::trim_start).unwrap_or(t);
     let is_receiver_function = super::lambda::lambda_type_receiver(t).is_some();

@@ -15,10 +15,12 @@ use super::chain::{cst_forward_resolve_receiver_type, resolve_callee_chain};
 use super::deps::{CallableInfo, InferDeps, OuterScopedParams};
 use super::lambda::{lambda_type_nth_input, lambda_type_receiver, RECEIVER_THIS_FNS};
 use super::lambda_resolution::{ExtractedTypeKind, GenericParamSource, LambdaParamResolution};
-use super::sig::{last_fun_param_type_str, nth_fun_param_type_str, strip_trailing_call_args};
+use super::sig::{
+    is_lambda_shaped, last_fun_param_type_str, nth_fun_param_type_str, strip_trailing_call_args,
+};
 use super::type_subst::{
     build_ext_fn_type_subst, find_last_dot_at_depth_zero, is_declared_type_param, is_generic_param,
-    try_substitute_ext_fn_type_param,
+    mentions_identifier, same_type_constructors, try_substitute_ext_fn_type_param,
 };
 
 /// Tri-state result of classifying a lambda's `this`-receiver context.
@@ -839,25 +841,40 @@ fn type_parameter_bound_by_arguments(
         call_shape_of(call_expr, bytes),
     )?;
     let arguments = call_expr.find_value_arguments()?;
-    let bound = arguments
-        .children_of_kind(KIND_VALUE_ARG)
-        .into_iter()
-        .find_map(|argument| {
-            let declared = match argument.named_arg_label(bytes) {
-                Some(label) => find_named_param_type_in_sig(&signature, &label)?,
-                None => nth_fun_param_type_str(&signature, argument.value_arg_position())?,
-            };
-            let mut cursor = argument.walk();
-            let expression = argument.named_children(&mut cursor).last()?;
-            let (written, _) =
-                super::expr_type::infer_expr_type_as_written(expression, bytes, deps, uri)?;
-            let substitution = build_ext_fn_type_subst(&declared, &written, type_params);
-            substitution
-                .get(extracted)
-                .filter(|concrete| concrete.as_str() != extracted)
-                .cloned()
-        })?;
-    deps.names_type_in_scope(&bound, uri).then_some(bound)
+    let mut bindings: Vec<(String, Url)> = Vec::new();
+    for argument in arguments.children_of_kind(KIND_VALUE_ARG) {
+        let declared = match argument.named_arg_label(bytes) {
+            Some(label) => find_named_param_type_in_sig(&signature, &label),
+            None => nth_fun_param_type_str(&signature, argument.value_arg_position()),
+        };
+        let Some(declared) = declared else {
+            continue;
+        };
+        let constrains_the_parameter =
+            mentions_identifier(&declared, extracted) && !is_lambda_shaped(&declared);
+        if !constrains_the_parameter {
+            continue;
+        }
+        let mut cursor = argument.walk();
+        let expression = argument.named_children(&mut cursor).last()?;
+        let (written, written_in) =
+            super::expr_type::infer_expr_type_as_written(expression, bytes, deps, uri)?;
+        if !same_type_constructors(&declared, &written, type_params) {
+            return None;
+        }
+        let substitution = build_ext_fn_type_subst(&declared, &written, type_params);
+        let concrete = substitution
+            .get(extracted)
+            .filter(|concrete| concrete.as_str() != extracted)?;
+        bindings.push((concrete.clone(), written_in));
+    }
+    let (bound, written_in) = bindings.first()?.clone();
+    // Unrelated argument types would need a common supertype.
+    let arguments_agree = bindings.iter().all(|(concrete, _)| *concrete == bound);
+    // The name is looked up from `uri`, so it must name the argument's own class there.
+    let names_the_same_type =
+        deps.names_type_in_scope(&bound, uri) && deps.same_type_in_scopes(&bound, &written_in, uri);
+    (arguments_agree && names_the_same_type).then_some(bound)
 }
 
 /// Resolve a generic lambda parameter type to a concrete type via the
