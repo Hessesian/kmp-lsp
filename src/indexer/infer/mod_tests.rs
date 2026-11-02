@@ -1571,6 +1571,17 @@ fn local_initialized_from_a_safe_call_is_typed_nullable() {
     );
 }
 
+/// The element keeps the nullability it was written with.
+#[test]
+fn for_variable_over_a_list_of_nullable_elements_is_nullable() {
+    let source = "class Apple\n\
+                  fun walk(items: List<Apple?>) {\n\
+                  \x20   for (item in items) { val copy = item; copy }\n\
+                  }\n";
+    assert_eq!(local_type_at(source, "item", 1).as_deref(), Some("Apple?"));
+    assert_eq!(local_type_at(source, "copy", 1).as_deref(), Some("Apple?"));
+}
+
 /// `WidgetWorker`: a `for` variable over a typed list.
 #[test]
 fn for_variable_over_a_typed_list_is_typed_from_its_element() {
