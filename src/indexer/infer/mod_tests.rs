@@ -1740,3 +1740,95 @@ fn this_in_an_extension_on_a_class_is_that_class() {
                   fun A.show() { this }\n";
     assert_eq!(this_type(source).as_deref(), Some("A"));
 }
+
+// ─── type parameters bound through the receiver's declared type ─────────────
+
+/// `store.currentState` is `State`, bound to `Content` by the receiver's type
+/// argument through the `Store<State>` supertype.
+#[test]
+fn member_typed_by_a_supertype_type_parameter_is_bound_by_the_receiver() {
+    let source = "class Content { val items: List<Item> = TODO() }\n\
+                  class Item\n\
+                  class Decoy { val items: Int = 0 }\n\
+                  interface Store<State> { val currentState: State }\n\
+                  interface MutableStore<State> : Store<State>\n\
+                  class Owner(private val store: MutableStore<Content>) {\n\
+                  \x20   fun use() { val current = store.currentState; current }\n\
+                  \x20   fun chain() { val list = store.currentState.items; list }\n\
+                  }\n";
+    assert_eq!(
+        local_type_at(source, "current", 1).as_deref(),
+        Some("Content")
+    );
+    assert_eq!(
+        local_type_at(source, "list", 1).as_deref(),
+        Some("List<Item>")
+    );
+}
+
+/// Same, but the supertype names its parameter differently.
+#[test]
+fn member_typed_by_a_renamed_supertype_type_parameter_is_bound_by_the_receiver() {
+    let source = "class Content\n\
+                  class State\n\
+                  interface Store<S> { val currentState: S }\n\
+                  interface MutableStore<State> : Store<State>\n\
+                  class Owner(private val store: MutableStore<Content>) {\n\
+                  \x20   fun use() { val current = store.currentState; current }\n\
+                  }\n";
+    assert_eq!(
+        local_type_at(source, "current", 1).as_deref(),
+        Some("Content")
+    );
+}
+
+/// Concrete class with a bounded type parameter, property read.
+#[test]
+fn property_of_a_bounded_type_parameter_class_is_bound_by_the_receiver() {
+    let source = "open class Base\n\
+                  class Content : Base()\n\
+                  class Store<State : Base>(initial: State) {\n\
+                  \x20   val currentState: State get() = TODO()\n\
+                  }\n\
+                  class Owner(private val store: Store<Content>) {\n\
+                  \x20   fun use() { val current = store.currentState; current }\n\
+                  }\n";
+    assert_eq!(
+        local_type_at(source, "current", 1).as_deref(),
+        Some("Content")
+    );
+}
+
+// ─── explicit type arguments of a constructor call ──────────────────────────
+
+/// `make<Content, Int>()` has no declared return type: it is the body's
+/// `Mutable<State, Effect>(...)`, whose own type parameters the call site
+/// binds. The `State` class beside it is not what `State` means there.
+#[test]
+fn expression_body_factory_keeps_the_constructor_call_type_arguments() {
+    let source = "class Content\n\
+                  class State\n\
+                  interface Store<State> { val currentState: State }\n\
+                  interface WithEffects<State, Effect> : Store<State>\n\
+                  class Mutable<State, Effect> : WithEffects<State, Effect>\n\
+                  fun <State, Effect> make() = Mutable<State, Effect>()\n\
+                  fun <State, Effect> Mutable<State, Effect>.toWith(): WithEffects<State, Effect> = this\n\
+                  class Owner {\n\
+                  \x20   private val inner = make<Content, Int>()\n\
+                  \x20   val store = inner.toWith()\n\
+                  \x20   fun use() { val made = inner; val read = store.currentState; made; read }\n\
+                  }\n";
+    assert_eq!(
+        local_type_at(source, "made", 1).as_deref(),
+        Some("Mutable<Content, Int>")
+    );
+    assert_eq!(local_type_at(source, "read", 1).as_deref(), Some("Content"));
+}
+
+/// A constructor call that spells no type arguments stays the bare class.
+#[test]
+fn constructor_call_without_type_arguments_is_the_bare_class() {
+    let source = "class Box<Item>\n\
+                  fun use() { val made = Box(); made }\n";
+    assert_eq!(local_type_at(source, "made", 1).as_deref(), Some("Box"));
+}

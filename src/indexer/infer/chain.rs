@@ -1065,7 +1065,8 @@ fn global_name_scan<D: InferDeps>(ctx: &CallCtx<'_, D>) -> StrategyVerdict {
 }
 
 /// Constructor fallback: `Foo(...)` with no resolvable function return type
-/// is a constructor call whose type is `Foo`. Only when the callee is a bare
+/// is a constructor call whose type is `Foo` (`Foo<A, B>` when it spells its
+/// type arguments). Only when the callee is a bare
 /// (unqualified or dotted) identifier whose leaf starts uppercase.
 fn constructor_fallback<D: InferDeps>(ctx: &CallCtx<'_, D>) -> StrategyVerdict {
     let is_bare_or_dotted_ident = matches!(
@@ -1092,7 +1093,11 @@ fn constructor_fallback<D: InferDeps>(ctx: &CallCtx<'_, D>) -> StrategyVerdict {
     } else {
         ctx.fn_name.to_owned()
     };
-    StrategyVerdict::Terminal(Some(StrategyOutcome::Final(type_name)))
+    let constructed_type = match ctx.node.call_site_type_arg_strings(ctx.bytes) {
+        Some(type_arguments) => format!("{type_name}<{}>", type_arguments.join(", ")),
+        None => type_name,
+    };
+    StrategyVerdict::Terminal(Some(StrategyOutcome::Final(constructed_type)))
 }
 
 /// Build a clean, whitespace-free dotted type name from a navigation_expression
