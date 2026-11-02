@@ -309,9 +309,9 @@ pub(crate) struct Indexer {
     /// Not cleared on `reset_index_state` — open-file trees survive workspace reindex.
     pub(crate) live_trees: DashMap<String, Arc<LiveDoc>>,
     /// The most recently parsed trees of indexed files nobody has open, each
-    /// tied to the exact `FileData` version it was parsed from (see
-    /// `live_doc_or_parse`): a re-index replaces the `Arc<FileData>`, so a
-    /// stale tree can never be served.
+    /// tied to the exact source-lines `Arc` it was parsed from (see
+    /// `live_doc_or_parse`): a re-index replaces the lines, so a stale tree
+    /// can never be served. Least recently used first out.
     pub(crate) unopened_parses: std::sync::Mutex<Vec<live_tree_impl::UnopenedParse>>,
     /// URI string → memoized append-only brace-repair candidate trees (see
     /// `indexer::infer::speculative`'s `repair_candidates_for`). Content-derived,

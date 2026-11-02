@@ -226,3 +226,72 @@ fn a_reindexed_file_is_parsed_again_and_files_do_not_share_trees() {
     assert_eq!(after.bytes, b"class Second");
     assert_eq!(other_doc.bytes, b"class Other");
 }
+
+/// Re-classifying a file's source set rebuilds its `FileData` but keeps the
+/// same source lines: the remembered tree is still right and must be served.
+/// New lines under the same URI must never be answered with the old tree.
+#[test]
+fn a_tree_survives_a_source_set_rebuild_but_not_new_lines() {
+    let indexer = Indexer::new();
+    let uri = kt_uri();
+    indexer.index_content(&uri, "class First");
+    let before = indexer.live_doc_or_parse(&uri).unwrap();
+
+    let indexed = indexer.files.get(uri.as_str()).map(|file| file.clone());
+    let mut reclassified = (*indexed.unwrap()).clone();
+    reclassified.source_set = crate::types::SourceSet::Test;
+    indexer
+        .files
+        .insert(uri.to_string(), std::sync::Arc::new(reclassified));
+    let after_rebuild = indexer.live_doc_or_parse(&uri).unwrap();
+    assert!(std::sync::Arc::ptr_eq(&before, &after_rebuild));
+
+    let competing = indexer.files.get(uri.as_str()).map(|file| file.clone());
+    let mut rewritten = (*competing.unwrap()).clone();
+    rewritten.lines = std::sync::Arc::new(vec!["class Second".to_owned()]);
+    indexer
+        .files
+        .insert(uri.to_string(), std::sync::Arc::new(rewritten));
+    let after_new_lines = indexer.live_doc_or_parse(&uri).unwrap();
+    assert_eq!(after_new_lines.bytes, b"class Second");
+}
+
+/// A poisoned cache lock costs a re-parse, never the answer.
+#[test]
+fn a_poisoned_parse_cache_still_answers() {
+    let indexer = std::sync::Arc::new(Indexer::new());
+    let uri = kt_uri();
+    indexer.index_content(&uri, "class First");
+    let poisoner = std::sync::Arc::clone(&indexer);
+    let _ = std::thread::spawn(move || {
+        let _guard = poisoner.unopened_parses.lock().unwrap();
+        panic!("poison the parse cache");
+    })
+    .join();
+
+    assert_eq!(
+        indexer.live_doc_or_parse(&uri).unwrap().bytes,
+        b"class First"
+    );
+}
+
+/// The cache evicts the least recently used file: a file queried between
+/// many other files stays remembered.
+#[test]
+fn a_hot_file_survives_a_stream_of_cold_files() {
+    let indexer = Indexer::new();
+    let hot = kt_uri();
+    indexer.index_content(&hot, "class Hot");
+    let hot_doc = indexer.live_doc_or_parse(&hot).unwrap();
+
+    for number in 0..40 {
+        let cold = Url::parse(&format!("file:///tmp/Cold{number}.kt")).unwrap();
+        indexer.index_content(&cold, "class Cold");
+        indexer.live_doc_or_parse(&cold).unwrap();
+        let hot_again = indexer.live_doc_or_parse(&hot).unwrap();
+        assert!(
+            std::sync::Arc::ptr_eq(&hot_doc, &hot_again),
+            "hot file re-parsed after {number} cold files"
+        );
+    }
+}
