@@ -1679,6 +1679,19 @@ pub(crate) fn find_method_return_type_declared(
     method_name: &str,
     from_uri: Option<&Url>,
 ) -> Option<DeclaredReturn> {
+    find_method_return_type_declared_scoped(indexer, type_name, method_name, from_uri, from_uri)
+}
+
+/// [`find_method_return_type_declared`] for a class whose NAME resolves in
+/// `class_scope` (the file the hierarchy walk found it through) while the
+/// extensions in scope stay those of the caller, `from_uri`.
+fn find_method_return_type_declared_scoped(
+    indexer: &Indexer,
+    type_name: &str,
+    method_name: &str,
+    class_scope: Option<&Url>,
+    from_uri: Option<&Url>,
+) -> Option<DeclaredReturn> {
     let type_base = type_name.last_segment();
 
     // Extension functions take precedence over member functions.
@@ -1688,9 +1701,9 @@ pub(crate) fn find_method_return_type_declared(
         return Some(declared);
     }
 
-    // Then member functions of the `type_base` that `from_uri` names: dozens of
-    // features each declare their own same-named `TextsInteractor`.
-    let classes = reachable_workspace_class_candidates(indexer, type_base, from_uri);
+    // Then member functions of the `type_base` that `class_scope` names: dozens
+    // of features each declare their own same-named `TextsInteractor`.
+    let classes = reachable_workspace_class_candidates(indexer, type_base, class_scope);
     classes.iter().find_map(|loc| {
         let file_data = indexer.files.get(loc.uri.as_str())?;
         for symbol in &file_data.symbols {
@@ -2209,11 +2222,19 @@ fn find_method_return_type_via_class_hierarchy(
         caller,
         8,
         MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK,
-        |idx, super_name, _super_uri, _caller| {
-            find_method_return_type_declared(idx, super_name, method_name, from_uri)
-                .map(|declared| (super_name.to_owned(), declared))
-                .into_iter()
-                .collect()
+        |idx, super_name, super_uri, _caller| {
+            let ancestor_scope = Url::parse(super_uri).ok();
+            let class_scope = ancestor_scope.as_ref().or(from_uri);
+            find_method_return_type_declared_scoped(
+                idx,
+                super_name,
+                method_name,
+                class_scope,
+                from_uri,
+            )
+            .map(|declared| (super_name.to_owned(), declared))
+            .into_iter()
+            .collect()
         },
     );
     let (super_name, declared) = hits.into_iter().next()?;

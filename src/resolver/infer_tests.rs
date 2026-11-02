@@ -1166,6 +1166,38 @@ fn catalog_method_return_type_folds_supertype_inheritance() {
     );
 }
 
+/// The hierarchy walk already identified the ancestor (`a.Base`, via
+/// `a.Derived : Base()`); a caller that imports an unrelated `b.Base` must not
+/// redirect the inherited member lookup to it.
+#[test]
+fn inherited_member_return_type_comes_from_the_ancestor_the_walk_found_not_the_callers_import() {
+    use crate::indexer::Indexer;
+    use crate::resolver::Resolver;
+    use tower_lsp::lsp_types::Url;
+
+    let idx = Indexer::new();
+    idx.index_content(
+        &Url::parse("file:///a/Derived.kt").unwrap(),
+        "package a\nopen class Base { fun load(): Apple = TODO() }\nclass Derived : Base()\n",
+    );
+    idx.index_content(
+        &Url::parse("file:///b/Base.kt").unwrap(),
+        "package b\nopen class Base { fun load(): Banana = TODO() }\n",
+    );
+    let caller = Url::parse("file:///c/Caller.kt").unwrap();
+    idx.index_content(
+        &caller,
+        "package c\nimport a.Derived\nimport b.Base\nfun use(derived: Derived) = derived.load()\n",
+    );
+
+    assert_eq!(
+        idx.method_return_type("Derived", "load", Some(&caller))
+            .map(|declared| declared.into_inner()),
+        Some("Apple".to_string()),
+        "`Derived : a.Base`, so `load` is a.Base's, not the imported b.Base's"
+    );
+}
+
 /// `find_method_return_type_via_supertypes` keys its workspace/JAR lookups by
 /// the bare symbol name, so a *qualified* `class_name` (e.g.
 /// `app.Derived`, as some callers pass) must still resolve -- the generics-
