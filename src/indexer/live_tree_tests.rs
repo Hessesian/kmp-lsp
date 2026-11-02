@@ -193,3 +193,36 @@ fn utf16_col_past_end_returns_len() {
     let s = "abc";
     assert_eq!(utf16_col_to_byte(s, 100), s.len());
 }
+
+/// An indexed file nobody has open is parsed once, not once per query.
+#[test]
+fn an_indexed_unopened_file_is_parsed_once_for_repeated_queries() {
+    let indexer = Indexer::new();
+    let uri = kt_uri();
+    indexer.index_content(&uri, "class First");
+
+    let first = indexer.live_doc_or_parse(&uri).unwrap();
+    let second = indexer.live_doc_or_parse(&uri).unwrap();
+
+    assert!(std::sync::Arc::ptr_eq(&first, &second));
+}
+
+/// Re-indexing the file with new content must not keep answering with the
+/// old tree, and an unrelated file must not borrow it.
+#[test]
+fn a_reindexed_file_is_parsed_again_and_files_do_not_share_trees() {
+    let indexer = Indexer::new();
+    let uri = kt_uri();
+    let other = Url::parse("file:///tmp/Other.kt").unwrap();
+    indexer.index_content(&uri, "class First");
+    indexer.index_content(&other, "class Other");
+    let before = indexer.live_doc_or_parse(&uri).unwrap();
+
+    indexer.index_content(&uri, "class Second");
+    let after = indexer.live_doc_or_parse(&uri).unwrap();
+    let other_doc = indexer.live_doc_or_parse(&other).unwrap();
+
+    assert_eq!(before.bytes, b"class First");
+    assert_eq!(after.bytes, b"class Second");
+    assert_eq!(other_doc.bytes, b"class Other");
+}

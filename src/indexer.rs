@@ -119,7 +119,7 @@ pub(crate) use scope::last_ident_in;
 
 pub(crate) mod live_tree;
 pub(crate) use live_tree::LiveDoc;
-mod live_tree_impl;
+pub(crate) mod live_tree_impl;
 
 // Re-export cache/scan items needed by the inline test module below.
 #[cfg(test)]
@@ -308,6 +308,11 @@ pub(crate) struct Indexer {
     /// Updated synchronously on every `did_open` / `did_change`; removed on `did_close`.
     /// Not cleared on `reset_index_state` — open-file trees survive workspace reindex.
     pub(crate) live_trees: DashMap<String, Arc<LiveDoc>>,
+    /// The most recently parsed trees of indexed files nobody has open, each
+    /// tied to the exact `FileData` version it was parsed from (see
+    /// `live_doc_or_parse`): a re-index replaces the `Arc<FileData>`, so a
+    /// stale tree can never be served.
+    pub(crate) unopened_parses: std::sync::Mutex<Vec<live_tree_impl::UnopenedParse>>,
     /// URI string → memoized append-only brace-repair candidate trees (see
     /// `indexer::infer::speculative`'s `repair_candidates_for`). Content-derived,
     /// not cursor-derived — the same up-to-`MAX_BRACE_REPAIRS` re-parses answer
@@ -1031,6 +1036,7 @@ impl Indexer {
             extracted_jar_sources: DashMap::new(),
             importable_fqns: std::sync::RwLock::new(std::collections::HashMap::new()),
             live_trees: DashMap::new(),
+            unopened_parses: std::sync::Mutex::new(Vec::new()),
             repair_candidates: DashMap::new(),
             sig_cache: DashMap::new(),
             sig_fast_cache: DashMap::new(),

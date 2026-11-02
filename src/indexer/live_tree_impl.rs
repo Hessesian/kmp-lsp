@@ -3,8 +3,47 @@ use tower_lsp::lsp_types::Url;
 
 use super::live_tree::{lang_for_path, parse_live, LiveDoc};
 use super::Indexer;
+use crate::types::FileData;
+
+/// How many parsed unopened files `live_doc_or_parse` remembers.
+const UNOPENED_PARSE_CAPACITY: usize = 32;
+
+/// A tree parsed from one version of an indexed file.
+pub(crate) struct UnopenedParse {
+    uri: String,
+    parsed_from: Arc<FileData>,
+    doc: Arc<LiveDoc>,
+}
 
 impl Indexer {
+    /// The tree of `uri`'s indexed `file_data`, parsed at most once per
+    /// version for the most recent files.
+    fn parse_unopened(&self, uri: &Url, file_data: Arc<FileData>) -> Option<Arc<LiveDoc>> {
+        let remembered = self
+            .unopened_parses
+            .lock()
+            .ok()?
+            .iter()
+            .find(|parse| parse.uri == uri.as_str() && Arc::ptr_eq(&parse.parsed_from, &file_data))
+            .map(|parse| Arc::clone(&parse.doc));
+        if remembered.is_some() {
+            return remembered;
+        }
+        let lang = lang_for_path(uri.path())?;
+        let doc = Arc::new(parse_live(&file_data.lines.join("\n"), lang)?);
+        let mut parses = self.unopened_parses.lock().ok()?;
+        parses.retain(|parse| parse.uri != uri.as_str());
+        if parses.len() >= UNOPENED_PARSE_CAPACITY {
+            parses.remove(0);
+        }
+        parses.push(UnopenedParse {
+            uri: uri.to_string(),
+            parsed_from: file_data,
+            doc: Arc::clone(&doc),
+        });
+        Some(doc)
+    }
+
     /// Parse `content` and store the resulting `LiveDoc` for `uri`.
     ///
     /// If the file extension is unsupported or parsing fails, any previously
@@ -46,11 +85,15 @@ impl Indexer {
         }
 
         let is_open = self.live_lines.contains_key(uri.as_str());
+        if !is_open {
+            let indexed = self.files.get(uri.as_str()).map(|file| Arc::clone(&*file));
+            if let Some(file_data) = indexed {
+                return self.parse_unopened(uri, file_data);
+            }
+        }
 
         let content: String = if let Some(ll) = self.live_lines.get(uri.as_str()) {
             ll.join("\n")
-        } else if let Some(fd) = self.files.get(uri.as_str()) {
-            fd.lines.join("\n")
         } else if let Ok(path) = uri.to_file_path() {
             std::fs::read_to_string(path).ok()?
         } else {
