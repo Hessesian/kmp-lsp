@@ -406,6 +406,18 @@ pub(crate) trait InferDeps {
         false
     }
 
+    /// The type parameters declared by the member of the receiver's class that
+    /// takes the call (`None` when no member does).
+    ///
+    /// The default implementation returns `None`; overridden by `Indexer`.
+    fn find_member_type_params(
+        &self,
+        _fn_name: &str,
+        _receiver: ReceiverCall<'_>,
+    ) -> Option<Vec<String>> {
+        None
+    }
+
     /// The extension a call on `receiver` binds to — generic or not — with
     /// its declared return type, from the one declaration the receiver and
     /// call shape select.

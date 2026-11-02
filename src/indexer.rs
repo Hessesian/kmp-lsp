@@ -764,6 +764,19 @@ impl InferDeps for Indexer {
             !first.is_empty() && first == declarations_of(&type_path, second_uri)
         })
     }
+    fn find_member_type_params(
+        &self,
+        fn_name: &str,
+        receiver: ReceiverCall<'_>,
+    ) -> Option<Vec<String>> {
+        use crate::StrExt as _;
+        infer::sig::member_type_params_taking_call(
+            self,
+            receiver.receiver_type.dotted_ident_prefix().as_str(),
+            fn_name,
+            receiver.shape,
+        )
+    }
     fn find_extension_callable(
         &self,
         fn_name: &str,
@@ -845,12 +858,13 @@ fn receiver_bound_callable(
     uri: &Url,
 ) -> ReceiverBoundCallable {
     use crate::StrExt as _;
-    let member_takes_the_call = infer::sig::member_takes_call(
+    let member_takes_the_call = infer::sig::member_type_params_taking_call(
         indexer,
         receiver.receiver_type.dotted_ident_prefix().as_str(),
         fn_name,
         receiver.shape,
-    );
+    )
+    .is_some();
     if member_takes_the_call {
         return ReceiverBoundCallable::Member;
     }

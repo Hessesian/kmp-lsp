@@ -708,7 +708,12 @@ impl StrategyOutcome {
                 };
                 let origin = origin_after_substitution(&raw_return, &substitution, origin, ctx);
                 let known_arguments = star_unbound_type_arguments(&raw_return, || {
-                    unbound_type_parameters(ctx, &[], &substitution)
+                    unbound_type_parameters(
+                        ctx,
+                        FunctionTypeParameters::OfReachableFunction,
+                        &[],
+                        &substitution,
+                    )
                 });
                 let substituted = crate::indexer::apply_type_subst(&known_arguments, &substitution);
                 apply_call_site_type_args(substituted, origin, ctx)
@@ -728,7 +733,12 @@ impl StrategyOutcome {
                     origin_after_substitution(&raw_return, &substitution, return_origin, ctx);
                 let known_arguments = star_unbound_type_arguments(&raw_return, || {
                     let class_type_parameters = ctx.deps.find_class_type_params(&effective_type);
-                    unbound_type_parameters(ctx, &class_type_parameters, &substitution)
+                    unbound_type_parameters(
+                        ctx,
+                        FunctionTypeParameters::OfCallOn(&receiver_type),
+                        &class_type_parameters,
+                        &substitution,
+                    )
                 });
                 let substituted = crate::indexer::apply_type_subst(&known_arguments, &substitution);
                 apply_call_site_type_args(substituted, origin, ctx)
@@ -755,19 +765,45 @@ fn origin_after_substitution<D: InferDeps>(
     }
 }
 
+/// Which declaration's own type parameters a call's return type can mention.
+enum FunctionTypeParameters<'receiver> {
+    /// A receiver-less call: the function the call's scope reaches by name.
+    OfReachableFunction,
+    /// A call on a receiver of this type: the member that takes the call, else
+    /// the extension that receiver and the call shape select. A same-named
+    /// function elsewhere must not stand in for either.
+    OfCallOn(&'receiver str),
+}
+
 /// The declared type parameters of the called function (and of its
 /// `class_type_parameters`) that nothing at this call binds: not the
 /// receiver (`substitution`) and not an explicit `f<X>()` type argument.
 fn unbound_type_parameters<D: InferDeps>(
     ctx: &CallCtx<'_, D>,
+    function: FunctionTypeParameters<'_>,
     class_type_parameters: &[String],
     substitution: &std::collections::HashMap<String, String>,
 ) -> Vec<String> {
-    let function_type_parameters = ctx
-        .deps
-        .find_fun_callable_info(ctx.fn_name, None, ctx.uri)
-        .map(|callable_info| callable_info.type_params)
-        .unwrap_or_default();
+    let function_type_parameters = match function {
+        FunctionTypeParameters::OfReachableFunction => ctx
+            .deps
+            .find_fun_callable_info(ctx.fn_name, None, ctx.uri)
+            .map(|callable_info| callable_info.type_params),
+        FunctionTypeParameters::OfCallOn(receiver_type) => {
+            let receiver_call = super::deps::ReceiverCall {
+                receiver_type,
+                shape: super::cst_lambda::call_shape_of(ctx.node, ctx.bytes),
+            };
+            let member_type_parameters =
+                ctx.deps.find_member_type_params(ctx.fn_name, receiver_call);
+            member_type_parameters.or_else(|| {
+                ctx.deps
+                    .find_extension_callable(ctx.fn_name, receiver_call, ctx.uri)
+                    .map(|extension| extension.generics.type_params)
+            })
+        }
+    }
+    .unwrap_or_default();
     let bound_by_call_site = match ctx.node.call_site_type_arg_strings(ctx.bytes) {
         Some(call_type_args) => build_fn_subst(&function_type_parameters, &call_type_args),
         None => Default::default(),

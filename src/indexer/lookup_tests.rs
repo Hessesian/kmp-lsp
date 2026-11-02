@@ -319,3 +319,12 @@ fn apply_type_subst_is_idempotent_for_nullable_into_nullable() {
         "Map<Apple?, Apple?>"
     );
 }
+
+#[test]
+fn type_subst_leaves_qualified_path_segments_and_replaces_a_function_type_receiver() {
+    let substitution = std::collections::HashMap::from([("A".to_owned(), "X".to_owned())]);
+    let apply = |signature| super::apply_type_subst(signature, &substitution);
+    assert_eq!(apply("List<model.A>"), "List<model.A>");
+    assert_eq!(apply("Map<A.Nested, A>"), "Map<A.Nested, X>");
+    assert_eq!(apply("A.() -> A"), "X.() -> X");
+}

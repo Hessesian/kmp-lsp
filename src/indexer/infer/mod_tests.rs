@@ -1710,6 +1710,32 @@ fn member_of_a_raw_generic_receiver_is_unknown() {
     assert_eq!(local_type_at(source, "many", 1).as_deref(), Some("List<*>"));
 }
 
+/// The concrete `Factory.make(): List<Apple>` is the declaration the call
+/// binds; an unrelated top-level `fun <Apple> make(..)` declares a type
+/// parameter of that name, which must not star the member's `Apple`.
+#[test]
+fn member_return_type_is_not_starred_by_an_unrelated_same_named_generic_function() {
+    let source = "class Apple\n\
+                  class Factory { fun make(): List<Apple> = TODO() }\n\
+                  fun <Apple> make(value: Apple): List<Apple> = TODO()\n\
+                  fun use(factory: Factory) { val items = factory.make(); items }\n";
+    assert_eq!(
+        local_type_at(source, "items", 1).as_deref(),
+        Some("List<Apple>")
+    );
+}
+
+/// `model.A` is a class path, not a reference to the function's `A`.
+#[test]
+fn unbound_type_parameter_does_not_star_a_qualified_class_path() {
+    let source = "fun <A> values(input: A): List<model.A> = TODO()\n\
+                  fun use() { val items = values(1); items }\n";
+    assert_eq!(
+        local_type_at(source, "items", 1).as_deref(),
+        Some("List<model.A>")
+    );
+}
+
 fn this_type(source: &str) -> Option<String> {
     let live_doc = live_doc_for(source);
     let indexer = Indexer::new();
@@ -1831,4 +1857,16 @@ fn constructor_call_without_type_arguments_is_the_bare_class() {
     let source = "class Box<Item>\n\
                   fun use() { val made = Box(); made }\n";
     assert_eq!(local_type_at(source, "made", 1).as_deref(), Some("Box"));
+}
+
+/// A member's own type parameter, bound by nothing at the call, is unknown.
+#[test]
+fn member_function_unbound_type_parameter_is_unknown() {
+    let source = "class R { fun foo() {} }\n\
+                  class Foo { fun <R> twins(): Pair<R, R> = TODO() }\n\
+                  fun use(foo: Foo) {\n\
+                  \x20   val (left, right) = foo.twins()\n\
+                  \x20   left; right\n\
+                  }\n";
+    assert_eq!(local_type_at(source, "left", 1), None);
 }
