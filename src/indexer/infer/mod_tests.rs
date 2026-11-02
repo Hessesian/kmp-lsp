@@ -1375,7 +1375,6 @@ fn elvis_with_an_error_function_returning_nullable_nothing_is_unknown() {
     assert_eq!(identifier_type(source, "result", 2), None);
 }
 
-
 // ─── Moneta loss shapes (slice A round 4) ────────────────────────────────────
 
 const COLLECTION_DECLARATIONS: &str = "class Apple(val amount: Int)\n\

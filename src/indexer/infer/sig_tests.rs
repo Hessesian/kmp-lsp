@@ -1068,41 +1068,53 @@ mod import_reachable {
 /// same declaration read from workspace source keeps its real `required`.
 #[test]
 fn declaration_signature_does_not_trust_required_count_of_compiled_jar_symbol() {
-    use crate::resolver::ExtensionDeclaration;
-    let idx = Indexer::new();
+    use crate::indexer::infer::deps::CallShape;
+    let shape = CallShape {
+        arg_count: 2,
+        trailing_lambda: false,
+    };
+    let caller = test_uri("/lib/Caller.kt");
     let source_uri = test_uri("/lib/Bar.kt");
-    idx.index_content(
+    let source_index = Indexer::new();
+    source_index.index_content(&caller, "package lib\n");
+    source_index.index_content(
         &source_uri,
         "package lib\nclass Foo\nfun Foo.bar(a: Int, b: Int) {}\n",
     );
-    let source_file = idx.files.get(source_uri.as_str()).unwrap().clone();
-    let symbol = source_file
-        .symbols
-        .iter()
-        .find(|symbol| symbol.name == "bar")
-        .unwrap()
-        .clone();
-    let jar_uri = Url::parse("jar:file:///lib/lib.jar!/lib/BarKt.class").unwrap();
-    idx.jar_files.insert(jar_uri.to_string(), source_file);
+    let from_source =
+        crate::resolver::extension_declarations_on(&source_index, "Foo", "bar", &caller, shape);
+    assert_eq!(
+        declaration_signature(&from_source[0]).unwrap().1,
+        (2, 2),
+        "workspace source keeps its real required count"
+    );
 
-    let from_source = declaration_signature(
-        &idx,
-        &ExtensionDeclaration {
-            uri: source_uri,
-            symbol: Some(symbol.clone()),
-        },
-    )
-    .unwrap();
-    let from_compiled_jar = declaration_signature(
-        &idx,
-        &ExtensionDeclaration {
-            uri: jar_uri,
-            symbol: Some(symbol),
-        },
-    )
-    .unwrap();
-    assert_eq!(from_source.1, (2, 2));
-    assert_eq!(from_compiled_jar.1, (0, 2), "compiled-JAR required clamped");
+    let jar_uri = Url::parse("jar:file:///lib/lib.jar!/lib/BarKt.class").unwrap();
+    let jar_index = Indexer::new();
+    jar_index.index_content(&caller, "package lib\n");
+    let file_data = source_index.files.get(source_uri.as_str()).unwrap().clone();
+    jar_index.jar_files.insert(jar_uri.to_string(), file_data);
+    for mut entry in source_index
+        .extension_by_receiver
+        .get("Foo")
+        .unwrap()
+        .iter()
+        .cloned()
+    {
+        entry.file_uri = jar_uri.to_string();
+        jar_index
+            .extension_by_receiver
+            .entry("Foo".into())
+            .or_default()
+            .push(entry);
+    }
+    let from_compiled_jar =
+        crate::resolver::extension_declarations_on(&jar_index, "Foo", "bar", &caller, shape);
+    assert_eq!(
+        declaration_signature(&from_compiled_jar[0]).unwrap().1,
+        (0, 2),
+        "compiled-JAR required clamped"
+    );
 }
 
 // ─── is_lambda_shaped ────────────────────────────────────────────────────────

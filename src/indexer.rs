@@ -777,9 +777,9 @@ impl InferDeps for Indexer {
             uri,
             receiver.shape,
         );
-        let declaration = declaration_selected_by_shape(self, &declarations, receiver.shape)?;
-        let symbol = declaration.symbol.as_ref()?;
-        let (return_type, return_nullability) = declared_return_type(self, declaration)?;
+        let declaration = declaration_selected_by_shape(&declarations, receiver.shape)?;
+        let symbol = declaration.symbol()?;
+        let (return_type, return_nullability) = declared_return_type(declaration)?;
         Some(ExtensionCallable {
             generics: CallableInfo {
                 type_params: symbol.type_params().to_vec(),
@@ -805,22 +805,17 @@ fn type_paths_in(type_text: &str) -> Vec<String> {
 /// The return type an extension declaration states, from its detail or, when
 /// that is truncated, its source signature.
 fn declared_return_type(
-    indexer: &Indexer,
     declaration: &crate::resolver::ExtensionDeclaration,
 ) -> Option<(String, crate::resolver::ReturnNullability)> {
-    let symbol = declaration.symbol.as_ref()?;
+    let symbol = declaration.symbol()?;
     let from_detail = crate::resolver::extract_return_type_from_detail(&symbol.detail);
     if let Some(type_name) = from_detail {
         let nullability = crate::resolver::extract_return_nullability_from_detail(&symbol.detail);
         return Some((type_name, nullability));
     }
-    let file_data = indexer
-        .files
-        .get(declaration.uri.as_str())
-        .or_else(|| indexer.jar_files.get(declaration.uri.as_str()))?;
     use crate::lines_ext::LinesExt as _;
-    let signature = file_data
-        .lines
+    let signature = declaration
+        .lines()?
         .collect_signature(symbol.selection_start() as usize);
     let type_name = crate::resolver::extract_return_type_from_detail(&signature)?;
     let nullability = crate::resolver::extract_return_nullability_from_detail(&signature);
@@ -869,8 +864,8 @@ fn receiver_bound_callable(
     if declarations.is_empty() {
         return ReceiverBoundCallable::NoApplicableExtension;
     }
-    let generic = declaration_selected_by_shape(indexer, &declarations, receiver.shape)
-        .and_then(|declaration| declaration.symbol.as_ref())
+    let generic = declaration_selected_by_shape(&declarations, receiver.shape)
+        .and_then(|declaration| declaration.symbol())
         .filter(|symbol| !symbol.type_params().is_empty())
         .map(|symbol| CallableInfo {
             type_params: symbol.type_params().to_vec(),
@@ -882,18 +877,17 @@ fn receiver_bound_callable(
 /// The declaring symbol of the extension overload a call of `shape` binds —
 /// the same pick `find_method_params_text` makes for the parameter list.
 /// Without readable signatures, the first declaration stands in.
-fn declaration_selected_by_shape<'declarations>(
-    indexer: &Indexer,
-    declarations: &'declarations [crate::resolver::ExtensionDeclaration],
+fn declaration_selected_by_shape(
+    declarations: &[crate::resolver::ExtensionDeclaration],
     shape: CallShape,
-) -> Option<&'declarations crate::resolver::ExtensionDeclaration> {
+) -> Option<&crate::resolver::ExtensionDeclaration> {
     let mut readable = Vec::new();
     let mut signatures = Vec::new();
     for declaration in declarations {
-        if declaration.symbol.is_none() {
+        if declaration.symbol().is_none() {
             continue;
         }
-        if let Some(signature) = infer::sig::declaration_signature(indexer, declaration) {
+        if let Some(signature) = infer::sig::declaration_signature(declaration) {
             readable.push(declaration);
             signatures.push(signature);
         }
@@ -902,7 +896,7 @@ fn declaration_selected_by_shape<'declarations>(
         Some(index) => Some(readable[index]),
         None => declarations
             .iter()
-            .find(|declaration| declaration.symbol.is_some()),
+            .find(|declaration| declaration.symbol().is_some()),
     }
 }
 

@@ -261,7 +261,11 @@ fn binding_reports_its_nullability(
         LocalBinding::Initialized { initializer } => {
             reports_its_nullability(initializer, bytes, deps, uri, depth + 1)
         }
-        LocalBinding::Delegated { .. } | LocalBinding::Untyped | LocalBinding::NotLocal => false,
+        LocalBinding::Delegated { .. }
+        | LocalBinding::Iterated { .. }
+        | LocalBinding::Destructured { .. }
+        | LocalBinding::Untyped
+        | LocalBinding::NotLocal => false,
     }
 }
 

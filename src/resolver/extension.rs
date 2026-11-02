@@ -1,6 +1,8 @@
 //! Extension-function-in-scope lookup and the implicit-receiver callee ladder
 //! (member vs. extension, arity-filtered).
 
+use std::sync::Arc;
+
 use tower_lsp::lsp_types::{Location, Range, Url};
 
 use crate::indexer::{CallShape, Indexer};
@@ -33,6 +35,19 @@ pub(super) fn select_extension_symbol<'file_data>(
     container: Option<&String>,
     detail: &str,
 ) -> Option<&'file_data SymbolEntry> {
+    select_extension_symbol_index(file_data, name, receiver_base, container, detail)
+        .map(|index| &file_data.symbols[index])
+}
+
+/// [`select_extension_symbol`]'s answer as an index into `file_data.symbols`,
+/// for callers that keep the file alive instead of cloning the symbol.
+fn select_extension_symbol_index(
+    file_data: &FileData,
+    name: &str,
+    receiver_base: &str,
+    container: Option<&String>,
+    detail: &str,
+) -> Option<usize> {
     let is_declaring_symbol = |symbol: &&SymbolEntry| {
         crate::resolver::infer::extension_declaration_matches(
             symbol,
@@ -48,11 +63,10 @@ pub(super) fn select_extension_symbol<'file_data>(
     // `Vec` version's cost even when the very first declaration is an exact
     // match) is real, measurable overhead the old single-entry-point
     // `.find(extension_declaration_matches)` never paid.
-    file_data
-        .symbols
-        .iter()
-        .find(|symbol| is_declaring_symbol(symbol) && symbol.detail == detail)
-        .or_else(|| file_data.symbols.iter().find(is_declaring_symbol))
+    let is_declaring_index = |index: &usize| is_declaring_symbol(&&file_data.symbols[*index]);
+    (0..file_data.symbols.len())
+        .find(|index| is_declaring_index(index) && file_data.symbols[*index].detail == detail)
+        .or_else(|| (0..file_data.symbols.len()).find(is_declaring_index))
 }
 
 /// The `Range` half of [`select_extension_symbol`], for callers that only
@@ -90,12 +104,15 @@ pub(super) fn resolve_extension_in_scope(
 ) -> Vec<Location> {
     extension_declarations_in_scope(indexer, receiver_base, name, from_uri)
         .into_iter()
-        .map(|declaration| Location {
-            uri: declaration.uri,
-            range: declaration
-                .symbol
+        .map(|declaration| {
+            let range = declaration
+                .symbol()
                 .map(|symbol| symbol.selection_range)
-                .unwrap_or_default(),
+                .unwrap_or_default();
+            Location {
+                uri: declaration.uri,
+                range,
+            }
         })
         .collect()
 }
@@ -104,7 +121,35 @@ pub(super) fn resolve_extension_in_scope(
 /// declaring symbol when the declaring file is loaded.
 pub(crate) struct ExtensionDeclaration {
     pub(crate) uri: Url,
-    pub(crate) symbol: Option<SymbolEntry>,
+    declaring: Option<DeclaringSymbol>,
+}
+
+impl ExtensionDeclaration {
+    pub(crate) fn symbol(&self) -> Option<&SymbolEntry> {
+        let declaring = self.declaring.as_ref()?;
+        Some(&declaring.file.symbols[declaring.index])
+    }
+
+    /// Whether the declaring file is a compiled-JAR (sidecar) index, whose
+    /// signatures carry no default-value markers.
+    pub(crate) fn is_compiled_jar(&self) -> bool {
+        self.declaring
+            .as_ref()
+            .is_some_and(|declaring| declaring.is_compiled_jar)
+    }
+
+    /// The declaring file's source lines, when it is loaded.
+    pub(crate) fn lines(&self) -> Option<&[String]> {
+        Some(&self.declaring.as_ref()?.file.lines)
+    }
+}
+
+/// A symbol held as its loaded file plus an index, so a match across the
+/// supertype walk costs an `Arc` bump rather than a `SymbolEntry` clone.
+struct DeclaringSymbol {
+    file: Arc<FileData>,
+    index: usize,
+    is_compiled_jar: bool,
 }
 
 /// The registry walk behind [`resolve_extension_in_scope`]: every in-scope
@@ -141,21 +186,28 @@ fn extension_declarations_in_scope(
         let Ok(uri) = Url::parse(&entry.file_uri) else {
             continue;
         };
-        let symbol = indexer
-            .files
-            .get(&entry.file_uri)
-            .or_else(|| indexer.jar_files.get(&entry.file_uri))
-            .and_then(|file_data| {
-                select_extension_symbol(
-                    &file_data,
-                    name,
-                    receiver_base,
-                    entry.container.as_ref(),
-                    &entry.detail,
-                )
-                .cloned()
-            });
-        matches.push(ExtensionDeclaration { uri, symbol });
+        let declaring_file = match indexer.files.get(&entry.file_uri) {
+            Some(file_data) => Some((file_data, false)),
+            None => indexer
+                .jar_files
+                .get(&entry.file_uri)
+                .map(|file_data| (file_data, true)),
+        };
+        let declaring = declaring_file.and_then(|(file_data, is_compiled_jar)| {
+            let index = select_extension_symbol_index(
+                &file_data,
+                name,
+                receiver_base,
+                entry.container.as_ref(),
+                &entry.detail,
+            )?;
+            Some(DeclaringSymbol {
+                file: Arc::clone(&file_data),
+                index,
+                is_compiled_jar,
+            })
+        });
+        matches.push(ExtensionDeclaration { uri, declaring });
     }
     matches
 }
@@ -181,11 +233,9 @@ pub(crate) fn extension_declarations_on(
         .to_owned();
     let own = extension_declarations_in_scope(indexer, &receiver_base, name, from_uri);
     let own_declaration_takes_the_call = own.iter().any(|declaration| {
-        crate::indexer::declaration_signature(indexer, declaration).is_none_or(
-            |(params_text, counts)| {
-                crate::indexer::candidate_applies_to_call(&params_text, counts, shape)
-            },
-        )
+        crate::indexer::declaration_signature(declaration).is_none_or(|(params_text, counts)| {
+            crate::indexer::candidate_applies_to_call(&params_text, counts, shape)
+        })
     });
     if own_declaration_takes_the_call {
         return own;

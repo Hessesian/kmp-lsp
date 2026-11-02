@@ -808,22 +808,20 @@ fn inherited_extension_params(
 ) -> Vec<(String, (u8, u8))> {
     crate::resolver::extension_declarations_on(idx, type_base, method_name, caller_uri, shape)
         .iter()
-        .filter_map(|declaration| declaration_signature(idx, declaration))
+        .filter_map(declaration_signature)
         .collect()
 }
 
 /// An extension declaration's parameter text and `(required, total)` counts.
 pub(crate) fn declaration_signature(
-    idx: &Indexer,
     declaration: &crate::resolver::ExtensionDeclaration,
 ) -> Option<(String, (u8, u8))> {
-    let symbol = declaration.symbol.as_ref()?;
-    let (file_data, is_compiled_jar) = match idx.files.get(declaration.uri.as_str()) {
-        Some(file_data) => (file_data, false),
-        None => (idx.jar_files.get(declaration.uri.as_str())?, true),
-    };
-    let params = extract_params_or_fallback(symbol, &file_data.lines)?;
-    Some((params, trusted_param_counts(symbol, is_compiled_jar)))
+    let symbol = declaration.symbol()?;
+    let params = extract_params_or_fallback(symbol, declaration.lines()?)?;
+    Some((
+        params,
+        trusted_param_counts(symbol, declaration.is_compiled_jar()),
+    ))
 }
 
 /// `(required, total)` counts of a declaration. Compiled-JAR (sidecar)
