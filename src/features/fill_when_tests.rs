@@ -1341,6 +1341,31 @@ fun handle(colors: List<Color>) {
     );
 }
 
+/// A local declared inside the lambda shadows the lambda parameter of the
+/// same name: the subject is the local's `Size`, not the parameter's `Color`.
+#[test]
+fn diagnostics_local_shadowing_lambda_parameter_subject_is_typed_from_the_local() {
+    let messages = missing_branch_messages(
+        "\
+fun consume(block: (Color) -> Unit) {}
+fun handle() {
+    consume { value ->
+        val value: Size = Size.SMALL
+        when (value) {
+            Size.SMALL -> {}
+        }
+    }
+}
+",
+    );
+    assert_eq!(messages.len(), 1, "expected one diagnostic: {messages:?}");
+    assert!(
+        messages[0].contains("LARGE") && !messages[0].contains("GREEN"),
+        "subject is the shadowing local's Size, not the parameter's Color: {}",
+        messages[0]
+    );
+}
+
 /// A type annotation (`@Ann Color`) is not the type.
 #[test]
 fn diagnostics_annotated_parameter_subject_is_typed_past_its_annotation() {

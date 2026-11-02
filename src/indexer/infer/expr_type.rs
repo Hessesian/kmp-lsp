@@ -218,11 +218,17 @@ fn infer_ident_type_in_form(
     let name = node.utf8_text_owned(bytes)?;
     let start = node.start_position();
     let col = crate::inlay_hints::ts_byte_col_to_utf16(bytes, &[], start.row, start.column);
-    if let Some(inferred) = deps.find_contextual_type(&name, uri, start.row, col) {
-        return Some((inferred, uri.clone()));
+    let binding = local_binding_at(node, bytes);
+    let binding_states_its_own_type = matches!(
+        binding,
+        LocalBinding::Annotated { .. } | LocalBinding::Initialized { .. }
+    );
+    if !binding_states_its_own_type {
+        if let Some(inferred) = deps.find_contextual_type(&name, uri, start.row, col) {
+            return Some((inferred, uri.clone()));
+        }
     }
-    let declared = match infer_binding_type(local_binding_at(node, bytes), bytes, deps, uri, depth)
-    {
+    let declared = match infer_binding_type(binding, bytes, deps, uri, depth) {
         BindingType::Typed {
             type_text,
             declaring_uri,
