@@ -678,9 +678,8 @@ impl InferDeps for Indexer {
         let Some(type_path) = crate::StrExt::bare_type_name(type_text) else {
             return false;
         };
-        let is_builtin = crate::features::text_utils::KOTLIN_BUILTIN_TYPES
-            .binary_search(&type_path.as_str())
-            .is_ok();
+        let is_builtin =
+            crate::features::text_utils::KOTLIN_BUILTIN_TYPES.contains(&type_path.as_str());
         if is_builtin {
             return true;
         }
