@@ -495,13 +495,12 @@ fn substitute_receiver_type_arguments(
     let class_path = lookup_name.dotted_ident_prefix();
     let substitution = build_type_arg_subst(deps, class_path.last_segment(), current_type);
     let head_path = declared_type.strip_nullable().dotted_ident_prefix();
-    let unbound_class_type_parameters: Vec<String> = deps
-        .find_class_type_params(class_path.last_segment())
-        .into_iter()
-        .filter(|parameter| !substitution.contains_key(parameter))
-        .collect();
-    let known_arguments =
-        star_unbound_type_arguments(declared_type, &unbound_class_type_parameters);
+    let known_arguments = star_unbound_type_arguments(declared_type, || {
+        deps.find_class_type_params(class_path.last_segment())
+            .into_iter()
+            .filter(|parameter| !substitution.contains_key(parameter))
+            .collect()
+    });
     let applied = crate::indexer::apply_type_subst(&known_arguments, &substitution);
     if is_generic_param(applied.strip_nullable()) {
         return first_type_arg_raw(current_type)
@@ -708,8 +707,9 @@ impl StrategyOutcome {
                     Default::default()
                 };
                 let origin = origin_after_substitution(&raw_return, &substitution, origin, ctx);
-                let unbound = unbound_type_parameters(ctx, &[], &substitution);
-                let known_arguments = star_unbound_type_arguments(&raw_return, &unbound);
+                let known_arguments = star_unbound_type_arguments(&raw_return, || {
+                    unbound_type_parameters(ctx, &[], &substitution)
+                });
                 let substituted = crate::indexer::apply_type_subst(&known_arguments, &substitution);
                 apply_call_site_type_args(substituted, origin, ctx)
             }
@@ -726,9 +726,10 @@ impl StrategyOutcome {
                 }
                 let origin =
                     origin_after_substitution(&raw_return, &substitution, return_origin, ctx);
-                let class_type_parameters = ctx.deps.find_class_type_params(&effective_type);
-                let unbound = unbound_type_parameters(ctx, &class_type_parameters, &substitution);
-                let known_arguments = star_unbound_type_arguments(&raw_return, &unbound);
+                let known_arguments = star_unbound_type_arguments(&raw_return, || {
+                    let class_type_parameters = ctx.deps.find_class_type_params(&effective_type);
+                    unbound_type_parameters(ctx, &class_type_parameters, &substitution)
+                });
                 let substituted = crate::indexer::apply_type_subst(&known_arguments, &substitution);
                 apply_call_site_type_args(substituted, origin, ctx)
             }
@@ -784,13 +785,20 @@ fn unbound_type_parameters<D: InferDeps>(
 /// arguments read as `*` (unknown): `Pair<A, B>` from an uninferred `await`
 /// is `Pair<*, *>`, not a pair of classes named `A` and `B`. A bare
 /// `T` return is left alone; its consumers already handle it.
-fn star_unbound_type_arguments(raw_return: &str, unbound: &[String]) -> String {
+fn star_unbound_type_arguments(
+    raw_return: &str,
+    unbound_type_parameters: impl FnOnce() -> Vec<String>,
+) -> String {
     let Some(arguments_start) = raw_return.find('<') else {
         return raw_return.to_owned();
     };
+    let unbound = unbound_type_parameters();
+    if unbound.is_empty() {
+        return raw_return.to_owned();
+    }
     let stars = unbound
-        .iter()
-        .map(|parameter| (parameter.clone(), "*".to_owned()))
+        .into_iter()
+        .map(|parameter| (parameter, "*".to_owned()))
         .collect();
     let (head, arguments) = raw_return.split_at(arguments_start);
     format!(
