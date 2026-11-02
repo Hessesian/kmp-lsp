@@ -2075,6 +2075,50 @@ fn enclosing_extension_receiver_keeps_the_written_receiver_type() {
     assert_eq!(receiver.written, "List<Apple>?");
 }
 
+/// A local property is not a new `this`: `val copy = this` still means `Apple`.
+#[test]
+fn enclosing_extension_receiver_is_found_past_a_local_property() {
+    let src = "class Host { fun Apple.read() { val copy = this } }\n";
+    let col = src.find("this").unwrap() as u32;
+    assert_eq!(enclosing_receiver_at(src, 0, col).as_deref(), Some("Apple"));
+}
+
+/// ...nor is a local function; an anonymous object body is.
+#[test]
+fn enclosing_extension_receiver_stops_at_an_object_body_but_not_a_local_function() {
+    let local_function = "fun Apple.read() { fun helper() { this } }\n";
+    let col = local_function.find("this").unwrap() as u32;
+    assert_eq!(
+        enclosing_receiver_at(local_function, 0, col).as_deref(),
+        Some("Apple")
+    );
+    let object_body = "fun Apple.read() { val o = object : Runnable { fun inner() { this } } }\n";
+    let col = object_body.find("this").unwrap() as u32;
+    assert_eq!(enclosing_receiver_at(object_body, 0, col), None);
+}
+
+/// A qualified receiver without type arguments keeps its package path.
+#[test]
+fn enclosing_extension_receiver_keeps_a_qualified_receiver_as_written() {
+    let src = "fun actual.Widget.read() {\n    this\n}\n";
+    let doc = crate::indexer::live_tree::parse_live(src, tree_sitter_kotlin::LANGUAGE.into())
+        .expect("must parse");
+    let position = tower_lsp::lsp_types::Range {
+        start: tower_lsp::lsp_types::Position {
+            line: 1,
+            character: 4,
+        },
+        end: tower_lsp::lsp_types::Position {
+            line: 1,
+            character: 4,
+        },
+    };
+    let receiver = enclosing_extension_receiver_at(doc.tree.root_node(), &doc.bytes, position)
+        .expect("inside an extension function");
+    assert_eq!(receiver.base, "Widget");
+    assert_eq!(receiver.written, "actual.Widget");
+}
+
 #[test]
 fn enclosing_extension_receiver_finds_receiver_nested_inside_a_lambda() {
     let src = "class CoroutineScope { fun launch(block: () -> Unit) {} }\n\

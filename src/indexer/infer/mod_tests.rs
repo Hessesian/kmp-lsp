@@ -1855,6 +1855,22 @@ fn labelled_this_in_an_extension_is_not_the_extension_receiver() {
     );
 }
 
+/// `this` in `fun actual.Widget.read()` is `actual.Widget`, not whichever
+/// `Widget` the file imports.
+#[test]
+fn this_in_a_qualified_receiver_extension_keeps_the_package_path() {
+    let source = "import other.Widget\n\
+                  fun actual.Widget.read() { this }\n";
+    assert_eq!(nth_this_type(source, 0).as_deref(), Some("actual.Widget"));
+}
+
+/// ...and past a local property: `val copy = this` is still the receiver.
+#[test]
+fn this_in_a_local_property_of_an_extension_is_its_receiver() {
+    let source = "class Apple\nclass Host { fun Apple.read() { val copy = this } }\n";
+    assert_eq!(nth_this_type(source, 0).as_deref(), Some("Apple"));
+}
+
 /// `this` in `fun <A> A.show()` is the extension's own type parameter `A`,
 /// never the unrelated class of that name.
 #[test]
