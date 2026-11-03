@@ -7,8 +7,8 @@ use crate::StrExt;
 
 use super::ensure_file_data;
 use super::infer_lines::{
-    extract_property_type_from_detail, extract_return_type_from_detail, find_rhs_str,
-    has_dot_after_first_call,
+    extract_property_type_from_detail, extract_return_nullability_from_detail,
+    extract_return_type_from_detail, find_rhs_str, has_dot_after_first_call, ReturnNullability,
 };
 use super::{walk_hierarchy, MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK};
 
@@ -124,6 +124,15 @@ pub(crate) fn infer_receiver_type(
     Some(ReceiverType::from_raw(raw))
 }
 
+/// What is known about the declaration binding a field chain's root.
+enum ChainRootBinding {
+    /// Asked the syntax tree at the chain: the binding in scope there.
+    Scoped(BindingType),
+    /// No syntax tree to ask, so whether a local binds the root is unknown
+    /// and only the line-based lookups can answer.
+    NoSyntaxTree,
+}
+
 /// Infer the type of a pure field-access chain such as `holder.repo` (a root
 /// variable followed by one or more field names), preserving the leaf field's
 /// trailing `?` so the caller can observe nullability.
@@ -187,20 +196,22 @@ pub(crate) fn infer_field_chain_type(
         // line-scanning smart-cast check; the unscoped whole-file scan only
         // runs for a root no local binds.
         let root = segments.first()?;
-        // `None`: no syntax tree to ask, so whether a local binds the root is
-        // unknown and only the line-based lookups can answer.
-        let scoped_binding: Option<BindingType> =
-            cst_point.map(|(point, source)| infer_local_type_at(root, point, source, indexer, uri));
-        let (declared_type, anchor_uri) = match scoped_binding {
-            Some(BindingType::Typed {
+        let root_binding = match cst_point {
+            Some((point, source)) => {
+                ChainRootBinding::Scoped(infer_local_type_at(root, point, source, indexer, uri))
+            }
+            None => ChainRootBinding::NoSyntaxTree,
+        };
+        let (declared_type, anchor_uri) = match root_binding {
+            ChainRootBinding::Scoped(BindingType::Typed {
                 type_text,
                 declaring_uri,
             }) => (type_text.bare_type_name()?, declaring_uri),
-            Some(BindingType::LocalUnknown) => {
+            ChainRootBinding::Scoped(BindingType::LocalUnknown) => {
                 smart_cast_narrowed_type(indexer, root, uri, line, None)
                     .map(|type_name| (type_name, uri.clone()))?
             }
-            Some(BindingType::NotLocal) | None => {
+            ChainRootBinding::Scoped(BindingType::NotLocal) | ChainRootBinding::NoSyntaxTree => {
                 smart_cast_narrowed_type(indexer, root, uri, line, None)
                     .or_else(|| infer_variable_type(indexer, root, uri))
                     .map(|type_name| (type_name, uri.clone()))?
@@ -1639,12 +1650,14 @@ pub(crate) fn find_fun_return_type_reachable_declared(
                     return Some(DeclaredReturn {
                         type_name,
                         declared_in: Some(written_in),
+                        nullability: extract_return_nullability_from_detail(&symbol.detail),
                     });
                 }
             } else if fallback.is_none() {
                 fallback = ret.map(|type_name| DeclaredReturn {
                     type_name,
                     declared_in: Some(loc.uri.clone()),
+                    nullability: ReturnNullability::Unknown,
                 });
             }
         }
@@ -1659,6 +1672,9 @@ pub(crate) fn find_fun_return_type_reachable_declared(
 pub(crate) struct DeclaredReturn {
     pub(crate) type_name: String,
     pub(crate) declared_in: Option<Url>,
+    /// Whether the declaration's stated return type is nullable; `Unknown`
+    /// where the lookup does not read it (`type_name` never carries the `?`).
+    pub(crate) nullability: ReturnNullability,
 }
 
 #[cfg(test)]
@@ -1720,11 +1736,13 @@ fn find_method_return_type_declared_scoped(
                 continue;
             }
             // Try detail first; fall back to source lines when detail is truncated.
+            let mut nullability = extract_return_nullability_from_detail(&symbol.detail);
             let declared_type = extract_return_type_from_detail(&symbol.detail)
                 .or_else(|| {
                     // detail may be truncated (120 char limit) — try the source lines.
                     let start_line = symbol.selection_start() as usize;
                     let full_sig = file_data.lines.collect_signature(start_line);
+                    nullability = extract_return_nullability_from_detail(&full_sig);
                     extract_return_type_from_detail(&full_sig)
                 })
                 .map(|type_name| (type_name, loc.uri.clone()))
@@ -1734,6 +1752,7 @@ fn find_method_return_type_declared_scoped(
                 return Some(DeclaredReturn {
                     type_name,
                     declared_in: Some(written_in),
+                    nullability,
                 });
             }
         }
@@ -2073,6 +2092,7 @@ fn find_extension_fn_return_type_scoped(
             return Some(DeclaredReturn {
                 type_name: ret,
                 declared_in: declaring_file,
+                nullability: ReturnNullability::Unknown,
             });
         }
         // detail may be truncated (120 char limit) — try the source lines.
@@ -2113,6 +2133,7 @@ fn find_extension_fn_return_type_scoped(
             return Some(DeclaredReturn {
                 type_name: ret,
                 declared_in: declaring_file,
+                nullability: ReturnNullability::Unknown,
             });
         }
     }
@@ -2155,6 +2176,7 @@ fn find_extension_fn_return_type_global(
                 return Some(DeclaredReturn {
                     type_name,
                     declared_in: Some(loc.uri.clone()),
+                    nullability: ReturnNullability::Unknown,
                 });
             }
         }
@@ -2251,6 +2273,7 @@ fn find_method_return_type_via_class_hierarchy(
     Some(DeclaredReturn {
         type_name: substituted,
         declared_in: Url::parse(class_uri).ok(),
+        nullability: ReturnNullability::Unknown,
     })
 }
 

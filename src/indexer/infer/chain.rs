@@ -1169,14 +1169,20 @@ fn infer_lambda_result_type(
     deps: &impl InferDeps,
     uri: &Url,
 ) -> Option<String> {
+    let last = trailing_lambda_last_expression(call)?;
+    resolve_root_node_type(last, bytes, deps, uri)
+}
+
+/// The last expression of `call`'s trailing lambda — the lambda's value.
+/// `None` for an empty lambda or a call without one.
+pub(super) fn trailing_lambda_last_expression(
+    call: tree_sitter::Node<'_>,
+) -> Option<tree_sitter::Node<'_>> {
     let lambda = find_trailing_lambda_literal(call)?;
     let statements = lambda.first_child_of_kind(KIND_STATEMENTS)?;
-    let count = statements.named_child_count();
-    if count == 0 {
-        return None;
-    }
-    let last = statements.named_child(count as u32 - 1)?;
-    resolve_root_node_type(last, bytes, deps, uri)
+    let mut cursor = statements.walk();
+    let last = statements.named_children(&mut cursor).last();
+    last
 }
 
 /// Resolve a chain of segments to a type (without returning method name).

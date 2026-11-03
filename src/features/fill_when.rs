@@ -7,8 +7,8 @@
 
 use tower_lsp::lsp_types::*;
 
-use crate::indexer::live_tree::utf16_col_to_byte;
-use crate::indexer::{Indexer, NodeExt};
+use crate::indexer::live_tree::{utf16_col_to_byte, LiveDoc};
+use crate::indexer::{CstQuery, Indexer, NodeExt};
 use crate::queries::{
     KIND_BOOLEAN_LITERAL, KIND_ELSE, KIND_LBRACE, KIND_NAV_EXPR, KIND_NAV_SUFFIX, KIND_RBRACE,
     KIND_SIMPLE_IDENT, KIND_TYPE_IDENT, KIND_TYPE_TEST, KIND_USER_TYPE, KIND_WHEN_CONDITION,
@@ -44,10 +44,11 @@ fn analyze_when<'a>(
     indexer: &Indexer,
     uri: &Url,
     when_node: tree_sitter::Node<'a>,
-    source_bytes: &[u8],
+    live_doc: &LiveDoc,
     sealed_cache: &mut SealedMembersCache,
     type_members_cache: &mut TypeMembersCache,
 ) -> Option<WhenAnalysis<'a>> {
+    let source_bytes = &live_doc.bytes;
     let subject_node = when_node
         .children(&mut when_node.walk())
         .find(|c| c.kind() == KIND_WHEN_SUBJECT)?;
@@ -72,12 +73,13 @@ fn analyze_when<'a>(
         // from its call, a local from the declaration in scope at the `when`.
         [_] => {
             let subject_identifier = subject_node.first_child_of_kind(KIND_SIMPLE_IDENT)?;
-            crate::indexer::infer_expr_type_with_origin(
-                subject_identifier,
-                source_bytes,
-                indexer,
-                uri,
-            )?
+            let subject_type = CstQuery::new(subject_identifier, live_doc, indexer, uri)
+                .expr_type()
+                .resolved()?;
+            (
+                subject_type.as_type_str().to_owned(),
+                subject_type.declaring_uri().clone(),
+            )
         }
         // `userData.themeBrand` — walk the field chain to its leaf type.
         // `infer_field_chain_type` itself finds the longest smart-cast-narrowed
@@ -143,7 +145,7 @@ pub(crate) fn build_fill_when_action(
         indexer,
         uri,
         when_node,
-        source_bytes,
+        &live_doc,
         &mut SealedMembersCache::new(),
         &mut TypeMembersCache::new(),
     )?;
@@ -194,7 +196,6 @@ pub(crate) fn when_diagnostics(indexer: &Indexer, uri: &Url) -> Vec<Diagnostic> 
         Some(doc) => doc,
         None => return Vec::new(),
     };
-    let source_bytes = &live_doc.bytes;
     let root = live_doc.tree.root_node();
 
     let diag_start = std::time::Instant::now();
@@ -203,7 +204,7 @@ pub(crate) fn when_diagnostics(indexer: &Indexer, uri: &Url) -> Vec<Diagnostic> 
     let mut type_members_cache = TypeMembersCache::new();
     collect_when_nodes(
         root,
-        source_bytes,
+        &live_doc,
         indexer,
         uri,
         &mut diagnostics,
@@ -227,7 +228,7 @@ pub(crate) fn when_diagnostics(indexer: &Indexer, uri: &Url) -> Vec<Diagnostic> 
 #[allow(clippy::too_many_arguments)]
 fn collect_when_nodes(
     node: tree_sitter::Node,
-    source: &[u8],
+    live_doc: &LiveDoc,
     indexer: &Indexer,
     uri: &Url,
     diagnostics: &mut Vec<Diagnostic>,
@@ -250,9 +251,14 @@ fn collect_when_nodes(
         // have an `else` branch regardless of how the result is used.
         // `analyze_when` returns None if `else` is present, all branches are
         // covered, or the subject type is not a sealed class / enum.
-        if let Some(analysis) =
-            analyze_when(indexer, uri, node, source, sealed_cache, type_members_cache)
-        {
+        if let Some(analysis) = analyze_when(
+            indexer,
+            uri,
+            node,
+            live_doc,
+            sealed_cache,
+            type_members_cache,
+        ) {
             let missing_names: Vec<&str> =
                 analysis.missing.iter().map(|m| m.name.as_str()).collect();
             let message = format!("'when' is missing branches: {}", missing_names.join(", "));
@@ -276,7 +282,7 @@ fn collect_when_nodes(
         loop {
             collect_when_nodes(
                 cursor.node(),
-                source,
+                live_doc,
                 indexer,
                 uri,
                 diagnostics,

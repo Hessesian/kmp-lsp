@@ -2101,3 +2101,19 @@ fn nullable_plain_receiver_keeps_its_marker_in_extension_receiver_type() {
     assert_eq!(receiver_type_of("required"), "T?");
     assert_eq!(receiver_type_of("echo"), "");
 }
+
+/// `operator fun` is indexed as `SymbolKind::OPERATOR`; an operator extension
+/// (Compose's `State<T>.getValue`) still has a receiver.
+#[test]
+fn operator_extension_function_keeps_its_receiver() {
+    let data = crate::parser::parse_kotlin(
+        "operator fun <T> State<T>.getValue(thisObj: Any?, property: Any?): T = value\n",
+    );
+    let get_value = data
+        .symbols
+        .iter()
+        .find(|symbol| symbol.name == "getValue")
+        .expect("getValue should be parsed");
+    assert_eq!(get_value.extension_receiver(), "State");
+    assert_eq!(get_value.extension_receiver_type(), "State<T>");
+}

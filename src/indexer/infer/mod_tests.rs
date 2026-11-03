@@ -641,3 +641,736 @@ fn local_type_at_reads_an_annotated_type_past_its_annotation() {
                   fun use(item: @Ann Apple) { item }\n";
     assert_eq!(local_type_at(source, "item", 1).as_deref(), Some("Apple"));
 }
+
+// ─── elvis initializers ──────────────────────────────────────────────────────
+
+/// `val item = pick() ?: <rhs>` in `second`, with a same-named `Banana`
+/// parameter in `first`; the type `expr_type` gives the use of `item`.
+fn elvis_local_type(right_side: &str) -> Option<String> {
+    let source = format!(
+        "class Apple\n\
+         class Banana\n\
+         fun pick(): Apple? = null\n\
+         fun first(item: Banana) = item\n\
+         fun second() {{\n\
+         \x20   val item = pick() ?: {right_side}\n\
+         \x20   item\n\
+         }}\n"
+    );
+    identifier_type(&source, "item", 3)
+}
+
+#[test]
+fn elvis_with_a_jump_takes_the_non_null_left_type() {
+    assert_eq!(elvis_local_type("return").as_deref(), Some("Apple"));
+    assert_eq!(
+        elvis_local_type("throw IllegalStateException()").as_deref(),
+        Some("Apple")
+    );
+}
+
+#[test]
+fn elvis_with_error_or_todo_takes_the_non_null_left_type() {
+    assert_eq!(
+        elvis_local_type("error(\"none\")").as_deref(),
+        Some("Apple")
+    );
+    assert_eq!(elvis_local_type("TODO()").as_deref(), Some("Apple"));
+}
+
+#[test]
+fn elvis_with_a_same_typed_default_takes_that_type() {
+    assert_eq!(elvis_local_type("Apple()").as_deref(), Some("Apple"));
+}
+
+/// The result is the common supertype, which this engine does not compute.
+#[test]
+fn elvis_with_a_differently_typed_default_is_unknown() {
+    assert_eq!(elvis_local_type("Banana()"), None);
+}
+
+/// Same bare name, different type arguments: still not the left side's type.
+#[test]
+fn elvis_with_a_default_of_other_type_arguments_is_unknown() {
+    let source = "class Apple\n\
+                  class Banana\n\
+                  fun <T> listOf(vararg elements: T): List<T> = TODO()\n\
+                  fun pick(): List<Apple>? = null\n\
+                  fun first(copy: Apple) {}\n\
+                  fun use() { val copy = pick() ?: listOf(Banana()); copy }\n";
+    assert_eq!(local_type_at(source, "copy", 2), None);
+}
+
+#[test]
+fn elvis_initializer_keeps_type_arguments_and_drops_nullability() {
+    let source = "class Apple\n\
+                  fun first(copy: Apple) {}\n\
+                  fun use(items: List<Apple>?) { val copy = items ?: return; copy }\n";
+    assert_eq!(
+        local_type_at(source, "copy", 2).as_deref(),
+        Some("List<Apple>")
+    );
+}
+
+// ─── delegated locals ────────────────────────────────────────────────────────
+
+const STATE_DECLARATIONS: &str = "class Apple\n\
+     class Banana\n\
+     interface State<out T> { val value: T }\n\
+     interface MutableState<T> : State<T>\n\
+     operator fun <T> State<T>.getValue(thisObj: Any?, property: Any?): T = value\n\
+     fun <T> mutableStateOf(value: T): MutableState<T> = TODO()\n\
+     fun <T> remember(calculation: () -> T): T = calculation()\n\
+     class StateFlow<T>\n\
+     fun <T> StateFlow<T>.collectAsStateWithLifecycle(): State<T> = TODO()\n\
+     fun appleState(): MutableState<Apple> = TODO()\n\
+     class Model { val uiState: StateFlow<Apple> = TODO() }\n\
+     fun first(item: Banana) = item\n";
+
+#[test]
+fn expr_type_unwraps_a_state_delegate() {
+    let source = format!(
+        "{STATE_DECLARATIONS}\
+         fun second(model: Model) {{\n\
+         \x20   val item by model.uiState.collectAsStateWithLifecycle()\n\
+         \x20   item\n\
+         }}\n"
+    );
+    assert_eq!(
+        identifier_type(&source, "item", 3).as_deref(),
+        Some("Apple")
+    );
+}
+
+/// `MutableState<T>` has no `getValue` of its own; it inherits `State<T>`'s
+/// through its supertype, which this lookup does not walk: unknown, never
+/// `first`'s `Banana`.
+#[test]
+fn expr_type_leaves_a_mutable_state_value_unknown() {
+    let source = format!(
+        "{STATE_DECLARATIONS}\
+         fun second() {{\n\
+         \x20   var item by appleState()\n\
+         \x20   item\n\
+         }}\n"
+    );
+    assert_eq!(identifier_type(&source, "item", 3), None);
+}
+
+/// A delegate whose `getValue` type this engine does not know stays unknown,
+/// never borrowing `first`'s `item: Banana`.
+#[test]
+fn expr_type_leaves_an_unknown_delegate_untyped() {
+    let source = format!(
+        "{STATE_DECLARATIONS}\
+         fun second() {{\n\
+         \x20   val item by mystery()\n\
+         \x20   item\n\
+         }}\n"
+    );
+    assert_eq!(identifier_type(&source, "item", 3), None);
+}
+
+/// `by lazy { .. }` reads as its lambda's result.
+#[test]
+fn expr_type_types_a_lazy_delegate_from_its_lambda() {
+    let source = "class Apple\n\
+                  class Banana\n\
+                  fun first(item: Banana) = item\n\
+                  fun second() {\n\
+                  \x20   val item by lazy { Apple() }\n\
+                  \x20   item\n\
+                  }\n";
+    assert_eq!(identifier_type(source, "item", 3).as_deref(), Some("Apple"));
+}
+
+#[test]
+fn expr_type_types_mutable_state_of_from_its_argument() {
+    let remembered = format!(
+        "{STATE_DECLARATIONS}\
+         fun second() {{\n\
+         \x20   val item by remember {{ mutableStateOf(Apple()) }}\n\
+         \x20   item\n\
+         }}\n"
+    );
+    assert_eq!(
+        identifier_type(&remembered, "item", 3).as_deref(),
+        Some("Apple")
+    );
+    let direct = format!(
+        "{STATE_DECLARATIONS}\
+         fun second() {{\n\
+         \x20   var item by mutableStateOf(Apple())\n\
+         \x20   item\n\
+         }}\n"
+    );
+    assert_eq!(
+        identifier_type(&direct, "item", 3).as_deref(),
+        Some("Apple")
+    );
+}
+
+/// The value type is what the delegate's own `getValue` returns, not its
+/// type argument, even for a class that happens to be called `State`.
+#[test]
+fn expr_type_reads_a_delegate_through_its_own_get_value() {
+    let source = "class Apple\n\
+                  class Banana\n\
+                  class State<T> { operator fun getValue(thisRef: Any?, property: Any?): Banana = TODO() }\n\
+                  fun make(): State<Apple> = TODO()\n\
+                  fun first(item: Apple) = item\n\
+                  fun second() {\n\
+                  \x20   val item by make()\n\
+                  \x20   item\n\
+                  }\n";
+    assert_eq!(
+        identifier_type(source, "item", 3).as_deref(),
+        Some("Banana")
+    );
+}
+
+/// `expr_type` of the `occurrence`-th `name` in `caller_path`, with every file
+/// in `files` indexed.
+fn identifier_type_in_workspace(
+    files: &[(&str, &str)],
+    caller_path: &str,
+    name: &str,
+    occurrence: usize,
+) -> Option<String> {
+    let indexer = Indexer::new();
+    for (path, source) in files {
+        indexer.index_content(&test_url(path), source);
+    }
+    let caller_source = files
+        .iter()
+        .find(|(path, _)| *path == caller_path)
+        .map(|(_, source)| *source)
+        .expect("caller file");
+    let uri = test_url(caller_path);
+    let live_doc = live_doc_for(caller_source);
+    let identifier = crate::indexer::walk::descendants(live_doc.tree.root_node())
+        .filter(|node| node.kind() == crate::queries::KIND_SIMPLE_IDENT)
+        .filter(|node| node.utf8_text(&live_doc.bytes) == Ok(name))
+        .nth(occurrence)
+        .expect("identifier occurrence");
+    CstQuery::new(identifier, &live_doc, &indexer, &uri)
+        .expr_type()
+        .resolved()
+        .map(|resolved| resolved.as_type_str().to_owned())
+}
+
+/// `uiState: StateFlow<State>` declared in a generic base class: the delegate
+/// reads as the subclass's type argument.
+#[test]
+fn expr_type_substitutes_a_delegate_through_the_view_model_supertype() {
+    let files = [
+        (
+            "/compose/State.kt",
+            "package androidx.compose.runtime\n\
+             interface State<out T> { val value: T }\n\
+             operator fun <T> State<T>.getValue(thisObj: Any?, property: Any?): T = value\n\
+             class StateFlow<T>\n\
+             fun <T> StateFlow<T>.collectAsStateWithLifecycle(): State<T> = TODO()\n",
+        ),
+        (
+            "/mvi/MviViewModel.kt",
+            "package app.mvi\n\
+             import androidx.compose.runtime.StateFlow\n\
+             interface UiState\n\
+             abstract class MviViewModel<Event, State : UiState> {\n\
+             \x20   val uiState: StateFlow<State> by lazy { TODO() }\n\
+             }\n",
+        ),
+        (
+            "/decoy/Decoy.kt",
+            "package app.decoy\n\
+             class State(val count: Int)\n\
+             private fun State.content(): Int = count\n",
+        ),
+        (
+            "/screen/Agreement.kt",
+            "package app.screen\n\
+             import androidx.compose.runtime.collectAsStateWithLifecycle\n\
+             import androidx.compose.runtime.getValue\n\
+             import app.mvi.MviViewModel\n\
+             import app.mvi.UiState\n\
+             class Apple : UiState\n\
+             class AgreementViewModel : MviViewModel<Int, Apple>()\n\
+             fun first(state: Int) {}\n\
+             fun screen(viewModel: AgreementViewModel) {\n\
+             \x20   val state by viewModel.uiState.collectAsStateWithLifecycle()\n\
+             \x20   state\n\
+             }\n",
+        ),
+    ];
+    let state_type = identifier_type_in_workspace(&files, "/screen/Agreement.kt", "state", 2);
+    assert_eq!(state_type.as_deref(), Some("Apple"));
+}
+
+/// The Moneta `FamilyCardDetailViewModel` shape: `event.event` inside
+/// `is Event.Actions ->` is `Actions.event`, not the first `event` property
+/// among `Event`'s subclasses.
+#[test]
+fn expr_type_types_a_chain_through_a_narrowed_subject() {
+    let source = "class DetailEvent\n\
+                  class ActionEvent\n\
+                  sealed interface Event {\n\
+                  \x20   data class Detail(val event: DetailEvent) : Event\n\
+                  \x20   data class Actions(val event: ActionEvent) : Event\n\
+                  }\n\
+                  fun handle(event: Event) {\n\
+                  \x20   when (event) {\n\
+                  \x20       is Event.Actions -> when (val actionEvent = event.event) { else -> actionEvent }\n\
+                  \x20       else -> {}\n\
+                  \x20   }\n\
+                  }\n";
+    assert_eq!(
+        identifier_type(source, "actionEvent", 1).as_deref(),
+        Some("ActionEvent")
+    );
+}
+
+#[test]
+fn expr_type_types_a_when_subject_binding_from_its_subject() {
+    let source = "class Apple\n\
+                  class Banana\n\
+                  fun pick(): Apple = Apple()\n\
+                  fun first(item: Banana) = item\n\
+                  fun second() = when (val item = pick()) { else -> item }\n";
+    assert_eq!(identifier_type(source, "item", 3).as_deref(), Some("Apple"));
+}
+
+// ─── review follow-ups: elvis/delegate identity ──────────────────────────────
+
+/// `pick(): Item?` (package `a`) `?: fallback(): Item` (package `b`): same
+/// written name, two unrelated classes — their common supertype is not `a.Item`.
+#[test]
+fn elvis_with_a_same_named_default_from_another_package_is_unknown() {
+    let files = [
+        (
+            "/a/Pick.kt",
+            "package a\nclass Item\nfun pick(): Item? = null\n",
+        ),
+        (
+            "/b/Fallback.kt",
+            "package b\nclass Item\nfun fallback(): Item = TODO()\n",
+        ),
+        (
+            "/c/Caller.kt",
+            "package c\nimport a.pick\nimport b.fallback\nfun first(item: Int) = item\n\
+             fun use() {\n    val item = pick() ?: fallback()\n    item\n}\n",
+        ),
+    ];
+    assert_eq!(
+        identifier_type_in_workspace(&files, "/c/Caller.kt", "item", 2),
+        None
+    );
+}
+
+/// The same class reached from two files of one package is one type.
+#[test]
+fn elvis_with_a_default_of_the_same_class_from_another_file_takes_that_type() {
+    let files = [
+        ("/a/Item.kt", "package a\nclass Item\n"),
+        ("/a/Pick.kt", "package a\nfun pick(): Item? = null\n"),
+        ("/a/Fallback.kt", "package a\nfun fallback(): Item = TODO()\n"),
+        (
+            "/c/Caller.kt",
+            "package c\nimport a.Item\nimport a.pick\nimport a.fallback\nfun first(item: Int) = item\n\
+             fun use() {\n    val item = pick() ?: fallback()\n    item\n}\n",
+        ),
+    ];
+    assert_eq!(
+        identifier_type_in_workspace(&files, "/c/Caller.kt", "item", 2).as_deref(),
+        Some("Item")
+    );
+}
+
+/// A reachable `error` that returns a value completes normally.
+#[test]
+fn elvis_with_a_user_error_function_returning_a_value_is_unknown() {
+    let source = "class Apple\n\
+                  class Banana\n\
+                  fun pickApple(): Apple? = null\n\
+                  fun error(message: String): Banana = TODO()\n\
+                  fun first(item: Int) = item\n\
+                  fun use() { val item = pickApple() ?: error(\"missing\"); item }\n";
+    assert_eq!(identifier_type(source, "item", 2), None);
+}
+
+/// `left ?: (right)` is still nullable when `right` is.
+#[test]
+fn elvis_with_a_parenthesized_nullable_default_is_unknown() {
+    let source = "class Apple\n\
+                  fun first(item: Int) = item\n\
+                  fun use(left: Apple?, right: Apple?) { val item = left ?: (right); item }\n";
+    assert_eq!(identifier_type(source, "item", 2), None);
+}
+
+#[test]
+fn elvis_with_a_parenthesized_non_null_default_takes_the_type() {
+    let source = "class Apple\n\
+                  fun first(item: Int) = item\n\
+                  fun use(left: Apple?, right: Apple) { val item = left ?: (right); item }\n";
+    assert_eq!(identifier_type(source, "item", 2).as_deref(), Some("Apple"));
+}
+
+const POLICY_DECLARATIONS: &str = "class Apple\n\
+     class Banana\n\
+     interface SnapshotMutationPolicy<T>\n\
+     interface State<out T> { val value: T }\n\
+     interface MutableState<T> : State<T>\n\
+     operator fun <T> State<T>.getValue(thisObj: Any?, property: Any?): T = value\n\
+     fun <T> mutableStateOf(value: T, policy: SnapshotMutationPolicy<T>? = null): MutableState<T> = TODO()\n\
+     fun <T> lazy(initializer: () -> T): Lazy<T> = TODO()\n\
+     class Lazy<T>\n\
+     fun first(item: Banana) = item\n";
+
+/// `mutableStateOf(policy = .., value = Apple())`: the value is the named one.
+#[test]
+fn delegate_state_takes_the_named_value_argument() {
+    let source = format!(
+        "{POLICY_DECLARATIONS}\
+         fun second(policy: SnapshotMutationPolicy<Apple>) {{\n\
+         \x20   val item by mutableStateOf(policy = policy, value = Apple())\n\
+         \x20   item\n\
+         }}\n"
+    );
+    assert_eq!(
+        identifier_type(&source, "item", 3).as_deref(),
+        Some("Apple")
+    );
+}
+
+/// An explicit type argument is the declared value type.
+#[test]
+fn delegate_state_and_lazy_honor_explicit_type_arguments() {
+    let state = format!(
+        "{POLICY_DECLARATIONS}\
+         fun second() {{\n\
+         \x20   val item by mutableStateOf<Any>(Apple())\n\
+         \x20   item\n\
+         }}\n"
+    );
+    assert_eq!(identifier_type(&state, "item", 3).as_deref(), Some("Any"));
+    let lazy = format!(
+        "{POLICY_DECLARATIONS}\
+         fun second() {{\n\
+         \x20   val item by lazy<Any> {{ Apple() }}\n\
+         \x20   item\n\
+         }}\n"
+    );
+    assert_eq!(identifier_type(&lazy, "item", 3).as_deref(), Some("Any"));
+    let nullable = format!(
+        "{POLICY_DECLARATIONS}\
+         fun second() {{\n\
+         \x20   val item by lazy<Apple?> {{ Apple() }}\n\
+         \x20   item\n\
+         }}\n"
+    );
+    assert_eq!(
+        local_type_at(&nullable, "item", 3).as_deref(),
+        Some("Apple?")
+    );
+}
+
+/// A library delegate's `getValue(): Apple` is `lib.Apple`; the caller's own
+/// `Apple` is a different class.
+#[test]
+fn delegate_get_value_keeps_the_library_class_not_the_callers_same_named_one() {
+    let files = [
+        (
+            "/lib/Delegate.kt",
+            "package lib\nclass Apple\nclass Delegate { operator fun getValue(thisRef: Any?, property: Any?): Apple = TODO() }\n\
+             fun make(): Delegate = TODO()\n",
+        ),
+        (
+            "/app/Caller.kt",
+            "package app\nimport lib.make\nclass Apple\nfun first(item: Int) = item\n\
+             fun use() {\n    val item by make()\n    item\n}\n",
+        ),
+    ];
+    assert_eq!(
+        identifier_type_in_workspace(&files, "/app/Caller.kt", "item", 2),
+        None
+    );
+}
+
+/// A non-generic extension `Delegate.getValue` types the local.
+#[test]
+fn delegate_get_value_extension_without_type_parameters_types_the_local() {
+    let source = "class Apple\n\
+                  class Delegate\n\
+                  operator fun Delegate.getValue(thisRef: Any?, property: Any?): Apple = TODO()\n\
+                  fun make(): Delegate = TODO()\n\
+                  fun first(item: Int) = item\n\
+                  fun use() { val item by make(); item }\n";
+    assert_eq!(identifier_type(source, "item", 2).as_deref(), Some("Apple"));
+}
+
+/// `Other<T>.getValue(): Banana` precedes `Delegate<T>.getValue(): T`; the
+/// receiver picks the second.
+#[test]
+fn delegate_get_value_extension_is_chosen_by_receiver_not_by_name() {
+    let source = "class Apple\n\
+                  class Banana\n\
+                  class Other<T>\n\
+                  class Delegate<T>\n\
+                  operator fun <T> Other<T>.getValue(thisRef: Any?, property: Any?): Banana = TODO()\n\
+                  operator fun <T> Delegate<T>.getValue(thisRef: Any?, property: Any?): T = TODO()\n\
+                  fun make(): Delegate<Apple> = TODO()\n\
+                  fun first(item: Int) = item\n\
+                  fun use() { val item by make(); item }\n";
+    assert_eq!(identifier_type(source, "item", 2).as_deref(), Some("Apple"));
+}
+
+// ─── review round 2: elvis identity and nullability ─────────────────────────
+
+/// `a.List` and `b.List` both shadow Kotlin's `List`; neither is the
+/// built-in, and they are not each other.
+#[test]
+fn shadowed_builtin_names_are_not_the_same_type_across_packages() {
+    use crate::indexer::infer::deps::InferDeps as _;
+    let indexer = Indexer::new();
+    let first = test_url("/a/First.kt");
+    let second = test_url("/b/Second.kt");
+    let plain = test_url("/c/Plain.kt");
+    indexer.index_content(&first, "package a\nclass List\n");
+    indexer.index_content(&second, "package b\nclass List\n");
+    indexer.index_content(&plain, "package c\nclass Other\n");
+    assert!(!indexer.same_type_in_scopes("List", &first, &second));
+    assert!(!indexer.same_type_in_scopes("List", &first, &plain));
+    assert!(indexer.same_type_in_scopes("List", &plain, &plain));
+    assert!(indexer.same_type_in_scopes("List", &plain, &test_url("/d/Other.kt")));
+}
+
+/// `pick(): List?` from `a`, `List()` constructed from `b`: the elvis has
+/// no single type.
+#[test]
+fn elvis_of_same_named_shadowing_builtin_classes_is_unknown() {
+    let files = [
+        (
+            "/a/Pick.kt",
+            "package a\nclass List\nfun pick(): List? = null\n",
+        ),
+        ("/b/List.kt", "package b\nclass List\n"),
+        (
+            "/app/Use.kt",
+            "package app\nimport a.pick\nimport b.List\n\
+             fun use() { val item = pick() ?: List(); item }\n",
+        ),
+    ];
+    assert_eq!(
+        identifier_type_in_workspace(&files, "/app/Use.kt", "item", 1),
+        None
+    );
+}
+
+/// A nullable-returning call on the right can still be null, so the elvis
+/// stays nullable-or-unknown, never `Apple`.
+#[test]
+fn elvis_with_a_nullable_returning_call_default_is_unknown() {
+    let source = "class Apple\n\
+                  fun pick(): Apple? = null\n\
+                  fun fallback(): Apple? = null\n\
+                  fun use() { val item = pick() ?: fallback(); item }\n";
+    assert_eq!(local_type_at(source, "item", 1), None);
+}
+
+// ─── review round 2: narrowed and delegated locals inside typed lambdas ─────
+
+#[test]
+fn narrowed_when_subject_in_a_typed_lambda_takes_the_narrowed_type() {
+    let source = "open class Event\n\
+                  class Actions : Event()\n\
+                  fun <T> List<T>.forEach(action: (T) -> Unit) {}\n\
+                  fun use(events: List<Event>) {\n\
+                  \x20   events.forEach { event ->\n\
+                  \x20       when (event) { is Actions -> event else -> {} }\n\
+                  \x20   }\n\
+                  }\n";
+    assert_eq!(
+        identifier_type(source, "event", 2).as_deref(),
+        Some("Actions")
+    );
+}
+
+#[test]
+fn delegated_local_shadowing_a_lambda_parameter_takes_its_delegate_type() {
+    let source = "class Apple\n\
+                  class Banana\n\
+                  fun <T> List<T>.forEach(action: (T) -> Unit) {}\n\
+                  fun use(items: List<Apple>) {\n\
+                  \x20   items.forEach { item ->\n\
+                  \x20       val item by lazy { Banana() }\n\
+                  \x20       item\n\
+                  \x20   }\n\
+                  }\n";
+    assert_eq!(
+        identifier_type(source, "item", 2).as_deref(),
+        Some("Banana")
+    );
+}
+
+// ─── review round 2: delegate shortcuts need the real callable ──────────────
+
+const CUSTOM_DELEGATE: &str = "class Apple\n\
+     class Banana\n\
+     class CustomDelegate { operator fun getValue(thisRef: Any?, property: Any?): Banana = TODO() }\n";
+
+#[test]
+fn user_defined_mutable_state_of_reads_through_its_own_get_value() {
+    let source = format!(
+        "{CUSTOM_DELEGATE}\
+         fun mutableStateOf(value: Apple): CustomDelegate = TODO()\n\
+         fun second() {{ val item by mutableStateOf(Apple()); item }}\n"
+    );
+    assert_eq!(
+        identifier_type(&source, "item", 1).as_deref(),
+        Some("Banana")
+    );
+}
+
+#[test]
+fn user_defined_lazy_reads_through_its_own_get_value() {
+    let source = format!(
+        "{CUSTOM_DELEGATE}\
+         fun lazy(initializer: () -> Apple): CustomDelegate = TODO()\n\
+         fun second() {{ val item by lazy {{ Apple() }}; item }}\n"
+    );
+    assert_ne!(
+        identifier_type(&source, "item", 1).as_deref(),
+        Some("Apple")
+    );
+}
+
+#[test]
+fn user_defined_remember_does_not_unwrap_its_lambda() {
+    let source = format!(
+        "{CUSTOM_DELEGATE}\
+         fun remember(calculation: () -> Apple): CustomDelegate = TODO()\n\
+         fun second() {{ val item by remember {{ Apple() }}; item }}\n"
+    );
+    assert_ne!(
+        identifier_type(&source, "item", 1).as_deref(),
+        Some("Apple")
+    );
+}
+
+#[test]
+fn qualified_member_named_mutable_state_of_is_not_the_compose_function() {
+    let source = format!(
+        "{CUSTOM_DELEGATE}\
+         class Factory {{ fun mutableStateOf(value: Apple): CustomDelegate = TODO() }}\n\
+         fun second(factory: Factory) {{ val item by factory.mutableStateOf(Apple()); item }}\n"
+    );
+    assert_ne!(
+        identifier_type(&source, "item", 1).as_deref(),
+        Some("Apple")
+    );
+}
+
+// ─── review round 2: getValue extension identity and nullability ────────────
+
+/// A library extension returns `lib.Apple`; the caller has its own
+/// unrelated `app.Apple`.
+#[test]
+fn get_value_extension_return_type_keeps_the_library_it_was_written_in() {
+    let files = [
+        (
+            "/lib/Holder.kt",
+            "package lib\nclass Apple\nclass Holder\n\
+             operator fun Holder.getValue(thisRef: Any?, property: Any?): Apple = TODO()\n",
+        ),
+        (
+            "/app/Use.kt",
+            "package app\nimport lib.Holder\nimport lib.getValue\nclass Apple\n\
+             fun make(): Holder = TODO()\n\
+             fun use() { val item by make(); item }\n",
+        ),
+    ];
+    assert_eq!(
+        identifier_type_in_workspace(&files, "/app/Use.kt", "item", 1),
+        None
+    );
+}
+
+#[test]
+fn state_of_a_nullable_type_reads_as_a_nullable_local() {
+    let source = format!(
+        "{STATE_DECLARATIONS}\
+         fun nullableState(): State<Apple?> = TODO()\n\
+         fun second() {{ val item by nullableState(); item }}\n"
+    );
+    assert_eq!(local_type_at(&source, "item", 3).as_deref(), Some("Apple?"));
+}
+
+// ─── review round 3: nullability through delegates, bindings, `error` ───────
+
+/// `getValue(): Apple?` (member): the local reads `Apple?`, so it is no
+/// non-null elvis default.
+#[test]
+fn member_get_value_returning_a_nullable_keeps_the_nullable_local() {
+    let source = "class Apple\n\
+                  class Delegate { operator fun getValue(thisRef: Any?, property: Any?): Apple? = null }\n\
+                  fun make(): Delegate = TODO()\n\
+                  fun first(item: Int) = item\n\
+                  fun use(left: Apple?) { val item by make(); val result = left ?: item; result }\n";
+    assert_eq!(local_type_at(source, "item", 3).as_deref(), Some("Apple?"));
+    assert_eq!(identifier_type(source, "result", 1), None);
+}
+
+/// The extension path loses the `?` the same way.
+#[test]
+fn extension_get_value_returning_a_nullable_keeps_the_nullable_local() {
+    let source = "class Apple\n\
+                  class Delegate\n\
+                  operator fun Delegate.getValue(thisRef: Any?, property: Any?): Apple? = null\n\
+                  fun make(): Delegate = TODO()\n\
+                  fun first(item: Int) = item\n\
+                  fun use(left: Apple?) { val item by make(); val result = left ?: item; result }\n";
+    assert_eq!(local_type_at(source, "item", 3).as_deref(), Some("Apple?"));
+    assert_eq!(identifier_type(source, "result", 1), None);
+}
+
+/// `fallback`'s inferred type is a bare `Apple`, but `nullableCall()` can be
+/// null: it is no non-null default.
+#[test]
+fn elvis_default_identifier_initialized_from_a_nullable_call_is_unknown() {
+    let source = "class Apple\n\
+                  fun nullableCall(): Apple? = null\n\
+                  fun first(result: Int) = result\n\
+                  fun use(left: Apple?) { val fallback = nullableCall(); val result = left ?: fallback; result }\n";
+    assert_eq!(identifier_type(source, "result", 2), None);
+}
+
+#[test]
+fn elvis_default_identifier_initialized_from_a_constructor_takes_the_type() {
+    let source = "class Apple\n\
+                  fun first(result: Int) = result\n\
+                  fun use(left: Apple?) { val fallback = Apple(); val result = left ?: fallback; result }\n";
+    assert_eq!(
+        identifier_type(source, "result", 2).as_deref(),
+        Some("Apple")
+    );
+}
+
+/// A local callable named `error` that returns normally is not `Nothing`.
+#[test]
+fn elvis_with_a_local_lambda_named_error_is_unknown() {
+    let source = "class Apple\n\
+                  class Banana\n\
+                  fun first(result: Int) = result\n\
+                  fun use(left: Apple?, error: (String) -> Banana) { val result = left ?: error(\"missing\"); result }\n";
+    assert_eq!(identifier_type(source, "result", 2), None);
+}
+
+/// `Nothing?` can return `null`, so it does not end the elvis.
+#[test]
+fn elvis_with_an_error_function_returning_nullable_nothing_is_unknown() {
+    let source = "class Apple\n\
+                  fun error(message: String): Nothing? = null\n\
+                  fun first(result: Int) = result\n\
+                  fun use(left: Apple?) { val result = left ?: error(\"missing\"); result }\n";
+    assert_eq!(identifier_type(source, "result", 2), None);
+}

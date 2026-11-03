@@ -806,6 +806,103 @@ fn definition_paths_at(
     }
 }
 
+/// `val state by viewModel.uiState.collectAsStateWithLifecycle()`: the value
+/// type is the view model's type argument `State`, spelled (and imported) in
+/// `AgreementViewModel.kt`. The screen never imports it, and a decoy package
+/// declares another `State` with a private `content` extension; `state.content`
+/// must never land on the decoy.
+#[test]
+fn delegated_state_member_never_resolves_through_an_unrelated_same_named_type() {
+    let files = agreement_screen_files(
+        "package app.screen\n\
+         import androidx.compose.runtime.collectAsStateWithLifecycle\n\
+         import androidx.compose.runtime.getValue\n\
+         import app.viewmodel.AgreementViewModel\n\
+         fun screen(viewModel: AgreementViewModel) {\n\
+         \x20   val state by viewModel.uiState.collectAsStateWithLifecycle()\n\
+         \x20   state.content\n\
+         }\n",
+    );
+    let definitions = definition_paths_at(&files, "/screen/AgreementScreen.kt", 6, "content");
+    assert!(
+        definitions
+            .iter()
+            .all(|path| path.ends_with("/contract/AgreementContract.kt")),
+        "state.content resolved to {definitions:?}"
+    );
+}
+
+/// When the screen itself names the state type, the member resolves on it.
+#[test]
+fn delegated_state_member_resolves_on_the_type_the_screen_imports() {
+    let files = agreement_screen_files(
+        "package app.screen\n\
+         import androidx.compose.runtime.collectAsStateWithLifecycle\n\
+         import androidx.compose.runtime.getValue\n\
+         import app.contract.AgreementContract.State\n\
+         import app.viewmodel.AgreementViewModel\n\
+         fun screen(viewModel: AgreementViewModel) {\n\
+         \x20   val state by viewModel.uiState.collectAsStateWithLifecycle()\n\
+         \x20   state.content\n\
+         }\n",
+    );
+    let definitions = definition_paths_at(&files, "/screen/AgreementScreen.kt", 7, "content");
+    assert_eq!(
+        definitions.len(),
+        1,
+        "state.content resolved to {definitions:?}"
+    );
+    assert!(definitions[0].ends_with("/contract/AgreementContract.kt"));
+}
+
+/// The Moneta shape: `MviViewModel<Event, State>` declares
+/// `uiState: StateFlow<State>`, and `AgreementViewModel` binds `State` to
+/// `AgreementContract.State`. A decoy package declares another `State` with a
+/// private `content` extension.
+fn agreement_screen_files(screen_source: &'static str) -> [(&'static str, &'static str); 6] {
+    [
+        (
+            "/compose/State.kt",
+            "package androidx.compose.runtime\n\
+             interface State<out T> { val value: T }\n\
+             operator fun <T> State<T>.getValue(thisObj: Any?, property: Any?): T = value\n\
+             class StateFlow<T>\n\
+             fun <T> StateFlow<T>.collectAsStateWithLifecycle(): State<T> = TODO()\n",
+        ),
+        (
+            "/mvi/MviViewModel.kt",
+            "package app.mvi\n\
+             import androidx.compose.runtime.StateFlow\n\
+             interface UiState\n\
+             abstract class MviViewModel<Event, State : UiState> {\n\
+             \x20   val uiState: StateFlow<State> by lazy { TODO() }\n\
+             }\n",
+        ),
+        (
+            "/contract/AgreementContract.kt",
+            "package app.contract\n\
+             import app.mvi.UiState\n\
+             interface AgreementContract {\n\
+             \x20   data class State(val content: Int) : UiState\n\
+             }\n",
+        ),
+        (
+            "/viewmodel/AgreementViewModel.kt",
+            "package app.viewmodel\n\
+             import app.contract.AgreementContract.State\n\
+             import app.mvi.MviViewModel\n\
+             class AgreementViewModel : MviViewModel<Int, State>()\n",
+        ),
+        (
+            "/decoy/FamilyViewModel.kt",
+            "package app.decoy\n\
+             data class State(val count: Int)\n\
+             private fun State.content(): Int = count\n",
+        ),
+        ("/screen/AgreementScreen.kt", screen_source),
+    ]
+}
+
 /// Slice 1 of the receiver-origin work: the receiver's type name (`ScreenFlowModel`)
 /// was written in `Holder.kt`, which imports it. The CALLER never imports it, and a
 /// same-named decoy with the same member lives in a third package — the member
@@ -1115,6 +1212,8 @@ fn binding_of(source: &str, name: &str, occurrence: usize) -> String {
         LocalBinding::Initialized { initializer } => {
             format!("Initialized({})", text_of(initializer))
         }
+        LocalBinding::Delegated { delegate } => format!("Delegated({})", text_of(delegate)),
+        LocalBinding::Narrowed { narrowed_type } => format!("Narrowed({})", text_of(narrowed_type)),
         LocalBinding::Untyped => "Untyped".to_owned(),
         LocalBinding::NotLocal => "NotLocal".to_owned(),
     }
@@ -1201,12 +1300,19 @@ fn untyped_binders_shadow_an_outer_annotated_parameter() {
                         \x20   item\n\
                         }\n";
     assert_eq!(binding_of(destructured, "item", 2), "Untyped");
+}
 
+/// A delegated local shadows the outer parameter and is typed by its delegate.
+#[test]
+fn delegated_local_binds_to_its_delegate() {
     let delegated = "fun use(item: Apple) {\n\
                      \x20   val item by lazy { Banana() }\n\
                      \x20   item\n\
                      }\n";
-    assert_eq!(binding_of(delegated, "item", 2), "Untyped");
+    assert_eq!(
+        binding_of(delegated, "item", 2),
+        "Delegated(lazy { Banana() })"
+    );
 }
 
 #[test]
@@ -1219,6 +1325,96 @@ fn annotated_lambda_parameter_is_annotated_with_its_declared_type() {
 fn annotated_for_variable_is_annotated_with_its_declared_type() {
     let source = "fun use(item: Apple, all: List<Banana>) { for (item: Banana in all) { item } }\n";
     assert_eq!(binding_of(source, "item", 2), "Annotated(Banana)");
+}
+
+#[test]
+fn when_subject_binding_is_initialized_from_its_subject_expression() {
+    let source = "fun use(item: Apple) { when (val item = pick()) { else -> item } }\n";
+    assert_eq!(binding_of(source, "item", 2), "Initialized(pick())");
+
+    let annotated = "fun use(item: Apple) { when (val item: Banana = pick()) { else -> item } }\n";
+    assert_eq!(binding_of(annotated, "item", 2), "Annotated(Banana)");
+}
+
+#[test]
+fn is_branch_narrows_the_when_subject_inside_its_body_only() {
+    let source = "fun use(event: Event) {\n\
+                  \x20   when (event) {\n\
+                  \x20       is Event.Actions -> event\n\
+                  \x20       !is Event.Detail -> event\n\
+                  \x20       is Event.Open, is Event.Close -> event\n\
+                  \x20       else -> event\n\
+                  \x20   }\n\
+                  }\n";
+    assert_eq!(binding_of(source, "event", 2), "Narrowed(Event.Actions)");
+    assert_eq!(binding_of(source, "event", 3), "Annotated(Event)", "!is");
+    assert_eq!(
+        binding_of(source, "event", 4),
+        "Annotated(Event)",
+        "two conditions"
+    );
+    assert_eq!(binding_of(source, "event", 5), "Annotated(Event)", "else");
+}
+
+#[test]
+fn is_branch_narrows_a_when_subject_binding() {
+    let source = "fun use(sheet: Apple) {\n\
+                  \x20   when (val sheet = pick()) { is Sheet.Open -> sheet; else -> sheet }\n\
+                  }\n";
+    assert_eq!(binding_of(source, "sheet", 2), "Narrowed(Sheet.Open)");
+    assert_eq!(binding_of(source, "sheet", 3), "Initialized(pick())");
+}
+
+/// A redeclaration inside the branch shadows the narrowed subject.
+#[test]
+fn a_local_declared_in_the_is_branch_shadows_the_narrowed_subject() {
+    let source = "fun use(event: Event) {\n\
+                  \x20   when (event) {\n\
+                  \x20       is Event.Actions -> { val event = Apple(); event }\n\
+                  \x20       else -> {}\n\
+                  \x20   }\n\
+                  }\n";
+    assert_eq!(binding_of(source, "event", 3), "Initialized(Apple())");
+}
+
+/// The Moneta `MortgageReducer` shape: the sibling subclass declares a
+/// same-named member; the `is` branch decides which one is meant.
+#[test]
+fn member_of_a_narrowed_when_subject_binding_resolves_on_the_narrowed_type() {
+    let source = "sealed interface SheetEvent {\n\
+                  \x20   data class OnOpenStatements(val accountId: String, val isWustenrot: Boolean) : SheetEvent\n\
+                  \x20   data class OnOpenDetail(val mortgageId: String, val isWustenrot: Boolean) : SheetEvent\n\
+                  }\n\
+                  class Holder(val event: SheetEvent)\n\
+                  fun reduce(holder: Holder) {\n\
+                  \x20   when (val sheetEvent = holder.event) {\n\
+                  \x20       is SheetEvent.OnOpenDetail -> sheetEvent.isWustenrot\n\
+                  \x20       else -> {}\n\
+                  \x20   }\n\
+                  }\n";
+    let (file_uri, indexer) = indexed_with_live("/Reducer.kt", source);
+    let column = source.lines().nth(7).unwrap().find("isWustenrot").unwrap();
+    let symbol = classify_symbol_at(
+        &indexer,
+        &file_uri,
+        CursorPos {
+            line: 7,
+            utf16_col: column,
+        },
+    )
+    .unwrap();
+    let definition_lines: Vec<u32> = match resolve_identity(&symbol, &indexer, &file_uri) {
+        NavigationSource::CstResolved(definitions) => definitions
+            .0
+            .iter()
+            .map(|location| location.range.start.line)
+            .collect(),
+        NavigationSource::NameScan(_) => Vec::new(),
+    };
+    assert!(
+        definition_lines.iter().all(|line| *line == 2),
+        "must resolve to OnOpenDetail.isWustenrot (line 2), got lines {definition_lines:?}"
+    );
 }
 
 #[test]
@@ -1322,7 +1518,13 @@ fn declaring_identifier(binding: LocalBinding<'_>) -> Option<Node<'_>> {
             .parent()?
             .first_child_of_kind(KIND_VAR_DECL)?
             .first_child_of_kind(KIND_SIMPLE_IDENT),
-        LocalBinding::Untyped | LocalBinding::NotLocal => None,
+        LocalBinding::Delegated { delegate } => delegate
+            .parent()?
+            .parent()?
+            .first_child_of_kind(KIND_VAR_DECL)?
+            .first_child_of_kind(KIND_SIMPLE_IDENT),
+        // A smart cast narrows a binding found further out; it declares nothing.
+        LocalBinding::Narrowed { .. } | LocalBinding::Untyped | LocalBinding::NotLocal => None,
     }
 }
 

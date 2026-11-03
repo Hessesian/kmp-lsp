@@ -32,6 +32,20 @@ pub(crate) struct CallableInfo {
     pub extension_receiver_type: String,
 }
 
+/// The extension declaration a call on a known receiver binds to: its
+/// generics and its declared return type, read from one declaration.
+#[derive(Clone, Debug)]
+pub(crate) struct ExtensionCallable {
+    /// Type parameters (possibly none) and the declared extension receiver.
+    pub(crate) generics: CallableInfo,
+    /// The return type as written in the declaration.
+    pub(crate) return_type: String,
+    /// Whether that return type is nullable (`return_type` never carries the `?`).
+    pub(crate) return_nullability: crate::resolver::ReturnNullability,
+    /// The file the declaration, and so its return type's names, was written in.
+    pub(crate) declared_in: Url,
+}
+
 /// A call on a known receiver type: what selects among same-named extensions
 /// declared on it.
 #[derive(Clone, Copy, Debug)]
@@ -233,6 +247,31 @@ pub(crate) trait InferDeps {
         None
     }
 
+    /// Whether the member `method_name` of `class_name` declares a nullable
+    /// return type. `Unknown` when the declaration found does not state one.
+    ///
+    /// The default implementation returns `Unknown`; overridden by `Indexer`.
+    fn find_method_return_nullability_for_type(
+        &self,
+        _class_name: &str,
+        _method_name: &str,
+        _uri: &Url,
+    ) -> crate::resolver::ReturnNullability {
+        crate::resolver::ReturnNullability::Unknown
+    }
+
+    /// Whether the top-level function `fn_name` reaches from `uri` declares a
+    /// nullable return type. `Unknown` when no reachable declaration states one.
+    ///
+    /// The default implementation returns `Unknown`; overridden by `Indexer`.
+    fn find_fun_return_nullability(
+        &self,
+        _fn_name: &str,
+        _uri: &Url,
+    ) -> crate::resolver::ReturnNullability {
+        crate::resolver::ReturnNullability::Unknown
+    }
+
     /// [`Self::find_fun_return_type_reachable`] together with the file the return
     /// type was written in; `uri` (the caller) when no file is reported.
     fn find_fun_return_type_reachable_with_origin(
@@ -343,6 +382,42 @@ pub(crate) trait InferDeps {
     /// The default implementation returns `false`; overridden by `Indexer`.
     fn has_type_definition(&self, _name: &str) -> bool {
         false
+    }
+
+    /// Whether the type `type_text` names resolves to a real type from
+    /// `uri`'s own declarations, package and imports, or is a Kotlin
+    /// built-in. A type parameter, or a name declared only somewhere `uri`
+    /// cannot see, does not — unlike [`Self::has_type_definition`], which
+    /// matches any same-named type anywhere.
+    ///
+    /// The default implementation returns `false`; overridden by `Indexer`.
+    fn names_type_in_scope(&self, _type_text: &str, _uri: &Url) -> bool {
+        false
+    }
+
+    /// Whether `type_text`, written in `first_uri` and in `second_uri`, names
+    /// the same type — every class it mentions (type arguments included)
+    /// resolves to the same declaration from both files, or is a Kotlin
+    /// built-in. A type parameter, or a name neither file resolves, is not
+    /// the same type.
+    ///
+    /// The default implementation returns `false`; overridden by `Indexer`.
+    fn same_type_in_scopes(&self, _type_text: &str, _first_uri: &Url, _second_uri: &Url) -> bool {
+        false
+    }
+
+    /// The extension a call on `receiver` binds to — generic or not — with
+    /// its declared return type, from the one declaration the receiver and
+    /// call shape select.
+    ///
+    /// The default implementation returns `None`; overridden by `Indexer`.
+    fn find_extension_callable(
+        &self,
+        _fn_name: &str,
+        _receiver: ReceiverCall<'_>,
+        _uri: &Url,
+    ) -> Option<ExtensionCallable> {
+        None
     }
 }
 

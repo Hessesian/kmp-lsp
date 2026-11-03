@@ -297,3 +297,25 @@ fn jar_declaration_scope_finds_a_tier1_only_symbol_after_promotion_attempt() {
          not silently return None without trying"
     );
 }
+
+// ── apply_type_subst nullability ──────────────────────────────────────────────
+
+/// `T = Apple?` into `List<T?>` is `List<Apple?>`, not `List<Apple??>`; a
+/// non-null binding into the same occurrence still makes it nullable.
+#[test]
+fn apply_type_subst_is_idempotent_for_nullable_into_nullable() {
+    let nullable = std::collections::HashMap::from([("T".to_owned(), "Apple?".to_owned())]);
+    let non_null = std::collections::HashMap::from([("T".to_owned(), "Apple".to_owned())]);
+    assert_eq!(
+        crate::indexer::apply_type_subst("List<T?>", &nullable),
+        "List<Apple?>"
+    );
+    assert_eq!(
+        crate::indexer::apply_type_subst("List<T?>", &non_null),
+        "List<Apple?>"
+    );
+    assert_eq!(
+        crate::indexer::apply_type_subst("Map<T, T?>", &nullable),
+        "Map<Apple?, Apple?>"
+    );
+}

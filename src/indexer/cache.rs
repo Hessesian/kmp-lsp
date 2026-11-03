@@ -35,7 +35,9 @@ use crate::types::{FileData, FileIndexResult, Visibility};
 ///      `extension_receiver_type` — older caches stored it empty.
 /// v34: class members no longer get a `pkg.member` entry in the stored
 ///      `qualified_keys` — older caches would replay the colliding key.
-pub(crate) const CACHE_VERSION: u32 = 34;
+/// v35: an `operator fun` extension (`State<T>.getValue`) records its
+///      receiver — older caches stored it empty.
+pub(crate) const CACHE_VERSION: u32 = 35;
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 

@@ -386,6 +386,7 @@ fn push_def_symbols(
                 kind,
                 SymbolKind::FUNCTION
                     | SymbolKind::METHOD
+                    | SymbolKind::OPERATOR
                     | SymbolKind::PROPERTY
                     | SymbolKind::VARIABLE
             ) {

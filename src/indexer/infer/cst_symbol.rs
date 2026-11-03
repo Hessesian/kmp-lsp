@@ -19,9 +19,10 @@ use crate::queries::{
     KIND_FINALLY_BLOCK, KIND_FOR_STMT, KIND_FUN_DECL, KIND_FUN_VALUE_PARAMS, KIND_IDENTIFIER,
     KIND_IMPORT_HEADER, KIND_LAMBDA_LIT, KIND_LAMBDA_PARAMS, KIND_MULTI_VAR_DECL, KIND_NAV_EXPR,
     KIND_NAV_SUFFIX, KIND_OBJECT_DECL, KIND_PARAMETER, KIND_PARAM_WITH_OPTIONAL_TYPE,
-    KIND_PRIMARY_CTOR, KIND_PROP_DECL, KIND_SETTER, KIND_SIMPLE_IDENT, KIND_STATEMENTS,
-    KIND_TRY_EXPR, KIND_TYPE_ALIAS, KIND_TYPE_IDENT, KIND_TYPE_MODIFIERS, KIND_TYPE_PARAM,
-    KIND_VAR_DECL, KIND_WHEN_EXPR, KIND_WHEN_SUBJECT,
+    KIND_PRIMARY_CTOR, KIND_PROP_DECL, KIND_PROP_DELEGATE, KIND_SETTER, KIND_SIMPLE_IDENT,
+    KIND_STATEMENTS, KIND_TRY_EXPR, KIND_TYPE_ALIAS, KIND_TYPE_IDENT, KIND_TYPE_MODIFIERS,
+    KIND_TYPE_PARAM, KIND_TYPE_TEST, KIND_VAR_DECL, KIND_WHEN_CONDITION, KIND_WHEN_ENTRY,
+    KIND_WHEN_EXPR, KIND_WHEN_SUBJECT,
 };
 use crate::resolver::api::Definitions;
 use crate::semantic_tokens::is_named_argument_label;
@@ -689,9 +690,16 @@ pub(crate) enum LocalBinding<'tree> {
     Annotated { declared_type: Node<'tree> },
     /// `val name = <initializer>` with no annotation.
     Initialized { initializer: Node<'tree> },
+    /// `val name by <delegate>` with no annotation: the type is what the
+    /// delegate's `getValue` returns, not the delegate's own type.
+    Delegated { delegate: Node<'tree> },
+    /// Inside the body of a `when (name)` / `when (val name = ..)` branch
+    /// whose one condition is `is Type`: smart-cast to `narrowed_type`,
+    /// whatever `name` was declared as.
+    Narrowed { narrowed_type: Node<'tree> },
     /// Bound in an enclosing local scope whose type this walk does not read:
-    /// a lambda parameter, `for` variable, destructured component, `when`
-    /// subject, or a delegated/uninitialised property.
+    /// an unannotated lambda parameter or `for` variable, a destructured
+    /// component, or an uninitialised property.
     Untyped,
     /// No enclosing local scope binds the name — a member, top-level
     /// declaration, import, or inherited symbol.
@@ -762,7 +770,7 @@ fn binding_of_declared_name<'tree>(
 ) -> LocalBinding<'tree> {
     variable_declaration
         .parent()
-        .filter(|parent| parent.kind() == KIND_PROP_DECL)
+        .filter(|parent| parent.kind() == KIND_PROP_DECL || parent.kind() == KIND_WHEN_SUBJECT)
         .and_then(|property| property_binding(property, name, bytes))
         .unwrap_or(LocalBinding::Untyped)
 }
@@ -796,10 +804,49 @@ fn binding_introduced_by<'tree>(
         KIND_WHEN_EXPR => scope
             .first_child_of_kind(KIND_WHEN_SUBJECT)
             .filter(|subject| subject.id() != inner.id())
-            .and_then(|subject| declares_name_directly(subject, name, bytes))
-            .map(|_| LocalBinding::Untyped),
+            .and_then(|subject| property_binding(subject, name, bytes)),
+        KIND_WHEN_ENTRY => is_branch_narrowing(scope, inner, name, bytes),
         _ => value_parameter_binding(scope, inner, name, bytes),
     }
+}
+
+/// The smart cast a `when` branch gives `name` in its body: the branch's
+/// only condition is `is Type` (not `!is`, not a list of conditions, whose
+/// common supertype this does not compute) and the `when` subject is `name`
+/// itself or binds it.
+fn is_branch_narrowing<'tree>(
+    entry: Node<'tree>,
+    inner: Node<'tree>,
+    name: &str,
+    bytes: &[u8],
+) -> Option<LocalBinding<'tree>> {
+    if inner.kind() != KIND_CONTROL_STRUCTURE_BODY {
+        return None;
+    }
+    let conditions = entry.children_of_kind(KIND_WHEN_CONDITION);
+    let [condition] = conditions.as_slice() else {
+        return None;
+    };
+    let type_test = condition.first_child_of_kind(KIND_TYPE_TEST)?;
+    let is_positive_test = type_test
+        .child(0)
+        .is_some_and(|operator| operator.kind() == "is");
+    if !is_positive_test {
+        return None;
+    }
+    let subject = entry.parent()?.first_child_of_kind(KIND_WHEN_SUBJECT)?;
+    let narrows_name = match subject.first_child_of_kind(KIND_VAR_DECL) {
+        // `when (val name = ..)`: only the bound name is tested.
+        Some(declaration) => named_identifier_child(declaration, name, bytes).is_some(),
+        // `when (name)`.
+        None => named_identifier_child(subject, name, bytes).is_some(),
+    };
+    if !narrows_name {
+        return None;
+    }
+    let mut cursor = type_test.walk();
+    let narrowed_type = type_test.named_children(&mut cursor).last()?;
+    Some(LocalBinding::Narrowed { narrowed_type })
 }
 
 /// The parameter of a function, secondary constructor, or anonymous function
@@ -872,8 +919,9 @@ fn nearest_earlier_property_binding<'tree>(
         .last()
 }
 
-/// The binding a `property_declaration` gives `name`, or `None` when it
-/// declares some other name.
+/// The binding a `property_declaration` — or a `when (val name = ..)`
+/// subject, which has the same `variable_declaration` `=` initializer shape —
+/// gives `name`, or `None` when it declares some other name.
 fn property_binding<'tree>(
     property: Node<'tree>,
     name: &str,
@@ -887,11 +935,17 @@ fn property_binding<'tree>(
     if name_identifier.next_named_sibling().is_some() {
         return Some(annotated_binding(name_identifier));
     }
-    let initializer = property
+    if let Some(initializer) = property
         .first_child_of_kind(KIND_EQ)
-        .and_then(|equals| equals.next_named_sibling());
-    Some(match initializer {
-        Some(initializer) => LocalBinding::Initialized { initializer },
+        .and_then(|equals| equals.next_named_sibling())
+    {
+        return Some(LocalBinding::Initialized { initializer });
+    }
+    let delegate = property
+        .first_child_of_kind(KIND_PROP_DELEGATE)
+        .and_then(|property_delegate| property_delegate.named_child(0));
+    Some(match delegate {
+        Some(delegate) => LocalBinding::Delegated { delegate },
         None => LocalBinding::Untyped,
     })
 }

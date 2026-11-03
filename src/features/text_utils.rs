@@ -170,7 +170,8 @@ pub(crate) const KOTLIN_KEYWORDS: &[&str] = &[
 /// short-circuit `rg_find_definition` for these names.
 ///
 /// Source: Kotlin spec § Built-in types + `java.lang` package reference.
-/// **Must remain sorted** — consumers may use binary search.
+/// Two sorted runs (`kotlin.*`, then `java.lang.*`), not one: look names up
+/// with `contains`, never a binary search.
 pub(crate) const KOTLIN_BUILTIN_TYPES: &[&str] = &[
     // kotlin.* — always auto-imported
     "Any",

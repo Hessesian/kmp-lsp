@@ -498,6 +498,34 @@ pub(crate) fn extract_property_type_from_detail(detail: &str) -> Option<String> 
 /// `"fun getDetail(req: Req): Response<Data>"` → `"Response<Data>"`
 /// `"fun doSomething()"` → `None`
 pub(crate) fn extract_return_type_from_detail(detail: &str) -> Option<String> {
+    declared_return_in_detail(detail).map(|declared| declared.type_name)
+}
+
+/// Whether a declaration's stated return type is nullable, as far as its
+/// detail says ([`extract_return_type_from_detail`] drops the `?`).
+pub(crate) fn extract_return_nullability_from_detail(detail: &str) -> ReturnNullability {
+    match declared_return_in_detail(detail) {
+        Some(declared) if declared.nullable => ReturnNullability::Nullable,
+        Some(_) => ReturnNullability::NonNull,
+        None => ReturnNullability::Unknown,
+    }
+}
+
+/// Whether a declared return type admits `null`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ReturnNullability {
+    NonNull,
+    Nullable,
+    /// The declaration states no return type this was read from.
+    Unknown,
+}
+
+struct DeclaredReturnText {
+    type_name: String,
+    nullable: bool,
+}
+
+fn declared_return_in_detail(detail: &str) -> Option<DeclaredReturnText> {
     // If the detail was truncated (ends with `…`), parsing it would yield an
     // incomplete return type string that poisons downstream type substitution.
     // Return None so callers can fall back to the full source-line signature.
@@ -518,7 +546,11 @@ pub(crate) fn extract_return_type_from_detail(detail: &str) -> Option<String> {
             // LAST dotted segment.
             let type_path = type_name.dotted_ident_prefix();
             if !type_path.is_empty() && type_path.last_segment().starts_with_uppercase() {
-                return Some(type_name);
+                let nullable = type_part[type_name.len()..].starts_with('?');
+                return Some(DeclaredReturnText {
+                    type_name,
+                    nullable,
+                });
             }
         }
         search_from = close_paren;
