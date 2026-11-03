@@ -2295,3 +2295,65 @@ fn member_type_does_not_take_type_parameters_from_a_same_named_class_elsewhere()
         Some("List<Apple>")
     );
 }
+
+// ─── review round 4: generic members of an object bind lambda parameters ────
+
+fn object_helper_files(call: &str) -> [(&'static str, String); 4] {
+    [
+        (
+            "/ui/Helper.kt",
+            "package ui\nobject CardHelper {\n    \
+             fun <T, R : Any> mapCardItems(items: List<T>?, mapper: (T) -> R): List<R> = TODO()\n}\n"
+                .to_owned(),
+        ),
+        (
+            "/other/Helper.kt",
+            "package other\nobject OtherHelper {\n    \
+             fun <T, R : Any> mapCardItems(items: List<T>?, mapper: (T) -> R): List<R> = TODO()\n}\n\
+             class Item\n"
+                .to_owned(),
+        ),
+        (
+            "/lib/Item.kt",
+            "package lib\nclass Outer { class Section { class Item(val label: String) } }\n".to_owned(),
+        ),
+        (
+            "/app/Use.kt",
+            format!(
+                "package app\nimport ui.CardHelper\nimport lib.Outer.Section.Item\n\
+                 class Use {{ fun use(items: List<Item>) {{ {call} }} }}\n"
+            ),
+        ),
+    ]
+}
+
+fn object_helper_lambda_parameter(call: &str) -> Option<String> {
+    let files = object_helper_files(call);
+    let borrowed: Vec<(&str, &str)> = files
+        .iter()
+        .map(|(path, source)| (*path, source.as_str()))
+        .collect();
+    identifier_type_in_workspace(&borrowed, "/app/Use.kt", "item", 1)
+}
+
+/// `CardHelper.mapCardItems(items) { item -> }`: `T` is bound by the argument
+/// even though the callee is a member of an object.
+#[test]
+fn lambda_parameter_of_a_generic_object_member_is_bound_by_its_argument() {
+    assert_eq!(
+        object_helper_lambda_parameter("CardHelper.mapCardItems(items) { item -> item }")
+            .as_deref(),
+        Some("Item")
+    );
+}
+
+/// The same with a named argument (`items = items`) for a nullable
+/// `List<T>?` parameter.
+#[test]
+fn lambda_parameter_of_a_generic_object_member_is_bound_by_a_named_argument() {
+    assert_eq!(
+        object_helper_lambda_parameter("CardHelper.mapCardItems(items = items) { item -> item }")
+            .as_deref(),
+        Some("Item")
+    );
+}

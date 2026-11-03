@@ -730,7 +730,9 @@ fn locate_and_extract<'tree>(
             receiver_type,
             shape: call_shape_of(call_expr, bytes),
         });
-    let callable = deps.find_fun_callable_info(&fn_name, receiver_call, uri);
+    let callable = deps
+        .find_fun_callable_info(&fn_name, receiver_call, uri)
+        .or_else(|| member_callable_declaring(&extracted, receiver_call, &fn_name, deps, uri));
     let kind = classify_extracted_type(&extracted, &callable);
 
     Some(LambdaParamResolution {
@@ -739,6 +741,28 @@ fn locate_and_extract<'tree>(
         callable,
         call_expr,
         receiver_type,
+    })
+}
+
+/// The generics of the receiver's own member `fn_name` when it declares
+/// `type_parameter` itself (`object Helper { fun <T> map(items: List<T>, ...) }`):
+/// a member has no extension metadata, but the arguments can still bind its
+/// own type parameters. A class type parameter is the receiver's to supply.
+fn member_callable_declaring(
+    type_parameter: &str,
+    receiver_call: Option<super::deps::ReceiverCall<'_>>,
+    fn_name: &str,
+    deps: &impl InferDeps,
+    uri: &Url,
+) -> Option<CallableInfo> {
+    let member = deps.find_member_type_params(fn_name, receiver_call?, uri)?;
+    let declares_it = member
+        .function
+        .iter()
+        .any(|declared| declared == type_parameter);
+    declares_it.then(|| CallableInfo {
+        type_params: member.function,
+        extension_receiver_type: String::new(),
     })
 }
 
