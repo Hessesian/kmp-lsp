@@ -1410,17 +1410,117 @@ pub(crate) fn extension_receiver_from_decl(decl: Node, bytes: &[u8]) -> (String,
 /// delegates to skips past them to the enclosing declaration). `None` when
 /// `position` isn't inside an extension function/property at all.
 ///
-/// Reuses `extract_extension_receiver_from_cst` verbatim — that helper only
-/// uses `range` to *locate* the enclosing declaration before extracting its
-/// receiver, so a call-site position works exactly like a declaration's own
-/// position does.
+/// Local functions and properties are looked past (they do not rebind `this`);
+/// a class or object body ends the search.
 pub(crate) fn enclosing_extension_receiver_at(
     root: Node,
     bytes: &[u8],
     position: Range,
-) -> Option<String> {
-    let (base, _receiver_type) = extract_extension_receiver_from_cst(root, bytes, &position);
-    (!base.is_empty()).then_some(base)
+) -> Option<ExtensionReceiver> {
+    let start_point = tree_sitter::Point {
+        row: position.start.line as usize,
+        column: position.start.character as usize,
+    };
+    let node = crate::indexer::node_ext::descendant_for_point(root, bytes, start_point)?;
+    let declaration = enclosing_extension_declaration(node)?;
+    let (base, _) = extension_receiver_from_decl(declaration, bytes);
+    if base.is_empty() {
+        return None;
+    }
+    let written = written_extension_receiver(declaration, bytes).unwrap_or_else(|| base.clone());
+    // The whole spelling: `actual.Widget` is a class path, not the type
+    // parameter `Widget` that its leaf shares.
+    let is_type_parameter = is_visible_type_parameter(declaration, written.strip_nullable(), bytes);
+    Some(ExtensionReceiver {
+        base,
+        written,
+        is_type_parameter,
+    })
+}
+
+/// Whether `name` is a type parameter of `declaration` or of a declaration
+/// enclosing it (`class Host<A> { fun A.read() }`).
+fn is_visible_type_parameter(declaration: Node, name: &str, bytes: &[u8]) -> bool {
+    let mut current = Some(declaration);
+    while let Some(scope) = current {
+        let declares_it = scope
+            .extract_type_params(bytes)
+            .iter()
+            .any(|type_parameter| type_parameter == name);
+        if declares_it {
+            return true;
+        }
+        current = scope.parent();
+    }
+    false
+}
+
+/// The extension function or property whose body encloses `node`. Local
+/// functions and properties do not rebind `this`, so they are looked past; a
+/// class or object body does, so it ends the search.
+fn enclosing_extension_declaration(node: Node) -> Option<Node> {
+    let mut current = node;
+    loop {
+        match current.kind() {
+            KIND_FUN_DECL | KIND_PROP_DECL
+                if current.first_child_of_kind(KIND_RECEIVER_TYPE).is_some() =>
+            {
+                return Some(current);
+            }
+            KIND_CLASS_BODY
+            | KIND_CLASS_DECL
+            | KIND_OBJECT_DECL
+            | KIND_CTOR_DECL
+            | KIND_METHOD_DECL
+            | KIND_RECORD_DECL
+            | KIND_INIT_DECL
+            | KIND_PROTOCOL_FUNC_DECL
+            | KIND_SOURCE_FILE => return None,
+            _ if is_anonymous_object_body(current) => return None,
+            _ => {}
+        }
+        current = current.parent()?;
+    }
+}
+
+/// The body of an anonymous object. The grammar reads `object : Supertype { .. }`
+/// as an `object_literal` called with a trailing lambda, so the body is a
+/// `lambda_literal` attached to that call.
+fn is_anonymous_object_body(node: Node) -> bool {
+    if node.kind() != KIND_LAMBDA_LIT {
+        return false;
+    }
+    let call = node
+        .parent()
+        .and_then(|annotated_lambda| annotated_lambda.parent())
+        .and_then(|call_suffix| call_suffix.parent());
+    call.is_some_and(|call| {
+        call.kind() == KIND_CALL_EXPR
+            && call
+                .named_child(0)
+                .is_some_and(|callee| callee.kind() == queries::KIND_OBJECT_LITERAL)
+    })
+}
+
+/// The receiver type exactly as `declaration` spells it, package path,
+/// type arguments and `?` included (`actual.Widget`, `List<Apple>?`).
+fn written_extension_receiver(declaration: Node, bytes: &[u8]) -> Option<String> {
+    let receiver = declaration.first_child_of_kind(KIND_RECEIVER_TYPE)?;
+    let text = receiver.utf8_text(bytes).ok()?;
+    let written = text.lines().map(str::trim).collect::<Vec<_>>().join(" ");
+    (!written.is_empty()).then_some(written)
+}
+
+/// The receiver of an extension function or property.
+pub(crate) struct ExtensionReceiver {
+    /// The receiver type's own simple name: `"List"` for `List<Apple>?`.
+    pub(crate) base: String,
+    /// The receiver type with its type arguments and `?` (`"List<Apple>?"`);
+    /// the simple name alone when it has neither.
+    pub(crate) written: String,
+    /// The receiver is one of the declaration's own type parameters
+    /// (`fun <T> T.show()`): `this` has no members to look up.
+    pub(crate) is_type_parameter: bool,
 }
 
 /// Find the declaration node at `range` in the tree and extract the text inside

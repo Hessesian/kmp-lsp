@@ -34,8 +34,8 @@ pub(crate) use complete::symbols_from_uri_as_completions_pub;
 #[cfg(test)]
 pub(crate) use complete::{complete_symbol, complete_symbol_with_context, is_annotation_context};
 pub(crate) use extension::{
-    extension_declarations_on, resolve_implicit_receiver_callee,
-    resolve_receiver_callee_in_type_scope, ExtensionDeclaration,
+    extension_declarations_on, member_type_parameters_taking_call,
+    resolve_implicit_receiver_callee, resolve_receiver_callee_in_type_scope, ExtensionDeclaration,
 };
 pub(crate) use hierarchy::ReceiverTypeAgreement;
 pub(crate) use hierarchy::{walk_hierarchy, MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK};
@@ -46,7 +46,8 @@ pub(crate) use infer::{
 };
 pub(crate) use infer_lines::{
     extract_collection_element_type, extract_property_type_from_detail,
-    extract_return_nullability_from_detail, extract_return_type_from_detail, ReturnNullability,
+    extract_return_nullability_from_detail, extract_return_type_from_detail,
+    is_collection_constructor, ReturnNullability,
 };
 pub(crate) use package_scope::find_symbol_in_package;
 pub(crate) use resolve::{

@@ -1374,3 +1374,1022 @@ fn elvis_with_an_error_function_returning_nullable_nothing_is_unknown() {
                   fun use(left: Apple?) { val result = left ?: error(\"missing\"); result }\n";
     assert_eq!(identifier_type(source, "result", 2), None);
 }
+
+// ─── Moneta loss shapes (slice A round 4) ────────────────────────────────────
+
+const COLLECTION_DECLARATIONS: &str = "class Apple(val amount: Int)\n\
+     class Banana\n\
+     fun <T> Iterable<T>.firstOrNull(predicate: (T) -> Boolean): T? = TODO()\n\
+     fun <T> Iterable<T>.sumOf(selector: (T) -> Int): Int = TODO()\n";
+
+/// `RetentionOfferTextsInteractor`: a named lambda parameter of a call on the
+/// extension receiver `this`.
+#[test]
+fn lambda_parameter_on_an_extension_receiver_is_typed_from_its_element() {
+    let source = format!(
+        "{COLLECTION_DECLARATIONS}\
+         fun sibling(offer: Banana) = offer\n\
+         fun List<Apple>.findOffer() = this.firstOrNull {{ offer ->\n\
+         \x20   offer\n\
+         }}\n"
+    );
+    assert_eq!(
+        identifier_type(&source, "offer", 3).as_deref(),
+        Some("Apple")
+    );
+}
+
+/// `ChartsOverviewMapper`: `it` of a call on a field read through the
+/// extension receiver's implicit `this`.
+#[test]
+fn it_on_an_implicit_receiver_field_is_typed_from_its_element() {
+    let source = format!(
+        "{COLLECTION_DECLARATIONS}\
+         class ItemsList(val items: List<Apple>)\n\
+         fun sibling(it: Banana) = it\n\
+         fun ItemsList.total() = items.sumOf {{ it.amount }}\n"
+    );
+    assert_eq!(identifier_type(&source, "it", 2).as_deref(), Some("Apple"));
+}
+
+/// Compose `CStateful(data: StatefulModel<T>, ..) { model: T -> }`: `T` is
+/// bound by the `data` argument.
+const STATEFUL_DECLARATIONS: &str = "class StatefulModel<T>(val data: T)\n\
+     class Content(val title: String)\n\
+     class Banana\n\
+     class State(val content: StatefulModel<Content>)\n\
+     fun <T> CStateful(data: StatefulModel<T>, loading: (T?) -> Unit = {}, content: (T) -> Unit) {}\n\
+     fun sibling(model: Banana) = model\n";
+
+#[test]
+fn lambda_parameter_is_typed_from_a_named_argument_binding_its_type_parameter() {
+    let source = format!(
+        "{STATEFUL_DECLARATIONS}\
+         fun screen(state: State) {{\n\
+         \x20   CStateful(\n\
+         \x20       data = state.content,\n\
+         \x20   ) {{ model ->\n\
+         \x20       model\n\
+         \x20   }}\n\
+         }}\n"
+    );
+    assert_eq!(
+        identifier_type(&source, "model", 3).as_deref(),
+        Some("Content")
+    );
+}
+
+#[test]
+fn lambda_parameter_is_typed_from_a_positional_argument_binding_its_type_parameter() {
+    let source = format!(
+        "{STATEFUL_DECLARATIONS}\
+         fun screen(state: State) {{\n\
+         \x20   CStateful(state.content) {{ model -> model }}\n\
+         }}\n"
+    );
+    assert_eq!(
+        identifier_type(&source, "model", 3).as_deref(),
+        Some("Content")
+    );
+}
+
+/// An argument whose type is unknown binds nothing: unknown, never `Banana`.
+#[test]
+fn lambda_parameter_stays_unknown_when_no_argument_binds_its_type_parameter() {
+    let source = format!(
+        "{STATEFUL_DECLARATIONS}\
+         fun screen() {{\n\
+         \x20   CStateful(mystery()) {{ model -> model }}\n\
+         }}\n"
+    );
+    assert_eq!(identifier_type(&source, "model", 3), None);
+}
+
+/// `state.model` is a `lib.StatefulModel<lib.Content>`; the caller's own
+/// `Content` is a different class that merely shares the name.
+#[test]
+fn lambda_parameter_bound_from_an_argument_keeps_the_arguments_own_class() {
+    let files = [
+        (
+            "/lib/State.kt",
+            "package lib\nclass Content\nclass StatefulModel<T>(val data: T)\n\
+             class State(val model: StatefulModel<Content>)\n",
+        ),
+        (
+            "/app/Screen.kt",
+            "package app\nimport lib.State\nimport lib.StatefulModel\nclass Content\n\
+             fun <T> CStateful(data: StatefulModel<T>, content: (T) -> Unit) {}\n\
+             fun screen(state: State) { CStateful(state.model) { model -> model } }\n",
+        ),
+    ];
+    assert_eq!(
+        identifier_type_in_workspace(&files, "/app/Screen.kt", "model", 2),
+        None
+    );
+}
+
+/// `Reordered<X, Y> : Base<Y>`: the argument's first type argument is not
+/// `Base`'s.
+#[test]
+fn lambda_parameter_bound_from_an_argument_of_a_different_type_constructor_is_not_zipped() {
+    let source = "class Apple\n\
+                  class Banana\n\
+                  open class Base<T>\n\
+                  class Reordered<X, Y> : Base<Y>()\n\
+                  fun <T> consume(value: Base<T>, content: (T) -> Unit) {}\n\
+                  fun sibling(model: Int) = model\n\
+                  fun screen() { consume(Reordered<Apple, Banana>()) { model -> model } }\n";
+    let model = identifier_type(source, "model", 3);
+    assert!(
+        matches!(model.as_deref(), None | Some("Banana")),
+        "never Base's `T` read as Reordered's first argument: {model:?}"
+    );
+}
+
+/// `consume(first: T, second: T)` with unrelated arguments needs a common
+/// supertype, which this engine does not compute.
+#[test]
+fn lambda_parameter_bound_by_disagreeing_arguments_is_unknown() {
+    let source = "class Apple\n\
+                  class Banana\n\
+                  fun <T> consume(first: T, second: T, content: (T) -> Unit) {}\n\
+                  fun sibling(model: Int) = model\n\
+                  fun screen() { consume(Apple(), Banana()) { model -> model } }\n";
+    assert_eq!(identifier_type(source, "model", 3), None);
+}
+
+#[test]
+fn lambda_parameter_bound_by_agreeing_arguments_is_that_type() {
+    let source = "class Apple\n\
+                  fun <T> consume(first: T, second: T, content: (T) -> Unit) {}\n\
+                  fun sibling(model: Int) = model\n\
+                  fun screen() { consume(Apple(), Apple()) { model -> model } }\n";
+    assert_eq!(
+        identifier_type(source, "model", 3).as_deref(),
+        Some("Apple")
+    );
+}
+
+/// `ConfirmDataUseCase`: a property of a generic class read through a typed
+/// field (`Store<State>.currentState`).
+#[test]
+fn local_initialized_from_a_generic_property_chain_is_typed() {
+    let source = "class Personal(val street: String)\n\
+                  class BusinessState(val personalData: Personal)\n\
+                  class Store<T>(initial: T) { val currentState: T = initial }\n\
+                  fun sibling(data: Int) = data\n\
+                  class UseCase {\n\
+                  \x20   private val store: Store<BusinessState> = TODO()\n\
+                  \x20   fun read() {\n\
+                  \x20       val data = store.currentState.personalData\n\
+                  \x20       data\n\
+                  \x20   }\n\
+                  }\n";
+    assert_eq!(
+        identifier_type(source, "data", 3).as_deref(),
+        Some("Personal")
+    );
+}
+
+/// `PersonalDetailMapper`: a safe call keeps the member's type, nullable.
+#[test]
+fn local_initialized_from_a_safe_call_is_typed_nullable() {
+    let source = "class Address\n\
+                  class Scenes(val addressSection: Address)\n\
+                  fun sibling(addressTexts: Int) = addressTexts\n\
+                  fun prepare(texts: Scenes?) {\n\
+                  \x20   val addressTexts = texts?.addressSection\n\
+                  \x20   addressTexts\n\
+                  }\n";
+    assert_eq!(
+        local_type_at(source, "addressTexts", 3).as_deref(),
+        Some("Address?")
+    );
+    assert_eq!(
+        identifier_type(source, "addressTexts", 3).as_deref(),
+        Some("Address")
+    );
+}
+
+/// The element keeps the nullability it was written with.
+#[test]
+fn for_variable_over_a_list_of_nullable_elements_is_nullable() {
+    let source = "class Apple\n\
+                  fun walk(items: List<Apple?>) {\n\
+                  \x20   for (item in items) { val copy = item; copy }\n\
+                  }\n";
+    assert_eq!(local_type_at(source, "item", 1).as_deref(), Some("Apple?"));
+    assert_eq!(local_type_at(source, "copy", 1).as_deref(), Some("Apple?"));
+}
+
+/// `WidgetWorker`: a `for` variable over a typed list.
+#[test]
+fn for_variable_over_a_typed_list_is_typed_from_its_element() {
+    let source = "class Widget(val error: Int)\n\
+                  class Banana\n\
+                  fun sibling(widget: Banana) = widget\n\
+                  fun onSuccess(widgets: List<Widget>) {\n\
+                  \x20   for (widget in widgets) { widget }\n\
+                  }\n";
+    assert_eq!(
+        identifier_type(source, "widget", 3).as_deref(),
+        Some("Widget")
+    );
+}
+
+#[test]
+fn for_variable_over_a_range_is_an_int() {
+    let source = "class Banana\n\
+                  fun sibling(index: Banana) = index\n\
+                  fun walk() {\n\
+                  \x20   for (index in 0..10) { index }\n\
+                  }\n";
+    assert_eq!(identifier_type(source, "index", 3).as_deref(), Some("Int"));
+}
+
+#[test]
+fn for_variable_over_a_map_is_an_entry() {
+    let source = "class Apple\n\
+                  class Banana\n\
+                  fun sibling(entry: Banana) = entry\n\
+                  fun walk(prices: Map<String, Apple>) {\n\
+                  \x20   for (entry in prices) { entry }\n\
+                  }\n";
+    assert_eq!(
+        local_type_at(source, "entry", 3).as_deref(),
+        Some("Map.Entry<String, Apple>")
+    );
+}
+
+/// An iterable of unknown type leaves the variable unknown, never `Banana`.
+#[test]
+fn for_variable_over_an_unknown_iterable_stays_unknown() {
+    let source = "class Banana\n\
+                  fun sibling(widget: Banana) = widget\n\
+                  fun walk() {\n\
+                  \x20   for (widget in mystery()) { widget }\n\
+                  }\n";
+    assert_eq!(identifier_type(source, "widget", 3), None);
+}
+
+// ─── destructuring ───────────────────────────────────────────────────────────
+
+const DESTRUCTURING_DECLARATIONS: &str = "class Apple\n\
+     class Banana\n\
+     class Cherry\n\
+     fun pair(): Pair<Apple, Banana> = TODO()\n\
+     fun triple(): Triple<Apple, Banana, Cherry> = TODO()\n\
+     fun sibling(first: Banana, second: Apple, third: Apple) = first\n";
+
+#[test]
+fn destructured_pair_components_are_its_type_arguments() {
+    let source = format!(
+        "{DESTRUCTURING_DECLARATIONS}\
+         fun use() {{\n\
+         \x20   val (first, second) = pair()\n\
+         \x20   first; second\n\
+         }}\n"
+    );
+    assert_eq!(
+        identifier_type(&source, "first", 3).as_deref(),
+        Some("Apple")
+    );
+    assert_eq!(
+        identifier_type(&source, "second", 2).as_deref(),
+        Some("Banana")
+    );
+}
+
+#[test]
+fn destructured_triple_components_are_its_type_arguments() {
+    let source = format!(
+        "{DESTRUCTURING_DECLARATIONS}\
+         fun use() {{\n\
+         \x20   val (first, _, third) = triple()\n\
+         \x20   first; third\n\
+         }}\n"
+    );
+    assert_eq!(
+        identifier_type(&source, "first", 3).as_deref(),
+        Some("Apple")
+    );
+    assert_eq!(
+        identifier_type(&source, "third", 2).as_deref(),
+        Some("Cherry")
+    );
+}
+
+#[test]
+fn destructured_map_entry_in_a_for_loop_is_key_and_value() {
+    let source = "class Apple\n\
+                  class Banana\n\
+                  fun sibling(key: Banana, value: Banana) = key\n\
+                  fun walk(prices: Map<String, Apple>) {\n\
+                  \x20   for ((key, value) in prices) { key; value }\n\
+                  }\n";
+    assert_eq!(identifier_type(source, "key", 3).as_deref(), Some("String"));
+    assert_eq!(
+        identifier_type(source, "value", 2).as_deref(),
+        Some("Apple")
+    );
+}
+
+/// A source of unknown type, or one whose components this engine cannot
+/// read (a data class), leaves the components unknown, never `Banana`.
+#[test]
+fn destructured_components_of_an_unknown_source_stay_unknown() {
+    let source = format!(
+        "{DESTRUCTURING_DECLARATIONS}\
+         data class Basket(val first: Apple, val second: Banana)\n\
+         fun basket(): Basket = TODO()\n\
+         fun use() {{\n\
+         \x20   val (first, second) = mystery()\n\
+         \x20   first\n\
+         }}\n\
+         fun other() {{\n\
+         \x20   val (first, second) = basket()\n\
+         \x20   second\n\
+         }}\n"
+    );
+    assert_eq!(identifier_type(&source, "first", 4), None);
+    assert_eq!(identifier_type(&source, "second", 4), None);
+}
+
+// ─── unbound type parameters ─────────────────────────────────────────────────
+
+/// `await`'s `A` and `B` are its own type parameters, never the unrelated
+/// classes of the same name, and nothing binds them from the arguments.
+#[test]
+fn destructured_component_of_an_unbound_function_type_parameter_is_unknown() {
+    let source = "class A { fun foo() {} }\n\
+                  class B { fun foo() {} }\n\
+                  class Deferred<T>\n\
+                  fun <A, B> both(first: Deferred<A>, second: Deferred<B>): Pair<A, B> = TODO()\n\
+                  fun use(left: Deferred<A>, right: Deferred<B>) {\n\
+                  \x20   val (setup, texts) = both(left, right)\n\
+                  \x20   setup; texts\n\
+                  }\n";
+    assert_eq!(local_type_at(source, "setup", 1), None);
+    assert_eq!(local_type_at(source, "texts", 1), None);
+}
+
+/// An explicit call-site type argument binds the parameter.
+#[test]
+fn destructured_component_of_an_explicitly_bound_type_parameter_is_that_type() {
+    let source = "class Apple\n\
+                  class Banana\n\
+                  class Deferred<T>\n\
+                  fun <A, B> both(first: Deferred<A>, second: Deferred<B>): Pair<A, B> = TODO()\n\
+                  fun use(left: Deferred<Apple>, right: Deferred<Banana>) {\n\
+                  \x20   val (setup, texts) = both<Apple, Banana>(left, right)\n\
+                  \x20   setup; texts\n\
+                  }\n";
+    assert_eq!(local_type_at(source, "setup", 1).as_deref(), Some("Apple"));
+    assert_eq!(local_type_at(source, "texts", 1).as_deref(), Some("Banana"));
+}
+
+/// A class's own type parameter, read through a raw receiver, is unbound too.
+#[test]
+fn destructured_component_of_an_unbound_class_type_parameter_is_unknown() {
+    let source = "class A { fun foo() {} }\n\
+                  class Holder<A> { fun twins(): Pair<A, A> = TODO() }\n\
+                  fun use(holder: Holder) {\n\
+                  \x20   val (left, right) = holder.twins()\n\
+                  \x20   left; right\n\
+                  }\n";
+    assert_eq!(local_type_at(source, "left", 1), None);
+}
+
+/// `items()` has nothing to infer `A` from: its elements are unknown, not the
+/// unrelated class `A`.
+#[test]
+fn for_variable_over_an_unbound_type_parameter_collection_is_unknown() {
+    let source = "class A { fun foo() {} }\n\
+                  fun <A> items(): List<A> = TODO()\n\
+                  fun walk() {\n\
+                  \x20   for (element in items()) { element }\n\
+                  }\n";
+    assert_eq!(local_type_at(source, "element", 1), None);
+}
+
+/// A raw `Holder` reads its `value: A` as unknown, not as class `A`.
+#[test]
+fn member_of_a_raw_generic_receiver_is_unknown() {
+    let source = "class A { fun foo() {} }\n\
+                  class Holder<A>(val value: A, val all: List<A>)\n\
+                  fun use(holder: Holder) {\n\
+                  \x20   val one = holder.value\n\
+                  \x20   val many = holder.all\n\
+                  \x20   one; many\n\
+                  }\n";
+    assert_eq!(local_type_at(source, "one", 1), None);
+    assert_eq!(local_type_at(source, "many", 1).as_deref(), Some("List<*>"));
+}
+
+/// The concrete `Factory.make(): List<Apple>` is the declaration the call
+/// binds; an unrelated top-level `fun <Apple> make(..)` declares a type
+/// parameter of that name, which must not star the member's `Apple`.
+#[test]
+fn member_return_type_is_not_starred_by_an_unrelated_same_named_generic_function() {
+    let source = "class Apple\n\
+                  class Factory { fun make(): List<Apple> = TODO() }\n\
+                  fun <Apple> make(value: Apple): List<Apple> = TODO()\n\
+                  fun use(factory: Factory) { val items = factory.make(); items }\n";
+    assert_eq!(
+        local_type_at(source, "items", 1).as_deref(),
+        Some("List<Apple>")
+    );
+}
+
+/// `model.A` is a class path, not a reference to the function's `A`.
+#[test]
+fn unbound_type_parameter_does_not_star_a_qualified_class_path() {
+    let source = "fun <A> values(input: A): List<model.A> = TODO()\n\
+                  fun use() { val items = values(1); items }\n";
+    assert_eq!(
+        local_type_at(source, "items", 1).as_deref(),
+        Some("List<model.A>")
+    );
+}
+
+fn this_type(source: &str) -> Option<String> {
+    let live_doc = live_doc_for(source);
+    let indexer = Indexer::new();
+    let uri = test_url("/Binding.kt");
+    indexer.index_content(&uri, source);
+    let this_expression = crate::indexer::walk::descendants(live_doc.tree.root_node())
+        .find(|node| node.kind() == crate::queries::KIND_THIS_EXPR)
+        .expect("a this expression");
+    CstQuery::new(this_expression, &live_doc, &indexer, &uri)
+        .expr_type()
+        .resolved()
+        .map(|resolved| resolved.as_type_str().to_owned())
+}
+
+/// `expr_type` of the `occurrence`-th (0-based) `this` expression in `source`.
+fn nth_this_type(source: &str, occurrence: usize) -> Option<String> {
+    let live_doc = live_doc_for(source);
+    let indexer = Indexer::new();
+    let uri = test_url("/Binding.kt");
+    indexer.index_content(&uri, source);
+    let this_expression = crate::indexer::walk::descendants(live_doc.tree.root_node())
+        .filter(|node| node.kind() == crate::queries::KIND_THIS_EXPR)
+        .nth(occurrence)
+        .expect("a this expression");
+    CstQuery::new(this_expression, &live_doc, &indexer, &uri)
+        .expr_type()
+        .resolved()
+        .map(|resolved| resolved.as_type_str().to_owned())
+}
+
+/// `this@Outer` names the outer class, not the extension's innermost receiver.
+#[test]
+fn labelled_this_in_an_extension_is_not_the_extension_receiver() {
+    let source = "class Inner\n\
+                  class Outer { fun Inner.read() { this; this@Outer } }\n";
+    assert_eq!(nth_this_type(source, 0).as_deref(), Some("Inner"));
+    let outer = nth_this_type(source, 1);
+    assert!(
+        matches!(outer.as_deref(), None | Some("Outer")),
+        "`this@Outer` is never the receiver `Inner`: {outer:?}"
+    );
+}
+
+/// `this` in `fun actual.Widget.read()` is `actual.Widget`, not whichever
+/// `Widget` the file imports.
+#[test]
+fn this_in_a_qualified_receiver_extension_keeps_the_package_path() {
+    let source = "import other.Widget\n\
+                  fun actual.Widget.read() { this }\n";
+    assert_eq!(nth_this_type(source, 0).as_deref(), Some("actual.Widget"));
+}
+
+/// ...and past a local property: `val copy = this` is still the receiver.
+#[test]
+fn this_in_a_local_property_of_an_extension_is_its_receiver() {
+    let source = "class Apple\nclass Host { fun Apple.read() { val copy = this } }\n";
+    assert_eq!(nth_this_type(source, 0).as_deref(), Some("Apple"));
+}
+
+/// `this` in `fun <A> A.show()` is the extension's own type parameter `A`,
+/// never the unrelated class of that name.
+#[test]
+fn this_in_an_extension_on_a_type_parameter_is_unknown() {
+    let source = "class A { fun foo() {} }\n\
+                  fun <A> A.show() { this }\n";
+    assert_eq!(this_type(source), None);
+}
+
+/// `Widget` the type parameter is not `actual.Widget` the class.
+#[test]
+fn this_in_a_qualified_receiver_is_not_a_type_parameter_of_the_same_leaf_name() {
+    let source = "fun <Widget> actual.Widget.read() { this }\n";
+    assert_eq!(nth_this_type(source, 0).as_deref(), Some("actual.Widget"));
+}
+
+/// A nullable receiver that IS the type parameter stays a type parameter.
+#[test]
+fn this_in_an_extension_on_a_nullable_type_parameter_is_unknown() {
+    let source = "class A { fun foo() {} }\n\
+                  fun <A> A?.show() { this }\n";
+    assert_eq!(this_type(source), None);
+}
+
+/// A concrete extension receiver stays its written type.
+#[test]
+fn this_in_an_extension_on_a_class_is_that_class() {
+    let source = "class A { fun foo() {} }\n\
+                  fun A.show() { this }\n";
+    assert_eq!(this_type(source).as_deref(), Some("A"));
+}
+
+// ─── type parameters bound through the receiver's declared type ─────────────
+
+/// `store.currentState` is `State`, bound to `Content` by the receiver's type
+/// argument through the `Store<State>` supertype.
+#[test]
+fn member_typed_by_a_supertype_type_parameter_is_bound_by_the_receiver() {
+    let source = "class Content { val items: List<Item> = TODO() }\n\
+                  class Item\n\
+                  class Decoy { val items: Int = 0 }\n\
+                  interface Store<State> { val currentState: State }\n\
+                  interface MutableStore<State> : Store<State>\n\
+                  class Owner(private val store: MutableStore<Content>) {\n\
+                  \x20   fun use() { val current = store.currentState; current }\n\
+                  \x20   fun chain() { val list = store.currentState.items; list }\n\
+                  }\n";
+    assert_eq!(
+        local_type_at(source, "current", 1).as_deref(),
+        Some("Content")
+    );
+    assert_eq!(
+        local_type_at(source, "list", 1).as_deref(),
+        Some("List<Item>")
+    );
+}
+
+/// Same, but the supertype names its parameter differently.
+#[test]
+fn member_typed_by_a_renamed_supertype_type_parameter_is_bound_by_the_receiver() {
+    let source = "class Content\n\
+                  class State\n\
+                  interface Store<S> { val currentState: S }\n\
+                  interface MutableStore<State> : Store<State>\n\
+                  class Owner(private val store: MutableStore<Content>) {\n\
+                  \x20   fun use() { val current = store.currentState; current }\n\
+                  }\n";
+    assert_eq!(
+        local_type_at(source, "current", 1).as_deref(),
+        Some("Content")
+    );
+}
+
+/// Concrete class with a bounded type parameter, property read.
+#[test]
+fn property_of_a_bounded_type_parameter_class_is_bound_by_the_receiver() {
+    let source = "open class Base\n\
+                  class Content : Base()\n\
+                  class Store<State : Base>(initial: State) {\n\
+                  \x20   val currentState: State get() = TODO()\n\
+                  }\n\
+                  class Owner(private val store: Store<Content>) {\n\
+                  \x20   fun use() { val current = store.currentState; current }\n\
+                  }\n";
+    assert_eq!(
+        local_type_at(source, "current", 1).as_deref(),
+        Some("Content")
+    );
+}
+
+// ─── explicit type arguments of a constructor call ──────────────────────────
+
+/// `make<Content, Int>()` has no declared return type: it is the body's
+/// `Mutable<State, Effect>(...)`, whose own type parameters the call site
+/// binds. The `State` class beside it is not what `State` means there.
+#[test]
+fn expression_body_factory_keeps_the_constructor_call_type_arguments() {
+    let source = "class Content\n\
+                  class State\n\
+                  interface Store<State> { val currentState: State }\n\
+                  interface WithEffects<State, Effect> : Store<State>\n\
+                  class Mutable<State, Effect> : WithEffects<State, Effect>\n\
+                  fun <State, Effect> make() = Mutable<State, Effect>()\n\
+                  fun <State, Effect> Mutable<State, Effect>.toWith(): WithEffects<State, Effect> = this\n\
+                  class Owner {\n\
+                  \x20   private val inner = make<Content, Int>()\n\
+                  \x20   val store = inner.toWith()\n\
+                  \x20   fun use() { val made = inner; val read = store.currentState; made; read }\n\
+                  }\n";
+    assert_eq!(
+        local_type_at(source, "made", 1).as_deref(),
+        Some("Mutable<Content, Int>")
+    );
+    assert_eq!(local_type_at(source, "read", 1).as_deref(), Some("Content"));
+}
+
+/// A constructor call that spells no type arguments stays the bare class.
+#[test]
+fn constructor_call_without_type_arguments_is_the_bare_class() {
+    let source = "class Box<Item>\n\
+                  fun use() { val made = Box(); made }\n";
+    assert_eq!(local_type_at(source, "made", 1).as_deref(), Some("Box"));
+}
+
+/// A member's own type parameter, bound by nothing at the call, is unknown.
+#[test]
+fn member_function_unbound_type_parameter_is_unknown() {
+    let source = "class R { fun foo() {} }\n\
+                  class Foo { fun <R> twins(): Pair<R, R> = TODO() }\n\
+                  fun use(foo: Foo) {\n\
+                  \x20   val (left, right) = foo.twins()\n\
+                  \x20   left; right\n\
+                  }\n";
+    assert_eq!(local_type_at(source, "left", 1), None);
+}
+
+// ─── review round 2: unbound type parameters belong to the selected member ──
+
+/// `local_type_at` with every file in `files` indexed.
+fn local_type_in_workspace(
+    files: &[(&str, &str)],
+    caller_path: &str,
+    name: &str,
+    occurrence: usize,
+) -> Option<String> {
+    let indexer = Indexer::new();
+    for (path, source) in files {
+        indexer.index_content(&test_url(path), source);
+    }
+    let caller_source = files
+        .iter()
+        .find(|(path, _)| *path == caller_path)
+        .map(|(_, source)| *source)
+        .expect("caller file");
+    let uri = test_url(caller_path);
+    let live_doc = live_doc_for(caller_source);
+    let identifier = crate::indexer::walk::descendants(live_doc.tree.root_node())
+        .filter(|node| node.kind() == crate::queries::KIND_SIMPLE_IDENT)
+        .filter(|node| node.utf8_text(&live_doc.bytes) == Ok(name))
+        .nth(occurrence)
+        .expect("identifier occurrence");
+    match crate::indexer::infer_local_type_at(name, identifier, &live_doc.bytes, &indexer, &uri) {
+        crate::indexer::BindingType::Typed { type_text, .. } => Some(type_text),
+        crate::indexer::BindingType::LocalUnknown | crate::indexer::BindingType::NotLocal => None,
+    }
+}
+
+/// `Holder`'s parameter is *named* `Item`, but the extension's `List<Item>`
+/// names the real class `Item`.
+#[test]
+fn extension_return_naming_a_class_is_not_starred_by_the_receivers_parameter() {
+    let source = "class Item\n\
+                  class Holder<Item>\n\
+                  fun Holder<*>.items(): List<Item> = TODO()\n\
+                  fun use(holder: Holder<*>) { val result = holder.items(); result }\n";
+    assert_eq!(
+        local_type_at(source, "result", 1).as_deref(),
+        Some("List<Item>")
+    );
+}
+
+/// Another package's generic `Factory<Apple>` must not decide what the
+/// imported, non-generic `Factory.make()` returns.
+#[test]
+fn member_return_is_not_starred_by_a_same_named_class_in_another_package() {
+    let files = [
+        (
+            "/lib/a/Factory.kt",
+            "package lib.a\nclass Apple\nclass Factory { fun make(): List<Apple> = TODO() }\n",
+        ),
+        (
+            "/lib/b/Factory.kt",
+            "package lib.b\nclass Factory<Apple> { fun make(): List<Apple> = TODO() }\n",
+        ),
+        (
+            "/app/Use.kt",
+            "package app\nimport lib.a.Apple\nimport lib.a.Factory\n\
+             fun use(factory: Factory) { val result = factory.make(); result }\n",
+        ),
+    ];
+    assert_eq!(
+        local_type_in_workspace(&files, "/app/Use.kt", "result", 1).as_deref(),
+        Some("List<Apple>")
+    );
+}
+
+/// `twin()` is inherited from `Base<R>` through the non-generic `Child`;
+/// `R` must read as the supertype argument, never as the unrelated class `R`.
+#[test]
+fn inherited_member_return_does_not_name_its_declaring_class_parameter() {
+    let source = "class R\n\
+                  class Apple\n\
+                  open class Base<R> { fun twin(): Pair<R, R> = TODO() }\n\
+                  class Child : Base<Apple>()\n\
+                  fun use(child: Child) { val result = child.twin(); result }\n";
+    assert_eq!(
+        local_type_at(source, "result", 1).as_deref(),
+        Some("Pair<Apple, Apple>")
+    );
+}
+
+// ─── review round 2: lambda parameters bound by several arguments ───────────
+
+/// `Duo<Apple, Banana>` against `Duo<T, T>` binds `T` to both; with no
+/// common supertype computed, the lambda parameter is unknown.
+#[test]
+fn lambda_parameter_bound_by_one_argument_naming_two_types_is_unknown() {
+    let source = "class Apple\n\
+                  class Banana\n\
+                  class Duo<A, B>\n\
+                  fun <T> consume(value: Duo<T, T>, content: (T) -> Unit) {}\n\
+                  fun use(mixed: Duo<Apple, Banana>) { consume(mixed) { item -> item } }\n";
+    assert_eq!(identifier_type(source, "item", 1), None);
+}
+
+/// Two arguments both spell `Box<Apple>`, but in different packages.
+#[test]
+fn lambda_parameter_bound_by_same_named_types_of_different_packages_is_unknown() {
+    let files = [
+        (
+            "/lib/Box.kt",
+            "package lib\nclass Box<E>\n\
+                         fun <T> consume(first: Box<T>, second: Box<T>, content: (T) -> Unit) {}\n",
+        ),
+        (
+            "/a/A.kt",
+            "package a\nimport lib.Box\nclass Apple\nfun makeA(): Box<Apple> = TODO()\n",
+        ),
+        (
+            "/b/B.kt",
+            "package b\nimport lib.Box\nclass Apple\nfun makeB(): Box<Apple> = TODO()\n",
+        ),
+        (
+            "/app/Use.kt",
+            "package app\nimport a.Apple\nimport a.makeA\nimport b.makeB\nimport lib.consume\n\
+             fun use() { consume(makeA(), makeB()) { item -> item } }\n",
+        ),
+    ];
+    assert_eq!(
+        identifier_type_in_workspace(&files, "/app/Use.kt", "item", 1),
+        None
+    );
+}
+
+// ─── review round 2: for-loop element types of written iterable types ──────
+
+fn loop_variable_type(iterable_type: &str) -> Option<String> {
+    let source = format!(
+        "class Apple\n\
+         fun use(items: {iterable_type}) {{ for (item in items) {{ item }} }}\n"
+    );
+    local_type_at(&source, "item", 1)
+}
+
+#[test]
+fn loop_variable_of_a_fully_qualified_collection_is_its_element() {
+    assert_eq!(
+        loop_variable_type("kotlin.collections.List<Apple>").as_deref(),
+        Some("Apple")
+    );
+}
+
+#[test]
+fn loop_variable_keeps_a_package_qualified_element() {
+    assert_eq!(
+        loop_variable_type("List<app.Apple>").as_deref(),
+        Some("app.Apple")
+    );
+}
+
+#[test]
+fn loop_variable_of_a_projected_array_is_its_element() {
+    assert_eq!(
+        loop_variable_type("Array<out Apple>").as_deref(),
+        Some("Apple")
+    );
+}
+
+/// Not a collection: its first type argument is not an element.
+#[test]
+fn loop_variable_of_an_unrelated_generic_is_unknown() {
+    assert_eq!(loop_variable_type("kotlin.Lazy<Apple>"), None);
+    assert_eq!(loop_variable_type("Lazy<Apple>"), None);
+}
+
+// ─── review round 2: member types through safe calls and nullable arguments ─
+
+/// The nullability of `holder?.value` is the function value's, not its
+/// return type's.
+#[test]
+fn safe_call_on_a_function_valued_member_makes_the_function_nullable() {
+    let source = "class Holder<T>(val value: T)\n\
+                  fun use(holder: Holder<(Int) -> String>?) { val value = holder?.value; value }\n";
+    assert_eq!(
+        local_type_at(source, "value", 3).as_deref(),
+        Some("((Int) -> String)?")
+    );
+}
+
+/// A function whose return type is nullable is still a non-null function
+/// value: `?.` makes the function itself nullable.
+#[test]
+fn safe_call_on_a_function_valued_member_with_a_nullable_return_wraps_the_function() {
+    let source = "class Holder<T>(val value: T)\n\
+                  fun use(holder: Holder<(Int) -> String?>?) { val value = holder?.value; value }\n";
+    assert_eq!(
+        local_type_at(source, "value", 3).as_deref(),
+        Some("((Int) -> String?)?")
+    );
+}
+
+/// A cast to a function type that returns a nullable is not a nullable cast.
+#[test]
+fn safe_cast_to_a_function_type_with_a_nullable_return_wraps_the_function() {
+    let source = "fun use(any: Any) { val callback = any as? (Int) -> String?; callback }\n";
+    assert_eq!(
+        local_type_at(source, "callback", 1).as_deref(),
+        Some("((Int) -> String?)?")
+    );
+}
+
+#[test]
+fn member_of_a_receiver_with_a_nullable_type_argument_is_nullable() {
+    let source = "class Apple\n\
+                  class Holder<T>(val value: T)\n\
+                  fun use(holder: Holder<Apple?>) { val item = holder.value; item }\n";
+    assert_eq!(local_type_at(source, "item", 1).as_deref(), Some("Apple?"));
+}
+
+/// A non-null argument stays non-null, and `Holder<Apple?>` does not make a
+/// `T?` member doubly nullable.
+#[test]
+fn member_of_a_receiver_with_a_non_null_type_argument_is_not_nullable() {
+    let source = "class Apple\n\
+                  class Holder<T>(val value: T, val maybe: T?)\n\
+                  fun use(holder: Holder<Apple>) { val item = holder.value; item }\n\
+                  fun other(holder: Holder<Apple?>) { val item = holder.maybe; item }\n";
+    assert_eq!(local_type_at(source, "item", 1).as_deref(), Some("Apple"));
+    assert_eq!(local_type_at(source, "item", 3).as_deref(), Some("Apple?"));
+}
+
+// ─── review round 3: for/destructuring locals shadow lambda parameters ──────
+
+#[test]
+fn for_variable_shadowing_a_lambda_parameter_takes_its_element_type() {
+    let source = "class Apple\n\
+                  class Banana\n\
+                  fun <T> List<T>.forEach(action: (T) -> Unit) {}\n\
+                  fun use(apples: List<Apple>, bananas: List<Banana>) {\n\
+                  \x20   apples.forEach { item ->\n\
+                  \x20       for (item in bananas) { val copy = item }\n\
+                  \x20   }\n\
+                  }\n";
+    assert_eq!(
+        identifier_type(source, "item", 2).as_deref(),
+        Some("Banana")
+    );
+}
+
+#[test]
+fn destructured_local_shadowing_a_lambda_parameter_takes_its_component_type() {
+    let source = "class Apple\n\
+                  class Banana\n\
+                  fun <T> List<T>.forEach(action: (T) -> Unit) {}\n\
+                  fun use(apples: List<Apple>, pair: Pair<Banana, Banana>) {\n\
+                  \x20   apples.forEach { item ->\n\
+                  \x20       val (item, other) = pair\n\
+                  \x20       item\n\
+                  \x20   }\n\
+                  }\n";
+    assert_eq!(
+        identifier_type(source, "item", 2).as_deref(),
+        Some("Banana")
+    );
+}
+
+// ─── review round 3: type parameters come from the class the lookup selected ─
+
+/// Imported `lib.a.Factory` is not generic; the indexed `lib.b.Factory<Apple>`
+/// has a type parameter that merely shares the name `Apple`. `items` is
+/// `lib.a`'s `List<Apple>`, never `List<*>`.
+#[test]
+fn member_type_does_not_take_type_parameters_from_a_same_named_class_elsewhere() {
+    let files = [
+        (
+            "/lib/a/Factory.kt",
+            "package lib.a\nclass Apple\nclass Factory { val items: List<Apple> = TODO() }\n",
+        ),
+        (
+            "/lib/b/Factory.kt",
+            "package lib.b\nclass Factory<Apple>(val value: Apple)\n",
+        ),
+        (
+            "/app/Use.kt",
+            "package app\nimport lib.a.Factory\n\
+             fun first(items: Int) = items\n\
+             fun use(factory: Factory) { val items = factory.items; items }\n",
+        ),
+    ];
+    assert_eq!(
+        local_type_in_workspace(&files, "/app/Use.kt", "items", 4).as_deref(),
+        Some("List<Apple>")
+    );
+}
+
+// ─── review round 4: Map.Entry values are values, not keys ───────────────────
+
+/// `entries.minByOrNull{}?.value` reads the *value* type argument of the
+/// `Entry<EType, Offer>` element. An unrelated generic `Entry<T>` elsewhere
+/// (indexed first) must not rename `Entry`'s own `K`/`V` to `T`.
+#[test]
+fn entry_value_is_the_value_type_argument_despite_a_same_named_generic_class() {
+    let files = [
+        (
+            "/chart/Entry.kt",
+            "package chart\nclass Entry<T>(val data: T)\n",
+        ),
+        (
+            "/kotlin/Map.kt",
+            "package kotlin\ninterface Map<K, V> {\n\
+             \x20   val entries: List<Entry<K, V>>\n\
+             \x20   interface Entry<K, V> {\n\
+             \x20       val key: K\n\
+             \x20       val value: V\n\
+             \x20   }\n}\n",
+        ),
+        (
+            "/app/Use.kt",
+            "package app\nclass EType\nclass Offer\n\
+             fun <T> List<T>.minByOrNull(selector: (T) -> Int): T? = TODO()\n\
+             fun use(offers: Map<EType, Offer>) {\n\
+             \x20   val offer = offers.entries.minByOrNull { 1 }?.value\n\
+             \x20   offer\n}\n",
+        ),
+    ];
+    assert_eq!(
+        local_type_in_workspace(&files, "/app/Use.kt", "offer", 1).as_deref(),
+        Some("Offer?")
+    );
+}
+
+// ─── review round 4: generic members of an object bind lambda parameters ────
+
+fn object_helper_files(call: &str) -> [(&'static str, String); 4] {
+    [
+        (
+            "/ui/Helper.kt",
+            "package ui\nobject CardHelper {\n    \
+             fun <T, R : Any> mapCardItems(items: List<T>?, mapper: (T) -> R): List<R> = TODO()\n}\n"
+                .to_owned(),
+        ),
+        (
+            "/other/Helper.kt",
+            "package other\nobject OtherHelper {\n    \
+             fun <T, R : Any> mapCardItems(items: List<T>?, mapper: (T) -> R): List<R> = TODO()\n}\n\
+             class Item\n"
+                .to_owned(),
+        ),
+        (
+            "/lib/Item.kt",
+            "package lib\nclass Outer { class Section { class Item(val label: String) } }\n".to_owned(),
+        ),
+        (
+            "/app/Use.kt",
+            format!(
+                "package app\nimport ui.CardHelper\nimport lib.Outer.Section.Item\n\
+                 class Use {{ fun use(items: List<Item>) {{ {call} }} }}\n"
+            ),
+        ),
+    ]
+}
+
+fn object_helper_lambda_parameter(call: &str) -> Option<String> {
+    let files = object_helper_files(call);
+    let borrowed: Vec<(&str, &str)> = files
+        .iter()
+        .map(|(path, source)| (*path, source.as_str()))
+        .collect();
+    identifier_type_in_workspace(&borrowed, "/app/Use.kt", "item", 1)
+}
+
+/// `CardHelper.mapCardItems(items) { item -> }`: `T` is bound by the argument
+/// even though the callee is a member of an object.
+#[test]
+fn lambda_parameter_of_a_generic_object_member_is_bound_by_its_argument() {
+    assert_eq!(
+        object_helper_lambda_parameter("CardHelper.mapCardItems(items) { item -> item }")
+            .as_deref(),
+        Some("Item")
+    );
+}
+
+/// The same with a named argument (`items = items`) for a nullable
+/// `List<T>?` parameter.
+#[test]
+fn lambda_parameter_of_a_generic_object_member_is_bound_by_a_named_argument() {
+    assert_eq!(
+        object_helper_lambda_parameter("CardHelper.mapCardItems(items = items) { item -> item }")
+            .as_deref(),
+        Some("Item")
+    );
+}

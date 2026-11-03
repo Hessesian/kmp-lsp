@@ -5,8 +5,8 @@ use tower_lsp::lsp_types::Url;
 use crate::indexer::NodeExt;
 use crate::queries::{
     KIND_CALL_EXPR, KIND_CALL_SUFFIX, KIND_CLASS_DECL, KIND_LAMBDA_LIT, KIND_NAV_EXPR,
-    KIND_NAV_SUFFIX, KIND_OBJECT_DECL, KIND_SIMPLE_IDENT, KIND_STATEMENTS, KIND_TYPE_IDENT,
-    KIND_VALUE_ARGS,
+    KIND_NAV_SUFFIX, KIND_OBJECT_DECL, KIND_SIMPLE_IDENT, KIND_STATEMENTS, KIND_THIS_EXPR,
+    KIND_TYPE_IDENT, KIND_VALUE_ARGS,
 };
 use crate::resolver::extract_collection_element_type;
 use crate::StrExt;
@@ -17,8 +17,8 @@ use super::lambda::{
 };
 use super::type_subst::{
     apply_simple_subst, build_ext_fn_type_subst, build_fn_subst, build_type_arg_subst,
-    capitalize_first_char, first_type_arg_raw, is_generic_param, split_top_level_commas,
-    type_args_inner,
+    build_type_arg_subst_for_params, capitalize_first_char, first_type_arg_raw, is_generic_param,
+    split_top_level_commas, type_args_inner, ArgumentNullability,
 };
 
 /// A segment in a navigation chain: either a root identifier or a suffix member.
@@ -484,18 +484,35 @@ enum SpelledIn {
 /// A member's declared type with the receiver's own type arguments
 /// substituted in (`text: Texts` on `Box<out ProductTexts>` → `ProductTexts`).
 /// A parameter still unbound after substitution falls back to the receiver's
-/// first concrete type argument. `lookup_name` is whatever the caller keyed
+/// first concrete type argument. `declaring_uri` is the file the member was
+/// found in. `lookup_name` is whatever the caller keyed
 /// the member lookup by; its base name keys the class's type parameters.
 fn substitute_receiver_type_arguments(
     declared_type: &str,
     lookup_name: &str,
+    declaring_uri: &Url,
     current_type: &str,
     deps: &impl InferDeps,
 ) -> Option<(String, SpelledIn)> {
     let class_path = lookup_name.dotted_ident_prefix();
-    let substitution = build_type_arg_subst(deps, class_path.last_segment(), current_type);
+    let declared_parameters =
+        deps.find_class_type_params_declared_in(class_path.last_segment(), declaring_uri);
+    let substitution = build_type_arg_subst_for_params(
+        declared_parameters.clone(),
+        current_type,
+        ArgumentNullability::AsWritten,
+    );
     let head_path = declared_type.strip_nullable().dotted_ident_prefix();
-    let applied = crate::indexer::apply_type_subst(declared_type, &substitution);
+    let known_arguments = star_unbound_type_arguments(declared_type, || {
+        declared_parameters
+            .into_iter()
+            .filter(|parameter| !substitution.contains_key(parameter))
+            .collect()
+    });
+    let applied = collapse_double_nullability(crate::indexer::apply_type_subst(
+        &known_arguments,
+        &substitution,
+    ));
     if is_generic_param(applied.strip_nullable()) {
         return first_type_arg_raw(current_type)
             .map(|type_name| (type_name, SpelledIn::ReceiverTypeArguments));
@@ -506,6 +523,14 @@ fn substitute_receiver_type_arguments(
         SpelledIn::MemberDeclaration
     };
     Some((applied, spelled_in))
+}
+
+/// `T?` with `T = Apple?` substitutes to `Apple??`, which is `Apple?`.
+fn collapse_double_nullability(mut type_text: String) -> String {
+    while type_text.contains("??") {
+        type_text = type_text.replace("??", "?");
+    }
+    type_text
 }
 
 /// A FIELD of `lookup_name`'s type, receiver type arguments substituted. `uri`
@@ -519,8 +544,13 @@ pub(super) fn resolve_field_type_on(
     uri: &Url,
 ) -> Option<(String, Url)> {
     let (field_type, declaring_uri) = deps.find_field_type(lookup_name, member, uri)?;
-    let (substituted, spelled_in) =
-        substitute_receiver_type_arguments(&field_type, lookup_name, current_type, deps)?;
+    let (substituted, spelled_in) = substitute_receiver_type_arguments(
+        &field_type,
+        lookup_name,
+        &declaring_uri,
+        current_type,
+        deps,
+    )?;
     match spelled_in {
         SpelledIn::MemberDeclaration => Some((substituted, declaring_uri)),
         SpelledIn::ReceiverTypeArguments => Some((substituted, uri.clone())),
@@ -539,8 +569,13 @@ pub(super) fn resolve_method_return_type_on(
 ) -> Option<(String, Url)> {
     let (return_type, declared_in) =
         deps.find_method_return_type_with_origin_for_type(lookup_name, member, uri)?;
-    let (substituted, spelled_in) =
-        substitute_receiver_type_arguments(&return_type, lookup_name, current_type, deps)?;
+    let (substituted, spelled_in) = substitute_receiver_type_arguments(
+        &return_type,
+        lookup_name,
+        &declared_in,
+        current_type,
+        deps,
+    )?;
     match spelled_in {
         SpelledIn::MemberDeclaration => Some((substituted, declared_in)),
         SpelledIn::ReceiverTypeArguments => Some((substituted, uri.clone())),
@@ -585,15 +620,15 @@ pub(super) fn resolve_root_node_type(
             // Implicit lambda parameters ("it", "this") are not declared as variables
             // — resolve them via contextual lambda-param inference at their position.
             if name == "it" || name == "this" {
-                let start = node.start_position();
-                let utf16_col =
-                    crate::inlay_hints::ts_byte_col_to_utf16(bytes, &[], start.row, start.column);
-                if let Some(resolved) = deps.find_contextual_type(&name, uri, start.row, utf16_col)
-                {
+                if let Some(resolved) = contextual_type_at(&name, node, bytes, deps, uri) {
                     return Some(resolved);
                 }
             }
             Some(name)
+        }
+        // A labelled `this@Outer` names an outer receiver, not the innermost one.
+        k if k == KIND_THIS_EXPR && node.utf8_text(bytes) == Ok("this") => {
+            contextual_type_at("this", node, bytes, deps, uri)
         }
         k if k == KIND_NAV_EXPR => {
             let segments = collect_nav_segments(node, bytes);
@@ -602,6 +637,19 @@ pub(super) fn resolve_root_node_type(
         k if k == KIND_CALL_EXPR => resolve_call_expr_type(node, bytes, deps, uri),
         _ => None,
     }
+}
+
+/// The type of the implicit `name` (`it` / `this`) at `node`'s position.
+fn contextual_type_at(
+    name: &str,
+    node: tree_sitter::Node<'_>,
+    bytes: &[u8],
+    deps: &impl InferDeps,
+    uri: &Url,
+) -> Option<String> {
+    let start = node.start_position();
+    let utf16_col = crate::inlay_hints::ts_byte_col_to_utf16(bytes, &[], start.row, start.column);
+    deps.find_contextual_type(name, uri, start.row, utf16_col)
 }
 
 // ─── resolve_call_expr_type: strategy list ───────────────────────────────────
@@ -688,7 +736,15 @@ impl StrategyOutcome {
                     Default::default()
                 };
                 let origin = origin_after_substitution(&raw_return, &substitution, origin, ctx);
-                let substituted = crate::indexer::apply_type_subst(&raw_return, &substitution);
+                let known_arguments = star_unbound_type_arguments(&raw_return, || {
+                    unbound_type_parameters(
+                        ctx,
+                        FunctionTypeParameters::OfReachableFunction,
+                        &[],
+                        &substitution,
+                    )
+                });
+                let substituted = crate::indexer::apply_type_subst(&known_arguments, &substitution);
                 apply_call_site_type_args(substituted, origin, ctx)
             }
             StrategyOutcome::ReceiverDerived {
@@ -697,14 +753,27 @@ impl StrategyOutcome {
                 receiver_type,
                 return_origin,
             } => {
-                let mut substitution =
-                    build_type_arg_subst(ctx.deps, &effective_type, &receiver_type);
+                let mut substitution = build_type_arg_subst(
+                    ctx.deps,
+                    &effective_type,
+                    &receiver_type,
+                    ArgumentNullability::Stripped,
+                );
                 for (param, concrete) in extension_receiver_type_param_subst(ctx, &receiver_type) {
                     substitution.entry(param).or_insert(concrete);
                 }
                 let origin =
                     origin_after_substitution(&raw_return, &substitution, return_origin, ctx);
-                let substituted = crate::indexer::apply_type_subst(&raw_return, &substitution);
+                let known_arguments = star_unbound_type_arguments(&raw_return, || {
+                    let class_type_parameters = ctx.deps.find_class_type_params(&effective_type);
+                    unbound_type_parameters(
+                        ctx,
+                        FunctionTypeParameters::OfCallOn(&receiver_type),
+                        &class_type_parameters,
+                        &substitution,
+                    )
+                });
+                let substituted = crate::indexer::apply_type_subst(&known_arguments, &substitution);
                 apply_call_site_type_args(substituted, origin, ctx)
             }
         }
@@ -727,6 +796,96 @@ fn origin_after_substitution<D: InferDeps>(
     } else {
         signature_origin
     }
+}
+
+/// Which declaration's own type parameters a call's return type can mention.
+enum FunctionTypeParameters<'receiver> {
+    /// A receiver-less call: the function the call's scope reaches by name.
+    OfReachableFunction,
+    /// A call on a receiver of this type: the member that takes the call, else
+    /// the extension that receiver and the call shape select. A same-named
+    /// function elsewhere must not stand in for either.
+    OfCallOn(&'receiver str),
+}
+
+/// The declared type parameters of the called function (and of the class
+/// that declares it) that nothing at this call binds: not the receiver
+/// (`substitution`) and not an explicit `f<X>()` type argument.
+///
+/// `unindexed_class_type_parameters` stand in for the declaring class's only
+/// when the call binds to no indexed member or extension (a JAR class's
+/// member, say); a top-level extension has no class parameters at all.
+fn unbound_type_parameters<D: InferDeps>(
+    ctx: &CallCtx<'_, D>,
+    function: FunctionTypeParameters<'_>,
+    unindexed_class_type_parameters: &[String],
+    substitution: &std::collections::HashMap<String, String>,
+) -> Vec<String> {
+    let (function_type_parameters, class_type_parameters) = match function {
+        FunctionTypeParameters::OfReachableFunction => (
+            ctx.deps
+                .find_fun_callable_info(ctx.fn_name, None, ctx.uri)
+                .map(|callable_info| callable_info.type_params)
+                .unwrap_or_default(),
+            Vec::new(),
+        ),
+        FunctionTypeParameters::OfCallOn(receiver_type) => {
+            let receiver_call = super::deps::ReceiverCall {
+                receiver_type,
+                shape: super::cst_lambda::call_shape_of(ctx.node, ctx.bytes),
+            };
+            if let Some(member) =
+                ctx.deps
+                    .find_member_type_params(ctx.fn_name, receiver_call, ctx.uri)
+            {
+                (member.function, member.owner_class)
+            } else if let Some(extension) =
+                ctx.deps
+                    .find_extension_callable(ctx.fn_name, receiver_call, ctx.uri)
+            {
+                (extension.generics.type_params, Vec::new())
+            } else {
+                (Vec::new(), unindexed_class_type_parameters.to_vec())
+            }
+        }
+    };
+    let bound_by_call_site = match ctx.node.call_site_type_arg_strings(ctx.bytes) {
+        Some(call_type_args) => build_fn_subst(&function_type_parameters, &call_type_args),
+        None => Default::default(),
+    };
+    function_type_parameters
+        .iter()
+        .chain(&class_type_parameters)
+        .filter(|parameter| !substitution.contains_key(*parameter))
+        .filter(|parameter| !bound_by_call_site.contains_key(*parameter))
+        .cloned()
+        .collect()
+}
+
+/// `raw_return` with each of the `unbound` type parameters inside its type
+/// arguments read as `*` (unknown): `Pair<A, B>` from an uninferred `await`
+/// is `Pair<*, *>`, not a pair of classes named `A` and `B`. A bare
+/// `T` return is left alone; its consumers already handle it.
+fn star_unbound_type_arguments(
+    raw_return: &str,
+    unbound_type_parameters: impl FnOnce() -> Vec<String>,
+) -> String {
+    let Some(arguments_start) = raw_return.find('<') else {
+        return raw_return.to_owned();
+    };
+    let unbound = unbound_type_parameters();
+    if unbound.is_empty() {
+        return raw_return.to_owned();
+    }
+    let stars = unbound
+        .into_iter()
+        .map(|parameter| (parameter, "*".to_owned()))
+        .collect();
+    let (head, arguments) = raw_return.split_at(arguments_start);
+    format!(
+        "{head}{}",
+        crate::indexer::apply_type_subst(arguments, &stars)
+    )
 }
 
 /// The file the call's explicit receiver expression's type was spelled in
@@ -987,7 +1146,8 @@ fn global_name_scan<D: InferDeps>(ctx: &CallCtx<'_, D>) -> StrategyVerdict {
 }
 
 /// Constructor fallback: `Foo(...)` with no resolvable function return type
-/// is a constructor call whose type is `Foo`. Only when the callee is a bare
+/// is a constructor call whose type is `Foo` (`Foo<A, B>` when it spells its
+/// type arguments). Only when the callee is a bare
 /// (unqualified or dotted) identifier whose leaf starts uppercase.
 fn constructor_fallback<D: InferDeps>(ctx: &CallCtx<'_, D>) -> StrategyVerdict {
     let is_bare_or_dotted_ident = matches!(
@@ -1014,7 +1174,11 @@ fn constructor_fallback<D: InferDeps>(ctx: &CallCtx<'_, D>) -> StrategyVerdict {
     } else {
         ctx.fn_name.to_owned()
     };
-    StrategyVerdict::Terminal(Some(StrategyOutcome::Final(type_name)))
+    let constructed_type = match ctx.node.call_site_type_arg_strings(ctx.bytes) {
+        Some(type_arguments) => format!("{type_name}<{}>", type_arguments.join(", ")),
+        None => type_name,
+    };
+    StrategyVerdict::Terminal(Some(StrategyOutcome::Final(constructed_type)))
 }
 
 /// Build a clean, whitespace-free dotted type name from a navigation_expression

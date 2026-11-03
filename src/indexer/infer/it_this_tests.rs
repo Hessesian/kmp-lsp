@@ -2884,13 +2884,19 @@ fn nested_generic_it_resolves_to_the_concrete_inner_type() {
 #[test]
 fn type_argument_substitution_honours_use_site_variance() {
     use super::super::deps::TestDeps;
-    use super::super::type_subst::{build_type_arg_subst, first_type_arg_raw};
+    use super::super::type_subst::{build_type_arg_subst, first_type_arg_raw, ArgumentNullability};
 
     let deps = TestDeps::new().with_class_params("Box", &["T"]);
 
-    let covariant = build_type_arg_subst(&deps, "Box", "Box<out Texts>");
-    let contravariant = build_type_arg_subst(&deps, "Box", "Box<in Texts>");
-    let star = build_type_arg_subst(&deps, "Box", "Box<*>");
+    let covariant = build_type_arg_subst(
+        &deps,
+        "Box",
+        "Box<out Texts>",
+        ArgumentNullability::Stripped,
+    );
+    let contravariant =
+        build_type_arg_subst(&deps, "Box", "Box<in Texts>", ArgumentNullability::Stripped);
+    let star = build_type_arg_subst(&deps, "Box", "Box<*>", ArgumentNullability::Stripped);
 
     assert_eq!(covariant.get("T").map(String::as_str), Some("Texts"));
     assert!(contravariant.is_empty(), "got {contravariant:?}");

@@ -4,7 +4,50 @@ use tower_lsp::lsp_types::Url;
 use super::live_tree::{lang_for_path, parse_live, LiveDoc};
 use super::Indexer;
 
+/// How many parsed unopened files `live_doc_or_parse` remembers.
+const UNOPENED_PARSE_CAPACITY: usize = 32;
+
+/// A tree parsed from one version of an indexed file: the version is its
+/// source lines, which a `FileData` rebuild (source-set reclassification)
+/// keeps and a re-index replaces.
+pub(crate) struct UnopenedParse {
+    uri: String,
+    parsed_from: Arc<Vec<String>>,
+    doc: Arc<LiveDoc>,
+}
+
 impl Indexer {
+    /// The tree of `uri`'s indexed `lines`, parsed at most once per version
+    /// for the most recently used files. A poisoned lock only loses the
+    /// memo, never the answer.
+    fn parse_unopened(&self, uri: &Url, lines: &Arc<Vec<String>>) -> Option<Arc<LiveDoc>> {
+        let mut parses = self
+            .unopened_parses
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let remembered_at = parses
+            .iter()
+            .position(|parse| Arc::ptr_eq(&parse.parsed_from, lines) && parse.uri == uri.as_str());
+        if let Some(position) = remembered_at {
+            let parse = parses.remove(position);
+            let doc = Arc::clone(&parse.doc);
+            parses.push(parse);
+            return Some(doc);
+        }
+        let lang = lang_for_path(uri.path())?;
+        let doc = Arc::new(parse_live(&lines.join("\n"), lang)?);
+        parses.retain(|parse| parse.uri != uri.as_str());
+        if parses.len() >= UNOPENED_PARSE_CAPACITY {
+            parses.remove(0);
+        }
+        parses.push(UnopenedParse {
+            uri: uri.to_string(),
+            parsed_from: Arc::clone(lines),
+            doc: Arc::clone(&doc),
+        });
+        Some(doc)
+    }
+
     /// Parse `content` and store the resulting `LiveDoc` for `uri`.
     ///
     /// If the file extension is unsupported or parsing fails, any previously
@@ -46,11 +89,18 @@ impl Indexer {
         }
 
         let is_open = self.live_lines.contains_key(uri.as_str());
+        if !is_open {
+            let indexed_lines = self
+                .files
+                .get(uri.as_str())
+                .map(|file| Arc::clone(&file.lines));
+            if let Some(lines) = indexed_lines {
+                return self.parse_unopened(uri, &lines);
+            }
+        }
 
         let content: String = if let Some(ll) = self.live_lines.get(uri.as_str()) {
             ll.join("\n")
-        } else if let Some(fd) = self.files.get(uri.as_str()) {
-            fd.lines.join("\n")
         } else if let Ok(path) = uri.to_file_path() {
             std::fs::read_to_string(path).ok()?
         } else {

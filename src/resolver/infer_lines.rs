@@ -11,6 +11,42 @@ use crate::StrExt;
 
 // ─── collection element type ──────────────────────────────────────────────────
 
+/// Collection-like type constructors whose first type argument is an element.
+const COLLECTION_TYPES: &[&str] = &[
+    "List",
+    "MutableList",
+    "ArrayList",
+    // Kotlin immutable collections (kotlinx.collections.immutable)
+    "ImmutableList",
+    "PersistentList",
+    "ImmutableSet",
+    "PersistentSet",
+    "ImmutableCollection",
+    "PersistentCollection",
+    "Set",
+    "MutableSet",
+    "HashSet",
+    "LinkedHashSet",
+    "Collection",
+    "MutableCollection",
+    "Iterable",
+    "MutableIterable",
+    "Sequence",
+    "Flow",
+    "StateFlow",
+    "SharedFlow",
+    "Channel",
+    "SendChannel",
+    "ReceiveChannel",
+    "Array",
+];
+
+/// Whether `type_name` (bare, or dotted from its package) names one of the
+/// collection-like constructors whose first type argument is an element.
+pub(crate) fn is_collection_constructor(type_name: &str) -> bool {
+    COLLECTION_TYPES.contains(&type_name.last_segment())
+}
+
 /// Extract the element type from a known Kotlin/Java collection type.
 ///
 /// `"List<Product>"` → `Some("Product")`
@@ -25,35 +61,6 @@ use crate::StrExt;
 /// the generic parameter is a primitive/lowercase type.  In those cases the
 /// caller should treat `it` as the receiver type itself (scope functions).
 pub(crate) fn extract_collection_element_type(raw_type: &str) -> Option<String> {
-    const COLLECTION_TYPES: &[&str] = &[
-        "List",
-        "MutableList",
-        "ArrayList",
-        // Kotlin immutable collections (kotlinx.collections.immutable)
-        "ImmutableList",
-        "PersistentList",
-        "ImmutableSet",
-        "PersistentSet",
-        "ImmutableCollection",
-        "PersistentCollection",
-        "Set",
-        "MutableSet",
-        "HashSet",
-        "LinkedHashSet",
-        "Collection",
-        "MutableCollection",
-        "Iterable",
-        "MutableIterable",
-        "Sequence",
-        "Flow",
-        "StateFlow",
-        "SharedFlow",
-        "Channel",
-        "SendChannel",
-        "ReceiveChannel",
-        "Array",
-    ];
-
     let base = raw_type.ident_prefix();
     if !COLLECTION_TYPES.contains(&base.as_str()) {
         return None;

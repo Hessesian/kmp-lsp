@@ -216,6 +216,7 @@ pub(crate) fn enclosing_extension_receiver_at(
         end: position,
     };
     crate::parser::enclosing_extension_receiver_at(doc.tree.root_node(), &doc.bytes, range)
+        .map(|receiver| receiver.base)
 }
 
 // ─── Main entry point ─────────────────────────────────────────────────────────

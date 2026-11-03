@@ -44,8 +44,8 @@ pub(crate) use self::infer::{
         shape_filter_locations, NavigationSource, SymbolAtCursor, SymbolRole,
     },
     deps::{
-        CallShape, CallableInfo, ExtensionCallable, InferDeps, OuterScopedParams, ReceiverCall,
-        ShapeFiltered,
+        CallShape, CallableInfo, ExtensionCallable, InferDeps, MemberTypeParameters,
+        OuterScopedParams, ReceiverCall, ShapeFiltered,
     },
     expr_type::{infer_expr_type, infer_expr_type_with_origin, infer_local_type_at, BindingType},
     it_this::{
@@ -58,10 +58,11 @@ pub(crate) use self::infer::{
         candidate_applies_to_call, collect_all_fun_params_texts, collect_params_from_line,
         collect_signature, declaration_signature, find_fun_params_text_fast,
         find_fun_signature_full, find_fun_signature_with_receiver, is_import_reachable,
-        last_fun_param_type_str, nth_fun_param_type_str, resolve_call_signature,
-        split_params_at_depth_zero, strip_trailing_call_args, CallSite, ResolutionScope, Signature,
+        last_fun_param_type_str, members_taking_call_in_file, nth_fun_param_type_str,
+        resolve_call_signature, split_params_at_depth_zero, strip_trailing_call_args, CallSite,
+        ResolutionScope, Signature,
     },
-    type_subst::{build_type_arg_subst, find_last_dot_at_depth_zero},
+    type_subst::{build_type_arg_subst, find_last_dot_at_depth_zero, ArgumentNullability},
 };
 pub(crate) use self::infer::{CstQuery, Resolution, ResolvedType};
 
@@ -119,7 +120,7 @@ pub(crate) use scope::last_ident_in;
 
 pub(crate) mod live_tree;
 pub(crate) use live_tree::LiveDoc;
-mod live_tree_impl;
+pub(crate) mod live_tree_impl;
 
 // Re-export cache/scan items needed by the inline test module below.
 #[cfg(test)]
@@ -308,6 +309,11 @@ pub(crate) struct Indexer {
     /// Updated synchronously on every `did_open` / `did_change`; removed on `did_close`.
     /// Not cleared on `reset_index_state` — open-file trees survive workspace reindex.
     pub(crate) live_trees: DashMap<String, Arc<LiveDoc>>,
+    /// The most recently parsed trees of indexed files nobody has open, each
+    /// tied to the exact source-lines `Arc` it was parsed from (see
+    /// `live_doc_or_parse`): a re-index replaces the lines, so a stale tree
+    /// can never be served. Least recently used first out.
+    pub(crate) unopened_parses: std::sync::Mutex<Vec<live_tree_impl::UnopenedParse>>,
     /// URI string → memoized append-only brace-repair candidate trees (see
     /// `indexer::infer::speculative`'s `repair_candidates_for`). Content-derived,
     /// not cursor-derived — the same up-to-`MAX_BRACE_REPAIRS` re-parses answer
@@ -485,6 +491,31 @@ impl InferDeps for Indexer {
     }
     fn find_fun_return_type_reachable(&self, fn_name: &str, uri: &Url) -> Option<String> {
         crate::resolver::infer::find_fun_return_type_reachable(self, fn_name, uri)
+    }
+    fn find_class_type_params_declared_in(
+        &self,
+        class_name: &str,
+        declaring_uri: &Url,
+    ) -> Vec<String> {
+        let declared_params = self
+            .file_data_for(declaring_uri.as_str())
+            .and_then(|file_data| {
+                file_data
+                    .symbols
+                    .iter()
+                    .find(|symbol| {
+                        let is_class_like = matches!(
+                            symbol.kind,
+                            SymbolKind::CLASS
+                                | SymbolKind::INTERFACE
+                                | SymbolKind::ENUM
+                                | SymbolKind::STRUCT
+                        );
+                        is_class_like && symbol.name == class_name
+                    })
+                    .map(|symbol| symbol.type_params().to_vec())
+            });
+        declared_params.unwrap_or_else(|| self.find_class_type_params(class_name))
     }
     fn find_class_type_params(&self, class_name: &str) -> Vec<String> {
         if let Some(locations) = self.definitions.get(class_name) {
@@ -759,6 +790,20 @@ impl InferDeps for Indexer {
             !first.is_empty() && first == declarations_of(&type_path, second_uri)
         })
     }
+    fn find_member_type_params(
+        &self,
+        fn_name: &str,
+        receiver: ReceiverCall<'_>,
+        uri: &Url,
+    ) -> Option<MemberTypeParameters> {
+        crate::resolver::member_type_parameters_taking_call(
+            self,
+            receiver.receiver_type,
+            fn_name,
+            uri,
+            receiver.shape,
+        )
+    }
     fn find_extension_callable(
         &self,
         fn_name: &str,
@@ -772,9 +817,9 @@ impl InferDeps for Indexer {
             uri,
             receiver.shape,
         );
-        let declaration = declaration_selected_by_shape(self, &declarations, receiver.shape)?;
-        let symbol = declaration.symbol.as_ref()?;
-        let (return_type, return_nullability) = declared_return_type(self, declaration)?;
+        let declaration = declaration_selected_by_shape(&declarations, receiver.shape)?;
+        let symbol = declaration.symbol()?;
+        let (return_type, return_nullability) = declared_return_type(declaration)?;
         Some(ExtensionCallable {
             generics: CallableInfo {
                 type_params: symbol.type_params().to_vec(),
@@ -800,22 +845,17 @@ fn type_paths_in(type_text: &str) -> Vec<String> {
 /// The return type an extension declaration states, from its detail or, when
 /// that is truncated, its source signature.
 fn declared_return_type(
-    indexer: &Indexer,
     declaration: &crate::resolver::ExtensionDeclaration,
 ) -> Option<(String, crate::resolver::ReturnNullability)> {
-    let symbol = declaration.symbol.as_ref()?;
+    let symbol = declaration.symbol()?;
     let from_detail = crate::resolver::extract_return_type_from_detail(&symbol.detail);
     if let Some(type_name) = from_detail {
         let nullability = crate::resolver::extract_return_nullability_from_detail(&symbol.detail);
         return Some((type_name, nullability));
     }
-    let file_data = indexer
-        .files
-        .get(declaration.uri.as_str())
-        .or_else(|| indexer.jar_files.get(declaration.uri.as_str()))?;
     use crate::lines_ext::LinesExt as _;
-    let signature = file_data
-        .lines
+    let signature = declaration
+        .lines()?
         .collect_signature(symbol.selection_start() as usize);
     let type_name = crate::resolver::extract_return_type_from_detail(&signature)?;
     let nullability = crate::resolver::extract_return_nullability_from_detail(&signature);
@@ -844,13 +884,14 @@ fn receiver_bound_callable(
     receiver: ReceiverCall<'_>,
     uri: &Url,
 ) -> ReceiverBoundCallable {
-    use crate::StrExt as _;
-    let member_takes_the_call = infer::sig::member_takes_call(
+    let member_takes_the_call = crate::resolver::member_type_parameters_taking_call(
         indexer,
-        receiver.receiver_type.dotted_ident_prefix().as_str(),
+        receiver.receiver_type,
         fn_name,
+        uri,
         receiver.shape,
-    );
+    )
+    .is_some();
     if member_takes_the_call {
         return ReceiverBoundCallable::Member;
     }
@@ -864,8 +905,8 @@ fn receiver_bound_callable(
     if declarations.is_empty() {
         return ReceiverBoundCallable::NoApplicableExtension;
     }
-    let generic = declaration_selected_by_shape(indexer, &declarations, receiver.shape)
-        .and_then(|declaration| declaration.symbol.as_ref())
+    let generic = declaration_selected_by_shape(&declarations, receiver.shape)
+        .and_then(|declaration| declaration.symbol())
         .filter(|symbol| !symbol.type_params().is_empty())
         .map(|symbol| CallableInfo {
             type_params: symbol.type_params().to_vec(),
@@ -877,18 +918,17 @@ fn receiver_bound_callable(
 /// The declaring symbol of the extension overload a call of `shape` binds —
 /// the same pick `find_method_params_text` makes for the parameter list.
 /// Without readable signatures, the first declaration stands in.
-fn declaration_selected_by_shape<'declarations>(
-    indexer: &Indexer,
-    declarations: &'declarations [crate::resolver::ExtensionDeclaration],
+fn declaration_selected_by_shape(
+    declarations: &[crate::resolver::ExtensionDeclaration],
     shape: CallShape,
-) -> Option<&'declarations crate::resolver::ExtensionDeclaration> {
+) -> Option<&crate::resolver::ExtensionDeclaration> {
     let mut readable = Vec::new();
     let mut signatures = Vec::new();
     for declaration in declarations {
-        if declaration.symbol.is_none() {
+        if declaration.symbol().is_none() {
             continue;
         }
-        if let Some(signature) = infer::sig::declaration_signature(indexer, declaration) {
+        if let Some(signature) = infer::sig::declaration_signature(declaration) {
             readable.push(declaration);
             signatures.push(signature);
         }
@@ -897,7 +937,7 @@ fn declaration_selected_by_shape<'declarations>(
         Some(index) => Some(readable[index]),
         None => declarations
             .iter()
-            .find(|declaration| declaration.symbol.is_some()),
+            .find(|declaration| declaration.symbol().is_some()),
     }
 }
 
@@ -1031,6 +1071,7 @@ impl Indexer {
             extracted_jar_sources: DashMap::new(),
             importable_fqns: std::sync::RwLock::new(std::collections::HashMap::new()),
             live_trees: DashMap::new(),
+            unopened_parses: std::sync::Mutex::new(Vec::new()),
             repair_candidates: DashMap::new(),
             sig_cache: DashMap::new(),
             sig_fast_cache: DashMap::new(),

@@ -660,19 +660,20 @@ pub(crate) fn find_fun_signature_with_receiver(
     find_fun_signature_full(name, idx, uri)
 }
 
-/// Parameter texts and `(required, total)` counts of `method_name` declared
-/// directly on the workspace class `class_name` (no extensions, no
-/// supertypes; JAR classes are not scanned).
-fn class_member_params(
-    idx: &Indexer,
-    class_name: &str,
-    method_name: &str,
-) -> Vec<(String, (u8, u8))> {
+/// A function declared directly on a workspace class.
+struct MemberDeclaration {
+    params_text: String,
+    counts: (u8, u8),
+}
+
+/// The functions `method_name` declared directly on the workspace class
+/// `class_name` (no extensions, no supertypes; JAR classes are not scanned).
+fn class_members(idx: &Indexer, class_name: &str, method_name: &str) -> Vec<MemberDeclaration> {
     let (container, type_base) = match class_name.rsplit_once('.') {
         Some((container, base)) => (Some(container), base),
         None => (None, class_name),
     };
-    let mut candidates: Vec<(String, (u8, u8))> = Vec::new();
+    let mut members: Vec<MemberDeclaration> = Vec::new();
 
     if let Some(locations) = idx.definitions.get(type_base) {
         for loc in locations.iter() {
@@ -706,27 +707,56 @@ fn class_member_params(
                 if symbol_entry.container.as_deref() != Some(type_base) {
                     continue;
                 }
-                if let Some(params) = extract_params_or_fallback(symbol_entry, &file_data.lines) {
-                    candidates.push((params, symbol_entry.param_counts));
+                if let Some(params_text) =
+                    extract_params_or_fallback(symbol_entry, &file_data.lines)
+                {
+                    members.push(MemberDeclaration {
+                        params_text,
+                        counts: symbol_entry.param_counts,
+                    });
                 }
             }
         }
     }
-    candidates
+    members
 }
 
-/// Whether the workspace class `class_name` declares a member `method_name`
-/// that can take a call of `shape` — a member then wins over any same-named
-/// extension.
-pub(crate) fn member_takes_call(
-    idx: &Indexer,
+/// The members `method_name` that `file_data` declares directly on its class
+/// `class_name` and that can take a call of `shape`, each with the type
+/// parameters a return type of theirs may mention.
+pub(crate) fn members_taking_call_in_file(
+    file_data: &crate::types::FileData,
     class_name: &str,
     method_name: &str,
     shape: super::deps::CallShape,
-) -> bool {
-    class_member_params(idx, class_name, method_name)
+) -> Vec<super::deps::MemberTypeParameters> {
+    let owner_class = file_data
+        .symbols
         .iter()
-        .any(|(params_text, counts)| candidate_applies_to_call(params_text, *counts, shape))
+        .find(|symbol| symbol.name == class_name && is_class_like(symbol.kind))
+        .map(|owner| owner.type_params().to_vec())
+        .unwrap_or_default();
+    file_data
+        .symbols
+        .iter()
+        .filter(|symbol| symbol.name == method_name)
+        .filter(|symbol| {
+            matches!(
+                symbol.kind,
+                SymbolKind::FUNCTION | SymbolKind::METHOD | SymbolKind::OPERATOR
+            )
+        })
+        .filter(|symbol| symbol.container.as_deref() == Some(class_name))
+        .filter(|symbol| {
+            extract_params_or_fallback(symbol, &file_data.lines).is_some_and(|params_text| {
+                candidate_applies_to_call(&params_text, symbol.param_counts, shape)
+            })
+        })
+        .map(|symbol| super::deps::MemberTypeParameters {
+            function: symbol.type_params().to_vec(),
+            owner_class: owner_class.clone(),
+        })
+        .collect()
 }
 
 /// Receiver-aware params lookup: find `method_name`'s parameter text inside
@@ -761,7 +791,10 @@ pub(crate) fn find_method_params_in_class(
     let type_base = class_name
         .rsplit_once('.')
         .map_or(class_name, |(_, base)| base);
-    let mut candidates = class_member_params(idx, class_name, method_name);
+    let mut candidates: Vec<(String, (u8, u8))> = class_members(idx, class_name, method_name)
+        .into_iter()
+        .map(|member| (member.params_text, member.counts))
+        .collect();
 
     let mut cache_backed_only = 0usize;
     if let Some(entries) =
@@ -808,22 +841,20 @@ fn inherited_extension_params(
 ) -> Vec<(String, (u8, u8))> {
     crate::resolver::extension_declarations_on(idx, type_base, method_name, caller_uri, shape)
         .iter()
-        .filter_map(|declaration| declaration_signature(idx, declaration))
+        .filter_map(declaration_signature)
         .collect()
 }
 
 /// An extension declaration's parameter text and `(required, total)` counts.
 pub(crate) fn declaration_signature(
-    idx: &Indexer,
     declaration: &crate::resolver::ExtensionDeclaration,
 ) -> Option<(String, (u8, u8))> {
-    let symbol = declaration.symbol.as_ref()?;
-    let (file_data, is_compiled_jar) = match idx.files.get(declaration.uri.as_str()) {
-        Some(file_data) => (file_data, false),
-        None => (idx.jar_files.get(declaration.uri.as_str())?, true),
-    };
-    let params = extract_params_or_fallback(symbol, &file_data.lines)?;
-    Some((params, trusted_param_counts(symbol, is_compiled_jar)))
+    let symbol = declaration.symbol()?;
+    let params = extract_params_or_fallback(symbol, declaration.lines()?)?;
+    Some((
+        params,
+        trusted_param_counts(symbol, declaration.is_compiled_jar()),
+    ))
 }
 
 /// `(required, total)` counts of a declaration. Compiled-JAR (sidecar)
@@ -901,7 +932,7 @@ pub(crate) fn best_candidate_index(
 /// Whether a parameter type string is a Kotlin function type (`(T) -> R`,
 /// `suspend (T) -> R`, `() -> Unit`, …) — i.e. a trailing-lambda call could
 /// supply it.
-fn is_lambda_shaped(type_str: &str) -> bool {
+pub(crate) fn is_lambda_shaped(type_str: &str) -> bool {
     let t = type_str.trim();
     let t = t.strip_prefix("suspend").map(str::trim_start).unwrap_or(t);
     let is_receiver_function = super::lambda::lambda_type_receiver(t).is_some();

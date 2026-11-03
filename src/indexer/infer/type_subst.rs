@@ -22,8 +22,20 @@ pub(crate) fn build_type_arg_subst(
     deps: &impl InferDeps,
     class_name: &str,
     concrete_type: &str,
+    nullability: ArgumentNullability,
 ) -> std::collections::HashMap<String, String> {
     let type_params = deps.find_class_type_params(class_name);
+    build_type_arg_subst_for_params(type_params, concrete_type, nullability)
+}
+
+/// [`build_type_arg_subst`] for a class whose type parameters the caller
+/// already knows: the ones of the declaration it selected, not whichever
+/// same-named class a by-name lookup finds first.
+pub(crate) fn build_type_arg_subst_for_params(
+    type_params: Vec<String>,
+    concrete_type: &str,
+    nullability: ArgumentNullability,
+) -> std::collections::HashMap<String, String> {
     if type_params.is_empty() {
         return std::collections::HashMap::new();
     }
@@ -33,7 +45,7 @@ pub(crate) fn build_type_arg_subst(
     let type_args: Vec<Option<String>> = split_top_level_commas(inner)
         .into_iter()
         .filter(|raw_arg| !raw_arg.trim().is_empty())
-        .map(|raw_arg| readable_type_argument(raw_arg).map(str::to_owned))
+        .map(|raw_arg| readable_type_argument(raw_arg, nullability).map(str::to_owned))
         .collect();
     type_params
         .into_iter()
@@ -42,17 +54,30 @@ pub(crate) fn build_type_arg_subst(
         .collect()
 }
 
+/// Whether a substituted type argument keeps its own `?`.
+#[derive(Clone, Copy)]
+pub(crate) enum ArgumentNullability {
+    /// `Holder<Apple?>` binds `T = Apple`: for looking a class up by name.
+    Stripped,
+    /// `Holder<Apple?>` binds `T = Apple?`: for the type a member reads as.
+    AsWritten,
+}
+
 /// A type argument as seen when READING a member through it. An invariant or
 /// `out` argument is the type itself (`out Texts` reads as `Texts`); an `in`
 /// projection or a star has no usable read type (`Box<in String>.value` is
 /// `Any?`, not `String`), so it binds nothing.
-fn readable_type_argument(raw_argument: &str) -> Option<&str> {
+fn readable_type_argument(raw_argument: &str, nullability: ArgumentNullability) -> Option<&str> {
     let trimmed = raw_argument.trim();
     let is_contravariant_or_star = trimmed == "*" || trimmed.starts_with("in ");
     if is_contravariant_or_star {
         return None;
     }
-    Some(trimmed.strip_variance().strip_nullable())
+    let argument = trimmed.strip_variance();
+    match nullability {
+        ArgumentNullability::Stripped => Some(argument.strip_nullable()),
+        ArgumentNullability::AsWritten => Some(argument),
+    }
 }
 
 /// Extract the content between the outermost `<` and `>` of a generic type.
@@ -194,6 +219,57 @@ fn match_type_args_recursive(
     }
 }
 
+/// Whether `written` is built from the same type constructors as `declared`
+/// at every position `declared` reaches by recursing through type arguments
+/// (stopping at a type parameter of the function): `Base<T>` against
+/// `Reordered<Apple, Banana>` is not, so zipping their arguments would bind
+/// `T` to `Reordered`'s first argument rather than `Base`'s.
+pub(super) fn same_type_constructors(
+    declared: &str,
+    written: &str,
+    fun_type_params: &[String],
+) -> bool {
+    let declared = declared.trim().strip_variance().strip_nullable();
+    let written = written.trim().strip_variance().strip_nullable();
+    if is_declared_type_param(declared, fun_type_params) {
+        return true;
+    }
+    let constructor_of = |type_text: &str| {
+        type_text
+            .split('<')
+            .next()
+            .unwrap_or_default()
+            .trim()
+            .last_segment()
+            .to_owned()
+    };
+    if constructor_of(declared) != constructor_of(written) {
+        return false;
+    }
+    match (type_args_inner(declared), type_args_inner(written)) {
+        (None, _) => true,
+        (Some(_), None) => false,
+        (Some(declared_inner), Some(written_inner)) => {
+            let declared_args = split_top_level_commas(declared_inner);
+            let written_args = split_top_level_commas(written_inner);
+            declared_args.len() == written_args.len()
+                && declared_args
+                    .iter()
+                    .zip(&written_args)
+                    .all(|(declared_arg, written_arg)| {
+                        same_type_constructors(declared_arg, written_arg, fun_type_params)
+                    })
+        }
+    }
+}
+
+/// Whether the type text `type_text` mentions the identifier `name`.
+pub(super) fn mentions_identifier(type_text: &str, name: &str) -> bool {
+    type_text
+        .split(|char: char| !(char.is_alphanumeric() || char == '_'))
+        .any(|segment| segment == name)
+}
+
 /// Check whether `name` is a declared type parameter of the given function.
 pub(super) fn is_declared_type_param(name: &str, fun_type_params: &[String]) -> bool {
     fun_type_params.iter().any(|param| param == name)
@@ -213,7 +289,7 @@ pub(crate) fn is_generic_param(name: &str) -> bool {
 /// type argument so that downstream resolution can continue walking the chain.
 pub(super) fn first_type_arg_raw(type_name: &str) -> Option<String> {
     let inner = type_args_inner(type_name)?;
-    let arg = readable_type_argument(first_type_arg(inner))?;
+    let arg = readable_type_argument(first_type_arg(inner), ArgumentNullability::Stripped)?;
     let base = arg.ident_prefix();
     if base.is_empty() || is_generic_param(&base) {
         return None;
@@ -295,7 +371,9 @@ pub(super) fn resolve_chain_receiver_type(
                     deps.find_method_return_type_for_type(&base_name, &method, uri)
                 {
                     let subst = match &base_type_resolved {
-                        Some(t) => build_type_arg_subst(deps, &base_name, t),
+                        Some(t) => {
+                            build_type_arg_subst(deps, &base_name, t, ArgumentNullability::Stripped)
+                        }
                         None => std::collections::HashMap::new(),
                     };
                     let applied = crate::indexer::apply_type_subst(&return_type, &subst);

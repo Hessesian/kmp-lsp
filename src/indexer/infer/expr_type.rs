@@ -48,10 +48,10 @@ use crate::StrExt as _;
 use super::chain::{
     resolve_field_type_on, resolve_method_return_type_on, trailing_lambda_last_expression,
 };
-use super::cst_symbol::{local_binding_at, local_binding_of, LocalBinding};
+use super::cst_symbol::{local_binding_at, local_binding_of, DestructuredValue, LocalBinding};
 use super::deps::{CallShape, InferDeps, ReceiverCall};
 use super::lambda::LAMBDA_RESULT_FNS;
-use super::type_subst::build_ext_fn_type_subst;
+use super::type_subst::{build_ext_fn_type_subst, split_top_level_commas, type_args_inner};
 use crate::resolver::ReturnNullability;
 
 // ─── public API ───────────────────────────────────────────────────────────────
@@ -261,7 +261,11 @@ fn binding_reports_its_nullability(
         LocalBinding::Initialized { initializer } => {
             reports_its_nullability(initializer, bytes, deps, uri, depth + 1)
         }
-        LocalBinding::Delegated { .. } | LocalBinding::Untyped | LocalBinding::NotLocal => false,
+        LocalBinding::Delegated { .. }
+        | LocalBinding::Iterated { .. }
+        | LocalBinding::Destructured { .. }
+        | LocalBinding::Untyped
+        | LocalBinding::NotLocal => false,
     }
 }
 
@@ -367,6 +371,8 @@ fn infer_ident_type_in_form(
             | LocalBinding::Initialized { .. }
             | LocalBinding::Narrowed { .. }
             | LocalBinding::Delegated { .. }
+            | LocalBinding::Iterated { .. }
+            | LocalBinding::Destructured { .. }
     );
     if !binding_states_its_own_type {
         if let Some(inferred) = deps.find_contextual_type(&name, uri, start.row, col) {
@@ -451,6 +457,23 @@ fn infer_binding_type(
         LocalBinding::Delegated { delegate } => {
             infer_delegated_value_type(delegate, bytes, deps, uri, depth + 1)
         }
+        LocalBinding::Iterated { iterable } => {
+            infer_iterated_element_type(iterable, bytes, deps, uri, depth + 1)
+        }
+        LocalBinding::Destructured { whole, component } => {
+            let whole_type = match whole {
+                DestructuredValue::Initializer(initializer) => {
+                    infer_initializer_type(initializer, bytes, deps, uri, depth + 1)
+                }
+                DestructuredValue::ElementOf(iterable) => {
+                    infer_iterated_element_type(iterable, bytes, deps, uri, depth + 1)
+                }
+            };
+            whole_type.and_then(|(whole_type, whole_uri)| {
+                destructured_component_type(&whole_type, component)
+                    .map(|component_type| (component_type, whole_uri))
+            })
+        }
         LocalBinding::Untyped => None,
         LocalBinding::NotLocal => return BindingType::NotLocal,
     };
@@ -461,6 +484,87 @@ fn infer_binding_type(
         },
         None => BindingType::LocalUnknown,
     }
+}
+
+/// The type of one element of `iterable`, as a `for` loop reads it.
+fn infer_iterated_element_type(
+    iterable: Node<'_>,
+    bytes: &[u8],
+    deps: &impl InferDeps,
+    uri: &Url,
+    depth: usize,
+) -> Option<(String, Url)> {
+    let (iterable_type, iterable_uri) = infer_initializer_type(iterable, bytes, deps, uri, depth)?;
+    iterated_element_type(&iterable_type).map(|element_type| (element_type, iterable_uri))
+}
+
+/// The type of the `component`-th (0-based) `componentN()` of `whole_type`,
+/// for the types whose components are their type arguments: `Pair`,
+/// `Triple` and `Map.Entry`. Unknown for anything else, including data
+/// classes (their components are primary-constructor properties, which
+/// this engine does not read).
+fn destructured_component_type(whole_type: &str, component: usize) -> Option<String> {
+    let holder = whole_type.bare_type_name()?;
+    let arity = match holder.as_str() {
+        "Map.Entry" | "MutableMap.MutableEntry" => 2,
+        _ => match holder.last_segment() {
+            "Pair" => 2,
+            "Triple" => 3,
+            _ => return None,
+        },
+    };
+    let arguments = split_top_level_commas(type_args_inner(whole_type)?);
+    if arguments.len() != arity {
+        return None;
+    }
+    let written_argument = arguments.get(component)?.trim();
+    let reads_as_unknown = written_argument == "*" || written_argument.starts_with("in ");
+    if reads_as_unknown {
+        return None;
+    }
+    let argument = written_argument.strip_variance();
+    (!argument.is_empty()).then(|| argument.to_owned())
+}
+
+/// The element a `for` loop reads from an iterable of type `iterable_type`:
+/// a range's or primitive array's scalar, a map's `Map.Entry<K, V>`, or a
+/// collection's type argument. Unknown for anything else.
+fn iterated_element_type(iterable_type: &str) -> Option<String> {
+    let holder = iterable_type.bare_type_name()?;
+    let scalar = match holder.last_segment() {
+        "IntRange" | "IntProgression" | "IntArray" => Some("Int"),
+        "LongRange" | "LongProgression" | "LongArray" => Some("Long"),
+        "CharRange" | "CharProgression" | "CharArray" => Some("Char"),
+        "BooleanArray" => Some("Boolean"),
+        "ByteArray" => Some("Byte"),
+        "ShortArray" => Some("Short"),
+        "FloatArray" => Some("Float"),
+        "DoubleArray" => Some("Double"),
+        _ => None,
+    };
+    if let Some(scalar) = scalar {
+        return Some(scalar.to_owned());
+    }
+    let is_map = matches!(
+        holder.last_segment(),
+        "Map" | "MutableMap" | "HashMap" | "LinkedHashMap" | "ImmutableMap" | "PersistentMap"
+    );
+    if is_map {
+        let key_and_value = type_args_inner(iterable_type)?;
+        return Some(format!("Map.Entry<{key_and_value}>"));
+    }
+    if !crate::resolver::is_collection_constructor(&holder) {
+        return None;
+    }
+    // The loop variable keeps the argument as written, qualification and `?`
+    // included, without a `out` projection.
+    let written_arguments = split_top_level_commas(type_args_inner(iterable_type)?);
+    let written_element = written_arguments.first()?.trim();
+    let reads_as_unknown = written_element == "*" || written_element.starts_with("in ");
+    let element = written_element.strip_variance();
+    let element_path = element.dotted_ident_prefix();
+    let names_a_type = element_path.last_segment().starts_with_uppercase();
+    (!reads_as_unknown && names_a_type).then(|| element.to_owned())
 }
 
 /// How a `by <delegate>` expression determines the value its local reads as.
@@ -713,6 +817,18 @@ fn extension_get_value_type(
     Some((value_type, written_in))
 }
 
+/// The type of `expression` as written, type arguments and `?` kept — what a
+/// generic parameter is unified against (`StatefulModel<Content>` binds the
+/// `T` of `data: StatefulModel<T>`).
+pub(super) fn infer_expr_type_as_written(
+    expression: Node<'_>,
+    bytes: &[u8],
+    deps: &impl InferDeps,
+    uri: &Url,
+) -> Option<(String, Url)> {
+    infer_initializer_type(expression, bytes, deps, uri, 0)
+}
+
 /// The type of a local's initializer, keeping `?` and type arguments where
 /// the initializer names another binding (`val copy = items`).
 fn infer_initializer_type(
@@ -761,6 +877,11 @@ fn infer_this_expr_type(
     deps: &impl InferDeps,
     uri: &Url,
 ) -> Option<String> {
+    // A labelled `this@Outer` names an outer receiver, not the innermost one.
+    let is_unlabelled = node.utf8_text(bytes) == Ok("this");
+    if !is_unlabelled {
+        return None;
+    }
     let start = node.start_position();
     let col = crate::inlay_hints::ts_byte_col_to_utf16(bytes, &[], start.row, start.column);
     deps.find_contextual_type("this", uri, start.row, col)
@@ -780,10 +901,31 @@ fn infer_navigation_expr_type(
     uri: &Url,
     depth: usize,
 ) -> Option<(String, Url)> {
+    let (member_type, member_uri) = infer_member_access_type(node, bytes, deps, uri, depth)?;
+    let reads_through_safe_call = node
+        .first_child_of_kind(KIND_NAV_SUFFIX)
+        .and_then(|suffix| suffix.child(0))
+        .is_some_and(|operator| operator.kind() == "?.");
+    if reads_through_safe_call && !is_nullable_value(&member_type) {
+        return Some((as_nullable_type(&member_type), member_uri));
+    }
+    Some((member_type, member_uri))
+}
+
+/// The declared type of the member a `navigation_expression` reads or calls.
+fn infer_member_access_type(
+    node: Node<'_>,
+    bytes: &[u8],
+    deps: &impl InferDeps,
+    uri: &Url,
+    depth: usize,
+) -> Option<(String, Url)> {
     let receiver = nav_receiver_node(node)?;
     let member = nav_member_ident(node)?.utf8_text_owned(bytes)?;
+    // As written: a receiver's type arguments substitute the member's type
+    // (`store.currentState` on `Store<State>` is `State`).
     let (receiver_type, receiver_uri) =
-        infer_expr_type_at_depth(receiver, bytes, deps, uri, depth + 1)?;
+        infer_initializer_type(receiver, bytes, deps, uri, depth + 1)?;
 
     // The type's own (possibly nested/qualified) name: no type arguments, no `?`.
     let lookup_name = receiver_type.dotted_ident_prefix();
@@ -890,23 +1032,50 @@ fn infer_as_expr_type(node: Node<'_>, bytes: &[u8]) -> Option<String> {
     let is_safe_cast = (0..node.child_count() as u32)
         .filter_map(|i| node.child(i))
         .any(|child| child.utf8_text(bytes) == Ok("as?"));
-    if !is_safe_cast || type_text.is_nullable() {
+    if !is_safe_cast || is_nullable_value(&type_text) {
         return Some(type_text);
     }
-    // `x as? (String) -> Int`: the safe cast's nullability applies to the
-    // WHOLE function type, not its return type — appending `?` directly
-    // (Copilot review finding on an earlier version of this fix) misrenders
-    // it as `(String) -> Int?` (a nullable RETURN) instead of the correct
-    // `((String) -> Int)?` (a nullable function VALUE). A bare function
-    // type is the only Kotlin type-annotation shape that starts with `(`
-    // (a plain type never does), so that's a sufficient, simple signal —
-    // no need to depth-track `->` and risk confusing a nested function type
-    // inside an unrelated generic argument (`Map<String, () -> Int>`, which
-    // starts with `Map`, not `(`) for the whole cast target.
+    Some(as_nullable_type(&type_text))
+}
+
+/// Whether a value of `type_text` can be null. A bare function type ends with
+/// its return type, so `(Int) -> String?` is a non-null function whose
+/// result is nullable; only `((Int) -> String)?` is a nullable function value.
+fn is_nullable_value(type_text: &str) -> bool {
+    type_text.is_nullable() && !is_bare_function_type(type_text)
+}
+
+/// `(Int) -> String?`: a parenthesized parameter list, then `->`. A wrapped
+/// `((Int) -> String)?` is not: its first group closes only at the end.
+fn is_bare_function_type(type_text: &str) -> bool {
+    if !type_text.starts_with('(') {
+        return false;
+    }
+    let mut depth = 0usize;
+    for (index, char) in type_text.char_indices() {
+        match char {
+            '(' => depth += 1,
+            ')' => {
+                depth -= 1;
+                if depth == 0 {
+                    return type_text[index + 1..].trim_start().starts_with("->");
+                }
+            }
+            _ => {}
+        }
+    }
+    false
+}
+
+/// `type_text` made nullable. A bare function type is parenthesized first:
+/// `(String) -> Int` becomes `((String) -> Int)?` (a nullable function
+/// value), not `(String) -> Int?` (a nullable return). A function type is the
+/// only type shape that starts with `(`.
+fn as_nullable_type(type_text: &str) -> String {
     if type_text.starts_with('(') {
-        Some(format!("({type_text})?"))
+        format!("({type_text})?")
     } else {
-        Some(format!("{type_text}?"))
+        format!("{type_text}?")
     }
 }
 

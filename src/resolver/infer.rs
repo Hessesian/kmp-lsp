@@ -751,7 +751,12 @@ fn resolve_method_return_type_substituted(
     // `MutableSharedFlow<Unit>`) into the raw, as-declared return type --
     // without this, a generic extension's return type keeps its literal type
     // parameter name instead of the caller's concrete instantiation.
-    let subst = crate::indexer::build_type_arg_subst(indexer, &recv_base, recv_type_raw);
+    let subst = crate::indexer::build_type_arg_subst(
+        indexer,
+        &recv_base,
+        recv_type_raw,
+        crate::indexer::ArgumentNullability::Stripped,
+    );
     Some(crate::indexer::apply_type_subst(&raw_ret, &subst))
 }
 

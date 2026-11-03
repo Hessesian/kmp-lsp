@@ -46,6 +46,15 @@ pub(crate) struct ExtensionCallable {
     pub(crate) declared_in: Url,
 }
 
+/// The type parameters a member's return type may mention: its own, and
+/// those of the class that declares it (which may be a supertype of the
+/// receiver's class).
+#[derive(Clone, Debug)]
+pub(crate) struct MemberTypeParameters {
+    pub(crate) function: Vec<String>,
+    pub(crate) owner_class: Vec<String>,
+}
+
 /// A call on a known receiver type: what selects among same-named extensions
 /// declared on it.
 #[derive(Clone, Copy, Debug)]
@@ -231,6 +240,19 @@ pub(crate) trait InferDeps {
         Vec::new()
     }
 
+    /// [`Self::find_class_type_params`] for the declaration of `class_name`
+    /// written in `declaring_uri` — the class a member lookup selected, not
+    /// an unrelated class of the same name elsewhere. Falls back to the
+    /// by-name answer when that file declares no such class (a member
+    /// inherited from a supertype's file).
+    fn find_class_type_params_declared_in(
+        &self,
+        class_name: &str,
+        _declaring_uri: &Url,
+    ) -> Vec<String> {
+        self.find_class_type_params(class_name)
+    }
+
     /// Return the raw return type of `method_name` declared inside `class_name`,
     /// preserving generic type parameters (e.g. `"T?"` for `Result.getOrNull()`).
     ///
@@ -404,6 +426,20 @@ pub(crate) trait InferDeps {
     /// The default implementation returns `false`; overridden by `Indexer`.
     fn same_type_in_scopes(&self, _type_text: &str, _first_uri: &Url, _second_uri: &Url) -> bool {
         false
+    }
+
+    /// The type parameters of the member — declared on the receiver's class
+    /// as `uri` reaches it, or inherited from a supertype — that takes the
+    /// call (`None` when no workspace member does).
+    ///
+    /// The default implementation returns `None`; overridden by `Indexer`.
+    fn find_member_type_params(
+        &self,
+        _fn_name: &str,
+        _receiver: ReceiverCall<'_>,
+        _uri: &Url,
+    ) -> Option<MemberTypeParameters> {
+        None
     }
 
     /// The extension a call on `receiver` binds to — generic or not — with

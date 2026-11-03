@@ -491,7 +491,9 @@ pub(crate) fn lang_str(path: &str) -> &'static str {
 /// Apply a type-parameter substitution map to a type string.
 ///
 /// Only replaces whole-word occurrences (character boundaries), so `EventType`
-/// is not partially replaced when substituting `Event`.
+/// is not partially replaced when substituting `Event`. A segment of a
+/// qualified path (`model.A`, `A.Nested`) names a class, never a type
+/// parameter, and stays as written; `T.() -> R` still replaces its `T`.
 ///
 /// Re-exported as `crate::indexer::apply_type_subst` for use by inlay_hints,
 /// backend handlers, and the resolution module.
@@ -513,7 +515,15 @@ pub(crate) fn apply_type_subst(
                 i += 1;
             }
             let ident: String = chars[start..i].iter().collect();
-            if let Some(replacement) = subst.get(&ident) {
+            let after_dot = start > 0 && chars[start - 1] == '.';
+            let before_member = chars.get(i) == Some(&'.')
+                && chars
+                    .get(i + 1)
+                    .is_some_and(|next| next.is_alphabetic() || *next == '_');
+            let is_qualified_path_segment = after_dot || before_member;
+            if is_qualified_path_segment {
+                result.push_str(&ident);
+            } else if let Some(replacement) = subst.get(&ident) {
                 result.push_str(replacement);
                 // `T?` with `T = Apple?` is `Apple?`, not `Apple??`.
                 let already_nullable = replacement.ends_with('?') && chars.get(i) == Some(&'?');
