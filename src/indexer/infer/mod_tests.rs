@@ -2119,3 +2119,44 @@ fn lambda_parameter_bound_by_same_named_types_of_different_packages_is_unknown()
         None
     );
 }
+
+// ─── review round 2: for-loop element types of written iterable types ──────
+
+fn loop_variable_type(iterable_type: &str) -> Option<String> {
+    let source = format!(
+        "class Apple\n\
+         fun use(items: {iterable_type}) {{ for (item in items) {{ item }} }}\n"
+    );
+    local_type_at(&source, "item", 1)
+}
+
+#[test]
+fn loop_variable_of_a_fully_qualified_collection_is_its_element() {
+    assert_eq!(
+        loop_variable_type("kotlin.collections.List<Apple>").as_deref(),
+        Some("Apple")
+    );
+}
+
+#[test]
+fn loop_variable_keeps_a_package_qualified_element() {
+    assert_eq!(
+        loop_variable_type("List<app.Apple>").as_deref(),
+        Some("app.Apple")
+    );
+}
+
+#[test]
+fn loop_variable_of_a_projected_array_is_its_element() {
+    assert_eq!(
+        loop_variable_type("Array<out Apple>").as_deref(),
+        Some("Apple")
+    );
+}
+
+/// Not a collection: its first type argument is not an element.
+#[test]
+fn loop_variable_of_an_unrelated_generic_is_unknown() {
+    assert_eq!(loop_variable_type("kotlin.Lazy<Apple>"), None);
+    assert_eq!(loop_variable_type("Lazy<Apple>"), None);
+}

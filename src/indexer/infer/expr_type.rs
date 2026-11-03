@@ -551,13 +551,18 @@ fn iterated_element_type(iterable_type: &str) -> Option<String> {
         let key_and_value = type_args_inner(iterable_type)?;
         return Some(format!("Map.Entry<{key_and_value}>"));
     }
-    // The helper recognizes the supported collections but drops the element's
-    // `?`; the loop variable keeps the argument as written.
-    crate::resolver::extract_collection_element_type(iterable_type)?;
+    if !crate::resolver::is_collection_constructor(&holder) {
+        return None;
+    }
+    // The loop variable keeps the argument as written, qualification and `?`
+    // included, without a `out` projection.
     let written_arguments = split_top_level_commas(type_args_inner(iterable_type)?);
     let written_element = written_arguments.first()?.trim();
     let reads_as_unknown = written_element == "*" || written_element.starts_with("in ");
-    (!reads_as_unknown).then(|| written_element.strip_variance().to_owned())
+    let element = written_element.strip_variance();
+    let element_path = element.dotted_ident_prefix();
+    let names_a_type = element_path.last_segment().starts_with_uppercase();
+    (!reads_as_unknown && names_a_type).then(|| element.to_owned())
 }
 
 /// How a `by <delegate>` expression determines the value its local reads as.

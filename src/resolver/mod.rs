@@ -46,7 +46,8 @@ pub(crate) use infer::{
 };
 pub(crate) use infer_lines::{
     extract_collection_element_type, extract_property_type_from_detail,
-    extract_return_nullability_from_detail, extract_return_type_from_detail, ReturnNullability,
+    extract_return_nullability_from_detail, extract_return_type_from_detail,
+    is_collection_constructor, ReturnNullability,
 };
 pub(crate) use package_scope::find_symbol_in_package;
 pub(crate) use resolve::{
