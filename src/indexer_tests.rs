@@ -3804,3 +3804,33 @@ fn lambda_param_prefers_an_applicable_member_over_a_supertype_extension() {
          through the extension's metadata; got {item:?}"
     );
 }
+
+/// `Base.visit(block: (String) -> Unit)` is an inherited extension; the
+/// receiver-lambda member-like extension `Child.visit(block: Child.() -> Unit)`
+/// is applicable to `child.visit { }` and must win, so the lambda has no
+/// `String` parameter.
+#[test]
+fn trailing_lambda_prefers_applicable_receiver_lambda_extension_over_inherited() {
+    let idx = Indexer::new();
+    let library = concat!(
+        "package lib\n",
+        "open class Base\n",
+        "class Child : Base()\n",
+        "fun Base.visit(block: (String) -> Unit) {}\n",
+        "fun Child.visit(block: Child.() -> Unit) {}\n",
+    );
+    idx.index_content(&uri("/lib/Visit.kt"), library);
+    let caller_source = concat!(
+        "package app\n",
+        "import lib.Child\n",
+        "import lib.visit\n",
+        "fun render(child: Child) {\n",
+        "    child.visit { it }\n",
+        "}\n",
+    );
+    let caller = uri("/app/Render.kt");
+    idx.index_content(&caller, caller_source);
+    idx.store_live_tree(&caller, caller_source);
+    let implicit = idx.infer_lambda_param_type_at("it", &caller, Position::new(4, 18));
+    assert_ne!(implicit.as_deref(), Some("String"), "{implicit:?}");
+}

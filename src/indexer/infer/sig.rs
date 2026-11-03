@@ -818,12 +818,24 @@ pub(crate) fn declaration_signature(
     declaration: &crate::resolver::ExtensionDeclaration,
 ) -> Option<(String, (u8, u8))> {
     let symbol = declaration.symbol.as_ref()?;
-    let file_data = idx
-        .files
-        .get(declaration.uri.as_str())
-        .or_else(|| idx.jar_files.get(declaration.uri.as_str()))?;
+    let (file_data, is_compiled_jar) = match idx.files.get(declaration.uri.as_str()) {
+        Some(file_data) => (file_data, false),
+        None => (idx.jar_files.get(declaration.uri.as_str())?, true),
+    };
     let params = extract_params_or_fallback(symbol, &file_data.lines)?;
-    Some((params, symbol.param_counts))
+    Some((params, trusted_param_counts(symbol, is_compiled_jar)))
+}
+
+/// `(required, total)` counts of a declaration. Compiled-JAR (sidecar)
+/// symbols carry parameter types but no default-value markers, so their
+/// `required` is not trusted and clamps to 0; sources-JAR and workspace files
+/// are parsed and carry real defaults.
+fn trusted_param_counts(symbol: &SymbolEntry, is_compiled_jar: bool) -> (u8, u8) {
+    if is_compiled_jar {
+        (0, symbol.param_counts.1)
+    } else {
+        symbol.param_counts
+    }
 }
 
 /// Whether a signature could take the call at all: its arity admits the
@@ -892,7 +904,8 @@ pub(crate) fn best_candidate_index(
 fn is_lambda_shaped(type_str: &str) -> bool {
     let t = type_str.trim();
     let t = t.strip_prefix("suspend").map(str::trim_start).unwrap_or(t);
-    t.starts_with('(') && t.contains("->")
+    let is_receiver_function = super::lambda::lambda_type_receiver(t).is_some();
+    (t.starts_with('(') || is_receiver_function) && t.contains("->")
 }
 
 fn is_class_like(kind: SymbolKind) -> bool {
@@ -1027,12 +1040,7 @@ fn collect_params_from_file(
                 Some(text) => text,
                 None => return vec![],
             };
-            let counts = if is_compiled_jar {
-                (0, s.param_counts.1)
-            } else {
-                s.param_counts
-            };
-            vec![(params_text, counts)]
+            vec![(params_text, trusted_param_counts(s, is_compiled_jar))]
         })
         .collect()
 }
