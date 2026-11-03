@@ -484,11 +484,13 @@ enum SpelledIn {
 /// A member's declared type with the receiver's own type arguments
 /// substituted in (`text: Texts` on `Box<out ProductTexts>` → `ProductTexts`).
 /// A parameter still unbound after substitution falls back to the receiver's
-/// first concrete type argument. `lookup_name` is whatever the caller keyed
+/// first concrete type argument. `declaring_uri` is the file the member was
+/// found in. `lookup_name` is whatever the caller keyed
 /// the member lookup by; its base name keys the class's type parameters.
 fn substitute_receiver_type_arguments(
     declared_type: &str,
     lookup_name: &str,
+    declaring_uri: &Url,
     current_type: &str,
     deps: &impl InferDeps,
 ) -> Option<(String, SpelledIn)> {
@@ -501,7 +503,7 @@ fn substitute_receiver_type_arguments(
     );
     let head_path = declared_type.strip_nullable().dotted_ident_prefix();
     let known_arguments = star_unbound_type_arguments(declared_type, || {
-        deps.find_class_type_params(class_path.last_segment())
+        deps.find_class_type_params_declared_in(class_path.last_segment(), declaring_uri)
             .into_iter()
             .filter(|parameter| !substitution.contains_key(parameter))
             .collect()
@@ -541,8 +543,13 @@ pub(super) fn resolve_field_type_on(
     uri: &Url,
 ) -> Option<(String, Url)> {
     let (field_type, declaring_uri) = deps.find_field_type(lookup_name, member, uri)?;
-    let (substituted, spelled_in) =
-        substitute_receiver_type_arguments(&field_type, lookup_name, current_type, deps)?;
+    let (substituted, spelled_in) = substitute_receiver_type_arguments(
+        &field_type,
+        lookup_name,
+        &declaring_uri,
+        current_type,
+        deps,
+    )?;
     match spelled_in {
         SpelledIn::MemberDeclaration => Some((substituted, declaring_uri)),
         SpelledIn::ReceiverTypeArguments => Some((substituted, uri.clone())),
@@ -561,8 +568,13 @@ pub(super) fn resolve_method_return_type_on(
 ) -> Option<(String, Url)> {
     let (return_type, declared_in) =
         deps.find_method_return_type_with_origin_for_type(lookup_name, member, uri)?;
-    let (substituted, spelled_in) =
-        substitute_receiver_type_arguments(&return_type, lookup_name, current_type, deps)?;
+    let (substituted, spelled_in) = substitute_receiver_type_arguments(
+        &return_type,
+        lookup_name,
+        &declared_in,
+        current_type,
+        deps,
+    )?;
     match spelled_in {
         SpelledIn::MemberDeclaration => Some((substituted, declared_in)),
         SpelledIn::ReceiverTypeArguments => Some((substituted, uri.clone())),

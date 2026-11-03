@@ -492,6 +492,32 @@ impl InferDeps for Indexer {
     fn find_fun_return_type_reachable(&self, fn_name: &str, uri: &Url) -> Option<String> {
         crate::resolver::infer::find_fun_return_type_reachable(self, fn_name, uri)
     }
+    fn find_class_type_params_declared_in(
+        &self,
+        class_name: &str,
+        declaring_uri: &Url,
+    ) -> Vec<String> {
+        let declared_params = self
+            .files
+            .get(declaring_uri.as_str())
+            .and_then(|file_data| {
+                file_data
+                    .symbols
+                    .iter()
+                    .find(|symbol| {
+                        let is_class_like = matches!(
+                            symbol.kind,
+                            SymbolKind::CLASS
+                                | SymbolKind::INTERFACE
+                                | SymbolKind::ENUM
+                                | SymbolKind::STRUCT
+                        );
+                        is_class_like && symbol.name == class_name
+                    })
+                    .map(|symbol| symbol.type_params().to_vec())
+            });
+        declared_params.unwrap_or_else(|| self.find_class_type_params(class_name))
+    }
     fn find_class_type_params(&self, class_name: &str) -> Vec<String> {
         if let Some(locations) = self.definitions.get(class_name) {
             for loc in locations.iter() {

@@ -240,6 +240,19 @@ pub(crate) trait InferDeps {
         Vec::new()
     }
 
+    /// [`Self::find_class_type_params`] for the declaration of `class_name`
+    /// written in `declaring_uri` — the class a member lookup selected, not
+    /// an unrelated class of the same name elsewhere. Falls back to the
+    /// by-name answer when that file declares no such class (a member
+    /// inherited from a supertype's file).
+    fn find_class_type_params_declared_in(
+        &self,
+        class_name: &str,
+        _declaring_uri: &Url,
+    ) -> Vec<String> {
+        self.find_class_type_params(class_name)
+    }
+
     /// Return the raw return type of `method_name` declared inside `class_name`,
     /// preserving generic type parameters (e.g. `"T?"` for `Result.getOrNull()`).
     ///

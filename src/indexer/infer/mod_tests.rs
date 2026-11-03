@@ -2266,3 +2266,32 @@ fn destructured_local_shadowing_a_lambda_parameter_takes_its_component_type() {
         Some("Banana")
     );
 }
+
+// ─── review round 3: type parameters come from the class the lookup selected ─
+
+/// Imported `lib.a.Factory` is not generic; the indexed `lib.b.Factory<Apple>`
+/// has a type parameter that merely shares the name `Apple`. `items` is
+/// `lib.a`'s `List<Apple>`, never `List<*>`.
+#[test]
+fn member_type_does_not_take_type_parameters_from_a_same_named_class_elsewhere() {
+    let files = [
+        (
+            "/lib/a/Factory.kt",
+            "package lib.a\nclass Apple\nclass Factory { val items: List<Apple> = TODO() }\n",
+        ),
+        (
+            "/lib/b/Factory.kt",
+            "package lib.b\nclass Factory<Apple>(val value: Apple)\n",
+        ),
+        (
+            "/app/Use.kt",
+            "package app\nimport lib.a.Factory\n\
+             fun first(items: Int) = items\n\
+             fun use(factory: Factory) { val items = factory.items; items }\n",
+        ),
+    ];
+    assert_eq!(
+        local_type_in_workspace(&files, "/app/Use.kt", "items", 4).as_deref(),
+        Some("List<Apple>")
+    );
+}
