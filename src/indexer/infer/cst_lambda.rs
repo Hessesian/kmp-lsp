@@ -863,18 +863,45 @@ fn type_parameter_bound_by_arguments(
             return None;
         }
         let substitution = build_ext_fn_type_subst(&declared, &written, type_params);
+        if !substitution_reproduces(&declared, &written, &substitution) {
+            // One parameter bound to two different types by this argument.
+            return None;
+        }
         let concrete = substitution
             .get(extracted)
             .filter(|concrete| concrete.as_str() != extracted)?;
         bindings.push((concrete.clone(), written_in));
     }
     let (bound, written_in) = bindings.first()?.clone();
-    // Unrelated argument types would need a common supertype.
-    let arguments_agree = bindings.iter().all(|(concrete, _)| *concrete == bound);
+    // Unrelated argument types would need a common supertype, and the same
+    // spelling in two packages is two types.
+    let arguments_agree = bindings.iter().all(|(concrete, binding_scope)| {
+        *concrete == bound && deps.same_type_in_scopes(&bound, &written_in, binding_scope)
+    });
     // The name is looked up from `uri`, so it must name the argument's own class there.
     let names_the_same_type =
         deps.names_type_in_scope(&bound, uri) && deps.same_type_in_scopes(&bound, &written_in, uri);
     (arguments_agree && names_the_same_type).then_some(bound)
+}
+
+/// Whether substituting `substitution` into `declared` gives back `written`:
+/// a type parameter that occurs twice (`Pair<T, T>`) and met two different
+/// types (`Pair<Apple, Banana>`) keeps only one of them in the map.
+fn substitution_reproduces(
+    declared: &str,
+    written: &str,
+    substitution: &std::collections::HashMap<String, String>,
+) -> bool {
+    let comparable = |type_text: &str| {
+        type_text
+            .chars()
+            .filter(|char| !char.is_whitespace())
+            .collect::<String>()
+            .strip_nullable()
+            .to_owned()
+    };
+    let applied = crate::indexer::apply_type_subst(declared, substitution);
+    comparable(&applied) == comparable(written)
 }
 
 /// Resolve a generic lambda parameter type to a concrete type via the

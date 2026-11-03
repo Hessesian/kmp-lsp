@@ -2076,3 +2076,46 @@ fn inherited_member_return_does_not_name_its_declaring_class_parameter() {
         Some("Pair<Apple, Apple>")
     );
 }
+
+// ─── review round 2: lambda parameters bound by several arguments ───────────
+
+/// `Duo<Apple, Banana>` against `Duo<T, T>` binds `T` to both; with no
+/// common supertype computed, the lambda parameter is unknown.
+#[test]
+fn lambda_parameter_bound_by_one_argument_naming_two_types_is_unknown() {
+    let source = "class Apple\n\
+                  class Banana\n\
+                  class Duo<A, B>\n\
+                  fun <T> consume(value: Duo<T, T>, content: (T) -> Unit) {}\n\
+                  fun use(mixed: Duo<Apple, Banana>) { consume(mixed) { item -> item } }\n";
+    assert_eq!(identifier_type(source, "item", 1), None);
+}
+
+/// Two arguments both spell `Box<Apple>`, but in different packages.
+#[test]
+fn lambda_parameter_bound_by_same_named_types_of_different_packages_is_unknown() {
+    let files = [
+        (
+            "/lib/Box.kt",
+            "package lib\nclass Box<E>\n\
+                         fun <T> consume(first: Box<T>, second: Box<T>, content: (T) -> Unit) {}\n",
+        ),
+        (
+            "/a/A.kt",
+            "package a\nimport lib.Box\nclass Apple\nfun makeA(): Box<Apple> = TODO()\n",
+        ),
+        (
+            "/b/B.kt",
+            "package b\nimport lib.Box\nclass Apple\nfun makeB(): Box<Apple> = TODO()\n",
+        ),
+        (
+            "/app/Use.kt",
+            "package app\nimport a.Apple\nimport a.makeA\nimport b.makeB\nimport lib.consume\n\
+             fun use() { consume(makeA(), makeB()) { item -> item } }\n",
+        ),
+    ];
+    assert_eq!(
+        identifier_type_in_workspace(&files, "/app/Use.kt", "item", 1),
+        None
+    );
+}
