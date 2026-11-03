@@ -1430,15 +1430,29 @@ pub(crate) fn enclosing_extension_receiver_at(
     let written = written_extension_receiver(declaration, bytes).unwrap_or_else(|| base.clone());
     // The whole spelling: `actual.Widget` is a class path, not the type
     // parameter `Widget` that its leaf shares.
-    let is_type_parameter = declaration
-        .extract_type_params(bytes)
-        .iter()
-        .any(|type_parameter| type_parameter == written.strip_nullable());
+    let is_type_parameter = is_visible_type_parameter(declaration, written.strip_nullable(), bytes);
     Some(ExtensionReceiver {
         base,
         written,
         is_type_parameter,
     })
+}
+
+/// Whether `name` is a type parameter of `declaration` or of a declaration
+/// enclosing it (`class Host<A> { fun A.read() }`).
+fn is_visible_type_parameter(declaration: Node, name: &str, bytes: &[u8]) -> bool {
+    let mut current = Some(declaration);
+    while let Some(scope) = current {
+        let declares_it = scope
+            .extract_type_params(bytes)
+            .iter()
+            .any(|type_parameter| type_parameter == name);
+        if declares_it {
+            return true;
+        }
+        current = scope.parent();
+    }
+    false
 }
 
 /// The extension function or property whose body encloses `node`. Local

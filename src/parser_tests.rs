@@ -2183,3 +2183,38 @@ fn operator_extension_function_keeps_its_receiver() {
     assert_eq!(get_value.extension_receiver(), "State");
     assert_eq!(get_value.extension_receiver_type(), "State<T>");
 }
+
+fn enclosing_receiver_is_type_parameter(src: &str, needle: &str) -> bool {
+    let doc = crate::indexer::live_tree::parse_live(src, tree_sitter_kotlin::LANGUAGE.into())
+        .expect("must parse");
+    let offset = src.find(needle).unwrap();
+    let line = src[..offset].matches('\n').count() as u32;
+    let character = (offset - src[..offset].rfind('\n').map_or(0, |index| index + 1)) as u32;
+    let position = tower_lsp::lsp_types::Range {
+        start: tower_lsp::lsp_types::Position { line, character },
+        end: tower_lsp::lsp_types::Position { line, character },
+    };
+    enclosing_extension_receiver_at(doc.tree.root_node(), &doc.bytes, position)
+        .expect("inside an extension")
+        .is_type_parameter
+}
+
+/// `A` is `Host`'s type parameter, not the class `A` declared beside it.
+#[test]
+fn extension_receiver_naming_an_enclosing_class_type_parameter_is_a_type_parameter() {
+    let src = "class A { fun only() {} }\nclass Host<A> { fun A.read() { this } }\n";
+    assert!(enclosing_receiver_is_type_parameter(src, "this"));
+}
+
+#[test]
+fn extension_receiver_naming_an_enclosing_function_type_parameter_is_a_type_parameter() {
+    let src = "class A\nfun <A> outer() { fun A.local() { this } }\n";
+    assert!(enclosing_receiver_is_type_parameter(src, "this"));
+}
+
+/// A class `A` that no enclosing declaration rebinds stays a class.
+#[test]
+fn extension_receiver_naming_a_class_beside_an_unrelated_type_parameter_is_a_class() {
+    let src = "class A\nclass Host<B> { fun A.read() { this } }\n";
+    assert!(!enclosing_receiver_is_type_parameter(src, "this"));
+}
