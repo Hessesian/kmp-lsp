@@ -2160,3 +2160,37 @@ fn loop_variable_of_an_unrelated_generic_is_unknown() {
     assert_eq!(loop_variable_type("kotlin.Lazy<Apple>"), None);
     assert_eq!(loop_variable_type("Lazy<Apple>"), None);
 }
+
+// ─── review round 2: member types through safe calls and nullable arguments ─
+
+/// The nullability of `holder?.value` is the function value's, not its
+/// return type's.
+#[test]
+fn safe_call_on_a_function_valued_member_makes_the_function_nullable() {
+    let source = "class Holder<T>(val value: T)\n\
+                  fun use(holder: Holder<(Int) -> String>?) { val value = holder?.value; value }\n";
+    assert_eq!(
+        local_type_at(source, "value", 3).as_deref(),
+        Some("((Int) -> String)?")
+    );
+}
+
+#[test]
+fn member_of_a_receiver_with_a_nullable_type_argument_is_nullable() {
+    let source = "class Apple\n\
+                  class Holder<T>(val value: T)\n\
+                  fun use(holder: Holder<Apple?>) { val item = holder.value; item }\n";
+    assert_eq!(local_type_at(source, "item", 1).as_deref(), Some("Apple?"));
+}
+
+/// A non-null argument stays non-null, and `Holder<Apple?>` does not make a
+/// `T?` member doubly nullable.
+#[test]
+fn member_of_a_receiver_with_a_non_null_type_argument_is_not_nullable() {
+    let source = "class Apple\n\
+                  class Holder<T>(val value: T, val maybe: T?)\n\
+                  fun use(holder: Holder<Apple>) { val item = holder.value; item }\n\
+                  fun other(holder: Holder<Apple?>) { val item = holder.maybe; item }\n";
+    assert_eq!(local_type_at(source, "item", 1).as_deref(), Some("Apple"));
+    assert_eq!(local_type_at(source, "item", 3).as_deref(), Some("Apple?"));
+}

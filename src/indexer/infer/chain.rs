@@ -18,7 +18,7 @@ use super::lambda::{
 use super::type_subst::{
     apply_simple_subst, build_ext_fn_type_subst, build_fn_subst, build_type_arg_subst,
     capitalize_first_char, first_type_arg_raw, is_generic_param, split_top_level_commas,
-    type_args_inner,
+    type_args_inner, ArgumentNullability,
 };
 
 /// A segment in a navigation chain: either a root identifier or a suffix member.
@@ -493,7 +493,12 @@ fn substitute_receiver_type_arguments(
     deps: &impl InferDeps,
 ) -> Option<(String, SpelledIn)> {
     let class_path = lookup_name.dotted_ident_prefix();
-    let substitution = build_type_arg_subst(deps, class_path.last_segment(), current_type);
+    let substitution = build_type_arg_subst(
+        deps,
+        class_path.last_segment(),
+        current_type,
+        ArgumentNullability::AsWritten,
+    );
     let head_path = declared_type.strip_nullable().dotted_ident_prefix();
     let known_arguments = star_unbound_type_arguments(declared_type, || {
         deps.find_class_type_params(class_path.last_segment())
@@ -501,7 +506,10 @@ fn substitute_receiver_type_arguments(
             .filter(|parameter| !substitution.contains_key(parameter))
             .collect()
     });
-    let applied = crate::indexer::apply_type_subst(&known_arguments, &substitution);
+    let applied = collapse_double_nullability(crate::indexer::apply_type_subst(
+        &known_arguments,
+        &substitution,
+    ));
     if is_generic_param(applied.strip_nullable()) {
         return first_type_arg_raw(current_type)
             .map(|type_name| (type_name, SpelledIn::ReceiverTypeArguments));
@@ -512,6 +520,14 @@ fn substitute_receiver_type_arguments(
         SpelledIn::MemberDeclaration
     };
     Some((applied, spelled_in))
+}
+
+/// `T?` with `T = Apple?` substitutes to `Apple??`, which is `Apple?`.
+fn collapse_double_nullability(mut type_text: String) -> String {
+    while type_text.contains("??") {
+        type_text = type_text.replace("??", "?");
+    }
+    type_text
 }
 
 /// A FIELD of `lookup_name`'s type, receiver type arguments substituted. `uri`
@@ -724,8 +740,12 @@ impl StrategyOutcome {
                 receiver_type,
                 return_origin,
             } => {
-                let mut substitution =
-                    build_type_arg_subst(ctx.deps, &effective_type, &receiver_type);
+                let mut substitution = build_type_arg_subst(
+                    ctx.deps,
+                    &effective_type,
+                    &receiver_type,
+                    ArgumentNullability::Stripped,
+                );
                 for (param, concrete) in extension_receiver_type_param_subst(ctx, &receiver_type) {
                     substitution.entry(param).or_insert(concrete);
                 }

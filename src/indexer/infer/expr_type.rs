@@ -905,7 +905,7 @@ fn infer_navigation_expr_type(
         .and_then(|suffix| suffix.child(0))
         .is_some_and(|operator| operator.kind() == "?.");
     if reads_through_safe_call && !member_type.is_nullable() {
-        return Some((format!("{member_type}?"), member_uri));
+        return Some((as_nullable_type(&member_type), member_uri));
     }
     Some((member_type, member_uri))
 }
@@ -1033,20 +1033,18 @@ fn infer_as_expr_type(node: Node<'_>, bytes: &[u8]) -> Option<String> {
     if !is_safe_cast || type_text.is_nullable() {
         return Some(type_text);
     }
-    // `x as? (String) -> Int`: the safe cast's nullability applies to the
-    // WHOLE function type, not its return type — appending `?` directly
-    // (Copilot review finding on an earlier version of this fix) misrenders
-    // it as `(String) -> Int?` (a nullable RETURN) instead of the correct
-    // `((String) -> Int)?` (a nullable function VALUE). A bare function
-    // type is the only Kotlin type-annotation shape that starts with `(`
-    // (a plain type never does), so that's a sufficient, simple signal —
-    // no need to depth-track `->` and risk confusing a nested function type
-    // inside an unrelated generic argument (`Map<String, () -> Int>`, which
-    // starts with `Map`, not `(`) for the whole cast target.
+    Some(as_nullable_type(&type_text))
+}
+
+/// `type_text` made nullable. A bare function type is parenthesized first:
+/// `(String) -> Int` becomes `((String) -> Int)?` (a nullable function
+/// value), not `(String) -> Int?` (a nullable return). A function type is the
+/// only type shape that starts with `(`.
+fn as_nullable_type(type_text: &str) -> String {
     if type_text.starts_with('(') {
-        Some(format!("({type_text})?"))
+        format!("({type_text})?")
     } else {
-        Some(format!("{type_text}?"))
+        format!("{type_text}?")
     }
 }
 
