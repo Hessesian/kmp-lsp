@@ -1880,6 +1880,21 @@ fn this_in_an_extension_on_a_type_parameter_is_unknown() {
     assert_eq!(this_type(source), None);
 }
 
+/// `Widget` the type parameter is not `actual.Widget` the class.
+#[test]
+fn this_in_a_qualified_receiver_is_not_a_type_parameter_of_the_same_leaf_name() {
+    let source = "fun <Widget> actual.Widget.read() { this }\n";
+    assert_eq!(nth_this_type(source, 0).as_deref(), Some("actual.Widget"));
+}
+
+/// A nullable receiver that IS the type parameter stays a type parameter.
+#[test]
+fn this_in_an_extension_on_a_nullable_type_parameter_is_unknown() {
+    let source = "class A { fun foo() {} }\n\
+                  fun <A> A?.show() { this }\n";
+    assert_eq!(this_type(source), None);
+}
+
 /// A concrete extension receiver stays its written type.
 #[test]
 fn this_in_an_extension_on_a_class_is_that_class() {

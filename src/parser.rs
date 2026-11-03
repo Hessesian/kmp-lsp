@@ -1428,7 +1428,12 @@ pub(crate) fn enclosing_extension_receiver_at(
         return None;
     }
     let written = written_extension_receiver(declaration, bytes).unwrap_or_else(|| base.clone());
-    let is_type_parameter = declaration.extract_type_params(bytes).contains(&base);
+    // The whole spelling: `actual.Widget` is a class path, not the type
+    // parameter `Widget` that its leaf shares.
+    let is_type_parameter = declaration
+        .extract_type_params(bytes)
+        .iter()
+        .any(|type_parameter| type_parameter == written.strip_nullable());
     Some(ExtensionReceiver {
         base,
         written,
