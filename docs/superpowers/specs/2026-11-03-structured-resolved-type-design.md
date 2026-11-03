@@ -1,13 +1,14 @@
 # Structured `ResolvedType` — Design (finishing "step 5: Sweep")
 
-**Status:** draft for maintainer review, 2026-11-03. Docs only; nothing here is implemented.
+**Status:** draft for maintainer review, 2026-11-03. Docs only; nothing here is implemented. The stack
+it was drafted against (#337/#338/#339) has since merged (`main` at `f5329570`); symbol names below are
+valid on `main`.
 **Finishes:** step 5 of `docs/superpowers/specs/2026-06-30-cst-resolution-unification-design.md`
 (the `RawTypeName`/`TypeName` split, construction-sealed outputs, exhaustive `CstExpr` dispatch), which
 `docs/superpowers/plans/2026-08-02-cst-catalogue-gap-closure.md` deferred and confirmed unstarted.
-**Read against:** the open stack `stack/1-determinism-binding-outcome` →
-`stack/2-binding-type-coverage` → `stack/3-receiver-and-iterable-typing` (PRs #337/#338/#339). The stack
-is being amended, so this doc cites files and symbols, not line numbers. Claims marked *(unverified)*
-were not checked in code.
+**Read against:** the stack that became PRs #337/#338/#339 (now merged). This doc cites files and
+symbols, not line numbers. Counts and code observations were taken on the stack's tip before the last
+review rounds and may be off by a few. Claims marked *(unverified)* were not checked in code.
 
 ## Problem
 
@@ -57,6 +58,13 @@ comment 4445365912 on PR #338).
 
 Net: 34 of 38 comments are fixed by the mechanism in this design (per-slice mapping in
 [Regression suite](#regression-suite)); 4 are not.
+
+**A third review round came after this table was built.** Copilot left 15 more comments on #338/#339
+(the table above covers the first 38; 53 in total). 8 were fixed in the stack. 7 were valid and
+deliberately deferred; they fall into the same classes and are mapped to slices in
+[Deferred review comments](#deferred-review-comments). The three rounds gave 22, 16 and 15 comments:
+point fixes added new string operations that the next round then found gaps in, which is the argument
+for replacing the mechanism rather than extending the fixes.
 
 ### Code observations (verified by reading the stack/3 tip, not by running tests)
 
@@ -325,7 +333,7 @@ right → nullable join), `#338·6223` (parenthesised operand keeps its type), `
 2. **One string parser is kept** (`from_declaration_text`), against the principle that string parsing is
    a mistake. JAR signatures and cached declaration text have no CST at query time. It is one function in
    one module, behind the ratchet. Where a tree is available (open files, and the unopened-file parse
-   memo from commit 059badee), `from_syntax` is preferred; see open question 10.
+   memo from #339), `from_syntax` is preferred; see open question 10.
 3. **This is not the rejected cross-domain IR.** `ResolvedType` is a *type value*, not an expression
    representation. The string engine does not lower into it, and nothing outside `indexer/infer`
    produces one.
@@ -342,7 +350,7 @@ right → nullable join), `#338·6223` (parenthesised operand keeps its type), `
 
 Stacked slices, each one PR of roughly 1000 changed lines *(estimates, not measured)*. Each must be
 green (`cargo test`, `cargo clippy -- -D warnings`) and benchmarked with `kmp-lsp resolution-accuracy`
-on the Moneta corpus before the next starts. The slices **start after #337–#339 merge**: their point
+on the Moneta corpus before the next starts. The slices start from `main` after #337–#339: their point
 fixes and tests are the baseline this design replaces mechanically.
 
 The order follows dependency first, then comments killed per slice. Identity (the largest class) needs
@@ -404,6 +412,24 @@ cross-package same names, shadowing `error`, `Reordered<X, Y> : Base<Y>`, `fun <
 `Holder<(Int) -> String>?`, `this@Outer`. Pure algebra methods get table-driven unit tests with no
 `TestDeps` at all; that they need none is itself the layer-2 check.
 
+### Deferred review comments
+
+Seven round-3 comments were valid, not fixed in #338/#339, and are acknowledged in their threads as
+tracked here. IDs are abbreviated as above (`#338·4829` is comment 4453154829).
+
+| Comment | Scenario | Slice | Why it waits |
+|---|---|---|---|
+| `#338·4829` indexer.rs | Built-in name shadowed in one scope only; the global fallback equates the declarations. | S2 | `same_type` on identities removes the built-in shortcut. |
+| `#338·4897` expr_type.rs | Two imported `Holder.getValue` extensions chosen by receiver leaf name. | S4 | `select_callable` filters by resolved receiver identity. |
+| `#338·4942` cst_symbol.rs | `is` narrowing survives a later reassignment of the subject. | not covered | Needs a stability analysis (flow), not a type representation. Tracked separately. |
+| `#338·5040` expr_type.rs | Numeric-literal elvis default stays untyped (recall only). | S1 | Literals lower to `ResolvedType` directly. |
+| `#338·5143` expr_type.rs | A custom `Lazy`/`MutableState` factory is mistaken for the stdlib one. | S4 | Shortcuts gated on resolved callable identity. |
+| `#338·5266` expr_type.rs | A substituted type argument's origin is re-anchored to the caller. | S2, S3 | Origin lives in the head and survives substitution. |
+| `#339·0957` expr_type.rs | Qualified `kotlin.collections.Map.Entry` is not recognised (recall only). | S1 | Shape recognised by head, not spelling. |
+
+Six of the seven are covered by S1–S4; one (`#338·4942`) is a flow-analysis gap this design does not
+address.
+
 ## Enforcement
 
 ### Ratchet: string-level type operations
@@ -464,15 +490,20 @@ done
    means a version bump and memory cost (see the memory-reduction effort). Revisit if parse-in shows in
    profiles.
 6. **Recall-drop acceptance for S2/S3.** *Recommend:* accept any drop where a 50-reference sample of
-   lost resolutions is at least 80% "was wrong"; otherwise the slice is not done.
+   lost resolutions is at least 80% "was wrong"; otherwise the slice is not done. *Data point:* the
+   benchmark of the final #339 tip against the previous tip lost 111 stable hits and gained 1,172. In a
+   62-loss sample only 19% of the old answers were wrong, so that comparison would have failed this
+   test, while the change as a whole was clearly positive (recall 95.0% → 95.4%). The rule should be
+   applied to the slice's net change with the gains reported next to it, and a loss class that
+   reproduces on a real pattern (as `mapCardItems` did) fixed before the slice merges. A flat 80% on
+   losses alone is too strict if gains are large; the maintainer should decide the bound.
 7. **Display of nested `Unknown`.** *Recommend:* inlay hints suppress any type containing `Unknown`
    (visible text must be right); hover shows the declared type text when one exists, else the head with
    `<…>`.
 8. **Ratchet scope: all of `src/` or the CST domain only?** *Recommend all of `src/`* (frozen string
    engine counts cost nothing, and a new string op anywhere fails).
-9. **Start before or after #337–#339 merge?** *Recommend after.* Their point fixes become the baseline
-   behaviour and their tests the red/green anchors; designing against a moving stack is what forced
-   symbol-only citations here.
+9. **Start before or after #337–#339 merge?** *Decided: after.* They merged on 2026-11-03 (`main` at
+   `f5329570`). Their point fixes are now the baseline behaviour and their tests the red/green anchors.
 10. **Text parser for indexed source declarations, or always CST via the unopened-parse memo?**
     *Recommend CST where the memo already holds a tree, text only for JAR/sidecar*, so the string parser
     has one input class. Needs a memo hit-rate measurement in S1.
