@@ -182,7 +182,7 @@ fn infer_elvis_type(
     let (left_written, left_uri) = infer_initializer_type(left, bytes, deps, uri, depth + 1)?;
     let non_null_left = left_written.strip_nullable();
     let right_agrees = is_nothing_typed(right, bytes, deps, uri)
-        || (reports_its_nullability(right, bytes, deps, uri)
+        || (reports_its_nullability(right, bytes, deps, uri, depth + 1)
             && infer_initializer_type(right, bytes, deps, uri, depth + 1).is_some_and(
                 |(right_written, right_uri)| {
                     let same_scope = left_uri == right_uri;
@@ -215,9 +215,15 @@ fn reports_its_nullability(
     bytes: &[u8],
     deps: &impl InferDeps,
     uri: &Url,
+    depth: usize,
 ) -> bool {
+    if depth >= crate::util::MAX_CST_DESCENT_DEPTH {
+        crate::util::report_cst_depth_exceeded!("reports_its_nullability", expression);
+        return false;
+    }
     match expression.kind() {
-        KIND_SIMPLE_IDENT | KIND_ELVIS_EXPR | KIND_PARENTHESIZED_EXPR => true,
+        KIND_SIMPLE_IDENT => binding_reports_its_nullability(expression, bytes, deps, uri, depth),
+        KIND_ELVIS_EXPR | KIND_PARENTHESIZED_EXPR => true,
         KIND_STRING_LITERAL
         | KIND_MULTILINE_STRING_LITERAL
         | KIND_BOOLEAN_LITERAL
@@ -238,6 +244,27 @@ fn reports_its_nullability(
     }
 }
 
+/// Whether the type `infer_initializer_type` gives the identifier `use_site`
+/// says if it can be null. Only a binding that writes its type down, or is
+/// initialized from an expression that itself reports its nullability, does:
+/// `val fallback = nullableCall()` infers a bare `Apple`. Members and
+/// delegated locals are not read, so they cannot establish agreement.
+fn binding_reports_its_nullability(
+    use_site: Node<'_>,
+    bytes: &[u8],
+    deps: &impl InferDeps,
+    uri: &Url,
+    depth: usize,
+) -> bool {
+    match local_binding_at(use_site, bytes) {
+        LocalBinding::Annotated { .. } | LocalBinding::Narrowed { .. } => true,
+        LocalBinding::Initialized { initializer } => {
+            reports_its_nullability(initializer, bytes, deps, uri, depth + 1)
+        }
+        LocalBinding::Delegated { .. } | LocalBinding::Untyped | LocalBinding::NotLocal => false,
+    }
+}
+
 /// `return`/`throw`/`break`/`continue`, or a call to the stdlib's
 /// `error(..)` / `TODO(..)` — not a reachable function of that name that
 /// returns a value.
@@ -253,8 +280,20 @@ fn is_nothing_typed(expression: Node<'_>, bytes: &[u8], deps: &impl InferDeps, u
     let Some(callee @ ("error" | "TODO")) = callee.filter(|_| is_call) else {
         return false;
     };
-    let declared_return = deps.find_fun_return_type_reachable(callee, uri);
-    declared_return.is_none_or(|return_type| return_type == "Nothing")
+    let is_local_callable = !matches!(
+        local_binding_of(callee, expression, bytes),
+        LocalBinding::NotLocal
+    );
+    if is_local_callable {
+        return false;
+    }
+    match deps.find_fun_return_type_reachable(callee, uri) {
+        None => true,
+        Some(return_type) => {
+            return_type == "Nothing"
+                && deps.find_fun_return_nullability(callee, uri) == ReturnNullability::NonNull
+        }
+    }
 }
 
 // ─── private helpers ──────────────────────────────────────────────────────────
@@ -586,11 +625,40 @@ fn infer_get_value_type(
     let (delegate_type, delegate_uri) = infer_initializer_type(delegate, bytes, deps, uri, depth)?;
     let holder = delegate_type.bare_type_name()?;
     let (value_type, written_in) =
-        resolve_method_return_type_on(&holder, &delegate_type, "getValue", deps, &delegate_uri)
+        member_get_value_type(&holder, &delegate_type, deps, &delegate_uri)
             .or_else(|| extension_get_value_type(&holder, &delegate_type, deps, uri))?;
     let names_the_same_type = deps.names_type_in_scope(&value_type, uri)
         && deps.same_type_in_scopes(&value_type, &written_in, uri);
     names_the_same_type.then(|| (value_type, uri.clone()))
+}
+
+/// The `getValue` member of the delegate type, with the `?` its declaration
+/// states. A member whose nullability the lookup cannot read is unknown: a
+/// bare name there could be a nullable value passing as a non-null one.
+fn member_get_value_type(
+    holder: &str,
+    delegate_type: &str,
+    deps: &impl InferDeps,
+    delegate_uri: &Url,
+) -> Option<(String, Url)> {
+    let (value_type, written_in) =
+        resolve_method_return_type_on(holder, delegate_type, "getValue", deps, delegate_uri)?;
+    let nullability =
+        deps.find_method_return_nullability_for_type(holder, "getValue", delegate_uri);
+    let value_type = match nullability {
+        ReturnNullability::NonNull => value_type,
+        ReturnNullability::Nullable => with_nullable_marker(value_type),
+        ReturnNullability::Unknown => return None,
+    };
+    Some((value_type, written_in))
+}
+
+fn with_nullable_marker(type_text: String) -> String {
+    if type_text.ends_with('?') {
+        type_text
+    } else {
+        format!("{type_text}?")
+    }
 }
 
 /// `getValue(thisRef, property)`: what a `by` delegate is asked for.
@@ -638,6 +706,10 @@ fn extension_get_value_type(
         extension.declared_in
     };
     let value_type = crate::indexer::apply_type_subst(&extension.return_type, &substitution);
+    let value_type = match extension.return_nullability {
+        ReturnNullability::Nullable => with_nullable_marker(value_type),
+        ReturnNullability::NonNull | ReturnNullability::Unknown => value_type,
+    };
     Some((value_type, written_in))
 }
 

@@ -1736,11 +1736,13 @@ fn find_method_return_type_declared_scoped(
                 continue;
             }
             // Try detail first; fall back to source lines when detail is truncated.
+            let mut nullability = extract_return_nullability_from_detail(&symbol.detail);
             let declared_type = extract_return_type_from_detail(&symbol.detail)
                 .or_else(|| {
                     // detail may be truncated (120 char limit) — try the source lines.
                     let start_line = symbol.selection_start() as usize;
                     let full_sig = file_data.lines.collect_signature(start_line);
+                    nullability = extract_return_nullability_from_detail(&full_sig);
                     extract_return_type_from_detail(&full_sig)
                 })
                 .map(|type_name| (type_name, loc.uri.clone()))
@@ -1750,7 +1752,7 @@ fn find_method_return_type_declared_scoped(
                 return Some(DeclaredReturn {
                     type_name,
                     declared_in: Some(written_in),
-                    nullability: ReturnNullability::Unknown,
+                    nullability,
                 });
             }
         }

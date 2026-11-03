@@ -40,6 +40,8 @@ pub(crate) struct ExtensionCallable {
     pub(crate) generics: CallableInfo,
     /// The return type as written in the declaration.
     pub(crate) return_type: String,
+    /// Whether that return type is nullable (`return_type` never carries the `?`).
+    pub(crate) return_nullability: crate::resolver::ReturnNullability,
     /// The file the declaration, and so its return type's names, was written in.
     pub(crate) declared_in: Url,
 }
@@ -243,6 +245,19 @@ pub(crate) trait InferDeps {
         _uri: &Url,
     ) -> Option<String> {
         None
+    }
+
+    /// Whether the member `method_name` of `class_name` declares a nullable
+    /// return type. `Unknown` when the declaration found does not state one.
+    ///
+    /// The default implementation returns `Unknown`; overridden by `Indexer`.
+    fn find_method_return_nullability_for_type(
+        &self,
+        _class_name: &str,
+        _method_name: &str,
+        _uri: &Url,
+    ) -> crate::resolver::ReturnNullability {
+        crate::resolver::ReturnNullability::Unknown
     }
 
     /// Whether the top-level function `fn_name` reaches from `uri` declares a

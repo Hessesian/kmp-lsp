@@ -1304,3 +1304,73 @@ fn state_of_a_nullable_type_reads_as_a_nullable_local() {
     );
     assert_eq!(local_type_at(&source, "item", 3).as_deref(), Some("Apple?"));
 }
+
+// ─── review round 3: nullability through delegates, bindings, `error` ───────
+
+/// `getValue(): Apple?` (member): the local reads `Apple?`, so it is no
+/// non-null elvis default.
+#[test]
+fn member_get_value_returning_a_nullable_keeps_the_nullable_local() {
+    let source = "class Apple\n\
+                  class Delegate { operator fun getValue(thisRef: Any?, property: Any?): Apple? = null }\n\
+                  fun make(): Delegate = TODO()\n\
+                  fun first(item: Int) = item\n\
+                  fun use(left: Apple?) { val item by make(); val result = left ?: item; result }\n";
+    assert_eq!(local_type_at(source, "item", 3).as_deref(), Some("Apple?"));
+    assert_eq!(identifier_type(source, "result", 1), None);
+}
+
+/// The extension path loses the `?` the same way.
+#[test]
+fn extension_get_value_returning_a_nullable_keeps_the_nullable_local() {
+    let source = "class Apple\n\
+                  class Delegate\n\
+                  operator fun Delegate.getValue(thisRef: Any?, property: Any?): Apple? = null\n\
+                  fun make(): Delegate = TODO()\n\
+                  fun first(item: Int) = item\n\
+                  fun use(left: Apple?) { val item by make(); val result = left ?: item; result }\n";
+    assert_eq!(local_type_at(source, "item", 3).as_deref(), Some("Apple?"));
+    assert_eq!(identifier_type(source, "result", 1), None);
+}
+
+/// `fallback`'s inferred type is a bare `Apple`, but `nullableCall()` can be
+/// null: it is no non-null default.
+#[test]
+fn elvis_default_identifier_initialized_from_a_nullable_call_is_unknown() {
+    let source = "class Apple\n\
+                  fun nullableCall(): Apple? = null\n\
+                  fun first(result: Int) = result\n\
+                  fun use(left: Apple?) { val fallback = nullableCall(); val result = left ?: fallback; result }\n";
+    assert_eq!(identifier_type(source, "result", 2), None);
+}
+
+#[test]
+fn elvis_default_identifier_initialized_from_a_constructor_takes_the_type() {
+    let source = "class Apple\n\
+                  fun first(result: Int) = result\n\
+                  fun use(left: Apple?) { val fallback = Apple(); val result = left ?: fallback; result }\n";
+    assert_eq!(
+        identifier_type(source, "result", 2).as_deref(),
+        Some("Apple")
+    );
+}
+
+/// A local callable named `error` that returns normally is not `Nothing`.
+#[test]
+fn elvis_with_a_local_lambda_named_error_is_unknown() {
+    let source = "class Apple\n\
+                  class Banana\n\
+                  fun first(result: Int) = result\n\
+                  fun use(left: Apple?, error: (String) -> Banana) { val result = left ?: error(\"missing\"); result }\n";
+    assert_eq!(identifier_type(source, "result", 2), None);
+}
+
+/// `Nothing?` can return `null`, so it does not end the elvis.
+#[test]
+fn elvis_with_an_error_function_returning_nullable_nothing_is_unknown() {
+    let source = "class Apple\n\
+                  fun error(message: String): Nothing? = null\n\
+                  fun first(result: Int) = result\n\
+                  fun use(left: Apple?) { val result = left ?: error(\"missing\"); result }\n";
+    assert_eq!(identifier_type(source, "result", 2), None);
+}

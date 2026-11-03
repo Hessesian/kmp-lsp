@@ -515,6 +515,11 @@ pub(crate) fn apply_type_subst(
             let ident: String = chars[start..i].iter().collect();
             if let Some(replacement) = subst.get(&ident) {
                 result.push_str(replacement);
+                // `T?` with `T = Apple?` is `Apple?`, not `Apple??`.
+                let already_nullable = replacement.ends_with('?') && chars.get(i) == Some(&'?');
+                if already_nullable {
+                    i += 1;
+                }
             } else {
                 result.push_str(&ident);
             }

@@ -457,6 +457,22 @@ impl InferDeps for Indexer {
         let declared_in = declared.declared_in.unwrap_or_else(|| uri.clone());
         Some((declared.type_name, declared_in))
     }
+    fn find_method_return_nullability_for_type(
+        &self,
+        class_name: &str,
+        method_name: &str,
+        uri: &Url,
+    ) -> crate::resolver::ReturnNullability {
+        crate::resolver::Resolver::method_return_type_declared(
+            self,
+            class_name,
+            method_name,
+            Some(uri),
+        )
+        .map_or(crate::resolver::ReturnNullability::Unknown, |declared| {
+            declared.nullability
+        })
+    }
     fn find_fun_return_nullability(
         &self,
         fn_name: &str,
@@ -758,12 +774,14 @@ impl InferDeps for Indexer {
         );
         let declaration = declaration_selected_by_shape(self, &declarations, receiver.shape)?;
         let symbol = declaration.symbol.as_ref()?;
+        let (return_type, return_nullability) = declared_return_type(self, declaration)?;
         Some(ExtensionCallable {
             generics: CallableInfo {
                 type_params: symbol.type_params().to_vec(),
                 extension_receiver_type: symbol.declared_extension_receiver().to_owned(),
             },
-            return_type: declared_return_type(self, declaration)?,
+            return_type,
+            return_nullability,
             declared_in: declaration.uri.clone(),
         })
     }
@@ -784,11 +802,12 @@ fn type_paths_in(type_text: &str) -> Vec<String> {
 fn declared_return_type(
     indexer: &Indexer,
     declaration: &crate::resolver::ExtensionDeclaration,
-) -> Option<String> {
+) -> Option<(String, crate::resolver::ReturnNullability)> {
     let symbol = declaration.symbol.as_ref()?;
     let from_detail = crate::resolver::extract_return_type_from_detail(&symbol.detail);
-    if from_detail.is_some() {
-        return from_detail;
+    if let Some(type_name) = from_detail {
+        let nullability = crate::resolver::extract_return_nullability_from_detail(&symbol.detail);
+        return Some((type_name, nullability));
     }
     let file_data = indexer
         .files
@@ -798,7 +817,9 @@ fn declared_return_type(
     let signature = file_data
         .lines
         .collect_signature(symbol.selection_start() as usize);
-    crate::resolver::extract_return_type_from_detail(&signature)
+    let type_name = crate::resolver::extract_return_type_from_detail(&signature)?;
+    let nullability = crate::resolver::extract_return_nullability_from_detail(&signature);
+    Some((type_name, nullability))
 }
 
 /// What a call on a known receiver type binds `fn_name` to, as far as the
