@@ -25,6 +25,17 @@ pub(crate) fn build_type_arg_subst(
     nullability: ArgumentNullability,
 ) -> std::collections::HashMap<String, String> {
     let type_params = deps.find_class_type_params(class_name);
+    build_type_arg_subst_for_params(type_params, concrete_type, nullability)
+}
+
+/// [`build_type_arg_subst`] for a class whose type parameters the caller
+/// already knows: the ones of the declaration it selected, not whichever
+/// same-named class a by-name lookup finds first.
+pub(crate) fn build_type_arg_subst_for_params(
+    type_params: Vec<String>,
+    concrete_type: &str,
+    nullability: ArgumentNullability,
+) -> std::collections::HashMap<String, String> {
     if type_params.is_empty() {
         return std::collections::HashMap::new();
     }

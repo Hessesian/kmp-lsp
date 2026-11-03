@@ -498,8 +498,7 @@ impl InferDeps for Indexer {
         declaring_uri: &Url,
     ) -> Vec<String> {
         let declared_params = self
-            .files
-            .get(declaring_uri.as_str())
+            .file_data_for(declaring_uri.as_str())
             .and_then(|file_data| {
                 file_data
                     .symbols

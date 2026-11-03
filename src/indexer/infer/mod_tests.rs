@@ -2296,6 +2296,42 @@ fn member_type_does_not_take_type_parameters_from_a_same_named_class_elsewhere()
     );
 }
 
+// ─── review round 4: Map.Entry values are values, not keys ───────────────────
+
+/// `entries.minByOrNull{}?.value` reads the *value* type argument of the
+/// `Entry<EType, Offer>` element. An unrelated generic `Entry<T>` elsewhere
+/// (indexed first) must not rename `Entry`'s own `K`/`V` to `T`.
+#[test]
+fn entry_value_is_the_value_type_argument_despite_a_same_named_generic_class() {
+    let files = [
+        (
+            "/chart/Entry.kt",
+            "package chart\nclass Entry<T>(val data: T)\n",
+        ),
+        (
+            "/kotlin/Map.kt",
+            "package kotlin\ninterface Map<K, V> {\n\
+             \x20   val entries: List<Entry<K, V>>\n\
+             \x20   interface Entry<K, V> {\n\
+             \x20       val key: K\n\
+             \x20       val value: V\n\
+             \x20   }\n}\n",
+        ),
+        (
+            "/app/Use.kt",
+            "package app\nclass EType\nclass Offer\n\
+             fun <T> List<T>.minByOrNull(selector: (T) -> Int): T? = TODO()\n\
+             fun use(offers: Map<EType, Offer>) {\n\
+             \x20   val offer = offers.entries.minByOrNull { 1 }?.value\n\
+             \x20   offer\n}\n",
+        ),
+    ];
+    assert_eq!(
+        local_type_in_workspace(&files, "/app/Use.kt", "offer", 1).as_deref(),
+        Some("Offer?")
+    );
+}
+
 // ─── review round 4: generic members of an object bind lambda parameters ────
 
 fn object_helper_files(call: &str) -> [(&'static str, String); 4] {

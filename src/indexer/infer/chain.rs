@@ -17,8 +17,8 @@ use super::lambda::{
 };
 use super::type_subst::{
     apply_simple_subst, build_ext_fn_type_subst, build_fn_subst, build_type_arg_subst,
-    capitalize_first_char, first_type_arg_raw, is_generic_param, split_top_level_commas,
-    type_args_inner, ArgumentNullability,
+    build_type_arg_subst_for_params, capitalize_first_char, first_type_arg_raw, is_generic_param,
+    split_top_level_commas, type_args_inner, ArgumentNullability,
 };
 
 /// A segment in a navigation chain: either a root identifier or a suffix member.
@@ -495,15 +495,16 @@ fn substitute_receiver_type_arguments(
     deps: &impl InferDeps,
 ) -> Option<(String, SpelledIn)> {
     let class_path = lookup_name.dotted_ident_prefix();
-    let substitution = build_type_arg_subst(
-        deps,
-        class_path.last_segment(),
+    let declared_parameters =
+        deps.find_class_type_params_declared_in(class_path.last_segment(), declaring_uri);
+    let substitution = build_type_arg_subst_for_params(
+        declared_parameters.clone(),
         current_type,
         ArgumentNullability::AsWritten,
     );
     let head_path = declared_type.strip_nullable().dotted_ident_prefix();
     let known_arguments = star_unbound_type_arguments(declared_type, || {
-        deps.find_class_type_params_declared_in(class_path.last_segment(), declaring_uri)
+        declared_parameters
             .into_iter()
             .filter(|parameter| !substitution.contains_key(parameter))
             .collect()
