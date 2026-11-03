@@ -2209,3 +2209,38 @@ fn member_of_a_receiver_with_a_non_null_type_argument_is_not_nullable() {
     assert_eq!(local_type_at(source, "item", 1).as_deref(), Some("Apple"));
     assert_eq!(local_type_at(source, "item", 3).as_deref(), Some("Apple?"));
 }
+
+// ─── review round 3: for/destructuring locals shadow lambda parameters ──────
+
+#[test]
+fn for_variable_shadowing_a_lambda_parameter_takes_its_element_type() {
+    let source = "class Apple\n\
+                  class Banana\n\
+                  fun <T> List<T>.forEach(action: (T) -> Unit) {}\n\
+                  fun use(apples: List<Apple>, bananas: List<Banana>) {\n\
+                  \x20   apples.forEach { item ->\n\
+                  \x20       for (item in bananas) { val copy = item }\n\
+                  \x20   }\n\
+                  }\n";
+    assert_eq!(
+        identifier_type(source, "item", 2).as_deref(),
+        Some("Banana")
+    );
+}
+
+#[test]
+fn destructured_local_shadowing_a_lambda_parameter_takes_its_component_type() {
+    let source = "class Apple\n\
+                  class Banana\n\
+                  fun <T> List<T>.forEach(action: (T) -> Unit) {}\n\
+                  fun use(apples: List<Apple>, pair: Pair<Banana, Banana>) {\n\
+                  \x20   apples.forEach { item ->\n\
+                  \x20       val (item, other) = pair\n\
+                  \x20       item\n\
+                  \x20   }\n\
+                  }\n";
+    assert_eq!(
+        identifier_type(source, "item", 2).as_deref(),
+        Some("Banana")
+    );
+}

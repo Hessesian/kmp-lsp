@@ -371,6 +371,8 @@ fn infer_ident_type_in_form(
             | LocalBinding::Initialized { .. }
             | LocalBinding::Narrowed { .. }
             | LocalBinding::Delegated { .. }
+            | LocalBinding::Iterated { .. }
+            | LocalBinding::Destructured { .. }
     );
     if !binding_states_its_own_type {
         if let Some(inferred) = deps.find_contextual_type(&name, uri, start.row, col) {
