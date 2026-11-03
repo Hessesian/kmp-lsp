@@ -44,8 +44,8 @@ pub(crate) use self::infer::{
         shape_filter_locations, NavigationSource, SymbolAtCursor, SymbolRole,
     },
     deps::{
-        CallShape, CallableInfo, ExtensionCallable, InferDeps, OuterScopedParams, ReceiverCall,
-        ShapeFiltered,
+        CallShape, CallableInfo, ExtensionCallable, InferDeps, MemberTypeParameters,
+        OuterScopedParams, ReceiverCall, ShapeFiltered,
     },
     expr_type::{infer_expr_type, infer_expr_type_with_origin, infer_local_type_at, BindingType},
     it_this::{
@@ -58,8 +58,9 @@ pub(crate) use self::infer::{
         candidate_applies_to_call, collect_all_fun_params_texts, collect_params_from_line,
         collect_signature, declaration_signature, find_fun_params_text_fast,
         find_fun_signature_full, find_fun_signature_with_receiver, is_import_reachable,
-        last_fun_param_type_str, nth_fun_param_type_str, resolve_call_signature,
-        split_params_at_depth_zero, strip_trailing_call_args, CallSite, ResolutionScope, Signature,
+        last_fun_param_type_str, members_taking_call_in_file, nth_fun_param_type_str,
+        resolve_call_signature, split_params_at_depth_zero, strip_trailing_call_args, CallSite,
+        ResolutionScope, Signature,
     },
     type_subst::{build_type_arg_subst, find_last_dot_at_depth_zero},
 };
@@ -768,12 +769,13 @@ impl InferDeps for Indexer {
         &self,
         fn_name: &str,
         receiver: ReceiverCall<'_>,
-    ) -> Option<Vec<String>> {
-        use crate::StrExt as _;
-        infer::sig::member_type_params_taking_call(
+        uri: &Url,
+    ) -> Option<MemberTypeParameters> {
+        crate::resolver::member_type_parameters_taking_call(
             self,
-            receiver.receiver_type.dotted_ident_prefix().as_str(),
+            receiver.receiver_type,
             fn_name,
+            uri,
             receiver.shape,
         )
     }
@@ -857,11 +859,11 @@ fn receiver_bound_callable(
     receiver: ReceiverCall<'_>,
     uri: &Url,
 ) -> ReceiverBoundCallable {
-    use crate::StrExt as _;
-    let member_takes_the_call = infer::sig::member_type_params_taking_call(
+    let member_takes_the_call = crate::resolver::member_type_parameters_taking_call(
         indexer,
-        receiver.receiver_type.dotted_ident_prefix().as_str(),
+        receiver.receiver_type,
         fn_name,
+        uri,
         receiver.shape,
     )
     .is_some();

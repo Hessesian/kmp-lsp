@@ -664,7 +664,6 @@ pub(crate) fn find_fun_signature_with_receiver(
 struct MemberDeclaration {
     params_text: String,
     counts: (u8, u8),
-    type_params: Vec<String>,
 }
 
 /// The functions `method_name` declared directly on the workspace class
@@ -714,7 +713,6 @@ fn class_members(idx: &Indexer, class_name: &str, method_name: &str) -> Vec<Memb
                     members.push(MemberDeclaration {
                         params_text,
                         counts: symbol_entry.param_counts,
-                        type_params: symbol_entry.type_params().to_vec(),
                     });
                 }
             }
@@ -723,19 +721,42 @@ fn class_members(idx: &Indexer, class_name: &str, method_name: &str) -> Vec<Memb
     members
 }
 
-/// The member `method_name` of the workspace class `class_name` that can take
-/// a call of `shape` — a member then wins over any same-named extension.
-/// Carries the member's own type parameters.
-pub(crate) fn member_type_params_taking_call(
-    idx: &Indexer,
+/// The members `method_name` that `file_data` declares directly on its class
+/// `class_name` and that can take a call of `shape`, each with the type
+/// parameters a return type of theirs may mention.
+pub(crate) fn members_taking_call_in_file(
+    file_data: &crate::types::FileData,
     class_name: &str,
     method_name: &str,
     shape: super::deps::CallShape,
-) -> Option<Vec<String>> {
-    class_members(idx, class_name, method_name)
-        .into_iter()
-        .find(|member| candidate_applies_to_call(&member.params_text, member.counts, shape))
-        .map(|member| member.type_params)
+) -> Vec<super::deps::MemberTypeParameters> {
+    let owner_class = file_data
+        .symbols
+        .iter()
+        .find(|symbol| symbol.name == class_name && is_class_like(symbol.kind))
+        .map(|owner| owner.type_params().to_vec())
+        .unwrap_or_default();
+    file_data
+        .symbols
+        .iter()
+        .filter(|symbol| symbol.name == method_name)
+        .filter(|symbol| {
+            matches!(
+                symbol.kind,
+                SymbolKind::FUNCTION | SymbolKind::METHOD | SymbolKind::OPERATOR
+            )
+        })
+        .filter(|symbol| symbol.container.as_deref() == Some(class_name))
+        .filter(|symbol| {
+            extract_params_or_fallback(symbol, &file_data.lines).is_some_and(|params_text| {
+                candidate_applies_to_call(&params_text, symbol.param_counts, shape)
+            })
+        })
+        .map(|symbol| super::deps::MemberTypeParameters {
+            function: symbol.type_params().to_vec(),
+            owner_class: owner_class.clone(),
+        })
+        .collect()
 }
 
 /// Receiver-aware params lookup: find `method_name`'s parameter text inside

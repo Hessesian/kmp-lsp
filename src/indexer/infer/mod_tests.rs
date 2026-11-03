@@ -1991,3 +1991,88 @@ fn member_function_unbound_type_parameter_is_unknown() {
                   }\n";
     assert_eq!(local_type_at(source, "left", 1), None);
 }
+
+// ─── review round 2: unbound type parameters belong to the selected member ──
+
+/// `local_type_at` with every file in `files` indexed.
+fn local_type_in_workspace(
+    files: &[(&str, &str)],
+    caller_path: &str,
+    name: &str,
+    occurrence: usize,
+) -> Option<String> {
+    let indexer = Indexer::new();
+    for (path, source) in files {
+        indexer.index_content(&test_url(path), source);
+    }
+    let caller_source = files
+        .iter()
+        .find(|(path, _)| *path == caller_path)
+        .map(|(_, source)| *source)
+        .expect("caller file");
+    let uri = test_url(caller_path);
+    let live_doc = live_doc_for(caller_source);
+    let identifier = crate::indexer::walk::descendants(live_doc.tree.root_node())
+        .filter(|node| node.kind() == crate::queries::KIND_SIMPLE_IDENT)
+        .filter(|node| node.utf8_text(&live_doc.bytes) == Ok(name))
+        .nth(occurrence)
+        .expect("identifier occurrence");
+    match crate::indexer::infer_local_type_at(name, identifier, &live_doc.bytes, &indexer, &uri) {
+        crate::indexer::BindingType::Typed { type_text, .. } => Some(type_text),
+        crate::indexer::BindingType::LocalUnknown | crate::indexer::BindingType::NotLocal => None,
+    }
+}
+
+/// `Holder`'s parameter is *named* `Item`, but the extension's `List<Item>`
+/// names the real class `Item`.
+#[test]
+fn extension_return_naming_a_class_is_not_starred_by_the_receivers_parameter() {
+    let source = "class Item\n\
+                  class Holder<Item>\n\
+                  fun Holder<*>.items(): List<Item> = TODO()\n\
+                  fun use(holder: Holder<*>) { val result = holder.items(); result }\n";
+    assert_eq!(
+        local_type_at(source, "result", 1).as_deref(),
+        Some("List<Item>")
+    );
+}
+
+/// Another package's generic `Factory<Apple>` must not decide what the
+/// imported, non-generic `Factory.make()` returns.
+#[test]
+fn member_return_is_not_starred_by_a_same_named_class_in_another_package() {
+    let files = [
+        (
+            "/lib/a/Factory.kt",
+            "package lib.a\nclass Apple\nclass Factory { fun make(): List<Apple> = TODO() }\n",
+        ),
+        (
+            "/lib/b/Factory.kt",
+            "package lib.b\nclass Factory<Apple> { fun make(): List<Apple> = TODO() }\n",
+        ),
+        (
+            "/app/Use.kt",
+            "package app\nimport lib.a.Apple\nimport lib.a.Factory\n\
+             fun use(factory: Factory) { val result = factory.make(); result }\n",
+        ),
+    ];
+    assert_eq!(
+        local_type_in_workspace(&files, "/app/Use.kt", "result", 1).as_deref(),
+        Some("List<Apple>")
+    );
+}
+
+/// `twin()` is inherited from `Base<R>` through the non-generic `Child`;
+/// `R` must read as the supertype argument, never as the unrelated class `R`.
+#[test]
+fn inherited_member_return_does_not_name_its_declaring_class_parameter() {
+    let source = "class R\n\
+                  class Apple\n\
+                  open class Base<R> { fun twin(): Pair<R, R> = TODO() }\n\
+                  class Child : Base<Apple>()\n\
+                  fun use(child: Child) { val result = child.twin(); result }\n";
+    assert_eq!(
+        local_type_at(source, "result", 1).as_deref(),
+        Some("Pair<Apple, Apple>")
+    );
+}

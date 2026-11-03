@@ -264,6 +264,59 @@ pub(crate) fn extension_declarations_on(
         .unwrap_or(own)
 }
 
+/// The type parameters of the member `name` that a call of `shape` on
+/// `receiver_type` binds: declared on the receiver's class as `from_uri`
+/// reaches it, else on the nearest supertype that declares one. A member
+/// then wins over any same-named extension.
+pub(crate) fn member_type_parameters_taking_call(
+    indexer: &Indexer,
+    receiver_type: &str,
+    name: &str,
+    from_uri: &Url,
+    shape: CallShape,
+) -> Option<crate::indexer::MemberTypeParameters> {
+    use crate::StrExt;
+
+    let receiver_base = receiver_type
+        .dotted_ident_prefix()
+        .last_segment()
+        .to_owned();
+    let caller = crate::types::CallerContext {
+        uri: Some(from_uri.as_str()),
+        cursor_line: None,
+    };
+    super::infer::reachable_class_candidates(indexer, &receiver_base, Some(from_uri))
+        .into_iter()
+        .take(crate::indexer::MAX_BY_NAME_DEFS)
+        .find_map(|class_location| {
+            let class_uri = class_location.uri.as_str();
+            let declared_on_class = indexer.files.get(class_uri).and_then(|file_data| {
+                crate::indexer::members_taking_call_in_file(&file_data, &receiver_base, name, shape)
+                    .into_iter()
+                    .next()
+            });
+            declared_on_class.or_else(|| {
+                super::hierarchy::walk_hierarchy_breadth_first(
+                    indexer,
+                    &receiver_base,
+                    class_uri,
+                    caller,
+                    12,
+                    super::MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK,
+                    |idx, super_name, super_uri, _| {
+                        idx.files.get(super_uri).map_or_else(Vec::new, |file_data| {
+                            crate::indexer::members_taking_call_in_file(
+                                &file_data, super_name, name, shape,
+                            )
+                        })
+                    },
+                )
+                .into_iter()
+                .next()
+            })
+        })
+}
+
 /// Resolve `name(...)` as an implicit `this.name(...)` against `receiver_base`
 /// — the enclosing extension function's own declared receiver type (see
 /// `parser::enclosing_extension_receiver_at`) — tried only when nothing else

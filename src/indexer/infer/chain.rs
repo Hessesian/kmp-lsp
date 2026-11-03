@@ -775,42 +775,54 @@ enum FunctionTypeParameters<'receiver> {
     OfCallOn(&'receiver str),
 }
 
-/// The declared type parameters of the called function (and of its
-/// `class_type_parameters`) that nothing at this call binds: not the
-/// receiver (`substitution`) and not an explicit `f<X>()` type argument.
+/// The declared type parameters of the called function (and of the class
+/// that declares it) that nothing at this call binds: not the receiver
+/// (`substitution`) and not an explicit `f<X>()` type argument.
+///
+/// `unindexed_class_type_parameters` stand in for the declaring class's only
+/// when the call binds to no indexed member or extension (a JAR class's
+/// member, say); a top-level extension has no class parameters at all.
 fn unbound_type_parameters<D: InferDeps>(
     ctx: &CallCtx<'_, D>,
     function: FunctionTypeParameters<'_>,
-    class_type_parameters: &[String],
+    unindexed_class_type_parameters: &[String],
     substitution: &std::collections::HashMap<String, String>,
 ) -> Vec<String> {
-    let function_type_parameters = match function {
-        FunctionTypeParameters::OfReachableFunction => ctx
-            .deps
-            .find_fun_callable_info(ctx.fn_name, None, ctx.uri)
-            .map(|callable_info| callable_info.type_params),
+    let (function_type_parameters, class_type_parameters) = match function {
+        FunctionTypeParameters::OfReachableFunction => (
+            ctx.deps
+                .find_fun_callable_info(ctx.fn_name, None, ctx.uri)
+                .map(|callable_info| callable_info.type_params)
+                .unwrap_or_default(),
+            Vec::new(),
+        ),
         FunctionTypeParameters::OfCallOn(receiver_type) => {
             let receiver_call = super::deps::ReceiverCall {
                 receiver_type,
                 shape: super::cst_lambda::call_shape_of(ctx.node, ctx.bytes),
             };
-            let member_type_parameters =
-                ctx.deps.find_member_type_params(ctx.fn_name, receiver_call);
-            member_type_parameters.or_else(|| {
+            if let Some(member) =
+                ctx.deps
+                    .find_member_type_params(ctx.fn_name, receiver_call, ctx.uri)
+            {
+                (member.function, member.owner_class)
+            } else if let Some(extension) =
                 ctx.deps
                     .find_extension_callable(ctx.fn_name, receiver_call, ctx.uri)
-                    .map(|extension| extension.generics.type_params)
-            })
+            {
+                (extension.generics.type_params, Vec::new())
+            } else {
+                (Vec::new(), unindexed_class_type_parameters.to_vec())
+            }
         }
-    }
-    .unwrap_or_default();
+    };
     let bound_by_call_site = match ctx.node.call_site_type_arg_strings(ctx.bytes) {
         Some(call_type_args) => build_fn_subst(&function_type_parameters, &call_type_args),
         None => Default::default(),
     };
     function_type_parameters
         .iter()
-        .chain(class_type_parameters)
+        .chain(&class_type_parameters)
         .filter(|parameter| !substitution.contains_key(*parameter))
         .filter(|parameter| !bound_by_call_site.contains_key(*parameter))
         .cloned()

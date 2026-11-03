@@ -46,6 +46,15 @@ pub(crate) struct ExtensionCallable {
     pub(crate) declared_in: Url,
 }
 
+/// The type parameters a member's return type may mention: its own, and
+/// those of the class that declares it (which may be a supertype of the
+/// receiver's class).
+#[derive(Clone, Debug)]
+pub(crate) struct MemberTypeParameters {
+    pub(crate) function: Vec<String>,
+    pub(crate) owner_class: Vec<String>,
+}
+
 /// A call on a known receiver type: what selects among same-named extensions
 /// declared on it.
 #[derive(Clone, Copy, Debug)]
@@ -406,15 +415,17 @@ pub(crate) trait InferDeps {
         false
     }
 
-    /// The type parameters declared by the member of the receiver's class that
-    /// takes the call (`None` when no member does).
+    /// The type parameters of the member — declared on the receiver's class
+    /// as `uri` reaches it, or inherited from a supertype — that takes the
+    /// call (`None` when no workspace member does).
     ///
     /// The default implementation returns `None`; overridden by `Indexer`.
     fn find_member_type_params(
         &self,
         _fn_name: &str,
         _receiver: ReceiverCall<'_>,
-    ) -> Option<Vec<String>> {
+        _uri: &Url,
+    ) -> Option<MemberTypeParameters> {
         None
     }
 
