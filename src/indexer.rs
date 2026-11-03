@@ -457,6 +457,16 @@ impl InferDeps for Indexer {
         let declared_in = declared.declared_in.unwrap_or_else(|| uri.clone());
         Some((declared.type_name, declared_in))
     }
+    fn find_fun_return_nullability(
+        &self,
+        fn_name: &str,
+        uri: &Url,
+    ) -> crate::resolver::ReturnNullability {
+        crate::resolver::infer::find_fun_return_type_reachable_declared(self, fn_name, uri)
+            .map_or(crate::resolver::ReturnNullability::Unknown, |declared| {
+                declared.nullability
+            })
+    }
     fn find_fun_return_type_reachable(&self, fn_name: &str, uri: &Url) -> Option<String> {
         crate::resolver::infer::find_fun_return_type_reachable(self, fn_name, uri)
     }
@@ -715,11 +725,22 @@ impl InferDeps for Indexer {
                 crate::resolver::ResolveIo::IndexOnly,
             )
         };
+        let shadows_in_scope = |type_path: &str, uri: &Url| {
+            let root = type_path.split('.').next().unwrap_or(type_path);
+            let is_package_qualified = crate::StrExt::starts_with_lowercase(root);
+            !is_package_qualified
+                && !crate::resolver::resolve_symbol_scoped_only(self, root, uri).is_empty()
+        };
         type_paths_in(type_text).into_iter().all(|type_path| {
             let is_builtin =
                 crate::features::text_utils::KOTLIN_BUILTIN_TYPES.contains(&type_path.as_str());
+            let builtin_is_shadowed =
+                shadows_in_scope(&type_path, first_uri) || shadows_in_scope(&type_path, second_uri);
+            if is_builtin && !builtin_is_shadowed {
+                return true;
+            }
             let first = declarations_of(&type_path, first_uri);
-            is_builtin || (!first.is_empty() && first == declarations_of(&type_path, second_uri))
+            !first.is_empty() && first == declarations_of(&type_path, second_uri)
         })
     }
     fn find_extension_callable(
@@ -743,6 +764,7 @@ impl InferDeps for Indexer {
                 extension_receiver_type: symbol.declared_extension_receiver().to_owned(),
             },
             return_type: declared_return_type(self, declaration)?,
+            declared_in: declaration.uri.clone(),
         })
     }
 }

@@ -40,6 +40,8 @@ pub(crate) struct ExtensionCallable {
     pub(crate) generics: CallableInfo,
     /// The return type as written in the declaration.
     pub(crate) return_type: String,
+    /// The file the declaration, and so its return type's names, was written in.
+    pub(crate) declared_in: Url,
 }
 
 /// A call on a known receiver type: what selects among same-named extensions
@@ -241,6 +243,18 @@ pub(crate) trait InferDeps {
         _uri: &Url,
     ) -> Option<String> {
         None
+    }
+
+    /// Whether the top-level function `fn_name` reaches from `uri` declares a
+    /// nullable return type. `Unknown` when no reachable declaration states one.
+    ///
+    /// The default implementation returns `Unknown`; overridden by `Indexer`.
+    fn find_fun_return_nullability(
+        &self,
+        _fn_name: &str,
+        _uri: &Url,
+    ) -> crate::resolver::ReturnNullability {
+        crate::resolver::ReturnNullability::Unknown
     }
 
     /// [`Self::find_fun_return_type_reachable`] together with the file the return

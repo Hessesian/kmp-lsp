@@ -1123,3 +1123,184 @@ fn delegate_get_value_extension_is_chosen_by_receiver_not_by_name() {
                   fun use() { val item by make(); item }\n";
     assert_eq!(identifier_type(source, "item", 2).as_deref(), Some("Apple"));
 }
+
+// ─── review round 2: elvis identity and nullability ─────────────────────────
+
+/// `a.List` and `b.List` both shadow Kotlin's `List`; neither is the
+/// built-in, and they are not each other.
+#[test]
+fn shadowed_builtin_names_are_not_the_same_type_across_packages() {
+    use crate::indexer::infer::deps::InferDeps as _;
+    let indexer = Indexer::new();
+    let first = test_url("/a/First.kt");
+    let second = test_url("/b/Second.kt");
+    let plain = test_url("/c/Plain.kt");
+    indexer.index_content(&first, "package a\nclass List\n");
+    indexer.index_content(&second, "package b\nclass List\n");
+    indexer.index_content(&plain, "package c\nclass Other\n");
+    assert!(!indexer.same_type_in_scopes("List", &first, &second));
+    assert!(!indexer.same_type_in_scopes("List", &first, &plain));
+    assert!(indexer.same_type_in_scopes("List", &plain, &plain));
+    assert!(indexer.same_type_in_scopes("List", &plain, &test_url("/d/Other.kt")));
+}
+
+/// `pick(): List?` from `a`, `List()` constructed from `b`: the elvis has
+/// no single type.
+#[test]
+fn elvis_of_same_named_shadowing_builtin_classes_is_unknown() {
+    let files = [
+        (
+            "/a/Pick.kt",
+            "package a\nclass List\nfun pick(): List? = null\n",
+        ),
+        ("/b/List.kt", "package b\nclass List\n"),
+        (
+            "/app/Use.kt",
+            "package app\nimport a.pick\nimport b.List\n\
+             fun use() { val item = pick() ?: List(); item }\n",
+        ),
+    ];
+    assert_eq!(
+        identifier_type_in_workspace(&files, "/app/Use.kt", "item", 1),
+        None
+    );
+}
+
+/// A nullable-returning call on the right can still be null, so the elvis
+/// stays nullable-or-unknown, never `Apple`.
+#[test]
+fn elvis_with_a_nullable_returning_call_default_is_unknown() {
+    let source = "class Apple\n\
+                  fun pick(): Apple? = null\n\
+                  fun fallback(): Apple? = null\n\
+                  fun use() { val item = pick() ?: fallback(); item }\n";
+    assert_eq!(local_type_at(source, "item", 1), None);
+}
+
+// ─── review round 2: narrowed and delegated locals inside typed lambdas ─────
+
+#[test]
+fn narrowed_when_subject_in_a_typed_lambda_takes_the_narrowed_type() {
+    let source = "open class Event\n\
+                  class Actions : Event()\n\
+                  fun <T> List<T>.forEach(action: (T) -> Unit) {}\n\
+                  fun use(events: List<Event>) {\n\
+                  \x20   events.forEach { event ->\n\
+                  \x20       when (event) { is Actions -> event else -> {} }\n\
+                  \x20   }\n\
+                  }\n";
+    assert_eq!(
+        identifier_type(source, "event", 2).as_deref(),
+        Some("Actions")
+    );
+}
+
+#[test]
+fn delegated_local_shadowing_a_lambda_parameter_takes_its_delegate_type() {
+    let source = "class Apple\n\
+                  class Banana\n\
+                  fun <T> List<T>.forEach(action: (T) -> Unit) {}\n\
+                  fun use(items: List<Apple>) {\n\
+                  \x20   items.forEach { item ->\n\
+                  \x20       val item by lazy { Banana() }\n\
+                  \x20       item\n\
+                  \x20   }\n\
+                  }\n";
+    assert_eq!(
+        identifier_type(source, "item", 2).as_deref(),
+        Some("Banana")
+    );
+}
+
+// ─── review round 2: delegate shortcuts need the real callable ──────────────
+
+const CUSTOM_DELEGATE: &str = "class Apple\n\
+     class Banana\n\
+     class CustomDelegate { operator fun getValue(thisRef: Any?, property: Any?): Banana = TODO() }\n";
+
+#[test]
+fn user_defined_mutable_state_of_reads_through_its_own_get_value() {
+    let source = format!(
+        "{CUSTOM_DELEGATE}\
+         fun mutableStateOf(value: Apple): CustomDelegate = TODO()\n\
+         fun second() {{ val item by mutableStateOf(Apple()); item }}\n"
+    );
+    assert_eq!(
+        identifier_type(&source, "item", 1).as_deref(),
+        Some("Banana")
+    );
+}
+
+#[test]
+fn user_defined_lazy_reads_through_its_own_get_value() {
+    let source = format!(
+        "{CUSTOM_DELEGATE}\
+         fun lazy(initializer: () -> Apple): CustomDelegate = TODO()\n\
+         fun second() {{ val item by lazy {{ Apple() }}; item }}\n"
+    );
+    assert_ne!(
+        identifier_type(&source, "item", 1).as_deref(),
+        Some("Apple")
+    );
+}
+
+#[test]
+fn user_defined_remember_does_not_unwrap_its_lambda() {
+    let source = format!(
+        "{CUSTOM_DELEGATE}\
+         fun remember(calculation: () -> Apple): CustomDelegate = TODO()\n\
+         fun second() {{ val item by remember {{ Apple() }}; item }}\n"
+    );
+    assert_ne!(
+        identifier_type(&source, "item", 1).as_deref(),
+        Some("Apple")
+    );
+}
+
+#[test]
+fn qualified_member_named_mutable_state_of_is_not_the_compose_function() {
+    let source = format!(
+        "{CUSTOM_DELEGATE}\
+         class Factory {{ fun mutableStateOf(value: Apple): CustomDelegate = TODO() }}\n\
+         fun second(factory: Factory) {{ val item by factory.mutableStateOf(Apple()); item }}\n"
+    );
+    assert_ne!(
+        identifier_type(&source, "item", 1).as_deref(),
+        Some("Apple")
+    );
+}
+
+// ─── review round 2: getValue extension identity and nullability ────────────
+
+/// A library extension returns `lib.Apple`; the caller has its own
+/// unrelated `app.Apple`.
+#[test]
+fn get_value_extension_return_type_keeps_the_library_it_was_written_in() {
+    let files = [
+        (
+            "/lib/Holder.kt",
+            "package lib\nclass Apple\nclass Holder\n\
+             operator fun Holder.getValue(thisRef: Any?, property: Any?): Apple = TODO()\n",
+        ),
+        (
+            "/app/Use.kt",
+            "package app\nimport lib.Holder\nimport lib.getValue\nclass Apple\n\
+             fun make(): Holder = TODO()\n\
+             fun use() { val item by make(); item }\n",
+        ),
+    ];
+    assert_eq!(
+        identifier_type_in_workspace(&files, "/app/Use.kt", "item", 1),
+        None
+    );
+}
+
+#[test]
+fn state_of_a_nullable_type_reads_as_a_nullable_local() {
+    let source = format!(
+        "{STATE_DECLARATIONS}\
+         fun nullableState(): State<Apple?> = TODO()\n\
+         fun second() {{ val item by nullableState(); item }}\n"
+    );
+    assert_eq!(local_type_at(&source, "item", 3).as_deref(), Some("Apple?"));
+}

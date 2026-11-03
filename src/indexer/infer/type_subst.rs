@@ -173,7 +173,14 @@ fn match_type_args_recursive(
     }
     // If the declared type is one of the function's type params, map it directly.
     if params.iter().any(|param| param == decl_base) {
-        map.insert(decl_base.to_owned(), conc_base.to_owned());
+        // A plain `T` takes the concrete argument as written, `?` included
+        // (`State<Apple?>`: `T = Apple?`); a declared `T?` takes the non-null.
+        let bound = if declared.trim().is_nullable() {
+            conc_base
+        } else {
+            concrete.trim()
+        };
+        map.insert(decl_base.to_owned(), bound.to_owned());
         return;
     }
     // Otherwise recurse into type arguments.

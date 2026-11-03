@@ -7,8 +7,8 @@ use crate::StrExt;
 
 use super::ensure_file_data;
 use super::infer_lines::{
-    extract_property_type_from_detail, extract_return_type_from_detail, find_rhs_str,
-    has_dot_after_first_call,
+    extract_property_type_from_detail, extract_return_nullability_from_detail,
+    extract_return_type_from_detail, find_rhs_str, has_dot_after_first_call, ReturnNullability,
 };
 use super::{walk_hierarchy, MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK};
 
@@ -1650,12 +1650,14 @@ pub(crate) fn find_fun_return_type_reachable_declared(
                     return Some(DeclaredReturn {
                         type_name,
                         declared_in: Some(written_in),
+                        nullability: extract_return_nullability_from_detail(&symbol.detail),
                     });
                 }
             } else if fallback.is_none() {
                 fallback = ret.map(|type_name| DeclaredReturn {
                     type_name,
                     declared_in: Some(loc.uri.clone()),
+                    nullability: ReturnNullability::Unknown,
                 });
             }
         }
@@ -1670,6 +1672,9 @@ pub(crate) fn find_fun_return_type_reachable_declared(
 pub(crate) struct DeclaredReturn {
     pub(crate) type_name: String,
     pub(crate) declared_in: Option<Url>,
+    /// Whether the declaration's stated return type is nullable; `Unknown`
+    /// where the lookup does not read it (`type_name` never carries the `?`).
+    pub(crate) nullability: ReturnNullability,
 }
 
 #[cfg(test)]
@@ -1745,6 +1750,7 @@ fn find_method_return_type_declared_scoped(
                 return Some(DeclaredReturn {
                     type_name,
                     declared_in: Some(written_in),
+                    nullability: ReturnNullability::Unknown,
                 });
             }
         }
@@ -2084,6 +2090,7 @@ fn find_extension_fn_return_type_scoped(
             return Some(DeclaredReturn {
                 type_name: ret,
                 declared_in: declaring_file,
+                nullability: ReturnNullability::Unknown,
             });
         }
         // detail may be truncated (120 char limit) — try the source lines.
@@ -2124,6 +2131,7 @@ fn find_extension_fn_return_type_scoped(
             return Some(DeclaredReturn {
                 type_name: ret,
                 declared_in: declaring_file,
+                nullability: ReturnNullability::Unknown,
             });
         }
     }
@@ -2166,6 +2174,7 @@ fn find_extension_fn_return_type_global(
                 return Some(DeclaredReturn {
                     type_name,
                     declared_in: Some(loc.uri.clone()),
+                    nullability: ReturnNullability::Unknown,
                 });
             }
         }
@@ -2262,6 +2271,7 @@ fn find_method_return_type_via_class_hierarchy(
     Some(DeclaredReturn {
         type_name: substituted,
         declared_in: Url::parse(class_uri).ok(),
+        nullability: ReturnNullability::Unknown,
     })
 }
 

@@ -52,6 +52,7 @@ use super::cst_symbol::{local_binding_at, local_binding_of, LocalBinding};
 use super::deps::{CallShape, InferDeps, ReceiverCall};
 use super::lambda::LAMBDA_RESULT_FNS;
 use super::type_subst::build_ext_fn_type_subst;
+use crate::resolver::ReturnNullability;
 
 // ─── public API ───────────────────────────────────────────────────────────────
 
@@ -181,14 +182,15 @@ fn infer_elvis_type(
     let (left_written, left_uri) = infer_initializer_type(left, bytes, deps, uri, depth + 1)?;
     let non_null_left = left_written.strip_nullable();
     let right_agrees = is_nothing_typed(right, bytes, deps, uri)
-        || infer_initializer_type(right, bytes, deps, uri, depth + 1).is_some_and(
-            |(right_written, right_uri)| {
-                let same_scope = left_uri == right_uri;
-                right_written == non_null_left
-                    && (same_scope
-                        || deps.same_type_in_scopes(non_null_left, &left_uri, &right_uri))
-            },
-        );
+        || (reports_its_nullability(right, bytes, deps, uri)
+            && infer_initializer_type(right, bytes, deps, uri, depth + 1).is_some_and(
+                |(right_written, right_uri)| {
+                    let same_scope = left_uri == right_uri;
+                    right_written == non_null_left
+                        && (same_scope
+                            || deps.same_type_in_scopes(non_null_left, &left_uri, &right_uri))
+                },
+            ));
     if !right_agrees {
         return None;
     }
@@ -199,6 +201,40 @@ fn infer_elvis_type(
                 infer_expr_type_at_depth(left, bytes, deps, uri, depth + 1)?;
             Some((left_type.strip_nullable().to_owned(), left_uri))
         }
+    }
+}
+
+/// Whether the type `infer_initializer_type` gives `expression` says if it
+/// can be null: a binding reads as written (`Apple?`), literals and
+/// constructor calls are never null, and a plain function call is as
+/// nullable as its declared return type. Other calls and member accesses read
+/// as a bare name that dropped its declared `?`, so they cannot establish
+/// agreement.
+fn reports_its_nullability(
+    expression: Node<'_>,
+    bytes: &[u8],
+    deps: &impl InferDeps,
+    uri: &Url,
+) -> bool {
+    match expression.kind() {
+        KIND_SIMPLE_IDENT | KIND_ELVIS_EXPR | KIND_PARENTHESIZED_EXPR => true,
+        KIND_STRING_LITERAL
+        | KIND_MULTILINE_STRING_LITERAL
+        | KIND_BOOLEAN_LITERAL
+        | KIND_CHARACTER_LITERAL => true,
+        KIND_CALL_EXPR => {
+            let is_plain_call = expression
+                .named_child(0)
+                .is_some_and(|callee| callee.kind() == KIND_SIMPLE_IDENT);
+            let Some(callee) = expression.call_fn_name(bytes).filter(|_| is_plain_call) else {
+                return false;
+            };
+            let is_constructor =
+                callee.starts_with_uppercase() && deps.has_type_definition(&callee);
+            is_constructor
+                || deps.find_fun_return_nullability(&callee, uri) == ReturnNullability::NonNull
+        }
+        _ => false,
     }
 }
 
@@ -288,7 +324,10 @@ fn infer_ident_type_in_form(
     let binding = local_binding_at(node, bytes);
     let binding_states_its_own_type = matches!(
         binding,
-        LocalBinding::Annotated { .. } | LocalBinding::Initialized { .. }
+        LocalBinding::Annotated { .. }
+            | LocalBinding::Initialized { .. }
+            | LocalBinding::Narrowed { .. }
+            | LocalBinding::Delegated { .. }
     );
     if !binding_states_its_own_type {
         if let Some(inferred) = deps.find_contextual_type(&name, uri, start.row, col) {
@@ -397,23 +436,62 @@ enum DelegateShape<'tree> {
     GetValueOperator,
 }
 
-fn delegate_shape<'tree>(delegate: Node<'tree>, bytes: &[u8]) -> DelegateShape<'tree> {
-    if delegate.kind() != KIND_CALL_EXPR {
+/// The delegate shape `delegate` has, when its callee really is the stdlib /
+/// Compose function its name suggests. A user-defined `lazy` or
+/// `mutableStateOf` (or a member of that name) is an ordinary delegate whose
+/// own `getValue` decides the value type.
+fn delegate_shape<'tree>(
+    delegate: Node<'tree>,
+    bytes: &[u8],
+    deps: &impl InferDeps,
+    uri: &Url,
+) -> DelegateShape<'tree> {
+    let is_plain_call = delegate.kind() == KIND_CALL_EXPR
+        && delegate
+            .named_child(0)
+            .is_some_and(|callee| callee.kind() == KIND_SIMPLE_IDENT);
+    if !is_plain_call {
         return DelegateShape::GetValueOperator;
     }
     let callee = delegate.call_fn_name(bytes);
     let lambda_result = trailing_lambda_last_expression(delegate);
+    let declares_other_return = |callee: &str, expected: &str| {
+        deps.find_fun_return_type_reachable(callee, uri)
+            .and_then(|declared| declared.bare_type_name())
+            .is_some_and(|declared| declared.last_segment() != expected)
+    };
     match (callee.as_deref(), lambda_result) {
-        (Some("lazy"), Some(result)) => DelegateShape::LazyLambda { result },
-        (Some(callee), Some(delegate)) if LAMBDA_RESULT_FNS.contains(&callee) => {
+        (Some("lazy"), Some(result)) if !declares_other_return("lazy", "Lazy") => {
+            DelegateShape::LazyLambda { result }
+        }
+        (Some(callee), Some(delegate))
+            if LAMBDA_RESULT_FNS.contains(&callee)
+                && returns_its_lambda_result(callee, deps, uri) =>
+        {
             DelegateShape::RememberedDelegate { delegate }
         }
-        (Some("mutableStateOf"), _) => match state_value_argument(delegate, bytes) {
-            Some(initial_value) => DelegateShape::MutableStateOf { initial_value },
-            None => DelegateShape::GetValueOperator,
-        },
+        (Some("mutableStateOf"), _) if !declares_other_return("mutableStateOf", "MutableState") => {
+            match state_value_argument(delegate, bytes) {
+                Some(initial_value) => DelegateShape::MutableStateOf { initial_value },
+                None => DelegateShape::GetValueOperator,
+            }
+        }
         _ => DelegateShape::GetValueOperator,
     }
+}
+
+/// Whether the reachable `callee` returns its lambda's result: its declared
+/// return type is one of its own type parameters (`fun <T> remember(..): T`),
+/// or no declaration is reachable to say otherwise.
+fn returns_its_lambda_result(callee: &str, deps: &impl InferDeps, uri: &Url) -> bool {
+    let Some(declared) = deps.find_fun_return_type_reachable(callee, uri) else {
+        return true;
+    };
+    let type_params = deps
+        .find_fun_callable_info(callee, None, uri)
+        .map(|info| info.type_params)
+        .unwrap_or_default();
+    type_params.contains(&declared)
 }
 
 /// The expression of `mutableStateOf`'s `value` parameter: the argument named
@@ -458,7 +536,7 @@ fn infer_delegated_value_type(
         crate::util::report_cst_depth_exceeded!("infer_delegated_value_type", delegate);
         return None;
     }
-    let shape = delegate_shape(delegate, bytes);
+    let shape = delegate_shape(delegate, bytes, deps, uri);
     let holds_a_value = matches!(
         shape,
         DelegateShape::LazyLambda { .. } | DelegateShape::MutableStateOf { .. }
@@ -509,10 +587,7 @@ fn infer_get_value_type(
     let holder = delegate_type.bare_type_name()?;
     let (value_type, written_in) =
         resolve_method_return_type_on(&holder, &delegate_type, "getValue", deps, &delegate_uri)
-            .or_else(|| {
-                extension_get_value_type(&holder, &delegate_type, deps, uri)
-                    .map(|value_type| (value_type, uri.clone()))
-            })?;
+            .or_else(|| extension_get_value_type(&holder, &delegate_type, deps, uri))?;
     let names_the_same_type = deps.names_type_in_scope(&value_type, uri)
         && deps.same_type_in_scopes(&value_type, &written_in, uri);
     names_the_same_type.then(|| (value_type, uri.clone()))
@@ -524,13 +599,15 @@ const GET_VALUE_ARGUMENT_COUNT: usize = 2;
 /// The `getValue` extension operator reachable from `uri`, when its receiver
 /// is the delegate's own type: its return type with the extension's type
 /// parameters (if any) bound from `delegate_type`, both read from the one
-/// declaration the delegate type selects.
+/// declaration the delegate type selects. The type is written in the
+/// declaration's file — or, where a type parameter stands for it, taken to be
+/// written in `uri`, since a type argument's own file is not tracked.
 fn extension_get_value_type(
     holder: &str,
     delegate_type: &str,
     deps: &impl InferDeps,
     uri: &Url,
-) -> Option<String> {
+) -> Option<(String, Url)> {
     let get_value_call = ReceiverCall {
         receiver_type: delegate_type,
         shape: CallShape {
@@ -551,10 +628,17 @@ fn extension_get_value_type(
         delegate_type,
         &extension.generics.type_params,
     );
-    Some(crate::indexer::apply_type_subst(
-        &extension.return_type,
-        &substitution,
-    ))
+    let head_is_substituted = extension
+        .return_type
+        .bare_type_name()
+        .is_some_and(|head| substitution.contains_key(&head));
+    let written_in = if head_is_substituted {
+        uri.clone()
+    } else {
+        extension.declared_in
+    };
+    let value_type = crate::indexer::apply_type_subst(&extension.return_type, &substitution);
+    Some((value_type, written_in))
 }
 
 /// The type of a local's initializer, keeping `?` and type arguments where
