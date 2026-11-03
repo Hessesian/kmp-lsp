@@ -906,7 +906,7 @@ fn infer_navigation_expr_type(
         .first_child_of_kind(KIND_NAV_SUFFIX)
         .and_then(|suffix| suffix.child(0))
         .is_some_and(|operator| operator.kind() == "?.");
-    if reads_through_safe_call && !member_type.is_nullable() {
+    if reads_through_safe_call && !is_nullable_value(&member_type) {
         return Some((as_nullable_type(&member_type), member_uri));
     }
     Some((member_type, member_uri))
@@ -1032,10 +1032,39 @@ fn infer_as_expr_type(node: Node<'_>, bytes: &[u8]) -> Option<String> {
     let is_safe_cast = (0..node.child_count() as u32)
         .filter_map(|i| node.child(i))
         .any(|child| child.utf8_text(bytes) == Ok("as?"));
-    if !is_safe_cast || type_text.is_nullable() {
+    if !is_safe_cast || is_nullable_value(&type_text) {
         return Some(type_text);
     }
     Some(as_nullable_type(&type_text))
+}
+
+/// Whether a value of `type_text` can be null. A bare function type ends with
+/// its return type, so `(Int) -> String?` is a non-null function whose
+/// result is nullable; only `((Int) -> String)?` is a nullable function value.
+fn is_nullable_value(type_text: &str) -> bool {
+    type_text.is_nullable() && !is_bare_function_type(type_text)
+}
+
+/// `(Int) -> String?`: a parenthesized parameter list, then `->`. A wrapped
+/// `((Int) -> String)?` is not: its first group closes only at the end.
+fn is_bare_function_type(type_text: &str) -> bool {
+    if !type_text.starts_with('(') {
+        return false;
+    }
+    let mut depth = 0usize;
+    for (index, char) in type_text.char_indices() {
+        match char {
+            '(' => depth += 1,
+            ')' => {
+                depth -= 1;
+                if depth == 0 {
+                    return type_text[index + 1..].trim_start().starts_with("->");
+                }
+            }
+            _ => {}
+        }
+    }
+    false
 }
 
 /// `type_text` made nullable. A bare function type is parenthesized first:

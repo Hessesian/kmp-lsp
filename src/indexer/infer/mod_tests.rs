@@ -2190,6 +2190,28 @@ fn safe_call_on_a_function_valued_member_makes_the_function_nullable() {
     );
 }
 
+/// A function whose return type is nullable is still a non-null function
+/// value: `?.` makes the function itself nullable.
+#[test]
+fn safe_call_on_a_function_valued_member_with_a_nullable_return_wraps_the_function() {
+    let source = "class Holder<T>(val value: T)\n\
+                  fun use(holder: Holder<(Int) -> String?>?) { val value = holder?.value; value }\n";
+    assert_eq!(
+        local_type_at(source, "value", 3).as_deref(),
+        Some("((Int) -> String?)?")
+    );
+}
+
+/// A cast to a function type that returns a nullable is not a nullable cast.
+#[test]
+fn safe_cast_to_a_function_type_with_a_nullable_return_wraps_the_function() {
+    let source = "fun use(any: Any) { val callback = any as? (Int) -> String?; callback }\n";
+    assert_eq!(
+        local_type_at(source, "callback", 1).as_deref(),
+        Some("((Int) -> String?)?")
+    );
+}
+
 #[test]
 fn member_of_a_receiver_with_a_nullable_type_argument_is_nullable() {
     let source = "class Apple\n\
