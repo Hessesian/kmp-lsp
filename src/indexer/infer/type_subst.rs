@@ -229,7 +229,7 @@ pub(super) fn try_substitute_ext_fn_type_param(
     deps: &impl InferDeps,
     uri: &Url,
 ) -> Option<String> {
-    let info = deps.find_fun_callable_info(fn_name, uri)?;
+    let info = deps.find_fun_callable_info(fn_name, None, uri)?;
     if !is_declared_type_param(raw_input, &info.type_params) {
         return None;
     }

@@ -29,7 +29,7 @@ const BYPASSES: &[Bypass] = &[
     Bypass {
         pattern: "resolver::infer::",
         allowed: &[
-            ("src/features/fill_when.rs", 3),
+            ("src/features/fill_when.rs", 2),
             ("src/features/hover.rs", 1),
             ("src/features/nullable_call_diagnostics.rs", 1),
             ("src/semantic_tokens/resolve.rs", 1),
@@ -41,10 +41,7 @@ const BYPASSES: &[Bypass] = &[
     },
     Bypass {
         pattern: "infer_variable_type",
-        allowed: &[
-            ("src/features/fill_when.rs", 1),
-            ("src/features/hover.rs", 1),
-        ],
+        allowed: &[("src/features/hover.rs", 1)],
     },
     Bypass {
         pattern: "infer_type_in_lines",

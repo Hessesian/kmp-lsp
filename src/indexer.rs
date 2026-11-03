@@ -43,8 +43,8 @@ pub(crate) use self::infer::{
         navigation_receiver_node, resolve_identity, resolve_identity_with_io,
         shape_filter_locations, NavigationSource, SymbolAtCursor, SymbolRole,
     },
-    deps::{CallShape, CallableInfo, InferDeps, OuterScopedParams, ShapeFiltered},
-    expr_type::{infer_expr_type, infer_expr_type_with_origin, infer_local_type_at},
+    deps::{CallShape, CallableInfo, InferDeps, OuterScopedParams, ReceiverCall, ShapeFiltered},
+    expr_type::{infer_expr_type, infer_expr_type_with_origin, infer_local_type_at, BindingType},
     it_this::{
         all_lambda_receivers_at, find_it_element_type, find_named_lambda_param_type,
         find_this_context, find_this_element_type, is_lambda_param, lambda_brace_pos_for_param,
@@ -52,11 +52,11 @@ pub(crate) use self::infer::{
     },
     lambda::{lambda_type_nth_input, lambda_type_receiver, RECEIVER_THIS_FNS, SCOPE_FUNCTIONS},
     sig::{
-        collect_all_fun_params_texts, collect_params_from_line, collect_signature,
-        find_fun_params_text_fast, find_fun_signature_full, find_fun_signature_with_receiver,
-        is_import_reachable, last_fun_param_type_str, nth_fun_param_type_str,
-        resolve_call_signature, split_params_at_depth_zero, strip_trailing_call_args, CallSite,
-        ResolutionScope, Signature,
+        candidate_applies_to_call, collect_all_fun_params_texts, collect_params_from_line,
+        collect_signature, declaration_signature, find_fun_params_text_fast,
+        find_fun_signature_full, find_fun_signature_with_receiver, is_import_reachable,
+        last_fun_param_type_str, nth_fun_param_type_str, resolve_call_signature,
+        split_params_at_depth_zero, strip_trailing_call_args, CallSite, ResolutionScope, Signature,
     },
     type_subst::{build_type_arg_subst, find_last_dot_at_depth_zero},
 };
@@ -543,7 +543,19 @@ impl InferDeps for Indexer {
             shape,
         )
     }
-    fn find_fun_callable_info(&self, fn_name: &str, uri: &Url) -> Option<CallableInfo> {
+    fn find_fun_callable_info(
+        &self,
+        fn_name: &str,
+        receiver: Option<ReceiverCall<'_>>,
+        uri: &Url,
+    ) -> Option<CallableInfo> {
+        if let Some(receiver) = receiver {
+            match receiver_bound_callable(self, fn_name, receiver, uri) {
+                ReceiverBoundCallable::Extension(info) => return info,
+                ReceiverBoundCallable::Member => return None,
+                ReceiverBoundCallable::NoApplicableExtension => {}
+            }
+        }
         // Workspace definitions first. The declaration the call actually binds
         // to (import/package-reachable from `uri`) decides; only when nothing
         // is reachable do the capped by-name candidates stand in — an
@@ -661,6 +673,84 @@ impl InferDeps for Indexer {
                 })
                 .unwrap_or(false)
         })
+    }
+}
+
+/// What a call on a known receiver type binds `fn_name` to, as far as the
+/// extension registry can tell.
+enum ReceiverBoundCallable {
+    /// An extension declared on the receiver (or its nearest supertype)
+    /// applies; carries its generic metadata, `None` when it declares no
+    /// type parameters. Final: a same-named overload for another receiver
+    /// must not stand in.
+    Extension(Option<CallableInfo>),
+    /// A member of the receiver's class takes the call and outranks any
+    /// extension: its generics are the class's own, substituted from the
+    /// receiver's type arguments, so there is no callable metadata.
+    Member,
+    /// No in-scope extension applies — an unindexed hierarchy.
+    NoApplicableExtension,
+}
+
+fn receiver_bound_callable(
+    indexer: &Indexer,
+    fn_name: &str,
+    receiver: ReceiverCall<'_>,
+    uri: &Url,
+) -> ReceiverBoundCallable {
+    use crate::StrExt as _;
+    let member_takes_the_call = infer::sig::member_takes_call(
+        indexer,
+        receiver.receiver_type.dotted_ident_prefix().as_str(),
+        fn_name,
+        receiver.shape,
+    );
+    if member_takes_the_call {
+        return ReceiverBoundCallable::Member;
+    }
+    let declarations = crate::resolver::extension_declarations_on(
+        indexer,
+        receiver.receiver_type,
+        fn_name,
+        uri,
+        receiver.shape,
+    );
+    if declarations.is_empty() {
+        return ReceiverBoundCallable::NoApplicableExtension;
+    }
+    let generic = declaration_selected_by_shape(indexer, &declarations, receiver.shape)
+        .filter(|symbol| !symbol.type_params().is_empty())
+        .map(|symbol| CallableInfo {
+            type_params: symbol.type_params().to_vec(),
+            extension_receiver_type: symbol.declared_extension_receiver().to_owned(),
+        });
+    ReceiverBoundCallable::Extension(generic)
+}
+
+/// The declaring symbol of the extension overload a call of `shape` binds —
+/// the same pick `find_method_params_text` makes for the parameter list.
+/// Without readable signatures, the first declaration stands in.
+fn declaration_selected_by_shape<'declarations>(
+    indexer: &Indexer,
+    declarations: &'declarations [crate::resolver::ExtensionDeclaration],
+    shape: CallShape,
+) -> Option<&'declarations crate::types::SymbolEntry> {
+    let mut symbols = Vec::new();
+    let mut signatures = Vec::new();
+    for declaration in declarations {
+        let Some(symbol) = declaration.symbol.as_ref() else {
+            continue;
+        };
+        if let Some(signature) = infer::sig::declaration_signature(indexer, declaration) {
+            symbols.push(symbol);
+            signatures.push(signature);
+        }
+    }
+    match infer::sig::best_candidate_index(&signatures, shape) {
+        Some(index) => Some(symbols[index]),
+        None => declarations
+            .iter()
+            .find_map(|declaration| declaration.symbol.as_ref()),
     }
 }
 
@@ -1176,23 +1266,36 @@ impl Indexer {
     /// library files by their interned URI first. Empty when `name` has no
     /// workspace definitions at all (as opposed to `find_in_workspace_defs`,
     /// which folds that into `None` via `f`).
+    ///
+    /// Ordered by URI, then position: `definitions` holds files in apply
+    /// order, which parallel indexing makes differ run to run, and every
+    /// caller takes the first usable candidate.
     pub(crate) fn workspace_def_candidates(&self, name: &str) -> Vec<Location> {
         let Some(locations) = self.definitions.get(name) else {
             return Vec::new();
         };
-        locations
+        let mut workspace_locations: Vec<_> = locations
             .iter()
             .filter_map(|sym_loc| {
                 let url = self.file_table.url(sym_loc.file)?;
                 if self.library_uris.contains(url.as_str()) {
                     return None;
                 }
-                Some(Location {
-                    uri: (*url).clone(),
-                    range: sym_loc.range,
-                })
+                Some((url, sym_loc.range))
             })
+            .collect();
+        workspace_locations.sort_unstable_by(|(left_url, left_range), (right_url, right_range)| {
+            let left_start = (left_range.start.line, left_range.start.character);
+            let right_start = (right_range.start.line, right_range.start.character);
+            (left_url.as_str(), left_start).cmp(&(right_url.as_str(), right_start))
+        });
+        workspace_locations
+            .into_iter()
             .take(MAX_BY_NAME_DEFS)
+            .map(|(url, range)| Location {
+                uri: (*url).clone(),
+                range,
+            })
             .collect()
     }
 

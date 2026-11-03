@@ -167,26 +167,27 @@ pub(crate) fn contributions_from_data(
     let file_stem = crate::path_util::file_stem_from_uri(uri);
 
     let mut definitions: HashMap<String, Vec<Location>> = HashMap::new();
-    let mut qualified: HashMap<String, Location> = HashMap::new();
 
     for sym in &file_data.symbols {
-        let loc = Location {
-            uri: uri.clone(),
-            range: sym.selection_range,
-        };
         definitions
             .entry(sym.name.clone())
             .or_default()
-            .push(loc.clone());
-        if let Some(ref pkg) = file_data.package {
-            qualified.insert(format!("{pkg}.{}", sym.name), loc.clone());
-            if let Some(ref stem) = file_stem {
-                if *stem != sym.name {
-                    qualified.insert(format!("{pkg}.{stem}.{}", sym.name), loc);
-                }
-            }
-        }
+            .push(Location {
+                uri: uri.clone(),
+                range: sym.selection_range,
+            });
     }
+    let qualified: HashMap<String, Location> =
+        build_qualified_keys(&file_data, file_stem.as_deref())
+            .into_iter()
+            .map(|(key, range)| {
+                let location = Location {
+                    uri: uri.clone(),
+                    range,
+                };
+                (key, location)
+            })
+            .collect();
 
     let mut packages: HashMap<String, Vec<String>> = HashMap::new();
     if let Some(ref pkg) = file_data.package {
@@ -285,17 +286,10 @@ pub(crate) fn stale_keys_for(uri: &Url, old_data: &FileData) -> StaleKeys {
 
     let definition_names: Vec<String> = old_data.symbols.iter().map(|s| s.name.clone()).collect();
 
-    let mut qualified_keys: Vec<String> = Vec::new();
-    if let Some(ref pkg) = old_data.package {
-        for sym in &old_data.symbols {
-            qualified_keys.push(format!("{pkg}.{}", sym.name));
-            if let Some(ref stem) = file_stem {
-                if *stem != sym.name {
-                    qualified_keys.push(format!("{pkg}.{stem}.{}", sym.name));
-                }
-            }
-        }
-    }
+    let qualified_keys: Vec<String> = build_qualified_keys(old_data, file_stem.as_deref())
+        .into_iter()
+        .map(|(key, _)| key)
+        .collect();
 
     StaleKeys {
         definition_names,

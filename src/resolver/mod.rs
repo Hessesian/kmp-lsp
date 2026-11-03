@@ -34,7 +34,8 @@ pub(crate) use complete::symbols_from_uri_as_completions_pub;
 #[cfg(test)]
 pub(crate) use complete::{complete_symbol, complete_symbol_with_context, is_annotation_context};
 pub(crate) use extension::{
-    resolve_implicit_receiver_callee, resolve_receiver_callee_in_type_scope,
+    extension_declarations_on, resolve_implicit_receiver_callee,
+    resolve_receiver_callee_in_type_scope, ExtensionDeclaration,
 };
 pub(crate) use hierarchy::ReceiverTypeAgreement;
 pub(crate) use hierarchy::{walk_hierarchy, MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK};

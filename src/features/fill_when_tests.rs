@@ -1274,3 +1274,140 @@ fn diagnostics_field_chain_root_inferred_type_ignores_homonymous_class() {
         messages[0]
     );
 }
+
+/// A lambda parameter the engine cannot type is the subject; another
+/// function's same-named `value: Color` must not stand in for it.
+#[test]
+fn diagnostics_untypable_lambda_parameter_subject_borrows_no_sibling_type() {
+    let messages = missing_branch_messages(
+        "\
+fun other(value: Color) {}
+fun handle() {
+    mystery { value ->
+        when (value) {
+            Color.RED -> {}
+        }
+    }
+}
+",
+    );
+    assert!(messages.is_empty(), "subject type is unknown: {messages:?}");
+}
+
+/// The same for the root of a field-chain subject.
+#[test]
+fn diagnostics_untypable_lambda_parameter_chain_root_borrows_no_sibling_type() {
+    let messages = missing_branch_messages(
+        "\
+class First(val shade: Color)
+fun other(holder: First) {}
+fun handle() {
+    mystery { holder ->
+        when (holder.shade) {
+            Color.RED -> {}
+        }
+    }
+}
+",
+    );
+    assert!(
+        messages.is_empty(),
+        "chain root type is unknown: {messages:?}"
+    );
+}
+
+/// The common real-world shape: `forEach`'s parameter is typed from its
+/// receiver, never from another function's same-named `value: Size` (it used
+/// to report SMALL/LARGE).
+#[test]
+fn diagnostics_for_each_lambda_parameter_subject_is_typed_from_its_receiver() {
+    let messages = missing_branch_messages(
+        "\
+fun other(value: Size) {}
+fun handle(colors: List<Color>) {
+    colors.forEach { value ->
+        when (value) {
+            Color.RED -> {}
+        }
+    }
+}
+",
+    );
+    assert_eq!(messages.len(), 1, "expected one diagnostic: {messages:?}");
+    assert!(
+        messages[0].contains("GREEN") && !messages[0].contains("LARGE"),
+        "subject is a Color, never other()'s Size: {}",
+        messages[0]
+    );
+}
+
+/// A local declared inside the lambda shadows the lambda parameter of the
+/// same name: the subject is the local's `Size`, not the parameter's `Color`.
+#[test]
+fn diagnostics_local_shadowing_lambda_parameter_subject_is_typed_from_the_local() {
+    let messages = missing_branch_messages(
+        "\
+fun consume(block: (Color) -> Unit) {}
+fun handle() {
+    consume { value ->
+        val value: Size = Size.SMALL
+        when (value) {
+            Size.SMALL -> {}
+        }
+    }
+}
+",
+    );
+    assert_eq!(messages.len(), 1, "expected one diagnostic: {messages:?}");
+    assert!(
+        messages[0].contains("LARGE") && !messages[0].contains("GREEN"),
+        "subject is the shadowing local's Size, not the parameter's Color: {}",
+        messages[0]
+    );
+}
+
+/// A type annotation (`@Ann Color`) is not the type.
+#[test]
+fn diagnostics_annotated_parameter_subject_is_typed_past_its_annotation() {
+    let messages = missing_branch_messages(
+        "\
+annotation class Ann
+fun other(value: Size) {}
+fun handle(value: @Ann Color) {
+    when (value) {
+        Color.RED -> {}
+    }
+}
+",
+    );
+    assert_eq!(messages.len(), 1, "expected one diagnostic: {messages:?}");
+    assert!(
+        messages[0].contains("GREEN") && !messages[0].contains("LARGE"),
+        "subject is the annotated Color parameter: {}",
+        messages[0]
+    );
+}
+
+/// The same for the root of a field-chain subject.
+#[test]
+fn diagnostics_annotated_chain_root_is_typed_past_its_annotation() {
+    let messages = missing_branch_messages(
+        "\
+annotation class Ann
+class First(val shade: Color)
+class Second(val shade: Size)
+fun other(holder: Second) {}
+fun handle(holder: @Ann First) {
+    when (holder.shade) {
+        Color.RED -> {}
+    }
+}
+",
+    );
+    assert_eq!(messages.len(), 1, "expected one diagnostic: {messages:?}");
+    assert!(
+        messages[0].contains("GREEN") && !messages[0].contains("LARGE"),
+        "chain root is the annotated First parameter: {}",
+        messages[0]
+    );
+}

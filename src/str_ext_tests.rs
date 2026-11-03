@@ -85,3 +85,14 @@ fn strip_variance_removes_only_a_leading_projection() {
     assert_eq!("input.Foo".strip_variance(), "input.Foo");
     assert_eq!("out Foo<in Bar>".strip_variance(), "Foo<in Bar>");
 }
+
+#[test]
+fn bare_type_name_drops_type_arguments_and_nullability() {
+    assert_eq!("List<Apple>?".bare_type_name().as_deref(), Some("List"));
+    assert_eq!(
+        "Outer.Inner".bare_type_name().as_deref(),
+        Some("Outer.Inner")
+    );
+    assert_eq!("(Int) -> Unit".bare_type_name(), None);
+    assert_eq!("".bare_type_name(), None);
+}

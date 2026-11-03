@@ -32,6 +32,14 @@ pub(crate) struct CallableInfo {
     pub extension_receiver_type: String,
 }
 
+/// A call on a known receiver type: what selects among same-named extensions
+/// declared on it.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct ReceiverCall<'receiver> {
+    pub(crate) receiver_type: &'receiver str,
+    pub(crate) shape: CallShape,
+}
+
 /// Shape of a call's actual arguments: how many sit inside the parens, and
 /// whether a trailing lambda follows. Used to pick the right candidate when a
 /// receiver type has more than one same-named, same-arity member — e.g.
@@ -269,12 +277,23 @@ pub(crate) trait InferDeps {
         None
     }
 
-    /// Return callable metadata (type params + extension receiver type) for a
-    /// function resolved by name.  Used to apply generic type substitution when
-    /// a lambda parameter type is a generic type parameter.
+    /// Return callable metadata (type params + extension receiver type) for
+    /// `fn_name`.  Used to apply generic type substitution when a lambda
+    /// parameter type is a generic type parameter.
+    ///
+    /// With the call's receiver, the metadata is the extension that receiver
+    /// binds to (its own type, else nearest supertype) and the call's shape
+    /// selects — the same declaration `find_method_params_text` reads the
+    /// parameters from; without one,
+    /// or when no extension applies, the function is resolved by name.
     ///
     /// The default implementation returns `None`; overridden by `Indexer`.
-    fn find_fun_callable_info(&self, _fn_name: &str, _uri: &Url) -> Option<CallableInfo> {
+    fn find_fun_callable_info(
+        &self,
+        _fn_name: &str,
+        _receiver: Option<ReceiverCall<'_>>,
+        _uri: &Url,
+    ) -> Option<CallableInfo> {
         None
     }
 
@@ -538,7 +557,12 @@ impl InferDeps for TestDeps {
             .get(&(class_name.to_string(), method_name.to_string()))
             .cloned()
     }
-    fn find_fun_callable_info(&self, fn_name: &str, _uri: &Url) -> Option<CallableInfo> {
+    fn find_fun_callable_info(
+        &self,
+        fn_name: &str,
+        _receiver: Option<ReceiverCall<'_>>,
+        _uri: &Url,
+    ) -> Option<CallableInfo> {
         self.callable_infos.get(fn_name).cloned()
     }
     fn find_contextual_type(

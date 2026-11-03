@@ -33,7 +33,9 @@ use crate::types::{FileData, FileIndexResult, Visibility};
 ///      them, so older caches must be rejected and rescanned.
 /// v33: a nullable extension receiver (`fun <T> T?.f()`) keeps its `?` in
 ///      `extension_receiver_type` — older caches stored it empty.
-pub(crate) const CACHE_VERSION: u32 = 33;
+/// v34: class members no longer get a `pkg.member` entry in the stored
+///      `qualified_keys` — older caches would replay the colliding key.
+pub(crate) const CACHE_VERSION: u32 = 34;
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -177,11 +179,14 @@ pub(crate) fn cache_entry_to_file_result(uri: &Url, entry: &FileCacheEntry) -> F
 
 /// Compute qualified map keys for a single file.
 ///
-/// Returns one or two `(key, selection_range)` pairs per symbol:
-/// - `"pkg.SymName"`
+/// Returns up to two `(key, selection_range)` pairs per symbol:
+/// - `"pkg.SymName"` — top-level symbols only: Kotlin cannot import a class
+///   member as `pkg.member`, and letting a member write it would race a
+///   same-named top-level declaration for the key under parallel apply
 /// - `"pkg.FileStem.SymName"` (only when file stem differs from the symbol name)
 ///
-/// Used at save time so fast-path loading can skip `format!()` entirely.
+/// The single source of the workspace `qualified` keys: the live apply path,
+/// the cache fast path and stale-key removal all derive from it, so they agree.
 pub(crate) fn build_qualified_keys(
     file_data: &FileData,
     file_stem: Option<&str>,
@@ -191,7 +196,9 @@ pub(crate) fn build_qualified_keys(
     };
     let mut out = Vec::with_capacity(file_data.symbols.len() * 2);
     for sym in &file_data.symbols {
-        out.push((format!("{pkg}.{}", sym.name), sym.selection_range));
+        if sym.container.is_none() {
+            out.push((format!("{pkg}.{}", sym.name), sym.selection_range));
+        }
         if let Some(stem) = file_stem {
             if stem != sym.name {
                 out.push((format!("{pkg}.{stem}.{}", sym.name), sym.selection_range));

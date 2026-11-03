@@ -366,17 +366,18 @@ fun use() { lazyLoad { it. }
 #[test]
 fn nested_class_qualified_key() {
     // AccountContract.kt defines a sealed class State nested inside it.
-    // The qualified index should store BOTH:
-    //   "com.example.State"                    (primary)
-    //   "com.example.AccountContract.State"    (nested — matches import path)
+    // The qualified index stores it under its import path
+    //   "com.example.AccountContract.State"
+    // and NOT under "com.example.State": that FQN names a top-level `State`,
+    // and a nested class claiming it would race one for the key.
     let uri = uri("/AccountContract.kt");
     let idx = Indexer::new();
     idx.index_content(&uri,
         "package com.example\nclass AccountContract {\n  sealed class State\n  sealed class Event\n}");
 
     assert!(
-        idx.qualified.contains_key("com.example.State"),
-        "primary qualified key missing"
+        !idx.qualified.contains_key("com.example.State"),
+        "a nested class must not own the top-level FQN"
     );
     assert!(
         idx.qualified
@@ -3523,7 +3524,7 @@ fn jar_callable_info_prefers_an_importable_declaration_over_build_tooling() {
     );
 
     let info = idx
-        .find_fun_callable_info("collect", &caller_uri)
+        .find_fun_callable_info("collect", None, &caller_uri)
         .expect("one of the two declarations must resolve");
     assert_eq!(
         info.type_params,
@@ -3551,7 +3552,7 @@ fn callable_info_reports_a_non_generic_type_param_receiver() {
     );
 
     let info = idx
-        .find_fun_callable_info("required", &uri)
+        .find_fun_callable_info("required", None, &uri)
         .expect("`required` declares a type parameter");
 
     assert_eq!(info.type_params, vec!["T".to_string()]);
@@ -3569,7 +3570,7 @@ fn callable_info_reports_a_plain_type_param_receiver_without_a_nullable_marker()
     idx.index_content(&uri, "package p\nfun <T> T.echo(): T = this\n");
 
     let info = idx
-        .find_fun_callable_info("echo", &uri)
+        .find_fun_callable_info("echo", None, &uri)
         .expect("`echo` declares a type parameter");
 
     assert_eq!(info.extension_receiver_type, "T");
@@ -3590,11 +3591,246 @@ fn callable_info_prefers_the_reachable_declaration_over_an_unrelated_generic_one
     let caller = Url::parse("file:///t/b/Caller.kt").unwrap();
     idx.index_content(&caller, "package b\nfun use() { 1.foo() }\n");
 
-    let info = idx.find_fun_callable_info("foo", &caller);
+    let info = idx.find_fun_callable_info("foo", None, &caller);
 
     assert!(
         info.is_none(),
         "the call binds to the non-generic same-package `foo`, which declares no \
          type parameters; got {info:?}"
     );
+}
+
+// ── Lambda parameter of a same-named, receiver-overloaded extension ─────────
+//
+// `mapIndexed` / `joinToString` exist for many receivers (`Iterable<T>`,
+// `Array<out T>`, `CharSequence`, primitive arrays, ...). The lambda's
+// parameter type must come from the overload the call's receiver binds to —
+// the receiver's own type, else its nearest supertype — never from whichever
+// same-named declaration a by-name scan meets first (JAR load order, which
+// varies between sessions).
+
+const OVERLOADED_EXTENSIONS_CALLER: &str = concat!(
+    "package app\n",
+    "import lib.Lst\n",
+    "import lib.mapIndexed\n",
+    "import lib.joinStr\n",
+    "class Bullet(val text: String)\n",
+    "class Texts(val bullets: Lst<Bullet>, val words: Lst<String>)\n",
+    "fun render(texts: Texts) {\n",
+    "    texts.bullets.mapIndexed { index, bullet ->\n",
+    "        bullet.text\n",
+    "    }\n",
+    "    texts.words.joinStr(separator = \"\") {\n",
+    "        it.length\n",
+    "    }\n",
+    "}\n",
+);
+
+/// Index `lib` with the competing `CharSequence`/`Array` overloads declared
+/// before (`competing_first`) or after the `Iterable` ones the calls bind to.
+fn index_overloaded_extensions(competing_first: bool) -> (Indexer, Url) {
+    let idx = Indexer::new();
+    let types = concat!(
+        "package lib\n",
+        "interface Iter<out T>\n",
+        "interface Lst<out E> : Iter<E>\n",
+        "class Arr<T>\n",
+    );
+    let competing = concat!(
+        "fun <R> CharSequence.mapIndexed(transform: (Int, Char) -> R): Lst<R> = TODO()\n",
+        "fun <T> Arr<out T>.joinStr(separator: CharSequence = \"\"): String = TODO()\n",
+    );
+    let bound = concat!(
+        "fun <T, R> Iter<T>.mapIndexed(transform: (Int, T) -> R): Lst<R> = TODO()\n",
+        "fun <T> Iter<T>.joinStr(separator: CharSequence = \"\", transform: ((T) -> CharSequence)? = null): String = TODO()\n",
+    );
+    let library = if competing_first {
+        format!("{types}{competing}{bound}")
+    } else {
+        format!("{types}{bound}{competing}")
+    };
+    idx.index_content(&uri("/lib/Collections.kt"), &library);
+    let caller = uri("/app/Render.kt");
+    idx.index_content(&caller, OVERLOADED_EXTENSIONS_CALLER);
+    idx.store_live_tree(&caller, OVERLOADED_EXTENSIONS_CALLER);
+    (idx, caller)
+}
+
+fn assert_lambda_params_bind_to_receiver_overload(competing_first: bool) {
+    let (idx, caller) = index_overloaded_extensions(competing_first);
+    let bullet = idx.infer_lambda_param_type_at("bullet", &caller, Position::new(8, 8));
+    assert_eq!(
+        bullet.as_deref(),
+        Some("Bullet"),
+        "`Lst<Bullet>.mapIndexed` binds to `Iter<T>.mapIndexed` (Lst's supertype), \
+         not `CharSequence.mapIndexed`; got {bullet:?}"
+    );
+    let it = idx.infer_lambda_param_type_at("it", &caller, Position::new(11, 8));
+    assert_eq!(
+        it.as_deref(),
+        Some("String"),
+        "`Lst<String>.joinStr {{ }}` binds to `Iter<T>.joinStr(.., transform)`, \
+         not the lambda-less `Arr<out T>.joinStr`; got {it:?}"
+    );
+}
+
+#[test]
+fn lambda_param_binds_to_receiver_overload_when_competing_overload_is_declared_first() {
+    assert_lambda_params_bind_to_receiver_overload(true);
+}
+
+#[test]
+fn lambda_param_binds_to_receiver_overload_when_competing_overload_is_declared_last() {
+    assert_lambda_params_bind_to_receiver_overload(false);
+}
+
+// ── Same-receiver extension overloads: signature and generics agree ─────────
+//
+// Two extensions on the same receiver differ only by call shape. The lambda's
+// parameter type and the generic metadata that substitutes it must come from
+// the SAME declaration — the one the call's shape selects.
+
+/// `Iter<E>.visit(limit, action)` is declared before `Iter<T>.visit(action)`;
+/// `items.visit { item -> }` binds the second, so `item` is the element type
+/// (not an unsubstituted `T` read against the first overload's `E`).
+fn lambda_param_for_same_receiver_overloads(first_declares_limit: bool) -> Option<String> {
+    let idx = Indexer::new();
+    let with_limit = "fun <E> Iter<E>.visit(limit: Int, action: (E) -> Unit) {}\n";
+    let trailing = "fun <T> Iter<T>.visit(action: (T) -> Unit) {}\n";
+    let functions = if first_declares_limit {
+        format!("{with_limit}{trailing}")
+    } else {
+        format!("{trailing}{with_limit}")
+    };
+    let library =
+        format!("package lib\ninterface Iter<out T>\ninterface Lst<out E> : Iter<E>\n{functions}");
+    idx.index_content(&uri("/lib/Visit.kt"), &library);
+    let caller_source = concat!(
+        "package app\n",
+        "import lib.Lst\n",
+        "import lib.visit\n",
+        "class Apple(val seeds: Int)\n",
+        "fun render(items: Lst<Apple>) {\n",
+        "    items.visit { item ->\n",
+        "        item.seeds\n",
+        "    }\n",
+        "}\n",
+    );
+    let caller = uri("/app/Render.kt");
+    idx.index_content(&caller, caller_source);
+    idx.store_live_tree(&caller, caller_source);
+    idx.infer_lambda_param_type_at("item", &caller, Position::new(6, 8))
+}
+
+#[test]
+fn lambda_param_uses_generics_of_the_shape_selected_overload_declared_last() {
+    assert_eq!(
+        lambda_param_for_same_receiver_overloads(true).as_deref(),
+        Some("Apple")
+    );
+}
+
+#[test]
+fn lambda_param_uses_generics_of_the_shape_selected_overload_declared_first() {
+    assert_eq!(
+        lambda_param_for_same_receiver_overloads(false).as_deref(),
+        Some("Apple")
+    );
+}
+
+/// `Lst<T>` declares a `consume(count: Int)` member-like candidate on its own
+/// type that cannot take a trailing lambda; the inherited
+/// `Iter<T>.consume(action)` extension is what the call binds.
+#[test]
+fn lambda_param_falls_through_to_inherited_extension_when_direct_candidate_cannot_take_a_lambda() {
+    let idx = Indexer::new();
+    let library = concat!(
+        "package lib\n",
+        "interface Iter<out T>\n",
+        "interface Lst<out E> : Iter<E>\n",
+        "fun <E> Lst<E>.consume(count: Int) {}\n",
+        "fun <T> Iter<T>.consume(action: (T) -> Unit) {}\n",
+    );
+    idx.index_content(&uri("/lib/Consume.kt"), library);
+    let caller_source = concat!(
+        "package app\n",
+        "import lib.Lst\n",
+        "import lib.consume\n",
+        "class Apple(val seeds: Int)\n",
+        "fun render(items: Lst<Apple>) {\n",
+        "    items.consume { item ->\n",
+        "        item.seeds\n",
+        "    }\n",
+        "}\n",
+    );
+    let caller = uri("/app/Render.kt");
+    idx.index_content(&caller, caller_source);
+    idx.store_live_tree(&caller, caller_source);
+    let item = idx.infer_lambda_param_type_at("item", &caller, Position::new(6, 8));
+    assert_eq!(item.as_deref(), Some("Apple"));
+}
+
+/// A member applicable to the call wins over a same-named extension on a
+/// supertype: its class-level `E` is substituted from the receiver, and the
+/// extension's `T` metadata must not stand in.
+#[test]
+fn lambda_param_prefers_an_applicable_member_over_a_supertype_extension() {
+    let idx = Indexer::new();
+    let library = concat!(
+        "package lib\n",
+        "interface Iter<out T>\n",
+        "interface Lst<out E> : Iter<E> { fun each(action: (E) -> Unit) }\n",
+        "fun <T> Iter<T>.each(action: (T) -> Unit) {}\n",
+    );
+    idx.index_content(&uri("/lib/Each.kt"), library);
+    let caller_source = concat!(
+        "package app\n",
+        "import lib.Lst\n",
+        "import lib.each\n",
+        "class Apple(val seeds: Int)\n",
+        "fun render(items: Lst<Apple>) {\n",
+        "    items.each { item ->\n",
+        "        item.seeds\n",
+        "    }\n",
+        "}\n",
+    );
+    let caller = uri("/app/Render.kt");
+    idx.index_content(&caller, caller_source);
+    idx.store_live_tree(&caller, caller_source);
+    let item = idx.infer_lambda_param_type_at("item", &caller, Position::new(6, 8));
+    assert!(
+        matches!(item.as_deref(), None | Some("Apple")),
+        "the member's `E` is unknown or Apple, never a type parameter leaked \
+         through the extension's metadata; got {item:?}"
+    );
+}
+
+/// `Base.visit(block: (String) -> Unit)` is an inherited extension; the
+/// receiver-lambda member-like extension `Child.visit(block: Child.() -> Unit)`
+/// is applicable to `child.visit { }` and must win, so the lambda has no
+/// `String` parameter.
+#[test]
+fn trailing_lambda_prefers_applicable_receiver_lambda_extension_over_inherited() {
+    let idx = Indexer::new();
+    let library = concat!(
+        "package lib\n",
+        "open class Base\n",
+        "class Child : Base()\n",
+        "fun Base.visit(block: (String) -> Unit) {}\n",
+        "fun Child.visit(block: Child.() -> Unit) {}\n",
+    );
+    idx.index_content(&uri("/lib/Visit.kt"), library);
+    let caller_source = concat!(
+        "package app\n",
+        "import lib.Child\n",
+        "import lib.visit\n",
+        "fun render(child: Child) {\n",
+        "    child.visit { it }\n",
+        "}\n",
+    );
+    let caller = uri("/app/Render.kt");
+    idx.index_content(&caller, caller_source);
+    idx.store_live_tree(&caller, caller_source);
+    let implicit = idx.infer_lambda_param_type_at("it", &caller, Position::new(4, 18));
+    assert_ne!(implicit.as_deref(), Some("String"), "{implicit:?}");
 }

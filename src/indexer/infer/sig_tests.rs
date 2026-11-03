@@ -1060,3 +1060,64 @@ mod import_reachable {
         ));
     }
 }
+
+// ─── declaration_signature: compiled-JAR default markers ─────────────────────
+
+/// A compiled-JAR extension `fun Foo.bar(a: Int, b: Int = 0)` has no default
+/// markers in its signature, so its `required` count must not be trusted — the
+/// same declaration read from workspace source keeps its real `required`.
+#[test]
+fn declaration_signature_does_not_trust_required_count_of_compiled_jar_symbol() {
+    use crate::resolver::ExtensionDeclaration;
+    let idx = Indexer::new();
+    let source_uri = test_uri("/lib/Bar.kt");
+    idx.index_content(
+        &source_uri,
+        "package lib\nclass Foo\nfun Foo.bar(a: Int, b: Int) {}\n",
+    );
+    let source_file = idx.files.get(source_uri.as_str()).unwrap().clone();
+    let symbol = source_file
+        .symbols
+        .iter()
+        .find(|symbol| symbol.name == "bar")
+        .unwrap()
+        .clone();
+    let jar_uri = Url::parse("jar:file:///lib/lib.jar!/lib/BarKt.class").unwrap();
+    idx.jar_files.insert(jar_uri.to_string(), source_file);
+
+    let from_source = declaration_signature(
+        &idx,
+        &ExtensionDeclaration {
+            uri: source_uri,
+            symbol: Some(symbol.clone()),
+        },
+    )
+    .unwrap();
+    let from_compiled_jar = declaration_signature(
+        &idx,
+        &ExtensionDeclaration {
+            uri: jar_uri,
+            symbol: Some(symbol),
+        },
+    )
+    .unwrap();
+    assert_eq!(from_source.1, (2, 2));
+    assert_eq!(from_compiled_jar.1, (0, 2), "compiled-JAR required clamped");
+}
+
+// ─── is_lambda_shaped ────────────────────────────────────────────────────────
+
+#[test]
+fn receiver_function_types_are_lambda_shaped() {
+    for type_text in [
+        "Child.() -> Unit",
+        "suspend Child.(String) -> Unit",
+        "(Child.() -> Unit)?",
+        "(String) -> Unit",
+    ] {
+        assert!(is_lambda_shaped(type_text), "{type_text}");
+    }
+    for type_text in ["Child", "List<Child.Inner>", "() ", "Map<String, Int>"] {
+        assert!(!is_lambda_shaped(type_text), "{type_text}");
+    }
+}

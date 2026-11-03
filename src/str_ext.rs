@@ -18,6 +18,12 @@ pub(crate) trait StrExt {
     /// `is_id_char` or `.`. `"foo.Bar.baz()"` → `"foo.Bar.baz"`.
     fn dotted_ident_prefix(&self) -> String;
 
+    /// The bare (possibly dotted) name of a type as written, for exact-key
+    /// lookups by type name: `"List<Apple>?"` → `Some("List")`,
+    /// `"Outer.Inner"` → `Some("Outer.Inner")`. `None` when the type has no
+    /// name to look up, such as a function type `"(Int) -> Unit"`.
+    fn bare_type_name(&self) -> Option<String>;
+
     /// Returns the trailing dot-separated segment of a dotted path.
     /// `"com.example.Foo"` → `"Foo"`, `"Foo"` → `"Foo"`.
     fn last_segment(&self) -> &str;
@@ -77,6 +83,11 @@ impl StrExt for str {
         self.chars()
             .take_while(|&c| is_id_char(c) || c == '.')
             .collect()
+    }
+
+    fn bare_type_name(&self) -> Option<String> {
+        let name = self.trim_start().dotted_ident_prefix();
+        (!name.is_empty()).then_some(name)
     }
 
     #[inline]

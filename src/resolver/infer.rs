@@ -1,6 +1,6 @@
 use tower_lsp::lsp_types::{Location, Position, SymbolKind, Url};
 
-use crate::indexer::{infer_local_type_at, Indexer, InferDeps, NodeExt};
+use crate::indexer::{infer_local_type_at, BindingType, Indexer, InferDeps, NodeExt};
 use crate::types::FileData;
 use crate::LinesExt;
 use crate::StrExt;
@@ -184,21 +184,27 @@ pub(crate) fn infer_field_chain_type(
         // declared type. With a CST node, prefer the binding in scope at it
         // (a whole-file scan can find an unrelated same-named parameter/local
         // in a *different* function — see `LocalBinding`) before the
-        // line-scanning smart-cast check and the unscoped whole-file scan.
+        // line-scanning smart-cast check; the unscoped whole-file scan only
+        // runs for a root no local binds.
         let root = segments.first()?;
-        let (declared_type, anchor_uri) = match cst_point {
-            Some((point, source)) => infer_local_type_at(root, point, source, indexer, uri)
-                .or_else(|| {
-                    smart_cast_narrowed_type(indexer, root, uri, line, None)
-                        .map(|type_name| (type_name, uri.clone()))
-                })
-                .or_else(|| {
-                    infer_variable_type(indexer, root, uri)
-                        .map(|type_name| (type_name, uri.clone()))
-                })?,
-            None => smart_cast_narrowed_type(indexer, root, uri, line, None)
-                .or_else(|| infer_variable_type(indexer, root, uri))
-                .map(|type_name| (type_name, uri.clone()))?,
+        // `None`: no syntax tree to ask, so whether a local binds the root is
+        // unknown and only the line-based lookups can answer.
+        let scoped_binding: Option<BindingType> =
+            cst_point.map(|(point, source)| infer_local_type_at(root, point, source, indexer, uri));
+        let (declared_type, anchor_uri) = match scoped_binding {
+            Some(BindingType::Typed {
+                type_text,
+                declaring_uri,
+            }) => (type_text.bare_type_name()?, declaring_uri),
+            Some(BindingType::LocalUnknown) => {
+                smart_cast_narrowed_type(indexer, root, uri, line, None)
+                    .map(|type_name| (type_name, uri.clone()))?
+            }
+            Some(BindingType::NotLocal) | None => {
+                smart_cast_narrowed_type(indexer, root, uri, line, None)
+                    .or_else(|| infer_variable_type(indexer, root, uri))
+                    .map(|type_name| (type_name, uri.clone()))?
+            }
         };
         (1, declared_type, anchor_uri)
     };
@@ -1113,21 +1119,33 @@ fn find_field_type_in_class_impl(
 /// found. Shared by [`find_field_type_via_supertypes`] and
 /// [`find_method_return_type_via_supertypes_declared`] so neither anchors its walk on
 /// an unrelated same-named class elsewhere in the workspace.
-fn reachable_class_candidates(
+pub(super) fn reachable_class_candidates(
     indexer: &Indexer,
     class_base: &str,
     from_uri: Option<&Url>,
 ) -> Vec<Location> {
-    let mut candidates = from_uri
-        .map(|uri| super::resolve::resolve_type_index_only(indexer, class_base, uri))
-        .unwrap_or_default();
-    if candidates.is_empty() {
-        candidates = indexer.workspace_def_candidates(class_base);
-    }
+    let mut candidates = reachable_workspace_class_candidates(indexer, class_base, from_uri);
     if candidates.is_empty() {
         candidates = indexer.lookup_definitions(class_base);
     }
     candidates
+}
+
+/// [`reachable_class_candidates`] without the JAR-promoting last resort: the
+/// declaration `from_uri`'s imports/package/star imports name, else every
+/// same-named workspace class in the index's deterministic order.
+fn reachable_workspace_class_candidates(
+    indexer: &Indexer,
+    class_base: &str,
+    from_uri: Option<&Url>,
+) -> Vec<Location> {
+    let reachable = from_uri
+        .map(|uri| super::resolve::resolve_type_index_only(indexer, class_base, uri))
+        .unwrap_or_default();
+    if reachable.is_empty() {
+        return indexer.workspace_def_candidates(class_base);
+    }
+    reachable
 }
 
 /// Resolve `field_name`'s declared type by walking `class_name`'s ancestors —
@@ -1661,6 +1679,19 @@ pub(crate) fn find_method_return_type_declared(
     method_name: &str,
     from_uri: Option<&Url>,
 ) -> Option<DeclaredReturn> {
+    find_method_return_type_declared_scoped(indexer, type_name, method_name, from_uri, from_uri)
+}
+
+/// [`find_method_return_type_declared`] for a class whose NAME resolves in
+/// `class_scope` (the file the hierarchy walk found it through) while the
+/// extensions in scope stay those of the caller, `from_uri`.
+fn find_method_return_type_declared_scoped(
+    indexer: &Indexer,
+    type_name: &str,
+    method_name: &str,
+    class_scope: Option<&Url>,
+    from_uri: Option<&Url>,
+) -> Option<DeclaredReturn> {
     let type_base = type_name.last_segment();
 
     // Extension functions take precedence over member functions.
@@ -1670,8 +1701,10 @@ pub(crate) fn find_method_return_type_declared(
         return Some(declared);
     }
 
-    // Then check member functions (container-based), scoped + capped via the helper.
-    indexer.find_in_workspace_defs(type_base, |loc| {
+    // Then member functions of the `type_base` that `class_scope` names: dozens
+    // of features each declare their own same-named `TextsInteractor`.
+    let classes = reachable_workspace_class_candidates(indexer, type_base, class_scope);
+    classes.iter().find_map(|loc| {
         let file_data = indexer.files.get(loc.uri.as_str())?;
         for symbol in &file_data.symbols {
             if symbol.name != method_name {
@@ -2189,11 +2222,19 @@ fn find_method_return_type_via_class_hierarchy(
         caller,
         8,
         MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK,
-        |idx, super_name, _super_uri, _caller| {
-            find_method_return_type_declared(idx, super_name, method_name, from_uri)
-                .map(|declared| (super_name.to_owned(), declared))
-                .into_iter()
-                .collect()
+        |idx, super_name, super_uri, _caller| {
+            let ancestor_scope = Url::parse(super_uri).ok();
+            let class_scope = ancestor_scope.as_ref().or(from_uri);
+            find_method_return_type_declared_scoped(
+                idx,
+                super_name,
+                method_name,
+                class_scope,
+                from_uri,
+            )
+            .map(|declared| (super_name.to_owned(), declared))
+            .into_iter()
+            .collect()
         },
     );
     let (super_name, declared) = hits.into_iter().next()?;
@@ -2248,16 +2289,18 @@ fn substitute_direct_supertype_args(
     // -- see `supertype_targets` in hierarchy.rs), but `find_class_type_params`
     // matches against `FileData.symbols`' bare `name` field, so a qualified
     // spelling would silently miss and skip substitution entirely.
-    let super_type_params = find_class_type_params(indexer, super_name.last_segment());
+    let super_type_params = find_class_type_params(indexer, super_name.last_segment(), &uri);
     if super_type_params.is_empty() {
         return raw.to_owned();
     }
     apply_supertype_subst(raw, &super_type_params, type_args)
 }
 
-fn find_class_type_params(indexer: &Indexer, class_name: &str) -> Vec<String> {
-    indexer
-        .find_in_workspace_defs(class_name, |loc| {
+/// The type parameters of the `class_name` that `from_uri` names.
+fn find_class_type_params(indexer: &Indexer, class_name: &str, from_uri: &Url) -> Vec<String> {
+    reachable_workspace_class_candidates(indexer, class_name, Some(from_uri))
+        .iter()
+        .find_map(|loc| {
             let file_data = indexer.files.get(loc.uri.as_str())?;
             let symbol = file_data
                 .symbols

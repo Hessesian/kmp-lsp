@@ -719,12 +719,17 @@ fn locate_and_extract<'tree>(
     let (call_expr, raw_param_type) = find_enclosing_call_and_param(lambda, bytes, deps, uri)?;
     let extracted = lambda_type_nth_input(&raw_param_type, param_pos)?;
     let fn_name = call_expr.call_fn_name(bytes)?;
-    let callable = deps.find_fun_callable_info(&fn_name, uri);
-    let kind = classify_extracted_type(&extracted, &callable);
-
     // Attempt to resolve the call-site receiver type now, in stage 1, so stage 2
     // can make a typed decision about whether substitution is meaningful.
     let receiver_type = resolve_receiver_type(&call_expr, bytes, deps, uri);
+    let receiver_call = receiver_type
+        .as_deref()
+        .map(|receiver_type| super::deps::ReceiverCall {
+            receiver_type,
+            shape: call_shape_of(call_expr, bytes),
+        });
+    let callable = deps.find_fun_callable_info(&fn_name, receiver_call, uri);
+    let kind = classify_extracted_type(&extracted, &callable);
 
     Some(LambdaParamResolution {
         extracted_type: extracted,
@@ -1114,6 +1119,16 @@ fn receiver_aware_params(
             }
         }
     }
+    // A receiver expression (`a.b.split(' ').joinToString { }`) is no variable:
+    // type it from the chain, so the overload is picked by receiver rather
+    // than by name.
+    let is_expression_receiver = qualifier
+        .as_deref()
+        .is_some_and(|qualifier| !is_type_qualifier(qualifier));
+    let recv_type = match recv_type {
+        None if is_expression_receiver => resolve_receiver_type(&call_expr, bytes, deps, uri),
+        known => known,
+    };
     resolve_call_params(&fn_name, recv_type.as_deref(), deps, uri, shape)
 }
 

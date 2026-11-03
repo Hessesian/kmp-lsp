@@ -321,6 +321,8 @@ pub(crate) const KIND_EXTENSION_KW: &str = "extension";
 pub(crate) const KIND_TYPE_PARAMS: &str = "type_parameters";
 pub(crate) const KIND_TYPE_PARAM: &str = "type_parameter";
 pub(crate) const KIND_TYPE_ARGS: &str = "type_arguments";
+/// Annotations written on a type (`@Ann Foo`) — a sibling *before* the type.
+pub(crate) const KIND_TYPE_MODIFIERS: &str = "type_modifiers";
 
 // ─── Kotlin property / navigation / call node kinds ──────────────────────────
 pub(crate) const KIND_PROP_DECL: &str = "property_declaration";
