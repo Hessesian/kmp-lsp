@@ -1,14 +1,14 @@
 # Structured `ResolvedType` — Design (finishing "step 5: Sweep")
 
-**Status:** draft for maintainer review, 2026-11-03. Docs only; nothing here is implemented. The stack
-it was drafted against (#337/#338/#339) has since merged (`main` at `f5329570`); symbol names below are
-valid on `main`.
+**Status:** draft for maintainer review, 2026-11-03; docs only, nothing implemented. Drafted against
+the stack #337/#338/#339, now merged (`main` at `f5329570`); symbols cited are valid on `main`, counts in
+the Problem section may be off by a few. The open questions were answered on 2026-11-04, reviewed by an
+independent critique the same day (which re-measured the key numbers on the Moneta caches), and
+reconciled into the [Decisions](#decisions-formerly-open-questions), tagged *measured*, *read* or
+*inferred*. Claims marked *(unverified)* were not checked in code.
 **Finishes:** step 5 of `docs/superpowers/specs/2026-06-30-cst-resolution-unification-design.md`
 (the `RawTypeName`/`TypeName` split, construction-sealed outputs, exhaustive `CstExpr` dispatch), which
 `docs/superpowers/plans/2026-08-02-cst-catalogue-gap-closure.md` deferred and confirmed unstarted.
-**Read against:** the stack that became PRs #337/#338/#339 (now merged). This doc cites files and
-symbols, not line numbers. Counts and code observations were taken on the stack's tip before the last
-review rounds and may be off by a few. Claims marked *(unverified)* were not checked in code.
 
 ## Problem
 
@@ -59,12 +59,9 @@ comment 4445365912 on PR #338).
 Net: 34 of 38 comments are fixed by the mechanism in this design (per-slice mapping in
 [Regression suite](#regression-suite)); 4 are not.
 
-**A third review round came after this table was built.** Copilot left 15 more comments on #338/#339
-(the table above covers the first 38; 53 in total). 8 were fixed in the stack. 7 were valid and
-deliberately deferred; they fall into the same classes and are mapped to slices in
-[Deferred review comments](#deferred-review-comments). The three rounds gave 22, 16 and 15 comments:
-point fixes added new string operations that the next round then found gaps in, which is the argument
-for replacing the mechanism rather than extending the fixes.
+**A third round** left 15 more comments (53 in total): 8 fixed in the stack, 7 deferred to slices
+([Deferred review comments](#deferred-review-comments)). The rounds gave 22, 16 and 15 comments: each
+round's point fixes added string operations the next round found gaps in.
 
 ### Code observations (verified by reading the stack/3 tip, not by running tests)
 
@@ -93,7 +90,7 @@ for replacing the mechanism rather than extending the fixes.
 **Goals**
 1. One structured type value for the CST domain: identity, type arguments, nullability, function types
    and type parameters are fields, and every operation on them is a method in one module.
-2. Type identity is the *declaration*, fixed when the type is parsed in its declaring scope. A consumer
+2. Type identity is the class's `ClassId`, fixed when the type is parsed in its declaring scope. A consumer
    cannot re-anchor it to the caller.
 3. Pure typing rules (elvis, for-element, substitution, agreement) take resolved sub-types and return a
    type with no index access. Name resolution happens once, at parse-in.
@@ -107,7 +104,8 @@ for replacing the mechanism rather than extending the fixes.
   2026-06-30 design's non-goal; those files stay string-based and are only frozen by the ratchet.
 - Common-supertype (least upper bound) computation, supertype projection of generic arguments, and
   bounds checking. Each is explicitly unsupported and yields Unknown.
-- Changing the on-disk index or cache format (see [Open questions](#open-questions)).
+- Changing the on-disk index or cache format in S1–S5. A minimal sidecar change is decided later, from
+  the Slice 0 counter (decision 5).
 - The four comments named above as syntax or selection policy.
 
 ## The structured type
@@ -134,12 +132,17 @@ pub(crate) enum TypeHead {
     TypeParameter(TypeParameter),
     /// `(A, B) -> R`, `suspend R.(A) -> B`.
     Function(Box<FunctionType>),
-    /// Inference gave up: no common supertype, conflicting bindings, an `in`/`*`
-    /// argument read as a value, an unbound type parameter after a call.
+    /// Inference gave up: no common supertype, conflicting bindings, an unbound
+    /// type parameter after a call, `T & Any`, an intersection or context receiver.
     Unknown,
 }
 
-pub(crate) struct ClassIdentity(QualifiedName);       // `kotlin.collections.List`, `app.ui.Screen.State`
+pub(crate) enum ClassIdentity {                       // K2 `ClassId` (decision 2)
+    /// `kotlin.collections` / `List`, `app.ui` / `Screen.State`. Package and nested path interned.
+    Global { package: PackageName, path: RelativeClassName },
+    /// Local and anonymous classes: not addressable by name, never equal to a `Global`.
+    Local(DeclarationSite),
+}
 
 pub(crate) struct TypeParameter { name: Name, owner: TypeParameterOwner }
 pub(crate) enum TypeParameterOwner { Class(ClassIdentity), Callable(CallableIdentity) }
@@ -159,12 +162,12 @@ pub(crate) enum TypeEquality { Same, Different, Undetermined }
 
 ### Decisions
 
-**Identity is the qualified name, resolved at parse-in.** Alternatives considered:
+**Identity is the K2-style `ClassId`, resolved at parse-in.** Alternatives considered:
 
 | Option | For | Against |
 |---|---|---|
-| **`QualifiedName` (chosen)** | It is Kotlin's own type identity. `expect`/`actual` pairs and the same class in two JARs are one type. Comparable without the index, so the algebra stays pure. | Needs package + nesting path from a resolved `Location` *(unverified: whether the index exposes a file's package cheaply at every resolution site)*. |
-| Declaration `Location` | Already what `resolve_type_path_declarations` returns. | `expect`/`actual` and duplicate JARs compare unequal, which is wrong in a KMP server. |
+| **`ClassId` = package + nested path (chosen)** | Kotlin's own classifier identity. The same class in two JARs is one type (34% of JAR top-level classes appear in more than one JAR, *measured*). Package and path are separate, so `a.b`+`C` is not `a`+`b.C`. Comparable without the index, so the algebra stays pure. | Needs the nested path (decision 2). |
+| Declaration `Location` | Already what `resolve_type_path_declarations` returns. | Duplicate JAR classes compare unequal. |
 | Written path + scope, resolved lazily (today's `declaring_uri`, sealed) | Smallest step from today; no up-front resolution cost. | Equality needs the index, so typing rules cannot be pure. Nested arguments each need their own scope anyway. |
 
 Callables use `Location` because overloads share a qualified name. Type-parameter ownership must tell
@@ -183,18 +186,19 @@ projection with ignorance. Unbound parameters become `Unknown` arguments instead
 **Function types are a dedicated head, not `kotlin.FunctionN`.** Lambda inference (`cst_lambda.rs`)
 needs the receiver/parameters/return split directly, and the nullable-function display (`((A) -> B)?`)
 falls out of the structure: `nullability` belongs to the outer value, `returns.nullability` to the
-return. Parse-in should normalise `FunctionN<…>` spellings to this head if the sidecar emits them
-*(unverified: what spelling JAR signatures use)*.
+return. The sidecar already renders `kotlin/FunctionN` as lambda syntax (*read*); parse-in normalises
+a written `kotlin.Function1<…>` to this head. `FunctionType::class_identity()` gives
+`kotlin.FunctionN` / `kotlin.coroutines.SuspendFunctionN` for member lookup and supertypes (decision 4).
 
-**Nullability is two-valued.** Java platform types and definitely-non-null `T & Any` are not modelled.
-`T & Any` parses to `Unknown`; platform types are an open question.
+**Nullability is two-valued** (decision 3). On a `TypeParameter` head, `nullability` means "marked `?`
+at this use"; a bare `T` takes its nullability from the binding.
 
 ### Where strings legitimately remain
 
 | Boundary | Direction | Mechanism |
 |---|---|---|
 | CST type nodes (`user_type`, `nullable_type`, `function_type`, type arguments/projections) | in | `ResolvedType::from_syntax(node, bytes, &TypeScope, &impl NameResolver)`: structural lowering, no text parsing (honours the 2026-06-30 "CST is the source of structure" principle) |
-| Declaration text from the index or sidecar (`SymbolEntry` detail/return text, JAR signatures) | in | `ResolvedType::from_declaration_text(text, &TypeScope, &impl NameResolver)`: the **only** type-string parser in the crate, private to `kotlin_type.rs` |
+| Declaration text from the index or sidecar (`SymbolEntry` detail/return text, JAR signatures) | in | `ResolvedType::from_declaration_text(text, &TypeScope, &impl NameResolver)`: the **only** type-string parser in the CST domain, private to `kotlin_type.rs`; used only where no tree exists (decision 5) |
 | Hover, inlay, completion detail | out | `impl Display` (short names; parenthesises a nullable function type), plus `display_qualified()` |
 | Index-key lookups not yet migrated (`find_field_type(name, …)` etc.) | out | `TypePath` accessors on `ClassIdentity` / `Unresolved`, shrinking per slice |
 
@@ -215,7 +219,7 @@ Methods on `ResolvedType`. All are pure: no `InferDeps`, no `Url` arguments.
 | `substitute(&Substitution)` | Replace `TypeParameter` heads. `T?` with `T := Apple?` → `Apple?`. `T?` with `T := (A) -> B` → nullable function. Qualified paths are never touched because they are not parameters. | `apply_type_subst`, `apply_simple_subst`, `star_unbound_type_arguments` |
 | `Bindings::bind(declared, actual)` | Unify by structure. Different class heads → `Declined` (no supertype projection). A second, different binding for one parameter → `Conflicting`. Both read as `Unknown` when closed. | `build_ext_fn_type_subst`, `match_type_args_recursive`, `same_type_constructors`, `build_type_arg_subst`, `build_fn_subst` |
 | `close_unbound(owner)` | Each parameter of `owner` still unbound → `Unknown` argument. | `unbound_type_parameters` + `star_unbound_type_arguments` |
-| `read_argument(index)` | Value read through an argument: `Invariant`/`Out` → the type; `In`/`Star` → `Unknown`. | `readable_type_argument`, `first_type_arg_raw`, `type_args_inner` |
+| `read_argument(index)` | Value read through an argument, combining use-site with declaration-site variance: `Invariant`/`Out` → the type; `Star` → the parameter's upper bound (default `Any?`); `In` → `Any?`. Needs the class's declared parameters (variance, bounds) at lowering. | `readable_type_argument`, `first_type_arg_raw`, `type_args_inner` |
 | `function()` / `head()` | Accessors for shape tests. | `is_lambda_shaped`, `lambda_type_receiver`, `is_generic_param` |
 
 `Substitution` is keyed by `TypeParameter` (name **and** owner), so a class's `T` and a function's `T`
@@ -318,9 +322,9 @@ right → nullable join), `#338·6223` (parenthesised operand keeps its type), `
 | `Bindings` conflict or `Declined` | the parameter closes to `Unknown` |
 | member lookup on `Unknown` | `Unresolved` |
 | member lookup on `Unresolved { written, scope }` | today's by-name fallback; the result is parsed in the member declaration's own scope |
-| `read_argument` through `In`/`Star` | `Unknown` |
+| `read_argument` through `In`/`Star` | `Any?` / upper bound (not `Unknown`: these are known types) |
 | top level at `CstQuery` / `BindingType` | `Resolution::Unresolved` / `BindingType::LocalUnknown` |
-| display | top-level: no hint; nested: see open question 7 |
+| display | per surface, decision 7 |
 
 ## Departures from the 2026-06-30 design
 
@@ -333,7 +337,8 @@ right → nullable join), `#338·6223` (parenthesised operand keeps its type), `
 2. **One string parser is kept** (`from_declaration_text`), against the principle that string parsing is
    a mistake. JAR signatures and cached declaration text have no CST at query time. It is one function in
    one module, behind the ratchet. Where a tree is available (open files, and the unopened-file parse
-   memo from #339), `from_syntax` is preferred; see open question 10.
+   memo from #339), `from_syntax` is preferred; see decision 5. The string engine stays a string parser
+   by the non-goal, so "one parser" holds inside the CST domain only.
 3. **This is not the rejected cross-domain IR.** `ResolvedType` is a *type value*, not an expression
    representation. The string engine does not lower into it, and nothing outside `indexer/infer`
    produces one.
@@ -354,16 +359,24 @@ on the Moneta corpus before the next starts. The slices start from `main` after 
 fixes and tests are the baseline this design replaces mechanically.
 
 The order follows dependency first, then comments killed per slice. Identity (the largest class) needs
-the representation to exist; substitution needs owner identities; selection needs both.
+the representation to exist; substitution needs owner identities; selection needs both. There is no
+index-time stub slice: whether JAR types need sidecar or index work is decided from Slice 0's counter.
 
 | Slice | Scope | Kills (regression tests) | Main files |
 |---|---|---|---|
+| Slice 0 Residue counter (tiny) | A benchmark column counting `Unresolved` heads after lowering, split by declaration source (workspace / source JAR / compiled JAR); the JAR columns decide decision 5. Reported by every later slice. | none | `resolution-accuracy` CLI |
 | S1 Representation + nullability + shape | `kotlin_type.rs` (type, parse-in from CST and text, display, `without_null`/`nullable`/`read_argument`/`head`). Heads are `Unresolved`/`TypeParameter`/`Function`/`Unknown` only; no `Class` resolution yet. `expr_type.rs` internals move from `(String, Url)` to `ResolvedType`; `ExtensionReceiver` → `ResolvedType`. Bridge `Display` for unmigrated `chain.rs`. | `#338·6223`, `#339·9377`, `#339·8218`, `#337·7063`, `#339·8173`, `#339·8335`, `#339·9577` (7) | new `kotlin_type.rs`, `expr_type.rs`, `mod.rs`, `parser.rs`, `sig.rs` (`is_lambda_shaped`) |
-| S2 Identity | `NameResolver` + `ClassIdentity` resolution at parse-in, `same_type`, `join`. Elvis/`if`/agreement on identity. Delete the `(String, Url)` origin threading. | `#338·5912`, `#338·2949`, `#337·1982`, `#338·6084`, `#338·3128`, `#339·9202`, `#339·8120`, `#338·5829` (8) | `kotlin_type.rs`, `expr_type.rs`, `chain.rs`, `cst_lambda.rs`, `indexer.rs`, `deps.rs` |
-| S3 Substitution | `TypeParameter` owners, `Substitution`, `Bindings` (conflict-aware, `Declined` on constructor mismatch), explicit call-site type arguments, `close_unbound`. | `#338·6037`, `#339·9156`, `#339·9261`, `#339·9320`, `#339·8034`, `#339·8082`, `#338·3157`, `#339·8245` (8) | `type_subst.rs` (mostly deleted), `chain.rs`, `cst_lambda.rs`, `lookup.rs` |
+| S2 Identity | `NameResolver` + `ClassIdentity` resolution at parse-in (eager, per-request memo, latency gate: decision 1), builtin const table, `same_type`, `join`. Elvis/`if`/agreement on identity. Delete the `(String, Url)` origin threading. | `#338·5912`, `#338·2949`, `#337·1982`, `#338·6084`, `#338·3128`, `#339·9202`, `#339·8120`, `#338·5829` (8) | `kotlin_type.rs`, `expr_type.rs`, `chain.rs`, `cst_lambda.rs`, `indexer.rs`, `deps.rs` |
+| S3 Substitution | `TypeParameter` owners, `Substitution`, `Bindings` (conflict-aware, `Declined` on constructor mismatch), explicit call-site type arguments, `close_unbound`, `*`/`in` reads via declaration-site variance and bounds, member lookup through type-parameter upper bounds. | `#338·6037`, `#339·9156`, `#339·9261`, `#339·9320`, `#339·8034`, `#339·8082`, `#338·3157`, `#339·8245` (8) | `type_subst.rs` (mostly deleted), `chain.rs`, `cst_lambda.rs`, `lookup.rs` |
 | S4 Selected callable | `select_callable → Resolution<SelectedCallable>`. `StrategyOutcome` carries it; call return types come from it; delegate shortcuts gated on `kotlin`/`androidx.compose.runtime` identity; no `error`/`TODO` name check. | `#337·1816`, `#337·7007`, `#338·6127`, `#338·6179`, `#339·9091`, `#339·8293`, `#338·3007`, `#338·5946`, `#338·3087` (9) | `deps.rs`, `indexer.rs`, `sig.rs`, `chain.rs`, `expr_type.rs`, `cst_lambda.rs` |
-| S5 Sweep | `CstExpr` exhaustive dispatch; exhaustive `LocalBinding` consumers; private constructors; delete bridges and `TypeTextForm`; ratchet lowered to its floor; `StrExt` type helpers made private to `kotlin_type.rs` or deleted. | `#338·3056`, `#337·1711` (2) | `expr_type.rs`, `mod.rs`, `str_ext.rs`, `tests/architecture_ratchet.rs` |
+| S5 Sweep | `CstExpr` exhaustive dispatch; exhaustive `LocalBinding` consumers; private constructors; delete bridges and `TypeTextForm`; ratchet lowered to its floor; `StrExt` type helpers split into `TypeTextExt` (decision 8). | `#338·3056`, `#337·1711` (2) | `expr_type.rs`, `mod.rs`, `str_ext.rs`, `tests/architecture_ratchet.rs` |
 | Not covered | syntax extraction / call-selection policy | `#337·1913`, `#338·5997`, `#339·9449`, `#339·9526` (4) | out of scope |
+
+**"34 of 38" stands; one is a dependency.** An earlier answer claimed four of the 34 depend on index-time
+JAR stubs; the critique checked each against the code (*read*). Only `#338·5829` has a dependency, the
+builtin identity table, and a const array suffices. `#338·3087` and `#338·5143` need the *callable's*
+declaring package, which `SidecarSymbol.pkg` / `jar_symbol_packages` already carry (S4). `#338·3157` is
+substitution with `?` kept (S3). `#339·8173` is head recognition of a written FQN (S1).
 
 **What each slice deletes** (string helpers; counts from the stack/3 tip, excluding tests):
 
@@ -381,24 +394,21 @@ the representation to exist; substitution needs owner identities; selection need
   `unbound_type_parameters`, `is_nothing_typed`, CST-path `extract_return_type_from_detail` (15 total,
   part string engine), `find_class_type_params` by name (8).
 - **S5:** `ResolvedType::{as_type_str, type_path}` bridges, `TypeTextForm`; `StrExt::{strip_nullable,
-  is_nullable, strip_variance}` leave the public trait if no string-engine caller remains *(unverified:
-  string-engine reliance)*.
+  is_nullable, strip_variance}` move to `TypeTextExt` for the string engine (decision 8).
 
 **Risk per slice**
 
 | Slice | Main risk | Mitigation |
 |---|---|---|
-| S1 | Display round-trip changes hover/inlay text (spacing, `out` projections). | Snapshot hover/inlay strings before/after on the fixture suite; benchmark should show zero recall drift. |
-| S2 | Eager name resolution on hot paths (semantic tokens, inlay); recall loss where `Unresolved` used to compare "equal". | Per-request memo keyed by `(TypePath, file)` that lives only for one `CstQuery` request (snapshot-safe, AGENTS "no unsound lazy caching"); latency measured on the largest Moneta file; audit lost resolutions (open question 6). |
-| S3 | `*` → `Unknown` for unbound parameters changes inlay text; `Declined` loses some currently-correct-by-luck bindings. | Benchmark diff by symbol; sampled audit. |
+| S1 | Display round-trip changes hover/inlay text (spacing, `out` projections). | Snapshot hover/inlay strings before/after on the fixture suite; zero stable benchmark transitions (decision 6). |
+| S2 | Eager name resolution on hot paths (semantic tokens, inlay) and the JAR promotion it triggers; recall loss where `Unresolved` used to compare "equal". | Per-request memo only; latency gate (decision 1); acceptance rule (decision 6). |
+| S3 | Inlay hints with unbound arguments disappear (intended: `*` meant ignorance); `Declined` loses some currently-correct-by-luck bindings. | Count the vanished hints in the S3 report; acceptance rule (decision 6). |
 | S4 | Largest blast radius: the `InferDeps` surface, `TestDeps`, and `sig.rs` (1368 lines). | Land the trait method beside the old ones, migrate callers, delete in the same PR; `find_referencing_symbols` zero-check before each deletion. |
 | S5 | Low. | Compiler-driven. |
 
-**Benchmark caveat.** `resolution-accuracy` measures *recall*: a reference that resolves to the wrong
-type still counts as resolved. Turning wrong answers into `Unknown` (most of S2/S3) can therefore
-*lower* the reported number while improving correctness. Each slice reports the resolved-count delta
-plus a sample of lost resolutions classified as "was wrong" or "was right"; only "was right" losses are
-regressions.
+**Benchmark caveat.** `resolution-accuracy` measures *recall*: a wrong resolution still counts. Turning
+wrong answers into `Unknown` (most of S2/S3) can lower the number while improving correctness, so each
+slice is judged by decision 6.
 
 ## Regression suite
 
@@ -432,78 +442,168 @@ address.
 
 ## Enforcement
 
-### Ratchet: string-level type operations
+Four tiers, strongest first. A weaker tier is added only where a stronger one cannot reach.
 
-Add a second table to `tests/architecture_ratchet.rs`, reusing its literal-count walker, with a
-different root set and exclusion list:
+| Tier | Mechanism | Covers |
+|---|---|---|
+| 1. Delete | Each slice deletes the helpers it replaces (lists above). | the project helpers (`apply_type_subst(`, `is_generic_param(`, …) |
+| 2. Narrow visibility | Move `is_nullable`/`strip_nullable`/`strip_variance` out of `StrExt` into a `TypeTextExt` trait. One ratchet pattern, `TypeTextExt`, with a per-file allowed list: no new file imports it, and `src/indexer/infer` reaches zero by S5. | the three `StrExt` type helpers |
+| 3. clippy `disallowed-methods` | Only if tier 2 proves leaky. Verified in this bin-only repo by the critique (*measured*): `clippy.toml` listing `kmp_lsp::str_ext::StrExt::strip_nullable`, `allow` in `main.rs`, `deny` in `src/indexer/infer/mod.rs` gave 16 errors, all in `infer`, none elsewhere (also under `--tests`). It covers only the 3 trait methods, and a `crate::` path silently matches nothing, so it needs a canary (one banned call under `#[expect(clippy::disallowed_methods)]`). | the same three methods |
+| 4. Literal ratchet | Standard-library char surgery, which no path-based tool can ban without banning `ends_with` itself. | the table below |
 
-- **Roots:** all of `src/`. The string engine is included so its counts freeze, not shrink.
-- **Excluded:** `src/indexer/infer/kotlin_type.rs` (the one place these operations belong),
-  `src/str_ext.rs` (definitions), and files ending in `tests.rs`.
-- **Patterns** (literal substrings):
+**Literal ratchet.** A second table in `tests/architecture_ratchet.rs` with its counting rule
+(occurrences, `//` lines skipped) and contract (counts only go down, a file is never added). Roots: all
+of `src/`, so string-engine counts freeze. Excluded: `kotlin_type.rs`, `src/str_ext.rs`, `*tests.rs`.
+**Baseline on `main` `f5329570`**, as total / files / in `src/indexer/infer` (*measured* by the answers;
+the critique reproduced all 21 rows and the total of 130 exactly). Counts include the helpers' own `fn`
+definitions, inline `#[cfg(test)]` modules and one HTML `find('<')`; struck-out rows leave the table.
 
-| Pattern | Catches |
-|---|---|
-| `trim_matches('?')`, `trim_end_matches('?')`, `strip_suffix('?')`, `ends_with('?')`, `push('?')`, `}?")` | nullability surgery |
-| `.strip_nullable()`, `.is_nullable()`, `.strip_variance()` | `StrExt` type helpers |
-| `split('<')`, `find('<')`, `rfind('>')`, `type_args_inner(`, `split_top_level_commas(` | argument parsing |
-| `apply_type_subst(`, `is_generic_param(`, `build_ext_fn_type_subst(`, `build_type_arg_subst(` | substitution on text |
-| `same_type_in_scopes(`, `names_type_in_scope(` | identity by spelling |
-| `contains("->")` | function-type sniffing |
+| Pattern | Count | Pattern | Count | Pattern | Count |
+|---|---|---|---|---|---|
+| `trim_matches('?')` | 1 / 1 / 0 | `trim_end_matches('?')` | 2 / 1 / 0 | `strip_suffix('?')` | 0 / 0 / 0 |
+| `ends_with('?')` | 3 / 3 / 2 | `push('?')` | 0 / 0 / 0 | `}?")` | 4 / 3 / 2 |
+| ~~`.strip_nullable()`~~ | 25 / 10 / 16 | ~~`.is_nullable()`~~ | 6 / 5 / 4 | ~~`.strip_variance()`~~ | 6 / 3 / 5 |
+| `split('<')` | 6 / 5 / 1 | `find('<')` | 7 / 7 / 2 | `rfind('>')` | 2 / 2 / 1 |
+| `type_args_inner(` | 10 / 2 / 10 | `split_top_level_commas(` | 9 / 3 / 9 | `apply_type_subst(` | 14 / 9 / 8 |
+| `is_generic_param(` | 11 / 4 / 11 | `build_ext_fn_type_subst(` | 6 / 4 / 6 | `build_type_arg_subst(` | 4 / 3 / 3 |
+| `same_type_in_scopes(` | 6 / 4 / 5 | `names_type_in_scope(` | 5 / 4 / 4 | ~~`contains("->")`~~ | 3 / 3 / 2 |
 
-Same contract as the existing ratchet: counts only go down, a file is never added, and the fix is to
-ask `ResolvedType`. The scan is literal and over-counts: `find('<')` also matches non-type code. A
-frozen over-count is harmless; the ratchet only forbids growth.
-
-**Baseline:** TBD, produced on the merge commit of S1 with:
-
-```sh
-for pattern in "trim_matches('?')" "trim_end_matches('?')" "strip_suffix('?')" "ends_with('?')" \
-  "push('?')" '}?")' ".strip_nullable()" ".is_nullable()" ".strip_variance()" "split('<')" \
-  "find('<')" "rfind('>')" "type_args_inner(" "split_top_level_commas(" "apply_type_subst(" \
-  "is_generic_param(" "build_ext_fn_type_subst(" "build_type_arg_subst(" "same_type_in_scopes(" \
-  "names_type_in_scope(" 'contains("->")'; do
-  echo "== $pattern"
-  git grep -F -c "$pattern" -- 'src/*.rs' ':!*tests.rs' ':!src/str_ext.rs' ':!src/indexer/infer/kotlin_type.rs'
-done
-```
-
-(Without `:(glob)`, git pathspec `*` also matches `/`, so `src/*.rs` and `*tests.rs` cover nested files.)
+| Change | Pattern | Reason |
+|---|---|---|
+| Removed | `.is_nullable()`, `.strip_nullable()` | Collide with the API this design promotes (`.is_nullable()` already counts `ResolvedType::is_nullable`). Tier 2 covers the `StrExt` versions, and `.strip_variance()` with them. |
+| Widened | `}?")` → `}?"`; `contains("->")` → `"->"` | `}?")` misses `format!("{}?", x)` (`}?"`: 4 hits, critique). `"->"`: 7 (4 in `infer`). |
+| Added | `starts_with('(')` 7 (5), `strip_prefix("suspend` 2 (2), `starts_with('?')`, `'?' =>` | Paren hack, suspend sniffing (*measured*, answers); the last two were found by the critique in `resolver/infer_lines.rs`, baseline taken when added. |
+| Not added | `last_segment()` 31, `rsplit('.')` 17, one `take_while(… '?')` | Many legitimate non-type uses; leaf-name identity goes with `same_type_in_scopes`. The `take_while` spelling is too specific to recur. |
 
 ### Proposed AGENTS.md line (Code Quality section; not applied)
 
-> - **A type is a `ResolvedType`, never a string.** In `src/indexer/infer` and its callers, nullability, type arguments, substitution and identity are methods on `ResolvedType` (`src/indexer/infer/kotlin_type.rs`); don't strip or append `?`, split on `<`, or compare type text — `tests/architecture_ratchet.rs` counts it, lower a baseline, never raise it.
+> - **A type is a `ResolvedType`, never a string.** In `src/indexer/infer` and its callers, nullability, type arguments, substitution and identity are methods on `ResolvedType` (`src/indexer/infer/kotlin_type.rs`). Don't strip or append `?`, split on `<`, sniff `->` or compare type text, and don't import `TypeTextExt` in a new file. `tests/architecture_ratchet.rs` counts both; lower a baseline, never raise it.
 
-## Open questions
+## Decisions (formerly open questions)
 
-1. **Eager or lazy identity resolution?** *Recommend eager at parse-in with a per-request memo*, so the
-   algebra stays pure. Fall back to sealed lazy `(path, scope)` only if S2's latency measurement on
-   semantic tokens regresses past an agreed bound (proposal: p95 +10%).
-2. **`ClassIdentity` = qualified name or declaration `Location`?** *Recommend qualified name* (KMP
-   `expect`/`actual`, duplicate JARs). Needs confirmation that the package is cheap to obtain at every
-   resolution site *(unverified)*.
-3. **Java platform types.** *Recommend not modelling them now.* Java members parse as written. Add
-   `Nullability::Platform` only if the nullable-call diagnostic needs it.
-4. **Function types: dedicated head or `FunctionN` class?** *Recommend dedicated head*, normalising
-   `FunctionN` spellings at parse-in. Someone must check the sidecar's spelling first.
-5. **Store structured types in the index cache?** *Recommend no*: parse on read. A cache-format change
-   means a version bump and memory cost (see the memory-reduction effort). Revisit if parse-in shows in
-   profiles.
-6. **Recall-drop acceptance for S2/S3.** *Recommend:* accept any drop where a 50-reference sample of
-   lost resolutions is at least 80% "was wrong"; otherwise the slice is not done. *Data point:* the
-   benchmark of the final #339 tip against the previous tip lost 111 stable hits and gained 1,172. In a
-   62-loss sample only 19% of the old answers were wrong, so that comparison would have failed this
-   test, while the change as a whole was clearly positive (recall 95.0% → 95.4%). The rule should be
-   applied to the slice's net change with the gains reported next to it, and a loss class that
-   reproduces on a real pattern (as `mapCardItems` did) fixed before the slice merges. A flat 80% on
-   losses alone is too strict if gains are large; the maintainer should decide the bound.
-7. **Display of nested `Unknown`.** *Recommend:* inlay hints suppress any type containing `Unknown`
-   (visible text must be right); hover shows the declared type text when one exists, else the head with
-   `<…>`.
-8. **Ratchet scope: all of `src/` or the CST domain only?** *Recommend all of `src/`* (frozen string
-   engine counts cost nothing, and a new string op anywhere fails).
-9. **Start before or after #337–#339 merge?** *Decided: after.* They merged on 2026-11-03 (`main` at
-   `f5329570`). Their point fixes are now the baseline behaviour and their tests the red/green anchors.
-10. **Text parser for indexed source declarations, or always CST via the unopened-parse memo?**
-    *Recommend CST where the memo already holds a tree, text only for JAR/sidecar*, so the string parser
-    has one input class. Needs a memo hit-rate measurement in S1.
+Reconciled from the answers and the critique; where they disagreed on a number, the critique's
+re-measurement is used and noted. Numbers without a tag are *measured*. Question 9 (start after
+#337–#339) was already decided.
+
+**1. Identity resolves eagerly at lowering, with a per-request memo only.** A lazy `(path, scope)` head
+makes every equality an index query, so the pure algebra (goal 3) could not exist; the "lazy if p95
++10%" fallback is deleted. The memo belongs to one `CstQuery` request and is never cross-request: a
+name's answer depends on the whole index, and there is no index revision counter to key it on (AGENTS
+purity and snapshot rules). Costs:
+
+| Evidence | Value |
+|---|---|
+| Name resolution share, best case (`tokens --resolve`, 3 largest Moneta files) | 5–6.5% (140 ms of 2.8 s; inference dominates) |
+| `resolve_chain`, full corpus run | 41% of the run (164.5 s, 28.6 µs/call) |
+| `resolve_type_path_declarations` | ~40 µs/call (1.38 s / 34,014); 0–5 calls per request today, multiplied by eager lowering (+5–17% per 2.8 s request, *inferred*) |
+| JAR promotion (*read*) | resolution calls `ensure_jar_definitions_for`, promoting JAR symbols for every type name touched |
+
+*Gate:* S2 measures eager-lowering latency (`tokens --resolve`, largest Moneta files) and JAR promotions
+per request; no p95 regression beyond run-to-run noise. *If it regresses:* lower only the heads actually
+inspected (arguments on first read, complete once lowered), never a lazy identity.
+
+**2. `ClassIdentity` is a K2 `ClassId`** (`Global { package, path }` | `Local(site)`, parts interned).
+
+| Point | Decision and evidence |
+|---|---|
+| Name, not `Location` | JAR duplication: 21,950 of 63,847 JAR top-level classes (34%) live in more than one JAR. Not expect/actual: Moneta has 0 `expect` declarations and the index does not model them (*read*); KMP identity needs a fixture built for S2. `Indexer::qualified` is not changed. |
+| Package | Cheap (*read*): `Indexer::package_of(uri)`, `jar_symbol_packages`. |
+| Workspace nested path | Derived from the stored `SymbolEntry.range`: 391 of 17,967 nested class-likes have an ambiguous container name, and all 391 resolve uniquely by range containment. No index change. |
+| JAR nested path | Ambiguous for 5,973 of 43,715 (13.7%); the Java visitor keeps one `$` segment (*read*). Needs the sidecar's nested path (decision 5). |
+| Typealiases | Expand at lowering (cycle guard); the alias name is kept for display only. The cache indexes them as kind `Class` (23 of 25), not `TYPE_PARAMETER` as the answers said. |
+| Builtins | A const table of `kotlin.*` identities seeded from `KOTLIN_BUILTIN_TYPES`, reached through default imports. No index work. `resolver/platform_types.rs` stays a member/go-to-definition lookup map. |
+
+**3. Nullability stays two-valued** (`NonNull | Nullable`). Platform types (`T!`) and definitely-non-null
+`T & Any` are a stated non-goal because nothing can construct them: Java methods in the JAR index carry
+no return type and no annotations are read (*read*, `KotlinClassIndexer.kt`); Moneta has 0 `& Any`. Adding
+a variant later is compiler-driven (every exhaustive `match` stops compiling). A bare `T` is a
+`TypeParameter` head whose `nullability` means "marked `?` here"; substitution keeps the binding's
+nullability, widened by the mark. `T & Any` lowers to `Unknown`. *Revisit when* the first producer of
+platform-type facts exists (e.g. Java nullability annotations from the sidecar) with a consumer.
+
+**4. Dedicated function head, plus a class identity.** `FunctionType::class_identity()` gives
+`kotlin.FunctionN` / `kotlin.coroutines.SuspendFunctionN` (arity counts the receiver) for `f.invoke`,
+extensions on function types, `class Foo : (Int) -> Unit` and `same_type` against a written
+`Function1<A, B>`; context receivers lower to `Unknown`. Sidecar renderer defects (*read*,
+`KotlinClassIndexer.kt`), all inputs to the minimal sidecar change: (a) a nullable function type renders
+as `"$body?"` without parentheses, so `((A) -> B)?` reads as `(A) -> B?` (518 JAR signatures by the
+critique's strict count; the answers' 1,501 is a loose ceiling); (b) `FunctionN` is detected by a
+simple-name regex, misreading a user class `Function3`; (c) an unknown type-parameter id renders as `T`;
+(d) class names lose their package.
+
+**5. Declaration types: declaring-scope text where there is no tree; no index-time stubs.** This
+reverses the answers' "S0 stubs as a prerequisite of S2". The original design stands:
+`from_declaration_text` with the declaring package and scope and an `Unresolved` fallback (today's
+by-name behaviour), and `from_syntax` wherever a tree exists.
+
+| Declaration source | Tree at query time | Lowering |
+|---|---|---|
+| Workspace source | open file, or the unopened-parse memo (97.4% hit rate over a corpus run; 0.47 ms median parse) | `from_syntax` |
+| Source JAR (tree-sitter parsed, full signatures) | parsed at index time; served by the memo: unverified | `from_syntax` if available, else text |
+| Compiled JAR (sidecar) | none | `from_declaration_text` |
+
+- *The 75% "ambiguous package" figure is inflated:* 68% of ambiguous JAR heads are `String`, `Boolean`,
+  `Int`, `List` and similar, which default imports resolve. Of 144,445 heads naming an indexed class,
+  same-package and single-candidate rules leave ~22,090 (15%; ~4% of all non-function return heads;
+  crude heuristics). 239,302 class-looking heads name no indexed class at all.
+- *Workspace detail is truncated* at 120 characters in 10.73% of entries, mostly outside the type (44%
+  are class-likes, 27% start with an annotation). About 1,100 functions lose a declared return type and
+  up to 2,641 are cut mid-type, at most ~3% of typed declarations (sample-extrapolated);
+  `declared_return_type` re-reads source then. Another reason to prefer CST.
+- *Slice 0* adds the residue counter as a benchmark column (it has data once S2 lowers identities); the
+  stub/sidecar decision is taken from it. If compiled-JAR `Unresolved` dominates, the **minimal sidecar
+  change** adds optional fields: fully qualified names, parenthesised nullable function types, the nested
+  path. Costs: a `JAR_CACHE_VERSION` bump re-runs the sidecar over 998 JARs; a `CACHE_VERSION` bump (avoid
+  it) orphans the ~695 MB sources-JAR cache; `detail` has ~60 read sites, so structure is additive (no
+  "memory nets to zero"); the sidecar ships separately, so an old one decodes (`serde(default)`) but
+  silently loses the gain. Ship the sidecar change first and alone.
+
+**6. Acceptance rule for slices that change resolutions.** (1) Run base and slice 3 times each and
+compare only references *stable* across a build's runs (needs the determinism fixes merged in #337).
+(2) Classify stable transitions as gains, losses and retargets. (3) Sample gains and losses uniformly,
+seeded from the base commit hash and stratified by reference shape (bare, member on local, member on
+call result, field chain, `it`/`this`); a reviewer who has not seen which side is new labels each answer
+right or wrong. (4) Accept if, on sample-extrapolated counts, *right gained + w·wrong removed ≥ right
+lost + w·wrong gained* (with no gains: *w·wrong removed ≥ right lost*), and no cluster of ≥ 10
+right-answer losses shares one root cause; such a cluster is fixed before merge, as `mapCardItems` was.
+(5) Behaviour-neutral slices (S1, S5) need zero stable transitions.
+
+*w is a policy choice for the maintainer, not a measurement.* Recommended w = 2: a wrong answer costs
+twice a missing one, so break-even is one wrong answer removed per two right answers lost (the earlier
+"trade 1 right for 3 wrong" was inverted; that is w = 1/3). *The final #339 comparison* (111 losses,
+1,172 gains, 19% of a 62-loss sample wrong): right lost ≈ 89.9, wrong removed ≈ 21.1, so losses give
+2 × 21.1 − 89.9 = −47.7. Gains must cover it: 1,172 × (ĝ − 2(1 − ĝ)) ≥ 47.7, so **ĝ ≥ 0.68**. #339
+passes only if at least 68% of its gains are right; they were not sampled, so that is plausible but
+unproven, hence step 3 samples gains. *Sample size* for ±10 points at 95%: n = n₀/(1 + (n₀ − 1)/N) with
+n₀ = 1.96² · 0.25 / 0.1² ≈ 96, giving 52 for N = 111 and 89 for N = 1,172. Point estimates only; close
+calls go to the maintainer. *Optional, untried:* a gold set of ~1,200 references labelled with the
+Kotlin Analysis API would measure precision, which the benchmark cannot (feasibility *inferred*).
+
+**7. Display of `Unknown`, per surface.** Inlay hints: no hint for any type containing `Unknown`.
+Hover and completion "Inferred type": the declared text when present, else the head with `…` per unknown
+argument (`Map<String, …>`), no type line if the head itself is unknown. `Unresolved` names show as
+written. Never `_` (`List<_>` is not valid Kotlin) or `*` (`List<*>` is a real type); today
+`star_unbound_type_arguments` (`chain.rs`) writes `*` for ignorance, which S3 removes. Hover on locals
+still goes through the string engine (`infer_variable_type_raw`, *read*), so most of this applies once
+hover migrates.
+
+**8. Ratchet:** all of `src/`, four tiers ([Enforcement](#enforcement)).
+
+**Still open (maintainer):** the weight w and the strata (recommend w = 2 and the five shapes above);
+whether to make the sidecar change (recommend: only if Slice 0 shows compiled-JAR residue dominating).
+
+### Missing considerations
+
+Three declaration sources, sidecar release skew, the residue counter and the stability gate's
+dependency on determinism are covered in decisions 5 and 6.
+
+| Topic | Position |
+|---|---|
+| No KMP code in Moneta | expect/actual needs a fixture; the benchmark cannot see it. `CallableIdentity(Location)` makes an `expect fun <T>` and its `actual` different owners; acceptable until the fixture shows a mismatch. |
+| Typealiases | Workspace expansion needs the CST (detail is cut at `=`, *read*). The sidecar emits no JAR aliases (`KmPackage.typeAliases` ignored, *read*), so `kotlin.collections.ArrayList` stays `Unresolved` until the sidecar change. |
+| Java ↔ Kotlin classes | `java.lang.String` and `kotlin.String` are one identity; the builtin table maps the Java names (as K2's `JavaToKotlinClassMap`, *inferred*). |
+| Type-parameter upper bounds | Member lookup on a `T : CharSequence` receiver needs bounds by owner, or S3 turns by-name successes into `Unknown`. In S3. |
+| Intersection, captured types, context receivers | Out of scope; lower to `Unknown`. Smart casts keep today's narrowed type. |
+| Raw Java types, arrays | Raw `List` gets `Unknown` arguments; `int[]` → `kotlin.IntArray`; `T[]` → `kotlin.Array<out T>` (*inferred*). |
+| Interning | Intern `ClassIdentity` parts (the `&self` interners in `types.rs` are the model); whole types only if a profile shows clone or hash cost. |
+| Fallback reliance | The Slice 0 counter also counts member lookups served by the `Unresolved` by-name fallback. |
