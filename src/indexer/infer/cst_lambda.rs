@@ -1190,9 +1190,9 @@ pub(crate) fn call_shape_of(
 ) -> super::deps::CallShape {
     let arg_count = call_expr
         .find_value_arguments()
-        .map(|va| crate::features::call_arg_diagnostics::count_provided_args(Some(&va), bytes))
+        .map(|va| crate::node_ext::count_provided_args(Some(&va), bytes))
         .unwrap_or(0);
-    let trailing_lambda = crate::features::call_arg_diagnostics::has_trailing_lambda(&call_expr);
+    let trailing_lambda = crate::node_ext::has_trailing_lambda(&call_expr);
     super::deps::CallShape {
         arg_count,
         trailing_lambda,

@@ -318,3 +318,71 @@ pub(crate) fn whole_word_replace_file(lines: &[String], word: &str, replacement:
     }
     result
 }
+
+/// Count the UTF-16 code units from the start of `row` up to `byte_col`.
+///
+/// `starts` must have been produced by `line_starts(bytes)` — it is used to
+/// jump directly to the line without rescanning the whole file (O(1) lookup
+/// instead of O(file_size)).
+pub(crate) fn ts_byte_col_to_utf16(
+    bytes: &[u8],
+    starts: &[usize],
+    row: usize,
+    byte_col: usize,
+) -> usize {
+    let line_start = starts.get(row).copied().unwrap_or_else(|| {
+        bytes
+            .split(|&b| b == b'\n')
+            .take(row)
+            .map(|l| l.len() + 1)
+            .sum()
+    });
+    let end = (line_start + byte_col).min(bytes.len());
+    std::str::from_utf8(&bytes[line_start..end])
+        .map(|s| s.chars().map(|c| c.len_utf16()).sum())
+        .unwrap_or(byte_col)
+}
+
+pub(crate) const REFERENCE_DECLARATION_KEYWORDS: &[&str] = &[
+    "class ",
+    "interface ",
+    "object ",
+    "fun ",
+    "val ",
+    "var ",
+    "typealias ",
+    "enum class ",
+    "enum ",
+    "struct ",
+    "protocol ",
+    "func ",
+    "let ",
+    "extension ",
+];
+
+/// Returns `true` if `content` declares `name` specifically (e.g. `fun create()`),
+/// as opposed to a line that merely calls `name` inside a different declaration
+/// (e.g. `fun build() = factory.create()` or `fun createWidget() = factory.create()`).
+///
+/// Requires a word boundary *after* `name` to avoid matching declarations of
+/// longer identifiers that share a prefix — e.g. `fun createWidget` must not be
+/// treated as a declaration of `create`.
+///
+/// Used by [`owner_scoped_reference_locations`] to filter out sibling
+/// declarations of the same method name that appear in files which also reference
+/// the outer class.
+pub(crate) fn is_declaration_of(content: &str, name: &str) -> bool {
+    REFERENCE_DECLARATION_KEYWORDS.iter().any(|kw| {
+        let prefix = format!("{kw}{name}");
+        if let Some(idx) = content.find(&prefix) {
+            let end = idx + prefix.len();
+            // Word-boundary check: name must not be followed by more identifier chars.
+            content
+                .as_bytes()
+                .get(end)
+                .is_none_or(|&b| !b.is_ascii_alphanumeric() && b != b'_')
+        } else {
+            false
+        }
+    })
+}

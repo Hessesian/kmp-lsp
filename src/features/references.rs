@@ -786,7 +786,7 @@ fn add_current_file_locations(
         // file is the declaration itself; all other create() calls here are to OTHER
         // injected factory instances and must be excluded.
         if owner_class.is_some() {
-            if include_decl && crate::rg::is_declaration_of(line, name) {
+            if include_decl && crate::text_utils::is_declaration_of(line, name) {
                 for loc in line_reference_locations(uri, name, line_number, line) {
                     if !has_reference_start(locations, &loc) {
                         locations.push(loc);
@@ -804,7 +804,7 @@ fn add_current_file_locations(
             }
             // Respect include_decl: if the caller asked to exclude the declaration,
             // skip lines that declare this name (mirrors the rg path behaviour).
-            if !include_decl && crate::rg::is_declaration_of(line, name) {
+            if !include_decl && crate::text_utils::is_declaration_of(line, name) {
                 continue;
             }
             if let Some(parent) = parent_class {

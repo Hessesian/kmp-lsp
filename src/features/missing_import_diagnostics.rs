@@ -30,7 +30,6 @@ use crate::queries::{
 };
 use crate::resolver::{fqns_for_name, receiver_provides_member, resolve_in_scope_strict};
 use crate::types::CursorPos;
-use crate::LinesExt;
 use crate::StrExt;
 
 /// Diagnostic code identifying a diagnostic as this module's own. `source` alone
@@ -403,7 +402,11 @@ fn import_action(
     let mut changes = HashMap::new();
     changes.insert(
         uri.clone(),
-        vec![lines.make_import_edit(&fqn, needs_semicolon)],
+        vec![crate::resolver::make_import_edit(
+            &fqn,
+            lines,
+            needs_semicolon,
+        )],
     );
     CodeActionOrCommand::CodeAction(CodeAction {
         title: format!("Import '{fqn}'"),

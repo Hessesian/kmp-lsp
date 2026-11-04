@@ -9,7 +9,6 @@ use crate::parser::parse_by_extension;
 use crate::stdlib::bare_completions;
 use crate::stdlib_tail::dot_completions_for_lang;
 use crate::types::{CallerContext, ImportEntry, SourceSet, SymbolEntry, Visibility};
-use crate::LinesExt;
 use crate::StrExt;
 
 use super::container::range_encloses;
@@ -353,7 +352,7 @@ impl ExtensionCompletionContext {
             let lines = live_lines.clone().unwrap_or_default();
             return Self {
                 from_uri: from_uri.as_str().to_owned(),
-                imports: lines.parse_imports(),
+                imports: crate::parser::parse_imports_from_lines(&lines),
                 package_name: String::new(),
                 lines,
             };
@@ -361,7 +360,7 @@ impl ExtensionCompletionContext {
 
         let lines = live_lines.clone().unwrap_or_else(|| file.lines.clone());
         let imports = if live_lines.is_some() {
-            lines.parse_imports()
+            crate::parser::parse_imports_from_lines(&lines)
         } else {
             file.imports.clone()
         };
@@ -529,7 +528,13 @@ impl<'a> ExtensionCompletionBuilder<'a> {
         fqn: &str,
         needs_import: bool,
     ) -> Option<Vec<tower_lsp::lsp_types::TextEdit>> {
-        needs_import.then(|| vec![self.context.lines.make_import_edit(fqn, false)])
+        needs_import.then(|| {
+            vec![crate::resolver::make_import_edit(
+                fqn,
+                &self.context.lines,
+                false,
+            )]
+        })
     }
 
     fn finish(self) -> Vec<CompletionItem> {
@@ -1428,7 +1433,7 @@ impl CurrentFileCompletionContext {
             .map(|file| {
                 let lines = live_lines.clone().unwrap_or_else(|| file.lines.clone());
                 let imports = if live_lines.is_some() {
-                    lines.parse_imports()
+                    crate::parser::parse_imports_from_lines(&lines)
                 } else {
                     file.imports.clone()
                 };
@@ -1436,7 +1441,7 @@ impl CurrentFileCompletionContext {
             })
             .unwrap_or_else(|| {
                 let lines = live_lines.clone().unwrap_or_default();
-                let imports = lines.parse_imports();
+                let imports = crate::parser::parse_imports_from_lines(&lines);
                 (imports, String::new(), lines)
             });
 
@@ -1599,7 +1604,7 @@ impl<'a> BareCompletionWalk<'a> {
             .indexer
             .live_lines
             .get(self.from_uri.as_str())
-            .map(|ll| ll.parse_imports())
+            .map(|ll| crate::parser::parse_imports_from_lines(&ll))
             .or_else(|| {
                 self.indexer
                     .files
@@ -1819,9 +1824,11 @@ impl<'a> BareCompletionWalk<'a> {
             .unwrap_or_default();
         let needs_import = current_context.needs_import(fully_qualified_name);
         let additional_text_edits = needs_import.then(|| {
-            vec![current_context
-                .lines
-                .make_import_edit(fully_qualified_name, current_context.needs_semicolons)]
+            vec![crate::resolver::make_import_edit(
+                fully_qualified_name,
+                &current_context.lines,
+                current_context.needs_semicolons,
+            )]
         });
 
         // If this candidate is backed by an already-materialized JAR symbol

@@ -138,13 +138,13 @@ fn try_lock_sidecar_bounded_returns_none_when_held() {
     let held_guard = idx.jar_sidecar.lock().unwrap_or_else(|e| e.into_inner());
     // While `held_guard` is alive, a bounded attempt from "another caller"
     // must return None quickly rather than blocking this test forever.
-    let attempt = crate::workspace::scan_handler::try_lock_sidecar_bounded(&idx);
+    let attempt = crate::indexer::jar::try_lock_sidecar_bounded(&idx);
     assert!(
         attempt.is_none(),
         "bounded lock attempt must not block/succeed while the sidecar is held elsewhere"
     );
     drop(held_guard);
-    let attempt_after_release = crate::workspace::scan_handler::try_lock_sidecar_bounded(&idx);
+    let attempt_after_release = crate::indexer::jar::try_lock_sidecar_bounded(&idx);
     assert!(
         attempt_after_release.is_some(),
         "must succeed once the lock is free"

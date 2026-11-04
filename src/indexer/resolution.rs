@@ -9,7 +9,6 @@ use crate::indexer::doc::extract_doc_comment;
 use crate::indexer::Location;
 use crate::resolver::infer::infer_variable_type;
 use crate::types::{CallerContext, FileData, SymbolEntry};
-use crate::LinesExt;
 
 /// Domain-level resolution result: a **rich, complete** record of a resolved
 /// symbol, owned and suitable for LSP adapters.
@@ -321,9 +320,7 @@ fn extract_canonical_signature(
     {
         return entry.detail.clone();
     }
-    let full = data
-        .lines
-        .collect_signature(entry.selection_start() as usize);
+    let full = crate::indexer::collect_signature(&data.lines, entry.selection_start() as usize);
     if !full.is_empty() {
         full
     } else {

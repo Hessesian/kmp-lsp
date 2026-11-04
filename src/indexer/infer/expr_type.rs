@@ -52,7 +52,7 @@ use super::cst_symbol::{local_binding_at, local_binding_of, DestructuredValue, L
 use super::deps::{CallShape, InferDeps, ReceiverCall};
 use super::lambda::LAMBDA_RESULT_FNS;
 use super::type_subst::{build_ext_fn_type_subst, split_top_level_commas, type_args_inner};
-use crate::resolver::ReturnNullability;
+use crate::detail_text::ReturnNullability;
 
 // ─── public API ───────────────────────────────────────────────────────────────
 
@@ -363,7 +363,7 @@ fn infer_ident_type_in_form(
 ) -> Option<(String, Url)> {
     let name = node.utf8_text_owned(bytes)?;
     let start = node.start_position();
-    let col = crate::inlay_hints::ts_byte_col_to_utf16(bytes, &[], start.row, start.column);
+    let col = crate::text_utils::ts_byte_col_to_utf16(bytes, &[], start.row, start.column);
     let binding = local_binding_at(node, bytes);
     let binding_states_its_own_type = matches!(
         binding,
@@ -883,7 +883,7 @@ fn infer_this_expr_type(
         return None;
     }
     let start = node.start_position();
-    let col = crate::inlay_hints::ts_byte_col_to_utf16(bytes, &[], start.row, start.column);
+    let col = crate::text_utils::ts_byte_col_to_utf16(bytes, &[], start.row, start.column);
     deps.find_contextual_type("this", uri, start.row, col)
 }
 

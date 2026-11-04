@@ -151,7 +151,12 @@ fn dot_completion_triggers_on_dot() {
     // Position after the dot on line 4
     let line = "  fun load() { return repo. }";
     let dot_col = (line.find("repo.").unwrap() + "repo.".len()) as u32;
-    let (items, _) = idx.completions(&vm_uri, Position::new(4, dot_col), true);
+    let (items, _) = crate::features::completion::run_completions(
+        &idx,
+        &vm_uri,
+        Position::new(4, dot_col),
+        true,
+    );
     let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
     assert!(
         labels.contains(&"findById"),
@@ -174,7 +179,8 @@ fn dot_completion_with_prefix() {
 
     let line = "  fun run() { repo.fin }";
     let col = (line.find("repo.fin").unwrap() + "repo.fin".len()) as u32;
-    let (items, _) = idx.completions(&vm_uri, Position::new(4, col), true);
+    let (items, _) =
+        crate::features::completion::run_completions(&idx, &vm_uri, Position::new(4, col), true);
     let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
     assert!(
         labels.contains(&"findAll"),
@@ -198,7 +204,8 @@ fn bare_completion_with_implicit_receiver() {
 
     let line = "  with(user) { gre";
     let col = line.len() as u32;
-    let (items, _) = idx.completions(&demo_uri, Position::new(2, col), false);
+    let (items, _) =
+        crate::features::completion::run_completions(&idx, &demo_uri, Position::new(2, col), false);
     let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
     assert!(
         labels.contains(&"greet"),
@@ -222,7 +229,8 @@ fn bare_completion_apply_implicit_receiver() {
 
     let line = "  config.apply { tit";
     let col = line.len() as u32;
-    let (items, _) = idx.completions(&demo_uri, Position::new(2, col), false);
+    let (items, _) =
+        crate::features::completion::run_completions(&idx, &demo_uri, Position::new(2, col), false);
     let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
     assert!(
         labels.contains(&"title"),
@@ -246,7 +254,8 @@ fn bare_completion_run_implicit_receiver() {
 
     let line = "  service.run { exe";
     let col = line.len() as u32;
-    let (items, _) = idx.completions(&demo_uri, Position::new(2, col), false);
+    let (items, _) =
+        crate::features::completion::run_completions(&idx, &demo_uri, Position::new(2, col), false);
     let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
     assert!(
         labels.contains(&"execute"),
@@ -265,7 +274,8 @@ fn bare_completion_for_each_does_not_offer_element_members() {
 
     let line = "    listOf(\"hello\").forEach { subs";
     let col = line.len() as u32;
-    let (items, _) = idx.completions(&demo_uri, Position::new(3, col), false);
+    let (items, _) =
+        crate::features::completion::run_completions(&idx, &demo_uri, Position::new(3, col), false);
     let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
     assert!(
         !labels.contains(&"substring"),
@@ -289,7 +299,8 @@ fn dot_completion_this_in_with_still_works() {
 
     let line = "  with(user) { this.";
     let col = line.len() as u32;
-    let (items, _) = idx.completions(&demo_uri, Position::new(2, col), false);
+    let (items, _) =
+        crate::features::completion::run_completions(&idx, &demo_uri, Position::new(2, col), false);
     let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
     assert!(
         labels.contains(&"greet"),
@@ -311,7 +322,8 @@ fn dot_completion_qualified_nested_type() {
 
     let line = "    func update() { let k = DPSCoordinator.Kind. }";
     let col = (line.find("DPSCoordinator.Kind.").unwrap() + "DPSCoordinator.Kind.".len()) as u32;
-    let (items, _) = idx.completions(&vm_uri, Position::new(2, col), false);
+    let (items, _) =
+        crate::features::completion::run_completions(&idx, &vm_uri, Position::new(2, col), false);
     let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
     assert!(
         labels.contains(&"victory"),
@@ -351,7 +363,8 @@ fun use() { lazyLoad { it. }
     idx2.set_live_lines(&u2, src_with_call);
     let line = "fun use() { lazyLoad { it. } }";
     let col = (line.find("it.").unwrap() + "it.".len()) as u32;
-    let (items, _) = idx2.completions(&u2, Position::new(3, col), false);
+    let (items, _) =
+        crate::features::completion::run_completions(&idx2, &u2, Position::new(3, col), false);
     let hint = items
         .iter()
         .find(|i| i.label.contains("it:") && i.label.contains('T'));
@@ -2780,7 +2793,8 @@ fn named_arg_completion_top_level_fn() {
     let (u, idx) = indexed_with_live("/Named.kt", src);
 
     let col = col_after_call_paren(src, 3, "greet");
-    let (items, _) = idx.completions(&u, Position::new(3, col), false);
+    let (items, _) =
+        crate::features::completion::run_completions(&idx, &u, Position::new(3, col), false);
     let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
 
     assert!(
@@ -2802,7 +2816,8 @@ fn named_arg_completion_all_params_present() {
     let (u, idx) = indexed_with_live("/Filter.kt", src);
 
     let col = col_after_call_paren(src, 2, "show");
-    let (items, _) = idx.completions(&u, Position::new(2, col), false);
+    let (items, _) =
+        crate::features::completion::run_completions(&idx, &u, Position::new(2, col), false);
     let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
 
     assert!(labels.contains(&"title ="), "title = missing; {labels:?}");
@@ -2822,7 +2837,8 @@ fn named_arg_completion_insert_text_has_space() {
     let (u, idx) = indexed_with_live("/InsertText.kt", src);
 
     let col = col_after_call_paren(src, 2, "create");
-    let (items, _) = idx.completions(&u, Position::new(2, col), false);
+    let (items, _) =
+        crate::features::completion::run_completions(&idx, &u, Position::new(2, col), false);
 
     let item = items
         .iter()
@@ -2929,7 +2945,8 @@ fn named_arg_completion_data_class_constructor() {
         "sig help must work for data class constructor"
     );
     // Verify named arg completion includes followedTopics
-    let (items, _) = idx.completions(&u, Position::new(5, col), false);
+    let (items, _) =
+        crate::features::completion::run_completions(&idx, &u, Position::new(5, col), false);
     let has_followed = items.iter().any(|i| i.label == "followedTopics =");
     assert!(
         has_followed,
@@ -2957,7 +2974,8 @@ fn named_arg_completion_cross_file_data_class() {
 
     let call_line = src2.lines().nth(1).unwrap();
     let col = (call_line.rfind(')').unwrap() - 1) as u32;
-    let (items, _) = idx.completions(&u2, Position::new(1, col), false);
+    let (items, _) =
+        crate::features::completion::run_completions(&idx, &u2, Position::new(1, col), false);
     let has_followed = items.iter().any(|i| i.label == "followedTopics =");
     assert!(
         has_followed,
@@ -2994,7 +3012,8 @@ fn named_arg_completion_cross_package_data_class() {
 
     let call_line = src2.lines().nth(3).unwrap();
     let col = (call_line.rfind(',').unwrap() + 2) as u32; // after ", "
-    let (items, _) = idx.completions(&u2, Position::new(3, col), false);
+    let (items, _) =
+        crate::features::completion::run_completions(&idx, &u2, Position::new(3, col), false);
     let has_followed = items.iter().any(|i| i.label == "followedTopics =");
     assert!(
         has_followed,
@@ -3036,7 +3055,8 @@ fn named_arg_completion_nia_userdata() {
 
     let call_line = src2.lines().nth(3).unwrap();
     let col = (call_line.rfind(',').unwrap() + 2) as u32;
-    let (items, _) = idx.completions(&u2, Position::new(3, col), false);
+    let (items, _) =
+        crate::features::completion::run_completions(&idx, &u2, Position::new(3, col), false);
     let named_args: Vec<_> = items.iter().filter(|i| i.label.ends_with(" =")).collect();
     assert!(
         !named_args.is_empty(),
@@ -3078,7 +3098,8 @@ fn named_arg_completion_after_comma_no_space() {
     let call_line = src2.lines().nth(2).unwrap();
     // Cursor right after the comma (before closing `)`)
     let col = (call_line.rfind(',').unwrap() + 1) as u32;
-    let (items, _) = idx.completions(&u2, Position::new(2, col), false);
+    let (items, _) =
+        crate::features::completion::run_completions(&idx, &u2, Position::new(2, col), false);
     let has_followed = items.iter().any(|i| i.label == "followedTopics =");
     assert!(
         has_followed,

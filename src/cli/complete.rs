@@ -27,7 +27,7 @@ pub(crate) fn completions_at(
         character: col.saturating_sub(1),
     };
 
-    let (items, _) = indexer.completions(&uri, position, false);
+    let (items, _) = crate::features::completion::run_completions(indexer, &uri, position, false);
     items
         .into_iter()
         .map(|item| {

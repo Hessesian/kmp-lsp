@@ -11,33 +11,6 @@ use super::phase::{ReadyState, State};
 use super::scan_queue::{ScanArgs, ScanKind, ScanQueue};
 use super::Config;
 
-/// A short, bounded attempt to lock `jar_sidecar` — used by on-demand
-/// materialization (Task 8) so a hover/completion request never blocks
-/// indefinitely behind the startup crawl or another in-flight materialization.
-/// Returns `None` (degrade to Tier-1-only for this request) rather than
-/// waiting. See design §Concurrency.
-pub(crate) fn try_lock_sidecar_bounded(
-    indexer: &crate::indexer::Indexer,
-) -> Option<std::sync::MutexGuard<'_, Option<crate::sidecar::SidecarHandle>>> {
-    // `try_lock` is genuinely non-blocking (fails immediately if contended,
-    // rather than spinning) — the "bounded" framing in the design becomes
-    // "immediate or nothing" here, which is the simplest correct instance of
-    // "don't block the interactive path" and avoids inventing a timeout
-    // mechanism this codebase doesn't otherwise use.
-    //
-    // A plain `.ok()` would treat "poisoned" the same as "contended" —
-    // unlike a contended lock, a poisoned one never recovers on its own, so
-    // that would permanently disable on-demand promotion after a single
-    // recoverable panic elsewhere while holding this lock. Every other
-    // `jar_sidecar` lock site in this codebase recovers via
-    // `unwrap_or_else(|e| e.into_inner())`; match that here.
-    match indexer.jar_sidecar.try_lock() {
-        Ok(guard) => Some(guard),
-        Err(std::sync::TryLockError::Poisoned(poisoned)) => Some(poisoned.into_inner()),
-        Err(std::sync::TryLockError::WouldBlock) => None,
-    }
-}
-
 pub(crate) struct ScanHandler<R: ProgressReporter + 'static> {
     indexer: Arc<Indexer>,
     reporter: Arc<R>,

@@ -648,7 +648,7 @@ fn contextual_type_at(
     uri: &Url,
 ) -> Option<String> {
     let start = node.start_position();
-    let utf16_col = crate::inlay_hints::ts_byte_col_to_utf16(bytes, &[], start.row, start.column);
+    let utf16_col = crate::text_utils::ts_byte_col_to_utf16(bytes, &[], start.row, start.column);
     deps.find_contextual_type(name, uri, start.row, utf16_col)
 }
 

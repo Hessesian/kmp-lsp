@@ -2,7 +2,6 @@ use std::sync::Arc;
 use tower_lsp::lsp_types::{Location, Url};
 
 use crate::indexer::Indexer;
-use crate::LinesExt;
 
 use super::container::range_encloses;
 use super::ensure_file_data;
@@ -25,7 +24,9 @@ pub(crate) fn find_name_in_uri(idx: &Indexer, name: &str, file_uri: &str) -> Vec
             range: sym.selection_range,
         }];
     }
-    if let Some(range) = file_data.lines.find_declaration_range(name) {
+    if let Some(range) =
+        crate::resolver::infer_lines::find_declaration_range_in_lines(&file_data.lines, name)
+    {
         return vec![Location { uri, range }];
     }
     vec![]
@@ -154,13 +155,14 @@ pub(crate) fn find_name_in_uri_after_line(
     }
 
     // b) Line scan scoped to after_line first, then the whole file.
-    if let Some(range) = file_data
-        .lines
-        .find_declaration_range_after(name, after_line)
+    if let Some(range) =
+        crate::resolver::find::find_declaration_range_after_line(&file_data.lines, name, after_line)
     {
         return vec![Location { uri, range }];
     }
-    if let Some(range) = file_data.lines.find_declaration_range(name) {
+    if let Some(range) =
+        crate::resolver::infer_lines::find_declaration_range_in_lines(&file_data.lines, name)
+    {
         return vec![Location { uri, range }];
     }
     vec![]
@@ -336,15 +338,17 @@ pub(crate) fn find_declaration_range_after_line(
     if start >= lines.len() {
         return None;
     }
-    lines[start..].find_declaration_range(name).map(|r| Range {
-        start: Position {
-            line: r.start.line + start_line,
-            character: r.start.character,
-        },
-        end: Position {
-            line: r.end.line + start_line,
-            character: r.end.character,
-        },
+    crate::resolver::infer_lines::find_declaration_range_in_lines(&lines[start..], name).map(|r| {
+        Range {
+            start: Position {
+                line: r.start.line + start_line,
+                character: r.start.character,
+            },
+            end: Position {
+                line: r.end.line + start_line,
+                character: r.end.character,
+            },
+        }
     })
 }
 
@@ -360,7 +364,8 @@ pub(crate) fn find_local_declaration(idx: &Indexer, name: &str, uri: &Url) -> Ve
     } else {
         return vec![];
     };
-    if let Some(range) = lines.find_declaration_range(name) {
+    if let Some(range) = crate::resolver::infer_lines::find_declaration_range_in_lines(&lines, name)
+    {
         return vec![Location {
             uri: uri.clone(),
             range,

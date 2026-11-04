@@ -3,7 +3,6 @@
 use tower_lsp::lsp_types::{Range, TextEdit};
 
 use crate::types::ImportEntry;
-use crate::LinesExt;
 
 /// True if `fqn` is already usable in the file without an additional import:
 /// - exact non-alias import: `import pkg.Name` where local_name == last segment
@@ -52,7 +51,7 @@ pub(crate) fn import_insertion_line(lines: &[String]) -> u32 {
 
 /// Build a TextEdit that inserts `import {fqn}\n` at the correct position.
 pub(crate) fn make_import_edit(fqn: &str, lines: &[String], needs_semicolon: bool) -> TextEdit {
-    let line = lines.import_insertion_line();
+    let line = crate::resolver::import_insertion_line(lines);
     // When inserting right after the package line (no existing imports), add a blank line.
     let needs_blank = line > 0
         && lines
