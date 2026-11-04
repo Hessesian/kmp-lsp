@@ -1,16 +1,33 @@
 # Local-binding discoverability plan
 
-Status (re-verified against `main` at `fbc0f0d8`, 2026-10-25):
+Status (updated against `main` at `f5329570`, 2026-11-04; the slice descriptions below were written on 2026-10-25 against `fbc0f0d8` and are kept for reference):
 
-| Original slice | State |
+| Slice | State |
 |---|---|
 | 1 Ratchet test + `AGENTS.md` line | Done, #333 |
 | 2 `local_binding_at` + identifier path in `expr_type.rs` | Done, #334 (agreement test was not written) |
 | 3 Migrate `fill_when` / `infer.rs`, delete `resolve_declared_type_from_cst` | Done, #335 |
-| 4 Nullable diagnostic | Open, now slice B |
-| 5 Chain root | Open, now slice C |
-| 6 `local_scope_occurrences` as projection | Deferred, now slice I |
-| 7 Delete `Resolver::method_return_type` | Mostly obsolete, now slice G |
+| A Typed binding outcome | Done, #337 (with three determinism fixes), #338 and #339 (typing coverage), see [Outcome of slice A](#outcome-of-slice-a-2026-11-03) |
+| B Nullable diagnostic | Open, now ordered by the [revised path](#revised-path-2026-11-04) |
+| C Chain root, D lambda receivers and `type_subst`, F enforcement | Folded into the structured-`ResolvedType` migration (S1, S3, S5) |
+| E Hover fallback, G `method_return_type`, H #329 remainder | Open, parallel at any time |
+| I `local_scope_occurrences` as projection | Deferred |
+
+Design for the remaining type work: `docs/superpowers/specs/2026-11-03-structured-resolved-type-design.md` (PR #340).
+
+## Outcome of slice A (2026-11-03)
+
+Slice A grew from the planned single PR into a three-PR stack and four review rounds. What landed:
+
+- **#337** deterministic lookups (qualified `pkg.name` keys no longer shadow top-level functions; class lookup through the caller's imports; lambda-parameter overloads chosen by receiver) and the `BindingType { Typed, LocalUnknown, NotLocal }` outcome; `CACHE_VERSION` 35.
+- **#338** typing for elvis, `when (val x = ..)` subjects and `is` narrowing, delegates through `State` / `MutableState` / `Lazy` and `getValue`, and operator extensions.
+- **#339** `this` in extensions, lambda parameters bound from sibling arguments, member access keeping receiver type arguments and `?.`, `for` variables and destructured components, unbound type parameters reading as unknown, and a bounded LRU memo of parses of unopened files (`unopened_parses`) that removed a slowdown the new inference had caused.
+
+Benchmark on the Moneta corpus (final pre-merge tip against the pre-slice base): member recall 94.1% to 95.4%, corpus run about 26% faster, 4,456 stable gains and 1,115 stable losses. Hand checks: sampled gains right; the losses sampled were mostly by-name guesses that happened to be right. Two regressions found by that benchmark (a generic object member's lambda parameter, and a `Map.Entry` value typed as its key) were fixed before merge.
+
+Copilot reviewed the stack in three rounds (22, 16 and 15 comments). All 53 threads were answered; 7 valid comments were deferred and are mapped to migration slices in the spec. Their classes (identity by spelling, nullability by string surgery, type-parameter binding on strings, declaration chosen separately from its signature) are the argument for the structured type in the spec.
+
+Lessons that change how later slices are run: the stable-diff method needs repeatable runs (see the determinism item below); the benchmark counts recall, not precision; a bounded fix round beats chasing every review comment; a squash-merged stack needs `git rebase --onto origin/main <old base>` for each child.
 
 ## Problem
 
@@ -142,6 +159,40 @@ Conflict notes for parallel worktrees (B, C, D, E):
 2. Ratchet before #329 (done, #333).
 3. A member-recall drop is acceptable if the lost hits were wrong answers, backed by a hand-checked precision sample.
 4. Slice I (old slice 6) deferred.
+
+Made 2026-11-04: follow the revised path below; adopt `w = 2` and the five strata for the acceptance rule; make the sidecar change only if the Slice 0 counter justifies it; the 2026-10-25 decision 3 is superseded by the spec's net acceptance rule (a recall drop is judged against the gains and a blind-labelled sample, and any cluster of 10 or more right-answer losses with one root cause is fixed before merge).
+
+## Revised path (2026-11-04)
+
+Source: a benchmark of `main` at `f5329570` over the Moneta corpus, with unresolved and wrong-answer references classified from random samples (8 to 40 per class, roughly +/-15 points per share). Counts are measured; shares and payoffs marked *inferred* are extrapolations.
+
+**What the data says**
+- The 95.4% headline hides most of the remaining problem. When a receiver's type cannot be inferred, the benchmark counts `x.foo` as a bare reference answered by name: 53,838 member accesses, 5.3 times the 10.1k unresolved ones in the reported lane. Counting them, receiver-verified member recall is 76.7%.
+- Of about 64k unresolved or name-guessed references (*inferred* shares): 39% type representation, binding or identity (the structured-type migration); 22% name resolution or syntax, mostly `import ...R as commonuiR` alias heads (11,239 counted); 17% library or JAR gaps; 10% missing CST rules (`X::class.java`, `super`, enum entries); under 1% nondeterminism.
+- About 5.5k of the type-representation mass needs supertype projection of generic arguments (Android MVI: `currentState`, `uiState`, `viewModel` through `MviViewModel<E,S,F>`, `by viewModels<VM>()`, `collectAsStateWithLifecycle()`). The spec listed this as a non-goal; it moves into S3.
+- Wrong answers: 5,127 untyped `.toViewText()` calls resolve to the `BigDecimal?` overload and 2,271 `.toViewDrawable()` calls to the `Uri` overload; their receivers are `R.string` / `R.drawable` values or strings. In a sample of 30 untyped by-name guesses, 12 were wrong (*inferred*: 6k to 16k wrong answers across the 26.9k guesses).
+- Nondeterminism: 2,644 of 1,015,064 references differ between two identical runs. The cause is `warm_discover_files` (`indexer/discover.rs`) collecting paths through a `HashSet` and the scan sorting only by path depth, plus `scan_gradle_jars_split` (`indexer/jar.rs`) returning JARs in `HashMap::into_values()` order, so every first-match-by-name lookup depends on the process. A tie-break by path and a sort of both JAR lists gave 0 differing references over two warm-cache runs; the cold-cache path was not checked.
+
+**Order**
+
+| # | Item | Expected payoff | Notes |
+|---|---|---|---|
+| 1 | Determinism fix (tie-break by path, sort JAR lists) with a test | Run-to-run differences 2,644 to 0 (measured on warm cache) | About 5 lines; prerequisite of the acceptance rule in the spec (stable transitions) |
+| 2 | Spec Slice 0 extended: residue counter plus an untyped-receiver lane and two precision checks | Makes the 53.8k hidden references visible; otherwise slices that turn wrong types into unknown *lower* the printed headline | About 150 to 300 lines of CLI |
+| 3 | Import-alias receiver typing and `R.<kind>.<field>` typing | +10k to 16k typed (*inferred*); removes most of the 7.4k wrong `toViewText` / `toViewDrawable` answers | Possibly a cache version bump; lands before S1 so S1's zero-change check guards it |
+| 4 | Slice B (nullable diagnostic, credit the #329 contributor) | Fixes a user-visible false positive; not on the benchmark | Touches `infer/mod.rs` before S1 does |
+| 5 | Spec S1 (representation, nullability, shape), with slice C folded in | Behaviour-neutral by design | About 1,000 lines; display text could change |
+| 6 | Spec S2 (identity), nested path first | +1k to 3k (2,154 nested-type heads) | Latency gate from the spec; member lookup must move to identity or the recall payoff is about 0 |
+| 7 | Spec S3 (substitution), with slice D and supertype projection | +3k to 7k with projection, about 0 without | About 1,300 lines |
+| 8 | Spec S4, then S5 with slice F folded in | +0.5k to 2k plus fewer wrong multi-candidate picks | Largest blast radius; last |
+
+Slices E, G and H run in parallel at any time. After S1, the small CST rules (`X::class.java`, `super`, enum entries) are worth +2k to 4k (*inferred*). Slice I stays deferred. The seven deferred Copilot comments ride along with S1 to S4, except the flow-analysis one (`#338·4942`).
+
+**Dropped or deferred:** slices C, D and F as separate PRs (folded as above); separate work on other callers of `build_type_arg_subst` (the determinism fix stabilises them and S3 deletes the function); the sidecar change, until the Slice 0 residue split shows compiled-JAR residue dominating.
+
+**Spec changes the data supports:** Slice 0 includes the untyped-receiver lane and precision checks; the determinism fix is an explicit prerequisite (#337 did not remove the noise); supertype projection of generic arguments moves into S3 (common supertype and bounds checking stay non-goals); S2 must move member lookup to identity at least for nested paths. As scoped, S1 to S5 are mainly correctness and maintainability work, worth an estimated +1.5k to 9k references; the largest wins (import aliases, `R` fields, MVI projection) sit outside the migration.
+
+**Settings adopted** (recommended in the spec): wrong-answer weight `w = 2` and the five reference-shape strata for the acceptance rule; the sidecar change only if the Slice 0 counter shows compiled-JAR residue dominating.
 
 ## Enforcement options considered and rejected
 
