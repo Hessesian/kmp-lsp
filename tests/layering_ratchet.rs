@@ -57,11 +57,8 @@ const LAYERS: &[(&str, u8)] = &[
 ];
 
 /// Upward edges that still exist: `((from, to), mentions)`.
-const UPWARD_EDGES: &[((&str, &str), usize)] = &[
-    (("indexer", "resolver"), 6),
-    (("features", "backend"), 3),
-    (("language", "parser"), 3),
-];
+const UPWARD_EDGES: &[((&str, &str), usize)] =
+    &[(("features", "backend"), 3), (("language", "parser"), 3)];
 
 fn layer_of(module: &str) -> Option<u8> {
     LAYERS

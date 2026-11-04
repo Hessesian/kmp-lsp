@@ -3,7 +3,10 @@
 //! Covers pure string helpers that can be tested without any `Indexer` state.
 
 use super::*;
-use crate::indexer::Indexer;
+use crate::indexer::{Indexer, Resolution};
+use crate::resolver::call_signature::{
+    declaration_signature, find_method_params_in_class, resolve_call_signature, CallSite, Signature,
+};
 use tower_lsp::lsp_types::Url;
 
 fn test_uri(path: &str) -> Url {

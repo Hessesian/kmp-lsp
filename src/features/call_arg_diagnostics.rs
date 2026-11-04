@@ -11,11 +11,10 @@
 
 use tower_lsp::lsp_types::*;
 
-use crate::indexer::{
-    live_tree::LiveDoc, resolve_call_signature, CallShape, CallSite, Indexer, Resolution, Signature,
-};
+use crate::indexer::{live_tree::LiveDoc, CallShape, Indexer, Resolution};
 use crate::node_ext::{count_provided_args, has_trailing_lambda, NodeExt};
 use crate::queries::{KIND_CALL_EXPR, KIND_FUN_DECL, KIND_LAMBDA_LIT, KIND_SIMPLE_IDENT};
+use crate::resolver::{resolve_call_signature, CallSite, Signature};
 
 /// Scan a file for call-argument count mismatches and return diagnostics.
 ///

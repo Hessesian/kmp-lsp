@@ -141,7 +141,7 @@ fn pick_unambiguous_location(
     mut locations: Vec<Location>,
 ) -> Option<Location> {
     if let Some((indexer, shape)) = shape_ctx {
-        locations = crate::indexer::shape_filter_locations(indexer, shape, locations).resolved();
+        locations = crate::resolver::shape_filter_locations(indexer, shape, locations).resolved();
         if locations.len() > 1 && locations_share_call_signature(indexer, &locations) {
             return locations.into_iter().next();
         }

@@ -8,7 +8,8 @@ use std::sync::Arc;
 
 use tower_lsp::lsp_types::{CompletionItem, Location, Position, Url};
 
-use crate::indexer::{find_fun_signature_with_receiver, IgnoreMatcher, Indexer};
+use crate::indexer::{IgnoreMatcher, Indexer};
+use crate::resolver::find_fun_signature_with_receiver;
 use crate::types::{FileData, SymbolEntry};
 
 use super::traits::{

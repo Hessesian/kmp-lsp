@@ -15,7 +15,8 @@ use tower_lsp::lsp_types::{GotoDefinitionResponse, Location, Position, SymbolKin
 
 use crate::features::definition::locs_to_opt_response;
 use crate::features::traits::{DocumentAccess, SearchAccess, SymbolIndex};
-use crate::indexer::{classify_cursor, Indexer, SymbolRole};
+use crate::indexer::{Indexer, SymbolRole};
+use crate::resolver::classify_cursor;
 use crate::rg;
 use crate::types::FileData;
 

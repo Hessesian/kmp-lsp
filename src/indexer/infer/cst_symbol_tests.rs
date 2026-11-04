@@ -4,6 +4,7 @@
 
 use super::*;
 use crate::indexer::Indexer;
+use crate::resolver::{classify_symbol_at, resolve_identity, NavigationSource};
 use tower_lsp::lsp_types::Url;
 
 fn uri(path: &str) -> Url {

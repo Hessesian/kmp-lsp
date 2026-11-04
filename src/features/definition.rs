@@ -156,9 +156,9 @@ fn try_cst_resolved_definition(
     uri: &Url,
     position: Position,
 ) -> Option<GotoDefinitionResponse> {
-    let sym = crate::indexer::classify_cursor(indexer, uri, position)?;
-    match crate::indexer::resolve_identity(&sym, indexer, uri) {
-        crate::indexer::NavigationSource::CstResolved(defs) if !defs.is_empty() => {
+    let sym = crate::resolver::classify_cursor(indexer, uri, position)?;
+    match crate::resolver::resolve_identity(&sym, indexer, uri) {
+        crate::resolver::NavigationSource::CstResolved(defs) if !defs.is_empty() => {
             locs_to_opt_response(defs.0)
         }
         _ => None,
@@ -288,7 +288,7 @@ pub(crate) async fn find_definition(
                 locs = index.find_definition_qualified(&ctx.word, Some(&rt.leaf), uri);
             }
             if let Some(shape) = call_shape_at_callee(index, uri, position) {
-                locs = crate::indexer::shape_filter_locations(index, shape, locs).resolved();
+                locs = crate::resolver::shape_filter_locations(index, shape, locs).resolved();
             }
             if !locs.is_empty() {
                 return Some(locs_to_response(locs));
@@ -330,7 +330,7 @@ pub(crate) async fn find_definition(
     // correct-arity extension fallback (`with_supertype_extension_fallback`)
     // — shape-filter here too, same as the branches above.
     if let Some(shape) = call_shape_at_callee(index, uri, position) {
-        locs = crate::indexer::shape_filter_locations(index, shape, locs).resolved();
+        locs = crate::resolver::shape_filter_locations(index, shape, locs).resolved();
     }
     if !locs.is_empty() {
         return locs_to_opt_response(locs);

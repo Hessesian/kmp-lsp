@@ -15,11 +15,9 @@ use tower_lsp::lsp_types::{Location, Position, Url};
 use tree_sitter::Node;
 
 use crate::indexer::live_tree::LiveDoc;
-use crate::indexer::{
-    classify_cursor, resolve_identity_with_io, Indexer, NavigationSource, ResolvedType,
-    SymbolAtCursor, SymbolRole,
-};
+use crate::indexer::{Indexer, ResolvedType, SymbolAtCursor, SymbolRole};
 use crate::queries::{KIND_IMPORT_HEADER, KIND_PACKAGE_HEADER, KIND_SIMPLE_IDENT, KIND_TYPE_IDENT};
+use crate::resolver::{classify_cursor, resolve_identity_with_io, NavigationSource};
 
 /// Which resolution path produced a `Success` outcome.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
