@@ -57,7 +57,9 @@ impl Indexer {
             let uri2 = from_uri.clone();
             let sem = Arc::clone(&limit);
             tokio::spawn(async move {
-                let _permit = sem.acquire_owned().await.expect("semaphore closed");
+                let Ok(_permit) = sem.acquire_owned().await else {
+                    return;
+                };
                 tokio::task::spawn_blocking(move || {
                     let locs = indexer.resolve_symbol(&type_name, None, &uri2);
                     if let Some(loc) = locs.first() {
