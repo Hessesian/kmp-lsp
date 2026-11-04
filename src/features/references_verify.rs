@@ -1,9 +1,13 @@
 //! Per-candidate CST verification for find-references — see
 //! `docs/superpowers/specs/2026-07-20-cst-find-references-design.md`.
 
+use std::collections::HashMap;
+
 use tower_lsp::lsp_types::Location;
 
-use crate::indexer::{Indexer, InferDeps, NavigationSource};
+use crate::indexer::{
+    CallShape, Indexer, InferDeps, NavigationSource, OccurrenceSite, ResolvedType, SymbolRole,
+};
 use crate::resolver::{ReceiverType, ReceiverTypeAgreement, Resolver};
 
 /// Per-request cap on IO-costed verification steps (a candidate's file
@@ -41,192 +45,262 @@ pub(crate) fn verify_candidates(
     sidecar_budget: usize,
     candidates: Vec<Location>,
 ) -> VerifiedReferences {
-    let Some(query_declaring_type) = query_declaring_type else {
-        // No query identity — every candidate is exactly today's behavior.
-        return VerifiedReferences {
-            kept: candidates
-                .into_iter()
-                .map(NavigationSource::NameScan)
-                .collect(),
-            rejected: Vec::new(),
-            proven_overrides: Vec::new(),
-        };
+    let mut verifier = CandidateVerifier {
+        indexer,
+        query: query_declaring_type.map(|raw| QueryIdentity {
+            declaring_type: ReceiverType::from_raw(raw.to_owned()).leaf,
+            arity: query_arity,
+            declaring_type_uri: query_declaring_type_uri,
+        }),
+        sidecar_budget,
+        io_budget: MAX_VERIFICATION_IO_OPERATIONS,
+        agreements: HashMap::new(),
     };
-    let query_declaring_type = ReceiverType::from_raw(query_declaring_type.to_owned()).leaf;
-
-    let mut kept = Vec::new();
-    let mut rejected = Vec::new();
-    let mut proven_overrides = Vec::new();
-    let mut io_budget = MAX_VERIFICATION_IO_OPERATIONS;
-
+    let mut verified = VerifiedReferences {
+        kept: Vec::new(),
+        rejected: Vec::new(),
+        proven_overrides: Vec::new(),
+    };
     for candidate in candidates {
-        if io_budget == 0 {
-            kept.push(NavigationSource::NameScan(candidate));
-            continue;
+        verifier.verify(candidate, &mut verified);
+    }
+    verified
+}
+
+/// What the query's own cursor resolved to. Absent when the cursor's
+/// declaring/receiver type could not be inferred — candidates then get only
+/// the syntactic check.
+struct QueryIdentity<'a> {
+    declaring_type: String,
+    arity: Option<(u8, u8)>,
+    declaring_type_uri: Option<&'a str>,
+}
+
+/// `(candidate type, the file declaring it, target type)` — everything a
+/// [`ReceiverTypeAgreement`] depends on within one request.
+type AgreementKey = (String, String, String);
+
+struct CandidateVerifier<'a> {
+    indexer: &'a Indexer,
+    query: Option<QueryIdentity<'a>>,
+    sidecar_budget: usize,
+    io_budget: usize,
+    /// Agreement answers already paid for in this request. A common member
+    /// name (`get`, `map`, `size`) yields thousands of hits on a handful of
+    /// receiver types; without this each hit would re-walk the same
+    /// hierarchy and the budget would run out on the first few dozen.
+    agreements: HashMap<AgreementKey, ReceiverTypeAgreement>,
+}
+
+impl CandidateVerifier<'_> {
+    fn verify(&mut self, candidate: Location, verified: &mut VerifiedReferences) {
+        if self.io_budget == 0 {
+            verified.kept.push(NavigationSource::NameScan(candidate));
+            return;
         }
-        let file_already_indexed = indexer.files.contains_key(candidate.uri.as_str())
-            || indexer.live_lines.contains_key(candidate.uri.as_str());
+        let file_already_indexed = self.indexer.files.contains_key(candidate.uri.as_str())
+            || self.indexer.live_lines.contains_key(candidate.uri.as_str());
         if !file_already_indexed {
-            io_budget -= 1;
+            self.io_budget -= 1;
         }
-        let Some(symbol) = crate::indexer::classify_symbol_at(
-            indexer,
+        let site = crate::indexer::classify_occurrence_at(
+            self.indexer,
             &candidate.uri,
             crate::types::CursorPos {
                 line: candidate.range.start.line as usize,
                 utf16_col: candidate.range.start.character as usize,
             },
-        ) else {
-            kept.push(NavigationSource::NameScan(candidate));
-            continue;
+        );
+        let symbol = match site {
+            OccurrenceSite::Symbol(symbol) => symbol,
+            // Comment text, string text and accessor keywords spell the name
+            // but refer to nothing — rejected whatever the query is.
+            OccurrenceSite::NotCode(kind) => {
+                log::trace!(
+                    "references: rejected {kind:?} match at {}:{}",
+                    candidate.uri,
+                    candidate.range.start.line
+                );
+                verified.rejected.push(candidate);
+                return;
+            }
+            OccurrenceSite::Unclassified => {
+                verified.kept.push(NavigationSource::NameScan(candidate));
+                return;
+            }
         };
+        if self.query.is_none() {
+            verified.kept.push(NavigationSource::NameScan(candidate));
+            return;
+        }
         match &symbol.role {
-            crate::indexer::SymbolRole::Reference {
+            SymbolRole::Reference {
                 receiver_type: Some(receiver_type),
                 shape,
                 ..
-            } => {
-                // A same-type candidate whose own call shape can't satisfy
-                // the query's arity is a name collision, not a genuine
-                // reference — `receiver_type_agreement` below only compares
-                // types, so a same-file self-declaration/self-call
-                // registered on the same receiver type (e.g. `Flow.collect`
-                // vs. a local `Flow.collect(scope, block)` self-shadow)
-                // would otherwise look identical to the real target. Only
-                // rejects when both `shape` (the candidate is itself a call)
-                // and `query_arity` (the query's target arity is known and
-                // trustworthy — see `verified_references_for`) are present;
-                // anything else keeps today's behavior unfiltered.
-                if let (Some(shape), Some((required, total))) = (shape, query_arity) {
-                    if !shape.accepts(required, total) {
-                        rejected.push(candidate);
-                        continue;
-                    }
-                }
-                let candidate_type = ReceiverType::from_raw(receiver_type.type_path()).leaf;
-                // Only charge the agreement-walk unit when a walk will
-                // actually run: `Exact` (same type, string equality) and
-                // `Unresolvable` (candidate type not indexed) both return
-                // from `receiver_type_agreement` before any supertype walk,
-                // so charging for them exhausted the budget faster than the
-                // real IO cost warranted.
-                let will_walk = candidate_type != query_declaring_type
-                    && indexer.has_type_definition(&candidate_type);
-                if will_walk {
-                    if io_budget == 0 {
-                        kept.push(NavigationSource::NameScan(candidate));
-                        continue;
-                    }
-                    io_budget -= 1;
-                }
-                // The supertype walk reads the receiver type's OWN declaration
-                // for its supertypes, so it must start from the file that
-                // declares that type — not from the call site, which declares
-                // nothing of the kind. An unresolvable declaration is kept,
-                // never rejected.
-                let Some(candidate_declaration_uri) = (if will_walk {
-                    receiver_type_declaration_uri(indexer, receiver_type, &candidate.uri)
-                } else {
-                    Some(candidate.uri.to_string())
-                }) else {
-                    kept.push(NavigationSource::NameScan(candidate));
-                    continue;
-                };
-                match indexer.receiver_type_agreement(
-                    &candidate_type,
-                    &candidate_declaration_uri,
-                    &query_declaring_type,
-                    sidecar_budget,
-                ) {
-                    ReceiverTypeAgreement::Exact | ReceiverTypeAgreement::Inherited => {
-                        kept.push(NavigationSource::CstResolved(candidate));
-                    }
-                    ReceiverTypeAgreement::Unrelated => rejected.push(candidate),
-                    ReceiverTypeAgreement::Unresolvable => {
-                        kept.push(NavigationSource::NameScan(candidate));
-                    }
-                }
-            }
-            crate::indexer::SymbolRole::Declaration { .. } => {
-                let enclosing_class =
-                    indexer.enclosing_class_at(&candidate.uri, candidate.range.start.line);
-                match enclosing_class {
-                    Some(class_name) => {
-                        let candidate_type = ReceiverType::from_raw(class_name).leaf;
-
-                        let forward_will_walk = candidate_type != query_declaring_type
-                            && indexer.has_type_definition(&candidate_type);
-                        if forward_will_walk {
-                            if io_budget == 0 {
-                                kept.push(NavigationSource::NameScan(candidate));
-                                continue;
-                            }
-                            io_budget -= 1;
-                        }
-                        let forward = indexer.receiver_type_agreement(
-                            &candidate_type,
-                            candidate.uri.as_str(),
-                            &query_declaring_type,
-                            sidecar_budget,
-                        );
-
-                        // Reverse direction: is the QUERY a subtype of the
-                        // CANDIDATE's type -- i.e. the cursor is on the
-                        // override, and this candidate is the base it
-                        // overrides? Only meaningful (and only ever
-                        // attempted) when the caller knows the query's own
-                        // declaring URI -- see Task 4 in the 6c rename plan
-                        // for when that's available.
-                        let reverse = query_declaring_type_uri.map(|query_uri| {
-                            let reverse_will_walk = query_declaring_type != candidate_type
-                                && indexer.has_type_definition(&query_declaring_type);
-                            if reverse_will_walk {
-                                if io_budget == 0 {
-                                    return ReceiverTypeAgreement::Unresolvable;
-                                }
-                                io_budget -= 1;
-                            }
-                            indexer.receiver_type_agreement(
-                                &query_declaring_type,
-                                query_uri,
-                                &candidate_type,
-                                sidecar_budget,
-                            )
-                        });
-
-                        let is_proven_override =
-                            matches!(forward, ReceiverTypeAgreement::Inherited)
-                                || matches!(reverse, Some(ReceiverTypeAgreement::Inherited));
-                        if is_proven_override {
-                            proven_overrides.push(candidate.clone());
-                        }
-
-                        match forward {
-                            ReceiverTypeAgreement::Exact | ReceiverTypeAgreement::Inherited => {
-                                kept.push(NavigationSource::CstResolved(candidate));
-                            }
-                            // A mismatch here is a *weaker* signal than a proven type
-                            // mismatch — two same-named unrelated declarations aren't
-                            // the "wrong receiver type" case `ReceiverTypeAgreement`
-                            // models — so err toward keeping (`NameScan`), never
-                            // reject here, same as before this fix.
-                            ReceiverTypeAgreement::Unrelated
-                            | ReceiverTypeAgreement::Unresolvable => {
-                                kept.push(NavigationSource::NameScan(candidate));
-                            }
-                        }
-                    }
-                    None => kept.push(NavigationSource::NameScan(candidate)),
-                }
-            }
-            _ => kept.push(NavigationSource::NameScan(candidate)),
+            } => self.verify_member_reference(candidate, receiver_type, *shape, verified),
+            SymbolRole::Declaration { .. } => self.verify_declaration(candidate, verified),
+            _ => verified.kept.push(NavigationSource::NameScan(candidate)),
         }
     }
 
-    VerifiedReferences {
-        kept,
-        rejected,
-        proven_overrides,
+    fn verify_member_reference(
+        &mut self,
+        candidate: Location,
+        receiver_type: &ResolvedType,
+        shape: Option<CallShape>,
+        verified: &mut VerifiedReferences,
+    ) {
+        let Some(query) = &self.query else {
+            verified.kept.push(NavigationSource::NameScan(candidate));
+            return;
+        };
+        // A same-type candidate whose own call shape can't satisfy the
+        // query's arity is a name collision, not a genuine reference —
+        // `receiver_type_agreement` below only compares types, so a same-file
+        // self-declaration/self-call registered on the same receiver type
+        // (e.g. `Flow.collect` vs. a local `Flow.collect(scope, block)`
+        // self-shadow) would otherwise look identical to the real target.
+        // Only rejects when both `shape` (the candidate is itself a call) and
+        // the query arity (known and trustworthy — see
+        // `verified_references_for`) are present.
+        if let (Some(shape), Some((required, total))) = (shape, query.arity) {
+            if !shape.accepts(required, total) {
+                verified.rejected.push(candidate);
+                return;
+            }
+        }
+        let query_type = query.declaring_type.clone();
+        let candidate_type = ReceiverType::from_raw(receiver_type.type_path()).leaf;
+        // `Exact` (same type) and `Unresolvable` (candidate type not indexed)
+        // return before any supertype walk, so only a real walk is charged.
+        let will_walk =
+            candidate_type != query_type && self.indexer.has_type_definition(&candidate_type);
+        // The supertype walk reads the receiver type's OWN declaration for
+        // its supertypes, so it must start from the file that declares that
+        // type — not from the call site, which declares nothing of the kind.
+        // An unresolvable declaration is kept, never rejected.
+        let Some(candidate_declaration_uri) = (if will_walk {
+            receiver_type_declaration_uri(self.indexer, receiver_type, &candidate.uri)
+        } else {
+            Some(candidate.uri.to_string())
+        }) else {
+            verified.kept.push(NavigationSource::NameScan(candidate));
+            return;
+        };
+        let Some(agreement) = self.agreement(
+            candidate_type,
+            candidate_declaration_uri,
+            query_type,
+            will_walk,
+        ) else {
+            verified.kept.push(NavigationSource::NameScan(candidate));
+            return;
+        };
+        match agreement {
+            ReceiverTypeAgreement::Exact | ReceiverTypeAgreement::Inherited => {
+                verified.kept.push(NavigationSource::CstResolved(candidate));
+            }
+            ReceiverTypeAgreement::Unrelated => verified.rejected.push(candidate),
+            ReceiverTypeAgreement::Unresolvable => {
+                verified.kept.push(NavigationSource::NameScan(candidate));
+            }
+        }
+    }
+
+    fn verify_declaration(&mut self, candidate: Location, verified: &mut VerifiedReferences) {
+        let Some(query) = &self.query else {
+            verified.kept.push(NavigationSource::NameScan(candidate));
+            return;
+        };
+        let query_type = query.declaring_type.clone();
+        let query_uri = query.declaring_type_uri.map(str::to_owned);
+        let Some(class_name) = self
+            .indexer
+            .enclosing_class_at(&candidate.uri, candidate.range.start.line)
+        else {
+            verified.kept.push(NavigationSource::NameScan(candidate));
+            return;
+        };
+        let candidate_type = ReceiverType::from_raw(class_name).leaf;
+
+        let forward_will_walk =
+            candidate_type != query_type && self.indexer.has_type_definition(&candidate_type);
+        let Some(forward) = self.agreement(
+            candidate_type.clone(),
+            candidate.uri.to_string(),
+            query_type.clone(),
+            forward_will_walk,
+        ) else {
+            verified.kept.push(NavigationSource::NameScan(candidate));
+            return;
+        };
+
+        // Reverse direction: is the QUERY a subtype of the CANDIDATE's type —
+        // i.e. the cursor is on the override, and this candidate is the base
+        // it overrides? Only attempted when the caller knows the query's own
+        // declaring URI (rename's override-participation check).
+        let reverse = query_uri.map(|query_uri| {
+            let reverse_will_walk =
+                query_type != candidate_type && self.indexer.has_type_definition(&query_type);
+            self.agreement(
+                query_type.clone(),
+                query_uri,
+                candidate_type.clone(),
+                reverse_will_walk,
+            )
+            .unwrap_or(ReceiverTypeAgreement::Unresolvable)
+        });
+
+        let is_proven_override = matches!(forward, ReceiverTypeAgreement::Inherited)
+            || matches!(reverse, Some(ReceiverTypeAgreement::Inherited));
+        if is_proven_override {
+            verified.proven_overrides.push(candidate.clone());
+        }
+
+        match forward {
+            ReceiverTypeAgreement::Exact | ReceiverTypeAgreement::Inherited => {
+                verified.kept.push(NavigationSource::CstResolved(candidate));
+            }
+            // A mismatch here is a *weaker* signal than a proven type
+            // mismatch — two same-named unrelated declarations aren't the
+            // "wrong receiver type" case `ReceiverTypeAgreement` models — so
+            // err toward keeping (`NameScan`), never reject here.
+            ReceiverTypeAgreement::Unrelated | ReceiverTypeAgreement::Unresolvable => {
+                verified.kept.push(NavigationSource::NameScan(candidate));
+            }
+        }
+    }
+
+    /// The agreement of `candidate_type` (declared in `declaration_uri`)
+    /// with `target_type`, answered from this request's memo when already
+    /// known. `None` when a walk is needed and the IO budget is spent.
+    fn agreement(
+        &mut self,
+        candidate_type: String,
+        declaration_uri: String,
+        target_type: String,
+        will_walk: bool,
+    ) -> Option<ReceiverTypeAgreement> {
+        let key = (candidate_type, declaration_uri, target_type);
+        if let Some(known) = self.agreements.get(&key) {
+            return Some(*known);
+        }
+        if will_walk {
+            if self.io_budget == 0 {
+                return None;
+            }
+            self.io_budget -= 1;
+        }
+        let (candidate_type, declaration_uri, target_type) = &key;
+        let agreement = self.indexer.receiver_type_agreement(
+            candidate_type,
+            declaration_uri,
+            target_type,
+            self.sidecar_budget,
+        );
+        self.agreements.insert(key, agreement);
+        Some(agreement)
     }
 }
 
@@ -511,10 +585,11 @@ mod tests {
     ///   (`fun f(file: File) { file.save() }`), which — once agreement is
     ///   checked — is provably `Unrelated` to the `User` query type.
     ///
-    /// With `MAX_VERIFICATION_IO_OPERATIONS = 48` and every fully-verified
-    /// candidate costing exactly 2 units (1 disk-read charge + 1 agreement
-    /// charge — see `verify_candidates`), exactly the first
-    /// `MAX_VERIFICATION_IO_OPERATIONS / 2` candidates can be verified and
+    /// Every candidate costs 1 disk-read unit; only the FIRST also pays the
+    /// agreement walk (`File` vs `User`), which the request memo then answers
+    /// for every later `File` receiver. So with
+    /// `MAX_VERIFICATION_IO_OPERATIONS = 48`, exactly
+    /// `MAX_VERIFICATION_IO_OPERATIONS - 1` candidates are verified and
     /// rejected before the budget hits zero; every candidate after that must
     /// fall back to `NameScan` purely because the budget ran out, not
     /// because classification failed (their receiver type resolves fine).
@@ -550,7 +625,7 @@ mod tests {
             candidates.clone(),
         );
 
-        let max_verifiable = MAX_VERIFICATION_IO_OPERATIONS / 2;
+        let max_verifiable = MAX_VERIFICATION_IO_OPERATIONS - 1;
         assert_eq!(
             result.rejected.len(),
             max_verifiable,
@@ -661,50 +736,45 @@ mod tests {
         );
     }
 
-    /// Budget precision (Declaration arm): before this fix, the Declaration
-    /// arm never consulted `io_budget` at all (Task 2 wired
-    /// `receiver_type_agreement` into that arm but with no budget gating),
-    /// so a genuine supertype walk (`Inherited`) ran unconditionally
-    /// regardless of remaining budget -- unlike the Reference arm's
-    /// pre-existing (if imprecise) charge. This spends the whole budget on
-    /// `MAX_VERIFICATION_IO_OPERATIONS` Declaration-arm override candidates
-    /// that DO require a genuine walk (`Inherited`, so `will_walk` is
-    /// correctly true and a charge belongs here), then proves one more such
-    /// candidate, at a distinct location, correctly defers to `NameScan`
-    /// once the budget is legitimately exhausted -- instead of ignoring the
-    /// budget entirely and resolving `CstResolved` regardless, as the
-    /// pre-fix Declaration arm did.
+    /// Budget precision (Declaration arm): a genuine supertype walk
+    /// (`Inherited`) spends budget, and once the budget is spent a
+    /// Declaration-arm candidate needing a walk defers to `NameScan` instead
+    /// of ignoring the budget and resolving `CstResolved` regardless.
     ///
+    /// Each filler override lives in its OWN subclass, so each needs its own
+    /// walk — the request memo only saves repeat walks of the same type
+    /// (see `repeated_receiver_type_walks_once_and_verifies_every_candidate`).
     /// Every candidate lives in the SAME already-indexed file, so the
-    /// disk-read charge never fires for any of them -- only the
-    /// agreement-walk charge this fix adds to the Declaration arm is in
+    /// disk-read charge never fires — only the agreement-walk charge is in
     /// play.
     #[test]
     fn declaration_arm_inherited_walk_now_spends_and_respects_budget() {
-        let source = "class User { fun save() {} }\n\
-                      open class Base { fun save() {} }\n\
-                      class DerivedFiller : Base() {\n\
-                      override fun save() {}\n\
-                      }\n\
-                      class DerivedReal : Base() {\n\
-                      override fun save() {}\n\
-                      }\n";
+        let mut source =
+            String::from("class User { fun save() {} }\nopen class Base { fun save() {} }\n");
+        let mut filler_lines = Vec::new();
+        for index in 0..MAX_VERIFICATION_IO_OPERATIONS {
+            source.push_str(&format!("class DerivedFiller{index} : Base() {{\n"));
+            filler_lines.push(source.lines().count());
+            source.push_str("override fun save() {}\n}\n");
+        }
+        source.push_str("class DerivedReal : Base() {\n");
+        let real_line = source.lines().count();
+        source.push_str("override fun save() {}\n}\n");
+
         let file_uri = uri("/D.kt");
         let indexer = Indexer::new();
-        indexer.index_content(&file_uri, source);
-        indexer.store_live_tree(&file_uri, source);
+        indexer.index_content(&file_uri, &source);
+        indexer.store_live_tree(&file_uri, &source);
 
-        let filler_column = source.lines().nth(3).unwrap().find("save").unwrap() as u32;
-        let filler_candidate = location(&file_uri, 3, filler_column, filler_column + 4);
-
-        let real_column = source.lines().nth(6).unwrap().find("save").unwrap() as u32;
-        let real_candidate = location(&file_uri, 6, real_column, real_column + 4);
-
-        // MAX_VERIFICATION_IO_OPERATIONS copies of the SAME Inherited-walk
-        // override-declaration candidate, plus the one real Inherited-walk
-        // candidate, at a distinct location, at the end.
-        let mut candidates: Vec<Location> =
-            std::iter::repeat_n(filler_candidate, MAX_VERIFICATION_IO_OPERATIONS).collect();
+        let save_location = |line: usize| {
+            let column = source.lines().nth(line).unwrap().find("save").unwrap() as u32;
+            location(&file_uri, line as u32, column, column + 4)
+        };
+        let mut candidates: Vec<Location> = filler_lines
+            .iter()
+            .map(|line| save_location(*line))
+            .collect();
+        let real_candidate = save_location(real_line);
         candidates.push(real_candidate.clone());
 
         let result = verify_candidates(
@@ -715,6 +785,15 @@ mod tests {
             MAX_VERIFICATION_IO_OPERATIONS,
             candidates,
         );
+        let fillers_resolved = result
+            .kept
+            .iter()
+            .filter(|kept_source| matches!(kept_source, NavigationSource::CstResolved(_)))
+            .count();
+        assert_eq!(
+            fillers_resolved, MAX_VERIFICATION_IO_OPERATIONS,
+            "every filler override is a genuine walk the budget can afford"
+        );
         assert!(
             result.kept.iter().any(|kept_source| matches!(
                 kept_source,
@@ -722,9 +801,7 @@ mod tests {
             )),
             "once MAX_VERIFICATION_IO_OPERATIONS genuine Inherited walks have \
              legitimately spent the whole budget, one more Declaration-arm \
-             candidate needing a walk must defer to NameScan rather than \
-             ignore the exhausted budget and resolve CstResolved regardless, \
-             got {:?}",
+             candidate needing a walk must defer to NameScan, got {:?}",
             result.kept
         );
     }
@@ -827,5 +904,198 @@ mod tests {
             vec![file_candidate],
         );
         assert!(result.proven_overrides.is_empty());
+    }
+
+    /// A common member name yields many hits on the same receiver type. The
+    /// agreement walk for that type runs once per request, so every hit is
+    /// verified — far past the point where per-hit walks would have spent
+    /// the budget.
+    #[test]
+    fn repeated_receiver_type_walks_once_and_verifies_every_candidate() {
+        let candidate_count = MAX_VERIFICATION_IO_OPERATIONS * 3;
+        let mut source =
+            String::from("class User { fun save() {} }\nclass File { fun save() {} }\n");
+        for index in 0..candidate_count {
+            source.push_str(&format!("fun f{index}(file: File) {{ file.save() }}\n"));
+        }
+        let file_uri = uri("/D.kt");
+        let indexer = Indexer::new();
+        indexer.index_content(&file_uri, &source);
+        indexer.store_live_tree(&file_uri, &source);
+        let candidates: Vec<Location> = (0..candidate_count)
+            .map(|index| {
+                let line = index + 2;
+                let column = source.lines().nth(line).unwrap().find("save").unwrap() as u32;
+                location(&file_uri, line as u32, column, column + 4)
+            })
+            .collect();
+
+        let result = verify_candidates(
+            &indexer,
+            Some("User"),
+            None,
+            None,
+            MAX_VERIFICATION_IO_OPERATIONS,
+            candidates,
+        );
+        assert!(
+            result.kept.is_empty(),
+            "every File.save call is proven unrelated to User, got kept: {:?}",
+            result.kept
+        );
+        assert_eq!(result.rejected.len(), candidate_count);
+    }
+
+    fn not_code_fixture() -> (Url, Indexer, String) {
+        let source = "class Box {\n\
+                      fun get(): Int = 1\n\
+                      val size: Int\n\
+                      get() = 2\n\
+                      var label: String = \"\"\n\
+                      set(value) { field = value }\n\
+                      }\n\
+                      // get the box\n\
+                      /** Calls [get] or [Box.get]. */\n\
+                      fun use(box: Box): String {\n\
+                      box.get()\n\
+                      return \"get $box ${box.get()}\"\n\
+                      }\n"
+        .to_owned();
+        let file_uri = uri("/Box.kt");
+        let indexer = Indexer::new();
+        indexer.index_content(&file_uri, &source);
+        indexer.store_live_tree(&file_uri, &source);
+        (file_uri, indexer, source)
+    }
+
+    /// Every `(line, column)` where the whole word `word` occurs — what
+    /// `rg --word-regexp` hands the verifier.
+    fn word_hits(file_uri: &Url, source: &str, word: &str) -> Vec<Location> {
+        let mut hits = Vec::new();
+        for (line_index, line) in source.lines().enumerate() {
+            let mut search_from = 0;
+            while let Some(offset) = line[search_from..].find(word) {
+                let start = search_from + offset;
+                let end = start + word.len();
+                let is_word_char =
+                    |character: char| character.is_alphanumeric() || character == '_';
+                let before_is_word = line[..start].chars().next_back().is_some_and(is_word_char);
+                let after_is_word = line[end..].chars().next().is_some_and(is_word_char);
+                if !before_is_word && !after_is_word {
+                    hits.push(location(
+                        file_uri,
+                        line_index as u32,
+                        start as u32,
+                        end as u32,
+                    ));
+                }
+                search_from = end;
+            }
+        }
+        hits
+    }
+
+    fn kept_lines(result: &VerifiedReferences) -> Vec<(u32, u32)> {
+        let mut lines: Vec<(u32, u32)> = result
+            .kept
+            .iter()
+            .map(|kept_source| match kept_source {
+                NavigationSource::CstResolved(location) | NavigationSource::NameScan(location) => {
+                    (location.range.start.line, location.range.start.character)
+                }
+            })
+            .collect();
+        lines.sort_unstable();
+        lines
+    }
+
+    /// Comment text, string text and accessor keywords that spell `get` are
+    /// rejected; real code — the declaration, the call, the call inside a
+    /// `${…}` template and KDoc `[get]` links — is kept.
+    #[test]
+    fn non_code_matches_are_rejected_and_code_kept() {
+        let (file_uri, indexer, source) = not_code_fixture();
+        let hits = word_hits(&file_uri, &source, "get");
+        let result = verify_candidates(
+            &indexer,
+            Some("Box"),
+            None,
+            None,
+            MAX_VERIFICATION_IO_OPERATIONS,
+            hits,
+        );
+        let column_of = |line: usize, needle: &str| {
+            source.lines().nth(line).unwrap().find(needle).unwrap() as u32
+        };
+        let doc_line = source.lines().nth(8).unwrap();
+        let first_link = doc_line.find("[get]").unwrap() as u32 + 1;
+        let second_link = doc_line.find("Box.get").unwrap() as u32 + 4;
+        let template_call = column_of(11, "box.get()") + 4;
+        assert_eq!(
+            kept_lines(&result),
+            vec![
+                (1, column_of(1, "get")),
+                (8, first_link),
+                (8, second_link),
+                (10, column_of(10, "get")),
+                (11, template_call),
+            ],
+            "kept the wrong set; rejected: {:?}",
+            result.rejected
+        );
+        let mut rejected: Vec<(u32, u32)> = result
+            .rejected
+            .iter()
+            .map(|location| (location.range.start.line, location.range.start.character))
+            .collect();
+        rejected.sort_unstable();
+        assert_eq!(
+            rejected,
+            vec![
+                (3, column_of(3, "get")),
+                (7, column_of(7, "get")),
+                (11, column_of(11, "get")),
+            ],
+            "the getter keyword, the line comment and the string text must be rejected"
+        );
+    }
+
+    /// The syntactic check needs no query identity: even when the cursor's
+    /// own type could not be inferred, comment and string matches go.
+    #[test]
+    fn non_code_matches_are_rejected_without_query_identity() {
+        let (file_uri, indexer, source) = not_code_fixture();
+        let hits = word_hits(&file_uri, &source, "get");
+        let result = verify_candidates(
+            &indexer,
+            None,
+            None,
+            None,
+            MAX_VERIFICATION_IO_OPERATIONS,
+            hits,
+        );
+        assert_eq!(result.rejected.len(), 3, "rejected: {:?}", result.rejected);
+        assert!(result
+            .kept
+            .iter()
+            .all(|kept_source| matches!(kept_source, NavigationSource::NameScan(_))));
+    }
+
+    /// `set` as a setter keyword is rejected; `field`/`value` inside it are
+    /// untouched (they are not `set`).
+    #[test]
+    fn setter_keyword_is_rejected() {
+        let (file_uri, indexer, source) = not_code_fixture();
+        let hits = word_hits(&file_uri, &source, "set");
+        let result = verify_candidates(
+            &indexer,
+            Some("Box"),
+            None,
+            None,
+            MAX_VERIFICATION_IO_OPERATIONS,
+            hits,
+        );
+        assert!(result.kept.is_empty(), "kept: {:?}", result.kept);
+        assert_eq!(result.rejected.len(), 1);
     }
 }

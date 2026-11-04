@@ -1681,3 +1681,116 @@ fn local_binding_agrees_with_rename_scope_on_a_member_property() {
                   }\n";
     assert_binding_agrees_with_rename_scope(source, "item", 1);
 }
+
+/// Kotlin lexes a soft keyword used as a name (`get`, `set`, `value`,
+/// `field`, `data`, …) as a keyword token wrapped in `simple_identifier`.
+/// Classification must see the identifier, not give up on the token —
+/// otherwise every navigation feature treats a member named `get` as
+/// "nothing under the cursor".
+#[test]
+fn soft_keyword_names_classify_like_any_identifier() {
+    let source = "class Box { fun get(): Int = 1 }\n\
+                  class Other { fun get(): Int = 2 }\n\
+                  fun f(box: Box, value: Int) { box.get() }\n";
+    let (file_uri, indexer) = indexed_with_live("/Soft.kt", source);
+    let position_of = |line: usize, needle: &str| CursorPos {
+        line,
+        utf16_col: source.lines().nth(line).unwrap().find(needle).unwrap(),
+    };
+
+    let declaration = classify_symbol_at(&indexer, &file_uri, position_of(0, "get"))
+        .expect("`fun get` must classify");
+    assert_eq!(declaration.name, "get");
+    assert!(matches!(declaration.role, SymbolRole::Declaration { .. }));
+
+    let call = classify_symbol_at(&indexer, &file_uri, position_of(2, "get"))
+        .expect("`box.get()` must classify");
+    match call.role {
+        SymbolRole::Reference {
+            receiver_type: Some(receiver_type),
+            is_call: true,
+            ..
+        } => assert_eq!(receiver_type.type_path(), "Box"),
+        other => panic!("expected a Box member call, got {other:?}"),
+    }
+
+    let parameter = classify_symbol_at(&indexer, &file_uri, position_of(2, "value"))
+        .expect("parameter `value` must classify");
+    assert_eq!(parameter.name, "value");
+}
+
+/// The accessor keyword itself is not an identifier, even though it spells
+/// the same word as a member named `get`.
+#[test]
+fn accessor_keyword_is_not_code_but_member_named_get_is() {
+    let source = "class Box {\n  fun get(): Int = 1\n  val size: Int\n    get() = 2\n}\n";
+    let (file_uri, indexer) = indexed_with_live("/Accessor.kt", source);
+    let position_of = |line: usize| CursorPos {
+        line,
+        utf16_col: source.lines().nth(line).unwrap().find("get").unwrap(),
+    };
+    assert!(matches!(
+        classify_occurrence_at(&indexer, &file_uri, position_of(1)),
+        OccurrenceSite::Symbol(_)
+    ));
+    assert!(matches!(
+        classify_occurrence_at(&indexer, &file_uri, position_of(3)),
+        OccurrenceSite::NotCode(NotCodeKind::AccessorKeyword)
+    ));
+}
+
+/// A line of a fixture and what the last `get` on it must classify as
+/// (`None`: real code).
+type LineExpectation = (usize, Option<NotCodeKind>);
+
+/// Java and Swift comment/string kinds differ from Kotlin's; each must be
+/// recognised, while a real call stays an identifier.
+#[test]
+fn java_and_swift_comment_and_string_text_is_not_code() {
+    let cases: [(&str, &str, &[LineExpectation]); 2] = [
+        (
+            "/Box.java",
+            "class Box {\n  // get it\n  /* get */\n  String text = \"get\";\n  int f(java.util.Map m) { return m.get(1); }\n}\n",
+            &[
+                (1, Some(NotCodeKind::Comment)),
+                (2, Some(NotCodeKind::Comment)),
+                (3, Some(NotCodeKind::StringText)),
+                (4, None),
+            ],
+        ),
+        (
+            "/Box.swift",
+            "class Box {\n  // get it\n  /* get */\n  let text = \"get\"\n  var size: Int { get { return 1 } }\n}\n",
+            &[
+                (1, Some(NotCodeKind::Comment)),
+                (2, Some(NotCodeKind::Comment)),
+                (3, Some(NotCodeKind::StringText)),
+                (4, Some(NotCodeKind::AccessorKeyword)),
+            ],
+        ),
+    ];
+    for (path, source, expectations) in cases {
+        let (file_uri, indexer) = indexed_with_live(path, source);
+        for (line, expected) in expectations {
+            let column = source.lines().nth(*line).unwrap().rfind("get").unwrap();
+            let site = classify_occurrence_at(
+                &indexer,
+                &file_uri,
+                CursorPos {
+                    line: *line,
+                    utf16_col: column,
+                },
+            );
+            match (expected, &site) {
+                (Some(kind), OccurrenceSite::NotCode(found)) => {
+                    assert_eq!(kind, found, "{path}:{line}")
+                }
+                (None, OccurrenceSite::NotCode(found)) => {
+                    panic!("{path}:{line}: real code classified as {found:?}")
+                }
+                (Some(kind), other) => panic!("{path}:{line}: expected {kind:?}, got {other:?}"),
+                (None, _) => {}
+            }
+        }
+    }
+}

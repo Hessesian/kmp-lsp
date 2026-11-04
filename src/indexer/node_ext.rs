@@ -95,10 +95,35 @@ pub(crate) fn descendant_for_point<'a>(
         }
         match next {
             Some(child) => current = child,
-            None => return Some(current),
+            None => return Some(identifier_owning(current)),
         }
     }
-    Some(current)
+    Some(identifier_owning(current))
+}
+
+/// The identifier a soft-keyword token spells, or `node` itself.
+///
+/// tree-sitter-kotlin lexes a soft keyword used as a name (`fun get()`,
+/// `b.get()`, `val value`, `data`, `field`, …) as an anonymous keyword token
+/// wrapped in a `simple_identifier`, so descending to the deepest node lands
+/// on the token rather than on the identifier every caller asks about. An
+/// anonymous token whose parent is any other kind (a property's `get()`
+/// accessor, Swift's `get { }`) is a real keyword and is returned unchanged.
+fn identifier_owning(node: Node<'_>) -> Node<'_> {
+    if node.is_named() {
+        return node;
+    }
+    match node.parent() {
+        Some(parent)
+            if matches!(
+                parent.kind(),
+                crate::queries::KIND_SIMPLE_IDENT | crate::queries::KIND_TYPE_IDENT
+            ) =>
+        {
+            parent
+        }
+        _ => node,
+    }
 }
 
 pub(crate) trait NodeExt<'a>: Sized + Copy {

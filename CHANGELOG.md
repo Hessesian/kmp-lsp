@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Bug fixes
+
+- **Find-references on members named `get`, `set`, `value`, `field`, `data`, … returned every text match** — tree-sitter-kotlin wraps a soft keyword used as a name in `simple_identifier`, and the cursor lookup stopped on the inner keyword token, so the CST classifier saw "nothing here". The query's own receiver type was never known and type verification was skipped, so find-references fell back to the raw `rg` hit list. The same lookup also fixes go-to-definition, highlight and rename on such names.
+- **Find-references no longer returns comment text, string text or property accessor keywords** — an `rg` hit inside a comment (KDoc/DocC `[name]` links are kept), inside literal string text (code in `${…}` / `\(…)` is kept), or on a Kotlin `get()`/`set(value)` or Swift `get`/`set` accessor keyword is rejected, for Kotlin, Java and Swift, whether or not the query's type could be inferred.
+- **Type verification no longer gives up after ~48 hits** — the receiver-type agreement walk is now memoized per request, so thousands of hits on the same few receiver types cost one hierarchy walk each instead of spending the IO budget and leaving the rest unverified.
+
 ## 0.27.0
 
 ### Features

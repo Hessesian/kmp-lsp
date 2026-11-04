@@ -443,6 +443,30 @@ pub(crate) const KIND_RBRACE: &str = "}";
 // ─── Comment kinds ────────────────────────────────────────────────────────────
 pub(crate) const KIND_LINE_COMMENT: &str = "line_comment";
 pub(crate) const KIND_MULTILINE_COMMENT: &str = "multiline_comment";
+/// Java `/* … */` comment (`line_comment` is shared with Kotlin).
+pub(crate) const KIND_BLOCK_COMMENT: &str = "block_comment";
+/// Swift `// …` comment (`multiline_comment` is shared with Kotlin).
+pub(crate) const KIND_COMMENT: &str = "comment";
+
+// ─── String text kinds ────────────────────────────────────────────────────────
+// The literal-text leaves of a string, per grammar. Interpolations are separate
+// nodes, so code inside `"${a.get()}"` / `"\(get)"` never lands on these.
+/// Java string text.
+pub(crate) const KIND_STRING_FRAGMENT: &str = "string_fragment";
+/// Java text-block (`"""…"""`) text.
+pub(crate) const KIND_MULTILINE_STRING_FRAGMENT: &str = "multiline_string_fragment";
+/// Swift single-line string text.
+pub(crate) const KIND_LINE_STR_TEXT: &str = "line_str_text";
+/// Swift multi-line string text.
+pub(crate) const KIND_MULTI_LINE_STR_TEXT: &str = "multi_line_str_text";
+
+// ─── Property accessor kinds ──────────────────────────────────────────────────
+/// Kotlin `get() = …` accessor (`setter` is [`KIND_SETTER`]).
+pub(crate) const KIND_GETTER: &str = "getter";
+/// Swift `get` in a computed property or protocol requirement.
+pub(crate) const KIND_GETTER_SPECIFIER: &str = "getter_specifier";
+/// Swift `set` in a computed property or protocol requirement.
+pub(crate) const KIND_SETTER_SPECIFIER: &str = "setter_specifier";
 
 /// Bare `$identifier` string-template interpolation (`"^$FOO$"`). A distinct
 /// leaf node kind, unlike braced `${...}` interpolation

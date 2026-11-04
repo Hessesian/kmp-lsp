@@ -2795,3 +2795,79 @@ async fn enum_synthetic_members_do_not_poison_producer_discovery() {
 
     assert_refs_contain(&locs, &["Caller.kt"]);
 }
+
+/// Find-references on a member named `get` — a Kotlin soft keyword — keeps
+/// the real call and drops everything else `rg` matches: the same-named
+/// member on an unrelated receiver type, a property's `get()` accessor, a
+/// comment and string text.
+#[tokio::test]
+async fn find_references_on_soft_keyword_member_drops_unrelated_and_non_code_matches() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+
+    let box_src = "package app\nclass Box {\n    fun get(): Int = 1\n}\n";
+    let other_src = "package app\nclass Other {\n    fun get(): Int = 2\n    val size: Int\n        get() = 3\n}\n";
+    let use_src = "package app\n\
+                   // get the box\n\
+                   fun use(box: Box, other: Other): String {\n\
+                   \x20   box.get()\n\
+                   \x20   other.get()\n\
+                   \x20   return \"get\"\n\
+                   }\n";
+
+    let (_box_path, box_uri) = write(root, "Box.kt", box_src);
+    let (_other_path, other_uri) = write(root, "Other.kt", other_src);
+    let (_use_path, use_uri) = write(root, "Use.kt", use_src);
+
+    let idx = Arc::new(Indexer::new());
+    idx.workspace_root.set(root.to_path_buf());
+    idx.index_content(&box_uri, box_src);
+    idx.index_content(&other_uri, other_src);
+    idx.index_content(&use_uri, use_src);
+    idx.store_live_tree(&use_uri, use_src);
+
+    let call_line = 3u32;
+    let call_column = use_src.lines().nth(3).unwrap().find("get").unwrap() as u32;
+    let locs = find_references_with_qualifier(
+        "get",
+        None,
+        &use_uri,
+        Position::new(call_line, call_column),
+        false,
+        &idx,
+    )
+    .await;
+
+    let mut hits: Vec<(String, u32)> = locs
+        .iter()
+        .map(|location| {
+            let file = location
+                .uri
+                .to_file_path()
+                .unwrap()
+                .file_name()
+                .unwrap()
+                .to_string_lossy()
+                .into_owned();
+            (file, location.range.start.line)
+        })
+        .collect();
+    hits.sort();
+    hits.dedup();
+
+    assert!(
+        hits.contains(&("Use.kt".to_owned(), 3)),
+        "the box.get() call itself must be found; got {hits:?}"
+    );
+    for (file, line, what) in [
+        ("Use.kt", 1, "comment"),
+        ("Use.kt", 4, "other.get() on an unrelated type"),
+        ("Use.kt", 5, "string text"),
+        ("Other.kt", 4, "property getter keyword"),
+    ] {
+        assert!(
+            !hits.contains(&(file.to_owned(), line)),
+            "{what} ({file}:{line}) must not be a reference; got {hits:?}"
+        );
+    }
+}

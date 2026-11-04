@@ -38,10 +38,11 @@ pub(crate) use self::infer::{
     cst_cursor::{cst_call_info, cst_outer_call_info, CallInfo},
     cst_lambda::{call_shape_of, cursor_node_at, LambdaScopeInfo},
     cst_symbol::{
-        classify_cursor, classify_symbol_at, enclosing_nav_expr_if_member, is_call_callee,
-        is_declaration_site, local_scope_occurrences, navigation_member_ident,
+        classify_cursor, classify_occurrence_at, classify_symbol_at, enclosing_nav_expr_if_member,
+        is_call_callee, is_declaration_site, local_scope_occurrences, navigation_member_ident,
         navigation_receiver_node, resolve_identity, resolve_identity_with_io,
-        shape_filter_locations, NavigationSource, SymbolAtCursor, SymbolRole,
+        shape_filter_locations, NavigationSource, NotCodeKind, OccurrenceSite, SymbolAtCursor,
+        SymbolRole,
     },
     deps::{
         CallShape, CallableInfo, ExtensionCallable, InferDeps, MemberTypeParameters,

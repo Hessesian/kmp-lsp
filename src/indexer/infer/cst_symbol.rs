@@ -350,6 +350,126 @@ pub(crate) fn classify_symbol_at(
     })
 }
 
+/// What a text match of a name is, syntactically — the question
+/// find-references asks of every `rg` hit before any type work.
+#[derive(Debug, Clone)]
+pub(crate) enum OccurrenceSite {
+    /// An identifier, classified exactly as [`classify_symbol_at`] does.
+    Symbol(SymbolAtCursor),
+    /// Text that spells the name but can never refer to a symbol.
+    NotCode(NotCodeKind),
+    /// Neither could be shown: the file did not parse, or the position is a
+    /// node kind this classification does not know (e.g. a bare `$name`
+    /// string template). Callers keep these.
+    Unclassified,
+}
+
+/// Why an [`OccurrenceSite::NotCode`] position is not a reference.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum NotCodeKind {
+    /// Inside a comment, and not a KDoc/Javadoc-style `[name]` link.
+    Comment,
+    /// Literal string text (never an interpolation).
+    StringText,
+    /// The `get`/`set` keyword of a property accessor, not a member named so.
+    AccessorKeyword,
+}
+
+/// Classify the text at `pos` as a code identifier, as text that can never
+/// be a reference (comment, string text, accessor keyword), or neither.
+pub(crate) fn classify_occurrence_at(
+    indexer: &Indexer,
+    uri: &Url,
+    pos: CursorPos,
+) -> OccurrenceSite {
+    if let Some(symbol) = classify_symbol_at(indexer, uri, pos) {
+        return OccurrenceSite::Symbol(symbol);
+    }
+    let Some(doc) = indexer.live_doc_or_parse(uri) else {
+        return OccurrenceSite::Unclassified;
+    };
+    let Some(node) = super::cst_lambda::cursor_node_at(&doc, pos) else {
+        return OccurrenceSite::Unclassified;
+    };
+    match not_code_kind(node, &doc.bytes, pos) {
+        Some(kind) => OccurrenceSite::NotCode(kind),
+        None => OccurrenceSite::Unclassified,
+    }
+}
+
+fn not_code_kind(node: Node<'_>, bytes: &[u8], pos: CursorPos) -> Option<NotCodeKind> {
+    use crate::queries::{
+        KIND_BLOCK_COMMENT, KIND_COMMENT, KIND_GETTER, KIND_GETTER_SPECIFIER, KIND_LINE_COMMENT,
+        KIND_LINE_STR_TEXT, KIND_MULTILINE_COMMENT, KIND_MULTILINE_STRING_FRAGMENT,
+        KIND_MULTI_LINE_STR_TEXT, KIND_SETTER_SPECIFIER, KIND_STRING_CONTENT, KIND_STRING_FRAGMENT,
+    };
+    let kind = node.kind();
+    let is_comment = matches!(
+        kind,
+        KIND_LINE_COMMENT | KIND_MULTILINE_COMMENT | KIND_BLOCK_COMMENT | KIND_COMMENT
+    );
+    if is_comment {
+        if is_bracketed_doc_link(bytes, pos) {
+            return None;
+        }
+        return Some(NotCodeKind::Comment);
+    }
+    let is_string_text = matches!(
+        kind,
+        KIND_STRING_CONTENT
+            | KIND_STRING_FRAGMENT
+            | KIND_MULTILINE_STRING_FRAGMENT
+            | KIND_LINE_STR_TEXT
+            | KIND_MULTI_LINE_STR_TEXT
+    );
+    if is_string_text {
+        return Some(NotCodeKind::StringText);
+    }
+    // An anonymous token directly under an accessor is its keyword. Inside a
+    // parse error the lexer's keyword choice is no evidence, so leave those.
+    let accessor = node.parent().filter(|parent| {
+        matches!(
+            parent.kind(),
+            KIND_GETTER | KIND_SETTER | KIND_GETTER_SPECIFIER | KIND_SETTER_SPECIFIER
+        ) && !parent.has_error()
+    });
+    let is_accessor_keyword = !node.is_named() && accessor.is_some();
+    if is_accessor_keyword {
+        return Some(NotCodeKind::AccessorKeyword);
+    }
+    None
+}
+
+/// True when the word at `pos` sits inside `[…]` on its comment line —
+/// a KDoc/DocC link such as `[get]` or `[Box.get]`, which does refer to the
+/// symbol and so must be kept.
+fn is_bracketed_doc_link(bytes: &[u8], pos: CursorPos) -> bool {
+    let Some(line_text) = std::str::from_utf8(bytes)
+        .ok()
+        .and_then(|source| source.lines().nth(pos.line))
+    else {
+        return false;
+    };
+    let byte_col =
+        crate::indexer::live_tree::utf16_col_to_byte(line_text, pos.utf16_col).min(line_text.len());
+    let (before, after) = line_text.split_at(byte_col);
+    let last_open = before.rfind('[');
+    let last_close = before.rfind(']');
+    let opened_before = match (last_open, last_close) {
+        (Some(open), Some(close)) => open > close,
+        (Some(_), None) => true,
+        (None, _) => false,
+    };
+    let next_close = after.find(']');
+    let next_open = after.find('[');
+    let closes_after = match (next_close, next_open) {
+        (Some(close), Some(open)) => close < open,
+        (Some(_), None) => true,
+        (None, _) => false,
+    };
+    opened_before && closes_after
+}
+
 /// A definitions lookup result, tagged by how much confidence its identity
 /// carries.
 #[derive(Debug)]
