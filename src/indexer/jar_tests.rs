@@ -3323,3 +3323,37 @@ fn populate_from_symbols_falls_back_for_a_non_absolute_path() {
     let probe_locs = indexer.lookup_definitions("Probe");
     assert_eq!(probe_locs.len(), 1, "Probe should still be found");
 }
+
+#[test]
+fn scan_gradle_jars_split_returns_jars_in_path_order() {
+    // 40 artifacts: a HashMap-ordered result matches the sorted order with
+    // probability 1/40!, so an unsorted implementation fails reliably.
+    let tmpdir = tempfile::tempdir().unwrap();
+    for index in 0..40 {
+        let artifact = format!("lib-{index:02}");
+        write_compiled_jar(
+            tmpdir.path(),
+            "com.example",
+            &artifact,
+            "1.0.0",
+            &[("a", "x")],
+        );
+        write_sources_jar(
+            tmpdir.path(),
+            "com.example",
+            &artifact,
+            "1.0.0",
+            &[("a", "x")],
+        );
+    }
+
+    let (compiled, sources) = crate::indexer::jar::scan_gradle_jars_split(Some(tmpdir.path()));
+
+    assert_eq!(compiled.len(), 40);
+    assert_eq!(sources.len(), 40);
+    for (label, jars) in [("compiled", compiled), ("sources", sources)] {
+        let mut sorted = jars.clone();
+        sorted.sort();
+        assert_eq!(jars, sorted, "{label} JARs must come back in path order");
+    }
+}
