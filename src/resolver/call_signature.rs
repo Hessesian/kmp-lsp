@@ -564,7 +564,9 @@ fn build_result(entries: Vec<(String, (u8, u8))>) -> Resolution<Signature> {
     if deduped.len() > 1 {
         return Resolution::Ambiguous;
     }
-    let (params_text, (required, total)) = deduped.into_iter().next().unwrap();
+    let Some((params_text, (required, total))) = deduped.into_iter().next() else {
+        return Resolution::Unresolved;
+    };
     Resolution::Resolved(Signature {
         params_text,
         param_counts: (required as usize, total as usize),
