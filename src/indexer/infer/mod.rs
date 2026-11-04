@@ -29,13 +29,16 @@
 //! - `sig` (signature/param-text helpers) — pure string/slice helpers, several IO-bound
 //!   (`find_fun_signature_full` may trigger on-demand rg indexing); not expression-type
 //!   resolution, out of `CstQuery`'s "type of a bound node" remit.
-//! - `cst_symbol` (`classify_cursor`, `resolve_identity`, navigation helpers) — the symbol-identity
-//!   navigation family's own facade (design doc step 6, already CST-first with string+rg
-//!   fallback); intentionally a peer of `CstQuery`, not a submodule of it. Its
-//!   `local_binding_at` is what `expr_type` asks for an identifier's declaration in scope; on
-//!   that path only a name no local binds (`BindingType::NotLocal`) reaches the by-name
-//!   `find_var_type`. `chain.rs`, `cst_lambda.rs` and `type_subst.rs` still call
-//!   `find_var_type` directly and can pick a same-named declaration elsewhere.
+//! - `cst_symbol` (`classify_symbol_with`, navigation helpers, `local_binding_at`) — CST
+//!   identifier classification, the symbol-identity facade's lower half. Resolving an identity
+//!   to definitions (`classify_cursor`, `resolve_identity`, `NavigationSource`) is name
+//!   resolution and lives in `resolver::identity`; so does call-signature resolution
+//!   (`resolver::call_signature`). This module never depends on the resolver: the resolver
+//!   implements `InferDeps` for `Indexer` (`resolver::infer_deps`). `local_binding_at` is what
+//!   `expr_type` asks for an identifier's declaration in scope; on that path only a name no
+//!   local binds (`BindingType::NotLocal`) reaches the by-name `find_var_type`. `chain.rs`,
+//!   `cst_lambda.rs` and `type_subst.rs` still call `find_var_type` directly and can pick a
+//!   same-named declaration elsewhere.
 //! - `args`, `type_subst`, `lambda` — low-level primitives (`extract_first_arg`,
 //!   generic-substitution string ops, lambda-type-string decomposition) consumed mostly *by* the
 //!   CST engine's own submodules (`cst_lambda.rs`, `chain.rs`); the one exception is

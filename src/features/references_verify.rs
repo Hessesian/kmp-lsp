@@ -3,8 +3,8 @@
 
 use tower_lsp::lsp_types::Location;
 
-use crate::indexer::{Indexer, InferDeps, NavigationSource};
-use crate::resolver::{ReceiverType, ReceiverTypeAgreement, Resolver};
+use crate::indexer::{Indexer, InferDeps};
+use crate::resolver::{NavigationSource, ReceiverType, ReceiverTypeAgreement, Resolver};
 
 /// Per-request cap on IO-costed verification steps (a candidate's file
 /// needing a fresh disk read, or a supertype walk that may spend blocking
@@ -69,7 +69,7 @@ pub(crate) fn verify_candidates(
         if !file_already_indexed {
             io_budget -= 1;
         }
-        let Some(symbol) = crate::indexer::classify_symbol_at(
+        let Some(symbol) = crate::resolver::classify_symbol_at(
             indexer,
             &candidate.uri,
             crate::types::CursorPos {

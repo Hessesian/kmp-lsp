@@ -38,10 +38,8 @@ pub(crate) use self::infer::{
     cst_cursor::{cst_call_info, cst_outer_call_info, CallInfo},
     cst_lambda::{call_shape_of, cursor_node_at, LambdaScopeInfo},
     cst_symbol::{
-        classify_cursor, classify_symbol_at, enclosing_nav_expr_if_member, is_call_callee,
-        is_declaration_site, local_scope_occurrences, navigation_member_ident,
-        navigation_receiver_node, resolve_identity, resolve_identity_with_io,
-        shape_filter_locations, NavigationSource, SymbolAtCursor, SymbolRole,
+        enclosing_nav_expr_if_member, is_call_callee, is_declaration_site, local_scope_occurrences,
+        navigation_member_ident, navigation_receiver_node, SymbolAtCursor, SymbolRole,
     },
     deps::{
         CallShape, CallableInfo, ExtensionCallable, InferDeps, MemberTypeParameters,
@@ -56,11 +54,9 @@ pub(crate) use self::infer::{
     lambda::{lambda_type_nth_input, lambda_type_receiver, RECEIVER_THIS_FNS, SCOPE_FUNCTIONS},
     sig::{
         candidate_applies_to_call, collect_all_fun_params_texts, collect_params_from_line,
-        collect_signature, declaration_signature, find_fun_params_text_fast,
-        find_fun_signature_full, find_fun_signature_with_receiver, is_import_reachable,
-        last_fun_param_type_str, members_taking_call_in_file, nth_fun_param_type_str,
-        resolve_call_signature, split_params_at_depth_zero, strip_trailing_call_args, CallSite,
-        ResolutionScope, Signature,
+        collect_signature, find_fun_params_text_fast, find_fun_signature_full, is_import_reachable,
+        last_fun_param_type_str, nth_fun_param_type_str, split_params_at_depth_zero,
+        strip_trailing_call_args, ResolutionScope,
     },
     type_subst::{build_type_arg_subst, find_last_dot_at_depth_zero, ArgumentNullability},
 };

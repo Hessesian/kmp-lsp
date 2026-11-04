@@ -183,7 +183,7 @@ impl InferDeps for Indexer {
         uri: &Url,
         shape: crate::indexer::infer::deps::CallShape,
     ) -> Option<String> {
-        crate::indexer::infer::sig::find_method_params_in_class(
+        crate::resolver::call_signature::find_method_params_in_class(
             self,
             class_name,
             method_name,
@@ -512,7 +512,8 @@ fn declaration_selected_by_shape(
         if declaration.symbol().is_none() {
             continue;
         }
-        if let Some(signature) = crate::indexer::infer::sig::declaration_signature(declaration) {
+        if let Some(signature) = crate::resolver::call_signature::declaration_signature(declaration)
+        {
             readable.push(declaration);
             signatures.push(signature);
         }

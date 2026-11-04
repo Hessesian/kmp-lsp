@@ -43,7 +43,9 @@ kmp-lsp is a Kotlin Language Server Protocol implementation in Rust. The binary 
 - `src/indexer/infer/sig.rs` — signature inference and call-site resolution
 - `src/resolver/resolve.rs` — the main resolution pipeline (go-to-definition, etc.)
 - `src/indexer/infer/cst_symbol.rs` — CST identifier classification (declaration vs. reference,
-  receiver type) shared by go-to-def/goto-implementation/highlight/find-references/rename;
+  receiver type) shared by go-to-def/goto-implementation/highlight/find-references/rename; its
+  resolving half (`classify_cursor`, `resolve_identity`) is `src/resolver/identity.rs`, and
+  dependencies flow upward only — `tests/layering_ratchet.rs` pins the layers;
   `local_scope_occurrences` is the local-variable rename fast path (full Kotlin block scoping);
   `local_binding_at` answers "which declaration binds this name *here*, and how is it typed?" —
   use it instead of any by-name or line-text search for a local's declaration

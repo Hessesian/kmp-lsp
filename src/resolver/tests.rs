@@ -2110,7 +2110,7 @@ fn resolve_qualified_inherited_member_lookup_finds_the_right_arity_overload_from
         arg_count: 1,
         trailing_lambda: false,
     };
-    let filtered = crate::indexer::shape_filter_locations(&indexer, shape, locs).resolved();
+    let filtered = crate::resolver::shape_filter_locations(&indexer, shape, locs).resolved();
     assert_eq!(
         filtered.len(),
         1,
@@ -9970,11 +9970,11 @@ fn trailing_lambda_call_resolves_the_predicate_overload_of_a_stdlib_extension() 
         line: 3,
         character: 16,
     };
-    let symbol = crate::indexer::classify_cursor(&idx, &caller_uri, position)
+    let symbol = crate::resolver::classify_cursor(&idx, &caller_uri, position)
         .expect("cursor lands on the firstOrNull identifier");
-    let identity = crate::indexer::resolve_identity_with_io(&symbol, &idx, &caller_uri, true);
+    let identity = crate::resolver::resolve_identity_with_io(&symbol, &idx, &caller_uri, true);
     match identity {
-        crate::indexer::NavigationSource::CstResolved(defs) => {
+        crate::resolver::NavigationSource::CstResolved(defs) => {
             assert_eq!(
                 defs.len(),
                 1,

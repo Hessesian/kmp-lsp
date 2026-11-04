@@ -233,7 +233,7 @@ pub(crate) fn extension_declarations_on(
         .to_owned();
     let own = extension_declarations_in_scope(indexer, &receiver_base, name, from_uri);
     let own_declaration_takes_the_call = own.iter().any(|declaration| {
-        crate::indexer::declaration_signature(declaration).is_none_or(|(params_text, counts)| {
+        crate::resolver::declaration_signature(declaration).is_none_or(|(params_text, counts)| {
             crate::indexer::candidate_applies_to_call(&params_text, counts, shape)
         })
     });
@@ -291,9 +291,14 @@ pub(crate) fn member_type_parameters_taking_call(
         .find_map(|class_location| {
             let class_uri = class_location.uri.as_str();
             let declared_on_class = indexer.files.get(class_uri).and_then(|file_data| {
-                crate::indexer::members_taking_call_in_file(&file_data, &receiver_base, name, shape)
-                    .into_iter()
-                    .next()
+                crate::resolver::members_taking_call_in_file(
+                    &file_data,
+                    &receiver_base,
+                    name,
+                    shape,
+                )
+                .into_iter()
+                .next()
             });
             declared_on_class.or_else(|| {
                 super::hierarchy::walk_hierarchy_breadth_first(
@@ -308,7 +313,7 @@ pub(crate) fn member_type_parameters_taking_call(
                             .files
                             .get(super_uri)
                             .map_or_else(Vec::new, |file_data| {
-                                crate::indexer::members_taking_call_in_file(
+                                crate::resolver::members_taking_call_in_file(
                                     &file_data, super_name, name, shape,
                                 )
                             })

@@ -3,6 +3,7 @@
 //! See [`resolve`] for the resolution chain and strategy documentation.
 
 pub(crate) mod api;
+pub(crate) mod call_signature;
 pub(crate) mod complete;
 pub(crate) mod container;
 mod extension;
@@ -11,6 +12,15 @@ pub(crate) mod find;
 mod hierarchy;
 mod import_edit;
 mod imports;
+pub(crate) use call_signature::{
+    declaration_signature, find_fun_signature_with_receiver, members_taking_call_in_file,
+    resolve_call_signature, CallSite, Signature,
+};
+pub(crate) mod identity;
+pub(crate) use identity::{
+    classify_cursor, classify_symbol_at, resolve_identity, resolve_identity_with_io,
+    shape_filter_locations, NavigationSource,
+};
 pub(crate) mod index_read;
 pub(crate) mod indexer_queries;
 pub(crate) mod infer;
