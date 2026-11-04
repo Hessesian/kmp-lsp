@@ -668,19 +668,19 @@ struct MemberDeclaration {
 
 /// The functions `method_name` declared directly on the workspace class
 /// `class_name` (no extensions, no supertypes; JAR classes are not scanned).
-fn class_members(idx: &Indexer, class_name: &str, method_name: &str) -> Vec<MemberDeclaration> {
+fn class_members(indexer: &Indexer, class_name: &str, method_name: &str) -> Vec<MemberDeclaration> {
     let (container, type_base) = match class_name.rsplit_once('.') {
         Some((container, base)) => (Some(container), base),
         None => (None, class_name),
     };
     let mut members: Vec<MemberDeclaration> = Vec::new();
 
-    if let Some(locations) = idx.definitions.get(type_base) {
-        for loc in locations.iter() {
-            let Some(url) = idx.file_table.url(loc.file) else {
+    if let Some(locations) = indexer.definitions.get(type_base) {
+        for location in locations.iter() {
+            let Some(url) = indexer.file_table.url(location.file) else {
                 continue;
             };
-            let Some(file_data) = idx.files.get(url.as_str()) else {
+            let Some(file_data) = indexer.files.get(url.as_str()) else {
                 continue;
             };
             // Verify the class exists (and if qualified, check its own container).
@@ -782,7 +782,7 @@ pub(crate) fn members_taking_call_in_file(
 /// take that path. The extension half is similarly cheap: `extension_by_receiver`
 /// is keyed by receiver type, not by method name.
 pub(crate) fn find_method_params_in_class(
-    idx: &Indexer,
+    indexer: &Indexer,
     class_name: &str,
     method_name: &str,
     caller_uri: &Url,
@@ -791,14 +791,14 @@ pub(crate) fn find_method_params_in_class(
     let type_base = class_name
         .rsplit_once('.')
         .map_or(class_name, |(_, base)| base);
-    let mut candidates: Vec<(String, (u8, u8))> = class_members(idx, class_name, method_name)
+    let mut candidates: Vec<(String, (u8, u8))> = class_members(indexer, class_name, method_name)
         .into_iter()
         .map(|member| (member.params_text, member.counts))
         .collect();
 
     let mut cache_backed_only = 0usize;
     if let Some(entries) =
-        crate::indexer::jar::extension_entries_for(idx, type_base, &mut cache_backed_only)
+        crate::indexer::jar::extension_entries_for(indexer, type_base, &mut cache_backed_only)
     {
         let mut seen_files = std::collections::HashSet::new();
         for entry in entries.iter().filter(|e| e.name == method_name) {
@@ -806,7 +806,7 @@ pub(crate) fn find_method_params_in_class(
                 candidates.extend(collect_params_from_file(
                     method_name,
                     &entry.file_uri,
-                    idx,
+                    indexer,
                     caller_uri.as_str(),
                     ResolutionScope::CrossFile,
                     Some(type_base),
@@ -819,7 +819,7 @@ pub(crate) fn find_method_params_in_class(
         .any(|(text, counts)| candidate_applies_to_call(text, *counts, shape));
     if !any_direct_candidate_applies {
         candidates.extend(inherited_extension_params(
-            idx,
+            indexer,
             type_base,
             method_name,
             caller_uri,
@@ -833,13 +833,13 @@ pub(crate) fn find_method_params_in_class(
 /// Parameter texts of the extension `method_name` declared on `type_base`'s
 /// nearest supertype — `List<X>.joinToString` binds `Iterable<T>.joinToString`.
 fn inherited_extension_params(
-    idx: &Indexer,
+    indexer: &Indexer,
     type_base: &str,
     method_name: &str,
     caller_uri: &Url,
     shape: super::deps::CallShape,
 ) -> Vec<(String, (u8, u8))> {
-    crate::resolver::extension_declarations_on(idx, type_base, method_name, caller_uri, shape)
+    crate::resolver::extension_declarations_on(indexer, type_base, method_name, caller_uri, shape)
         .iter()
         .filter_map(declaration_signature)
         .collect()
@@ -1048,7 +1048,7 @@ fn collect_params_from_file(
         .iter()
         .filter(name_matches)
         .filter(receiver_matches)
-        .flat_map(|s| -> Vec<(String, (u8, u8))> {
+        .flat_map(|symbol| -> Vec<(String, (u8, u8))> {
             // Swift structs/classes never carry constructor params on their own
             // CST node (no Kotlin-style inline primary constructor) — the real
             // signature lives on a nested `init` (explicit or synthesized at
@@ -1056,22 +1056,22 @@ fn collect_params_from_file(
             // those instead of the type's own (always-empty) params/counts.
             // Emitting one candidate per `init` lets the caller's arity-envelope
             // dedup correctly detect an overloaded initializer as ambiguous.
-            if is_swift && matches!(s.kind, SymbolKind::STRUCT | SymbolKind::CLASS) {
+            if is_swift && matches!(symbol.kind, SymbolKind::STRUCT | SymbolKind::CLASS) {
                 return data
                     .symbols
                     .iter()
                     .filter(|c| {
                         c.kind == SymbolKind::CONSTRUCTOR
-                            && c.container.as_deref() == Some(s.name.as_str())
+                            && c.container.as_deref() == Some(symbol.name.as_str())
                     })
                     .map(|c| (c.params.clone(), c.param_counts))
                     .collect();
             }
-            let params_text = match extract_params_or_fallback(s, &data.lines) {
+            let params_text = match extract_params_or_fallback(symbol, &data.lines) {
                 Some(text) => text,
                 None => return vec![],
             };
-            vec![(params_text, trusted_param_counts(s, is_compiled_jar))]
+            vec![(params_text, trusted_param_counts(symbol, is_compiled_jar))]
         })
         .collect()
 }

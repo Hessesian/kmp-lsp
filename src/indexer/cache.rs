@@ -197,13 +197,16 @@ pub(crate) fn build_qualified_keys(
         return Vec::new();
     };
     let mut out = Vec::with_capacity(file_data.symbols.len() * 2);
-    for sym in &file_data.symbols {
-        if sym.container.is_none() {
-            out.push((format!("{pkg}.{}", sym.name), sym.selection_range));
+    for symbol in &file_data.symbols {
+        if symbol.container.is_none() {
+            out.push((format!("{pkg}.{}", symbol.name), symbol.selection_range));
         }
         if let Some(stem) = file_stem {
-            if stem != sym.name {
-                out.push((format!("{pkg}.{stem}.{}", sym.name), sym.selection_range));
+            if stem != symbol.name {
+                out.push((
+                    format!("{pkg}.{stem}.{}", symbol.name),
+                    symbol.selection_range,
+                ));
             }
         }
     }

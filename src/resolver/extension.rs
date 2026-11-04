@@ -255,8 +255,8 @@ pub(crate) fn extension_declarations_on(
                 caller,
                 12,
                 super::MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK,
-                |idx, super_name, _, _| {
-                    extension_declarations_in_scope(idx, super_name, name, from_uri)
+                |indexer, super_name, _, _| {
+                    extension_declarations_in_scope(indexer, super_name, name, from_uri)
                 },
             )
         })
@@ -303,12 +303,15 @@ pub(crate) fn member_type_parameters_taking_call(
                     caller,
                     12,
                     super::MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK,
-                    |idx, super_name, super_uri, _| {
-                        idx.files.get(super_uri).map_or_else(Vec::new, |file_data| {
-                            crate::indexer::members_taking_call_in_file(
-                                &file_data, super_name, name, shape,
-                            )
-                        })
+                    |indexer, super_name, super_uri, _| {
+                        indexer
+                            .files
+                            .get(super_uri)
+                            .map_or_else(Vec::new, |file_data| {
+                                crate::indexer::members_taking_call_in_file(
+                                    &file_data, super_name, name, shape,
+                                )
+                            })
                     },
                 )
                 .into_iter()

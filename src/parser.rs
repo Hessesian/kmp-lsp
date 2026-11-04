@@ -1704,7 +1704,7 @@ fn param_has_default(param: &Node) -> bool {
     let mut cursor = param.walk();
     if cursor.goto_first_child() {
         loop {
-            if cursor.node().kind() == "=" {
+            if cursor.node().kind() == queries::KIND_EQ {
                 return true;
             }
             if !cursor.goto_next_sibling() {
@@ -1713,7 +1713,9 @@ fn param_has_default(param: &Node) -> bool {
         }
     }
     // parameter / formal_parameter: `=` follows as a sibling in the container.
-    param.next_sibling().is_some_and(|s| s.kind() == "=")
+    param
+        .next_sibling()
+        .is_some_and(|sibling| sibling.kind() == queries::KIND_EQ)
 }
 
 /// Walk up from a node to find the enclosing declaration (function/class/object).

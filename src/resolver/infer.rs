@@ -1725,8 +1725,8 @@ fn find_method_return_type_declared_scoped(
     // Then member functions of the `type_base` that `class_scope` names: dozens
     // of features each declare their own same-named `TextsInteractor`.
     let classes = reachable_workspace_class_candidates(indexer, type_base, class_scope);
-    classes.iter().find_map(|loc| {
-        let file_data = indexer.files.get(loc.uri.as_str())?;
+    classes.iter().find_map(|location| {
+        let file_data = indexer.files.get(location.uri.as_str())?;
         for symbol in &file_data.symbols {
             if symbol.name != method_name {
                 continue;
@@ -1750,9 +1750,9 @@ fn find_method_return_type_declared_scoped(
                     nullability = extract_return_nullability_from_detail(&full_sig);
                     extract_return_type_from_detail(&full_sig)
                 })
-                .map(|type_name| (type_name, loc.uri.clone()))
+                .map(|type_name| (type_name, location.uri.clone()))
                 // No declared type at all: the body's type, or `Unit`.
-                .or_else(|| infer_undeclared_return_type(indexer, &loc.uri, symbol));
+                .or_else(|| infer_undeclared_return_type(indexer, &location.uri, symbol));
             if let Some((type_name, written_in)) = declared_type {
                 return Some(DeclaredReturn {
                     type_name,
@@ -2249,11 +2249,11 @@ fn find_method_return_type_via_class_hierarchy(
         caller,
         8,
         MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK,
-        |idx, super_name, super_uri, _caller| {
+        |indexer, super_name, super_uri, _caller| {
             let ancestor_scope = Url::parse(super_uri).ok();
             let class_scope = ancestor_scope.as_ref().or(from_uri);
             find_method_return_type_declared_scoped(
-                idx,
+                indexer,
                 super_name,
                 method_name,
                 class_scope,
@@ -2328,8 +2328,8 @@ fn substitute_direct_supertype_args(
 fn find_class_type_params(indexer: &Indexer, class_name: &str, from_uri: &Url) -> Vec<String> {
     reachable_workspace_class_candidates(indexer, class_name, Some(from_uri))
         .iter()
-        .find_map(|loc| {
-            let file_data = indexer.files.get(loc.uri.as_str())?;
+        .find_map(|location| {
+            let file_data = indexer.files.get(location.uri.as_str())?;
             let symbol = file_data
                 .symbols
                 .iter()

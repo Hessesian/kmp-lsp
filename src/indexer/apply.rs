@@ -168,13 +168,13 @@ pub(crate) fn contributions_from_data(
 
     let mut definitions: HashMap<String, Vec<Location>> = HashMap::new();
 
-    for sym in &file_data.symbols {
+    for symbol in &file_data.symbols {
         definitions
-            .entry(sym.name.clone())
+            .entry(symbol.name.clone())
             .or_default()
             .push(Location {
                 uri: uri.clone(),
-                range: sym.selection_range,
+                range: symbol.selection_range,
             });
     }
     let qualified: HashMap<String, Location> =

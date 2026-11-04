@@ -395,6 +395,7 @@ pub(crate) const KIND_KW_IS: &str = "is";
 pub(crate) const KIND_KW_IS_NOT: &str = "!is";
 pub(crate) const KIND_KW_AS: &str = "as";
 pub(crate) const KIND_KW_AS_SAFE: &str = "as?";
+pub(crate) const KIND_KW_SAFE_CALL: &str = "?.";
 pub(crate) const KIND_KW_IN: &str = "in";
 pub(crate) const KIND_KW_IN_NOT: &str = "!in";
 pub(crate) const KIND_KW_BY: &str = "by";
