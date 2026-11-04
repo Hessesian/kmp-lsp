@@ -33,7 +33,7 @@ pub(crate) fn parse_jar_entry_uri(uri: &str) -> Option<(PathBuf, String)> {
 
 /// Directory under which jar entries are extracted (`~/.cache/kmp-lsp/jar-sources`).
 fn jar_sources_cache_dir() -> PathBuf {
-    crate::indexer::xdg_cache_base()
+    crate::util::xdg_cache_base()
         .join("kmp-lsp")
         .join("jar-sources")
 }

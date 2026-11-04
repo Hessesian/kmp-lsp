@@ -13,7 +13,7 @@
 //! - `"java-source"` — production Kotlin/Java sources
 //! - `"java-test"` — test Kotlin/Java sources
 
-use crate::cli::extract_sources::GradleMeta;
+use crate::gradle_cache::GradleMeta;
 use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};

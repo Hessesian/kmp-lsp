@@ -6,6 +6,7 @@
 //!
 //! This is a Rust port of `contrib/extract-sources.py`.
 
+use crate::gradle_cache::{default_gradle_home, parse_jar_meta, version_key, VersionPart};
 use std::collections::HashMap;
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -19,52 +20,6 @@ pub(crate) struct ExtractOptions {
     pub dry_run: bool,
     /// Optional substring filters on artifact paths (e.g. `androidx.compose`).
     pub patterns: Vec<String>,
-}
-
-// ── version comparison ────────────────────────────────────────────────────────
-
-#[derive(Clone, Eq, PartialEq, Ord, PartialOrd)]
-pub(crate) enum VersionPart {
-    Numeric(u64),
-    Text(String),
-}
-
-pub(crate) fn version_key(version: &str) -> Vec<VersionPart> {
-    version
-        .split(['.', '-'])
-        .map(|p| match p.parse::<u64>() {
-            Ok(n) => VersionPart::Numeric(n),
-            Err(_) => VersionPart::Text(p.to_owned()),
-        })
-        .collect()
-}
-
-// ── Gradle cache path parsing ─────────────────────────────────────────────────
-
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub(crate) struct GradleMeta {
-    pub(crate) group: String,
-    pub(crate) artifact: String,
-    pub(crate) version: String,
-}
-
-/// Parse `(group, artifact, version)` from a Gradle module cache path.
-///
-/// Gradle cache layout:
-/// `<home>/caches/modules-2/files-2.1/<group>/<artifact>/<version>/<hash>/<file>`
-pub(crate) fn parse_jar_meta(jar: &Path) -> Option<GradleMeta> {
-    let s = jar.to_string_lossy();
-    let idx = s.find("files-2.1")? + "files-2.1".len();
-    let rest = s[idx..].trim_start_matches(['/', '\\']);
-    let parts: Vec<&str> = rest.splitn(5, ['/', '\\']).collect();
-    if parts.len() < 3 {
-        return None;
-    }
-    Some(GradleMeta {
-        group: parts[0].to_owned(),
-        artifact: parts[1].to_owned(),
-        version: parts[2].to_owned(),
-    })
 }
 
 fn artifact_dir_name(jar: &Path) -> String {
@@ -168,16 +123,6 @@ fn extract_jar(jar: &Path, dest: &Path, dry_run: bool) -> Result<usize, String> 
 }
 
 // ── helpers ───────────────────────────────────────────────────────────────────
-
-pub(crate) fn default_gradle_home() -> PathBuf {
-    std::env::var("GRADLE_USER_HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| {
-            crate::util::home_dir()
-                .unwrap_or_else(|| PathBuf::from("."))
-                .join(".gradle")
-        })
-}
 
 // ── entry point ───────────────────────────────────────────────────────────────
 

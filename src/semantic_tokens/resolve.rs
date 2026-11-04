@@ -6,7 +6,8 @@ use tower_lsp::lsp_types::{
 use tree_sitter::Node;
 
 use crate::indexer::CstQuery;
-use crate::indexer::{find_it_element_type, find_this_element_type, Indexer, LiveDoc, NodeExt};
+use crate::indexer::{find_it_element_type, find_this_element_type, Indexer, LiveDoc};
+use crate::node_ext::NodeExt;
 use crate::queries::{
     KIND_KW_AS, KIND_KW_BY, KIND_KW_CONSTRUCTOR, KIND_KW_GET, KIND_KW_IN, KIND_KW_IS, KIND_KW_SET,
     KIND_KW_WHERE, KIND_LAMBDA_LIT, KIND_LAMBDA_PARAMS, KIND_NAV_EXPR, KIND_SIMPLE_IDENT,

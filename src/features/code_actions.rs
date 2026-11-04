@@ -9,9 +9,9 @@ use std::collections::HashMap;
 
 use tower_lsp::lsp_types::*;
 
-use super::text_utils::whole_word_replace_file;
 use crate::indexer::live_tree::{lang_for_path, parse_live, utf16_col_to_byte};
 use crate::queries::{KIND_CALL_EXPR, KIND_LAMBDA_LIT, KIND_NAV_EXPR, KIND_SOURCE_FILE};
+use crate::text_utils::whole_word_replace_file;
 use crate::StrExt;
 
 // ─── entry point ──────────────────────────────────────────────────────────────
@@ -498,8 +498,7 @@ fn expand_selection_to_call_inner(
         row: cursor_line,
         column: start_byte_col,
     };
-    let leaf =
-        crate::indexer::node_ext::descendant_for_point(doc.tree.root_node(), &doc.bytes, point)?;
+    let leaf = crate::node_ext::descendant_for_point(doc.tree.root_node(), &doc.bytes, point)?;
 
     let call_node = call_expr_ancestor(leaf)?;
 

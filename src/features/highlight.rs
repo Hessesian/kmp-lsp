@@ -2,7 +2,7 @@
 
 use tower_lsp::lsp_types::{DocumentHighlight, DocumentHighlightKind, Position, Range, Url};
 
-use super::text_utils::{utf16_column, word_byte_offsets};
+use crate::text_utils::{utf16_column, word_byte_offsets};
 
 /// The narrowest enclosing function/lambda body containing `node` — the
 /// boundary document-highlight searches within. Coarser than full lexical

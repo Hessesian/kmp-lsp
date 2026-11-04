@@ -33,7 +33,7 @@
 use tower_lsp::lsp_types::Url;
 use tree_sitter::Node;
 
-use crate::indexer::NodeExt;
+use crate::node_ext::NodeExt;
 use crate::queries::{
     KIND_ADDITIVE_EXPR, KIND_AS_EXPR, KIND_BOOLEAN_LITERAL, KIND_CALL_EXPR, KIND_CHARACTER_LITERAL,
     KIND_CHECK_EXPR, KIND_COMPARISON_EXPR, KIND_CONJUNCTION_EXPR, KIND_CONTROL_STRUCTURE_BODY,

@@ -1,4 +1,4 @@
-use crate::features::text_utils::{whole_word_replace_file, word_byte_offsets};
+use crate::text_utils::{whole_word_replace_file, word_byte_offsets};
 
 #[test]
 fn finds_single_word() {

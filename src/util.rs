@@ -195,3 +195,13 @@ pub(crate) fn join_failure_message(what: &str, err: &tokio::task::JoinError) -> 
          empty/default result that will look like an ordinary miss to the caller"
     )
 }
+
+/// `$XDG_CACHE_HOME`, else `~/.cache`.
+pub(crate) fn xdg_cache_base() -> PathBuf {
+    std::env::var("XDG_CACHE_HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| {
+            let home = home_dir().unwrap_or_else(|| PathBuf::from("/tmp"));
+            home.join(".cache")
+        })
+}

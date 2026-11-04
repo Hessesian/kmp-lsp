@@ -92,7 +92,7 @@ use tower_lsp::lsp_types::*;
 use tree_sitter::Node;
 
 use crate::indexer::live_tree::LiveDoc;
-use crate::indexer::NodeExt;
+use crate::node_ext::NodeExt;
 use crate::parser::import_entry_from_header;
 use crate::queries::{
     KIND_IMPORT_HEADER, KIND_IMPORT_LIST, KIND_INTERPOLATED_IDENT, KIND_LINE_COMMENT,
@@ -383,7 +383,7 @@ pub(crate) fn unused_import_diagnostics(doc: &LiveDoc) -> Vec<Diagnostic> {
 fn import_line_range(doc: &LiveDoc, line: u32) -> Range {
     let full_text = std::str::from_utf8(&doc.bytes).unwrap_or_default();
     let line_text = full_text.lines().nth(line as usize).unwrap_or_default();
-    let end_character = crate::features::text_utils::utf16_column(line_text);
+    let end_character = crate::text_utils::utf16_column(line_text);
     Range::new(Position::new(line, 0), Position::new(line, end_character))
 }
 

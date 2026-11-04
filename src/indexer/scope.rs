@@ -1,6 +1,7 @@
 //! Cursor-context resolution helpers: word extraction, qualifier parsing,
 //! lambda parameter inference, enclosing-class lookup.
 
+use crate::str_ext::is_id_char;
 use std::sync::Arc;
 use tower_lsp::lsp_types::*;
 use tree_sitter::Point;
@@ -10,7 +11,7 @@ use super::{
     lambda_brace_pos_for_param, line_has_lambda_param, Indexer, ThisContext,
 };
 use crate::indexer::live_tree::utf16_col_to_byte;
-use crate::indexer::NodeExt;
+use crate::node_ext::NodeExt;
 use crate::queries::{
     KIND_CLASS_BODY, KIND_CLASS_DECL, KIND_COMPANION_OBJ, KIND_INTERFACE_DECL, KIND_LAMBDA_LIT,
     KIND_OBJECT_DECL,
@@ -333,11 +334,7 @@ impl Indexer {
             .and_then(|lines| lines.get(cursor_line).cloned())
             .unwrap_or_default();
         let point = lambda_cursor_point(&line_text, cursor_line, cursor_col);
-        let node = crate::indexer::node_ext::descendant_for_point(
-            doc.tree.root_node(),
-            &doc.bytes,
-            point,
-        )?;
+        let node = crate::node_ext::descendant_for_point(doc.tree.root_node(), &doc.bytes, point)?;
         let params = collect_cst_lambda_params(node, &doc.bytes);
         if params.is_empty() && doc.tree.root_node().has_error() {
             // A broken tree may simply have failed to FORM the enclosing
@@ -424,11 +421,9 @@ impl Indexer {
                 row,
                 column: probe_col,
             };
-            if let Some(node) = crate::indexer::node_ext::descendant_for_point(
-                doc.tree.root_node(),
-                &doc.bytes,
-                point,
-            ) {
+            if let Some(node) =
+                crate::node_ext::descendant_for_point(doc.tree.root_node(), &doc.bytes, point)
+            {
                 let mut cur = node;
                 loop {
                     match cur.kind() {
@@ -568,10 +563,6 @@ pub(super) fn extract_class_decl_name(line: &str) -> Option<String> {
         return None;
     }
     Some(name)
-}
-
-pub(crate) fn is_id_char(c: char) -> bool {
-    c.is_alphanumeric() || c == '_'
 }
 
 /// Return the trailing contiguous identifier slice in `s` — the longest

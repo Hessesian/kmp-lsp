@@ -6,7 +6,6 @@
 
 use tower_lsp::lsp_types::{Location, Position, Range, SymbolKind, Url};
 
-use super::text_utils::{utf16_column, word_byte_offsets};
 use crate::features::traits::{DocumentAccess, ScopeQuery, SearchAccess, SymbolIndex};
 use crate::indexer::{
     call_shape_of, classify_cursor, cursor_node_at, is_call_callee, Indexer, NavigationSource,
@@ -14,6 +13,7 @@ use crate::indexer::{
 };
 use crate::resolver::MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK;
 use crate::rg::RgSearchRequest;
+use crate::text_utils::{utf16_column, word_byte_offsets};
 use crate::types::CursorPos;
 use crate::StrExt;
 

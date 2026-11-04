@@ -395,7 +395,7 @@ fn add_lambda_param_completions(
     scope: &ScopeContext,
     prefix: &str,
 ) {
-    use crate::features::text_utils::starts_with_ignore_ascii_case;
+    use crate::text_utils::starts_with_ignore_ascii_case;
 
     let prefix_lower = prefix.to_lowercase();
     for (param_name, _) in scope
@@ -445,7 +445,7 @@ fn add_named_arg_completions(
     let raw = params_text.trim_matches(|c| c == '(' || c == ')');
     let prefix_lower = prefix.to_lowercase();
     for name in param_names_from_sig(raw) {
-        use crate::features::text_utils::starts_with_ignore_ascii_case;
+        use crate::text_utils::starts_with_ignore_ascii_case;
         if !prefix_lower.is_empty() && !starts_with_ignore_ascii_case(&name, &prefix_lower) {
             continue;
         }
