@@ -297,6 +297,18 @@ fn prepare_scan(indexer: &Arc<Indexer>, root: &Path, max: usize) -> ScanSetup {
     }
 }
 
+/// Shallowest first (the truncation policy), ties broken by path so the order
+/// is a pure function of the path set. Discovery hands paths over in hash-map
+/// order, and the index applies files in this order; every first-match lookup
+/// over same-named definitions inherits it.
+pub(super) fn order_paths_shallowest_first(paths: &mut [PathBuf]) {
+    paths.sort_by(|left, right| {
+        let left_depth = left.components().count();
+        let right_depth = right.components().count();
+        left_depth.cmp(&right_depth).then_with(|| left.cmp(right))
+    });
+}
+
 fn discover_workspace_paths(
     root: &Path,
     max: usize,
@@ -315,7 +327,7 @@ fn discover_workspace_paths(
         max
     };
 
-    paths.sort_by_key(|p| p.components().count());
+    order_paths_shallowest_first(&mut paths);
     let paths: Vec<_> = paths.into_iter().take(effective_max).collect();
     let indexed_count = paths.len();
     let truncated = total > effective_max && effective_max != MAX_FILES_UNLIMITED;

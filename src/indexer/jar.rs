@@ -219,9 +219,21 @@ pub(crate) fn scan_gradle_jars_split(
         }
     }
 
-    let compiled = compiled_best.into_values().map(|(_, path)| path).collect();
-    let sources = sources_best.into_values().map(|(_, path)| path).collect();
-    (compiled, sources)
+    (
+        sorted_best_paths(compiled_best),
+        sorted_best_paths(sources_best),
+    )
+}
+
+/// The winning JAR per artifact, in path order: `HashMap` iteration order is
+/// random per run and the JARs are indexed (so first-match lookups see them)
+/// in this order.
+fn sorted_best_paths(
+    best: HashMap<(String, String), (Vec<crate::cli::extract_sources::VersionPart>, PathBuf)>,
+) -> Vec<PathBuf> {
+    let mut paths: Vec<PathBuf> = best.into_values().map(|(_, path)| path).collect();
+    paths.sort();
+    paths
 }
 
 /// Scan for compiled (non-sources) JARs only — backwards-compatible wrapper.

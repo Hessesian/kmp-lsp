@@ -233,3 +233,34 @@ async fn index_workspace_skips_second_concurrent_run_issue_scan() {
             .collect::<Vec<_>>()
     );
 }
+
+// ─── order_paths_shallowest_first ─────────────────────────────────────────────
+
+#[test]
+fn path_order_is_independent_of_input_order() {
+    use std::path::PathBuf;
+    let paths: Vec<PathBuf> = [
+        "/ws/b/Same.kt",
+        "/ws/a/Same.kt",
+        "/ws/c/Same.kt",
+        "/ws/Top.kt",
+        "/ws/a/deep/Same.kt",
+        "/ws/b/deep/Same.kt",
+    ]
+    .iter()
+    .map(PathBuf::from)
+    .collect();
+
+    let mut forward = paths.clone();
+    super::order_paths_shallowest_first(&mut forward);
+    let mut backward: Vec<PathBuf> = paths.iter().rev().cloned().collect();
+    super::order_paths_shallowest_first(&mut backward);
+    let mut rotated = paths.clone();
+    rotated.rotate_left(2);
+    super::order_paths_shallowest_first(&mut rotated);
+
+    assert_eq!(forward, backward);
+    assert_eq!(forward, rotated);
+    assert_eq!(forward[0], PathBuf::from("/ws/Top.kt"), "shallowest first");
+    assert_eq!(forward[1], PathBuf::from("/ws/a/Same.kt"), "ties by path");
+}
