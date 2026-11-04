@@ -26,12 +26,10 @@ use crate::indexer::cache::{build_qualified_keys, FileCacheEntry};
 use crate::indexer::discover::find_source_files_unconstrained;
 use crate::parser::parse_by_extension;
 use crate::path_util::to_forward_slash;
-use crate::resolver::symbols_from_uri_as_completions_pub;
 use crate::types::{
     ExtensionEntry, FileData, FileIndexResult, SourceSet, SymbolLoc, Visibility,
     WorkspaceIndexResult,
 };
-use crate::StrExt;
 
 fn classify_source_set(uri: &str, source_paths: &[String]) -> SourceSet {
     for source_path in source_paths {
@@ -1194,66 +1192,6 @@ impl Indexer {
         self.bare_names_dirty.store(true, Ordering::Release);
 
         Some(self.with_classified_source_set(uri.as_str(), Arc::new(result.data)))
-    }
-
-    /// Spawn background tasks to pre-warm the completion cache for all types
-    /// declared in `uri` as constructor parameters or properties.
-    ///
-    /// This runs after `index_content` so that when the user types `repo.` the
-    /// cache is already populated and the response is instant.
-    pub(crate) fn prewarm_completion_cache(self: Arc<Self>, uri: &Url) {
-        let Some(data) = self.files.get(uri.as_str()) else {
-            return;
-        };
-        let from_uri = uri.clone();
-
-        // Collect unique type names from this file's lines.
-        let mut type_names: Vec<String> = Vec::new();
-        {
-            let mut seen = std::collections::HashSet::new();
-            for line in data.lines.iter() {
-                let t = line.trim_start();
-                if t.starts_with("//") || t.starts_with('*') {
-                    continue;
-                }
-                let mut rest = t;
-                while let Some(ci) = rest.find(':') {
-                    let after = rest[ci + 1..].trim_start();
-                    let type_name = after.ident_prefix();
-                    if !type_name.is_empty()
-                        && type_name.starts_with_uppercase()
-                        && seen.insert(type_name.clone())
-                    {
-                        type_names.push(type_name);
-                    }
-                    rest = &rest[ci + 1..];
-                }
-            }
-        }
-        drop(data);
-
-        // Spawn a background task per type (capped to avoid bursts).
-        let limit = Arc::new(tokio::sync::Semaphore::new(4));
-        for type_name in type_names {
-            let indexer = Arc::clone(&self);
-            let uri2 = from_uri.clone();
-            let sem = Arc::clone(&limit);
-            tokio::spawn(async move {
-                let _permit = sem.acquire_owned().await.expect("semaphore closed");
-                tokio::task::spawn_blocking(move || {
-                    let locs = indexer.resolve_symbol(&type_name, None, &uri2);
-                    if let Some(loc) = locs.first() {
-                        let file_uri = loc.uri.to_string();
-                        if indexer.completion_cache.contains_key(&file_uri) {
-                            return;
-                        }
-                        symbols_from_uri_as_completions_pub(&indexer, &file_uri);
-                    }
-                })
-                .await
-                .ok();
-            });
-        }
     }
 }
 
