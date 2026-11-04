@@ -171,3 +171,101 @@ pub(crate) fn extract_type_with_generics(s: &str) -> String {
     }
     result
 }
+
+// ─── collection element type ──────────────────────────────────────────────────
+
+/// Collection-like type constructors whose first type argument is an element.
+const COLLECTION_TYPES: &[&str] = &[
+    "List",
+    "MutableList",
+    "ArrayList",
+    // Kotlin immutable collections (kotlinx.collections.immutable)
+    "ImmutableList",
+    "PersistentList",
+    "ImmutableSet",
+    "PersistentSet",
+    "ImmutableCollection",
+    "PersistentCollection",
+    "Set",
+    "MutableSet",
+    "HashSet",
+    "LinkedHashSet",
+    "Collection",
+    "MutableCollection",
+    "Iterable",
+    "MutableIterable",
+    "Sequence",
+    "Flow",
+    "StateFlow",
+    "SharedFlow",
+    "Channel",
+    "SendChannel",
+    "ReceiveChannel",
+    "Array",
+];
+
+/// Whether `type_name` (bare, or dotted from its package) names one of the
+/// collection-like constructors whose first type argument is an element.
+pub(crate) fn is_collection_constructor(type_name: &str) -> bool {
+    COLLECTION_TYPES.contains(&type_name.last_segment())
+}
+
+/// Extract the element type from a known Kotlin/Java collection type.
+///
+/// `"List<Product>"` → `Some("Product")`
+/// `"StateFlow<UiState>"` → `Some("UiState")`
+/// `"Flow<List<RegularAccount>>"` → `Some("List<RegularAccount>")`
+///
+/// The element's own type arguments are preserved: chain resolution needs
+/// `List<RegularAccount>` (not a bare `List`) to substitute through subsequent
+/// member accesses like `firstOrNull()`.
+///
+/// Returns `None` when the base type is not in the known collection list, or when
+/// the generic parameter is a primitive/lowercase type.  In those cases the
+/// caller should treat `it` as the receiver type itself (scope functions).
+pub(crate) fn extract_collection_element_type(raw_type: &str) -> Option<String> {
+    let base = raw_type.ident_prefix();
+    if !COLLECTION_TYPES.contains(&base.as_str()) {
+        return None;
+    }
+
+    let open = raw_type.find('<')?;
+    let close = raw_type.rfind('>')?;
+    if close <= open {
+        return None;
+    }
+    let inner = &raw_type[open + 1..close];
+
+    // Take first type argument (before the first `,` at depth 0).
+    let first = first_type_arg(inner).trim().trim_matches('?');
+
+    // Validate on the dotted prefix (preserves qualified nested types like
+    // `DashboardInvestedContract.Effect`), but return `first` in full so the
+    // element keeps its own type arguments.
+    let prefix = first.dotted_ident_prefix();
+    let prefix = prefix.trim_end_matches('.');
+    let first_seg = prefix.split('.').next().unwrap_or(prefix);
+    if prefix.is_empty() || !first_seg.starts_with_uppercase() {
+        return None;
+    }
+    Some(first.to_owned())
+}
+
+/// Return the first type argument in a comma-separated generic parameter list,
+/// respecting nested `<>` brackets.
+pub(crate) fn first_type_arg(s: &str) -> &str {
+    let mut depth = 0i32;
+    let mut end = s.len();
+    for (i, c) in s.char_indices() {
+        match c {
+            '<' => depth += 1,
+            '>' => depth -= 1,
+            ',' if depth == 0 => {
+                end = i;
+                break;
+            }
+            _ => {}
+        }
+    }
+    &s[..end]
+}

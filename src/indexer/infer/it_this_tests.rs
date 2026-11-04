@@ -2152,7 +2152,7 @@ fn regression_immutable_list_foreach_it_transient_parse() {
 #[test]
 fn regression_immutable_list_extract_element_type() {
     // extract_collection_element_type must recognise ImmutableList, PersistentList, etc.
-    use crate::resolver::extract_collection_element_type;
+    use crate::detail_text::extract_collection_element_type;
     assert_eq!(
         extract_collection_element_type("ImmutableList<ButtonModel>").as_deref(),
         Some("ButtonModel")
