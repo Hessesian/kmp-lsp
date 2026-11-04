@@ -412,7 +412,7 @@ fn resolve_symbol_info_basic_lookup() {
 /// all from the one record, no second lookup.
 #[test]
 fn resolve_symbol_info_widens_deprecated_with_qualified_context() {
-    use crate::backend::format::format_symbol_hover;
+    use crate::features::hover_format::format_symbol_hover;
 
     let file_uri = "file:///widget.kt";
 

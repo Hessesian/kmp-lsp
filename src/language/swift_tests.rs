@@ -15,7 +15,7 @@ fn extensions_include_swift() {
 
 #[test]
 fn parse_extracts_class_symbol() {
-    let data = SwiftParser.parse("class Baz {}");
+    let data = crate::parser::parse_by_extension("Baz.swift", "class Baz {}");
     assert!(data.symbols.iter().any(|s| s.name == "Baz"));
 }
 

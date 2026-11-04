@@ -9,8 +9,8 @@ use tower_lsp::lsp_types::{
     Hover, HoverContents, Location, MarkupContent, MarkupKind, Position, Url,
 };
 
-use crate::backend::cursor::CursorContext;
-use crate::backend::format::{format_contextual_hover, format_symbol_hover};
+use crate::features::cursor::CursorContext;
+use crate::features::hover_format::{format_contextual_hover, format_symbol_hover};
 use crate::indexer::apply_type_subst;
 use crate::indexer::resolution::{
     build_subst_map, enrich_at_location, resolve_symbol_info, ResolveOptions, SubstitutionContext,

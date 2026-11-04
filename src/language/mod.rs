@@ -10,8 +10,6 @@ pub(crate) mod swift;
 
 use tower_lsp::lsp_types::SymbolKind;
 
-use crate::types::FileData;
-
 /// Language-specific capabilities exposed to the rest of the codebase.
 ///
 /// Implementations are stateless singletons; tree-sitter parser state and query
@@ -22,12 +20,6 @@ pub(crate) trait LanguageParser: Send + Sync {
 
     /// File extensions handled by this provider (without leading dot).
     fn file_extensions(&self) -> &[&'static str];
-
-    /// Parse `source` and return extracted symbols, imports, supertypes, etc.
-    ///
-    /// Delegates to the existing `parse_kotlin` / `parse_java` / `parse_swift`
-    /// free functions — no logic has moved, this is purely dispatch unification.
-    fn parse(&self, source: &str) -> FileData;
 
     /// Return the declaration keyword for `kind` in this language.
     ///

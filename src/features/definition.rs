@@ -6,7 +6,7 @@
 
 use tower_lsp::lsp_types::{GotoDefinitionResponse, Location, Position, Url};
 
-use crate::backend::cursor::CursorContext;
+use crate::features::cursor::CursorContext;
 use crate::features::traits::{DocumentAccess, SearchAccess, SymbolIndex};
 use crate::indexer::{CallShape, Indexer};
 use crate::parser::parse_by_extension;

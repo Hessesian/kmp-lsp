@@ -294,7 +294,11 @@ pub(crate) fn parse_swift(content: &str) -> FileData {
 
 /// Dispatch to the correct parser based on file extension.
 pub(crate) fn parse_by_extension(path: &str, content: &str) -> FileData {
-    crate::Language::from_path(path).parser().parse(content)
+    match crate::Language::from_path(path) {
+        crate::Language::Kotlin => parse_kotlin(content),
+        crate::Language::Java => parse_java(content),
+        crate::Language::Swift => parse_swift(content),
+    }
 }
 
 // ─── shared query pipeline helpers ───────────────────────────────────────────
