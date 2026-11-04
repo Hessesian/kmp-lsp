@@ -12,6 +12,7 @@ mod hierarchy;
 mod import_edit;
 mod imports;
 pub(crate) mod infer;
+pub(crate) mod infer_deps;
 pub(crate) mod infer_lines;
 mod package;
 mod package_scope;
@@ -44,7 +45,6 @@ pub(crate) use infer::{
     infer_receiver_type, infer_receiver_type_at, infer_variable_type_from_cst,
     infer_variable_type_raw, ReceiverKind, ReceiverType,
 };
-pub(crate) use infer_lines::{extract_collection_element_type, is_collection_constructor};
 pub(crate) use package_scope::find_symbol_in_package;
 pub(crate) use resolve::{
     ensure_file_data, fqns_for_name, resolve_callee_definition,

@@ -59,19 +59,19 @@
 //! - `expr_type`   — expression-node type inference (backs `CstQuery::expr_type`)
 //! - `speculative`  — marker-insertion speculative reparse for dot-completion receivers
 
-pub(super) mod args;
-pub(super) mod chain;
-pub(super) mod cst_cursor;
-pub(super) mod cst_lambda;
-pub(super) mod cst_symbol;
-pub(super) mod deps;
-pub(super) mod expr_type;
-pub(super) mod it_this;
-pub(super) mod lambda;
-pub(super) mod lambda_resolution;
-pub(super) mod sig;
-pub(super) mod speculative;
-pub(super) mod type_subst;
+pub(crate) mod args;
+pub(crate) mod chain;
+pub(crate) mod cst_cursor;
+pub(crate) mod cst_lambda;
+pub(crate) mod cst_symbol;
+pub(crate) mod deps;
+pub(crate) mod expr_type;
+pub(crate) mod it_this;
+pub(crate) mod lambda;
+pub(crate) mod lambda_resolution;
+pub(crate) mod sig;
+pub(crate) mod speculative;
+pub(crate) mod type_subst;
 
 #[cfg(test)]
 #[path = "mod_tests.rs"]
