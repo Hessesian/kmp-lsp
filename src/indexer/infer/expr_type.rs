@@ -553,7 +553,7 @@ fn iterated_element_type(iterable_type: &str) -> Option<String> {
         let key_and_value = type_args_inner(iterable_type)?;
         return Some(format!("Map.Entry<{key_and_value}>"));
     }
-    if !crate::resolver::is_collection_constructor(&holder) {
+    if !crate::detail_text::is_collection_constructor(&holder) {
         return None;
     }
     // The loop variable keeps the argument as written, qualification and `?`

@@ -2,7 +2,7 @@
 
 use tower_lsp::lsp_types::Url;
 
-use crate::resolver::infer_lines::first_type_arg;
+use crate::detail_text::first_type_arg;
 use crate::StrExt;
 
 use super::super::last_ident_in;

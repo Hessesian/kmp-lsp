@@ -58,7 +58,7 @@ const LAYERS: &[(&str, u8)] = &[
 
 /// Upward edges that still exist: `((from, to), mentions)`.
 const UPWARD_EDGES: &[((&str, &str), usize)] = &[
-    (("indexer", "resolver"), 38),
+    (("indexer", "resolver"), 6),
     (("features", "backend"), 3),
     (("language", "parser"), 3),
 ];
