@@ -8,9 +8,10 @@ use tower_lsp::lsp_types::Url;
 use crate::indexer::infer::sig::{
     find_fun_params_text_fast, nth_fun_param_type_str, split_params_at_depth_zero,
 };
-use crate::indexer::NodeExt;
-use crate::indexer::{find_enclosing_call_name, is_id_char, Indexer};
+use crate::indexer::{find_enclosing_call_name, Indexer};
+use crate::node_ext::NodeExt;
 use crate::queries::{KIND_CALL_EXPR, KIND_LAMBDA_LIT, KIND_VALUE_ARG};
+use crate::str_ext::is_id_char;
 use crate::types::CursorPos;
 use crate::StrExt;
 
@@ -368,8 +369,7 @@ fn cst_call_arg_type(pos: CursorPos, idx: &Indexer, uri: &Url) -> Option<String>
         row: pos.line,
         column: byte_col,
     };
-    let start_node =
-        crate::indexer::node_ext::descendant_for_point(doc.tree.root_node(), bytes, point)?;
+    let start_node = crate::node_ext::descendant_for_point(doc.tree.root_node(), bytes, point)?;
 
     // Walk up: look for value_argument; bail out if we hit lambda_literal first.
     let mut cur = start_node;

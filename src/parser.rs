@@ -5,7 +5,7 @@ use std::thread::LocalKey;
 use tower_lsp::lsp_types::{Position, Range, SymbolKind};
 use tree_sitter::{Node, Parser, Query, QueryCursor, StreamingIterator};
 
-use crate::indexer::NodeExt;
+use crate::node_ext::NodeExt;
 use crate::queries::{
     self, KIND_ANNOTATION_TYPE_DECL, KIND_BINDING_PATTERN_KIND, KIND_CALLABLE_REF, KIND_CALL_EXPR,
     KIND_CALL_SUFFIX, KIND_CLASS_BODY, KIND_CLASS_DECL, KIND_CLASS_PARAM, KIND_COMPANION_OBJ,
@@ -601,7 +601,7 @@ fn primary_ctor_class_params(root: Node, bytes: &[u8], cls: &SymbolEntry) -> Vec
         row: cls.selection_range.start.line as usize,
         column: cls.selection_range.start.character as usize,
     };
-    let Some(name_node) = crate::indexer::node_ext::descendant_for_point(root, bytes, start) else {
+    let Some(name_node) = crate::node_ext::descendant_for_point(root, bytes, start) else {
         return vec![];
     };
     // Walk up to the enclosing class_declaration.
@@ -745,8 +745,7 @@ fn swift_class_decl_is_extension(root: Node, bytes: &[u8], range: &Range) -> boo
         row: range.start.line as usize,
         column: range.start.character as usize,
     };
-    let Some(node) = crate::indexer::node_ext::descendant_for_point(root, bytes, start_point)
-    else {
+    let Some(node) = crate::node_ext::descendant_for_point(root, bytes, start_point) else {
         return false;
     };
     let decl = find_ancestor_decl(node);
@@ -780,7 +779,7 @@ fn swift_stored_property_signature(
         row: range.start.line as usize,
         column: range.start.character as usize,
     };
-    let node = crate::indexer::node_ext::descendant_for_point(root, bytes, start_point)?;
+    let node = crate::node_ext::descendant_for_point(root, bytes, start_point)?;
     let decl = find_ancestor_decl(node);
     if decl.kind() != KIND_PROP_DECL {
         return None;
@@ -1337,8 +1336,7 @@ fn extract_extension_receiver_from_cst(
         row: range.start.line as usize,
         column: range.start.character as usize,
     };
-    let Some(node) = crate::indexer::node_ext::descendant_for_point(root, bytes, start_point)
-    else {
+    let Some(node) = crate::node_ext::descendant_for_point(root, bytes, start_point) else {
         return empty;
     };
     let decl = find_ancestor_decl(node);
@@ -1421,7 +1419,7 @@ pub(crate) fn enclosing_extension_receiver_at(
         row: position.start.line as usize,
         column: position.start.character as usize,
     };
-    let node = crate::indexer::node_ext::descendant_for_point(root, bytes, start_point)?;
+    let node = crate::node_ext::descendant_for_point(root, bytes, start_point)?;
     let declaration = enclosing_extension_declaration(node)?;
     let (base, _) = extension_receiver_from_decl(declaration, bytes);
     if base.is_empty() {
@@ -1537,8 +1535,7 @@ fn extract_params_and_counts(root: Node, bytes: &[u8], range: &Range) -> (String
         row: range.start.line as usize,
         column: range.start.character as usize,
     };
-    let Some(node) = crate::indexer::node_ext::descendant_for_point(root, bytes, start_point)
-    else {
+    let Some(node) = crate::node_ext::descendant_for_point(root, bytes, start_point) else {
         return (String::new(), (0, 0));
     };
     let decl = find_ancestor_decl(node);
@@ -1596,8 +1593,7 @@ fn last_value_param_is_function_type(root: Node, bytes: &[u8], range: &Range) ->
         row: range.start.line as usize,
         column: range.start.character as usize,
     };
-    let Some(node) = crate::indexer::node_ext::descendant_for_point(root, bytes, start_point)
-    else {
+    let Some(node) = crate::node_ext::descendant_for_point(root, bytes, start_point) else {
         return false;
     };
     let decl = find_ancestor_decl(node);

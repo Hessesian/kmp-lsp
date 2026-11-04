@@ -1,5 +1,4 @@
 //! Extension trait adding string-analysis helper methods to `str`.
-use crate::indexer::is_id_char;
 
 pub(crate) trait StrExt {
     /// Returns `true` if `self` starts with an uppercase letter (Unicode-aware).
@@ -154,3 +153,8 @@ impl StrExt for str {
 #[cfg(test)]
 #[path = "str_ext_tests.rs"]
 mod tests;
+
+/// Whether `c` can appear in a Kotlin/Java identifier.
+pub(crate) fn is_id_char(c: char) -> bool {
+    c.is_alphanumeric() || c == '_'
+}

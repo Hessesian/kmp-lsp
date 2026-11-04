@@ -8,7 +8,8 @@
 //! 2  indexer (index store + CST inference)       what the workspace declares
 //! 1  parser  rg  jar_extract                     syntax and text extraction
 //! 0  util  path_util  str_ext  lines_ext  queries  stdlib  stdlib_tail
-//!    task_runner  sidecar  language  types  workspace_json   vocabulary
+//!    task_runner  sidecar  language  types  workspace_json  gradle_cache
+//!    node_ext  text_utils   vocabulary
 //! ```
 //!
 //! Each `(from, to)` entry below is an upward edge that existed when the
@@ -39,6 +40,9 @@ const LAYERS: &[(&str, u8)] = &[
     ("language", 0),
     ("types", 0),
     ("workspace_json", 0),
+    ("gradle_cache", 0),
+    ("node_ext", 0),
+    ("text_utils", 0),
     ("parser", 1),
     ("rg", 1),
     ("jar_extract", 1),
@@ -55,23 +59,16 @@ const LAYERS: &[(&str, u8)] = &[
 /// Upward edges that still exist: `((from, to), mentions)`.
 const UPWARD_EDGES: &[((&str, &str), usize)] = &[
     (("indexer", "resolver"), 53),
-    (("parser", "indexer"), 8),
-    (("indexer", "features"), 7),
-    (("indexer", "cli"), 6),
+    (("indexer", "features"), 3),
     (("lines_ext", "resolver"), 6),
     (("lines_ext", "parser"), 4),
     (("rg", "resolver"), 3),
-    (("resolver", "cli"), 3),
     (("indexer", "inlay_hints"), 3),
     (("features", "backend"), 3),
-    (("language", "indexer"), 3),
     (("language", "parser"), 3),
-    (("jar_extract", "indexer"), 2),
+    (("jar_extract", "indexer"), 1),
     (("types", "rg"), 1),
     (("lines_ext", "indexer"), 1),
-    (("rg", "features"), 1),
-    (("str_ext", "indexer"), 1),
-    (("workspace_json", "cli"), 1),
     (("indexer", "workspace"), 1),
     (("indexer", "semantic_tokens"), 1),
 ];

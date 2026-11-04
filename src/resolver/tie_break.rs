@@ -284,7 +284,7 @@ pub(super) fn import_package_tie_break(
 fn owning_module_dependencies(
     indexer: &Indexer,
     from_uri: &Url,
-) -> Option<HashSet<crate::cli::extract_sources::GradleMeta>> {
+) -> Option<HashSet<crate::gradle_cache::GradleMeta>> {
     let file_path = crate::path_util::path_from_uri(from_uri)?;
     let dependencies_by_content_root = indexer
         .module_dependencies
@@ -298,18 +298,18 @@ fn owning_module_dependencies(
 }
 
 /// Resolves a candidate hierarchy-walk `Location`'s own JAR path to its
-/// Gradle coordinates, via the existing [`crate::cli::extract_sources::parse_jar_meta`]
+/// Gradle coordinates, via the existing [`crate::gradle_cache::parse_jar_meta`]
 /// (design doc §2 point 3's cross-check opportunity). Handles both a
 /// compiled-only JAR URI (`jar:file://<jar>`, no entry — how `jar_definitions`
 /// locations are shaped) and a sources-JAR entry URI (`jar:file://<jar>!/<entry>`);
 /// [`crate::jar_extract::parse_jar_entry_uri`] only handles the latter shape,
 /// so it is not reused here. Returns `None` for a non-`jar:` URI or an
 /// unparseable jar path, never a wrong guess.
-fn candidate_gradle_meta(location: &Location) -> Option<crate::cli::extract_sources::GradleMeta> {
+fn candidate_gradle_meta(location: &Location) -> Option<crate::gradle_cache::GradleMeta> {
     let rest = location.uri.as_str().strip_prefix("jar:")?;
     let jar_part = rest.split_once("!/").map_or(rest, |(jar, _)| jar);
     let jar_path = crate::path_util::path_from_uri(&Url::parse(jar_part).ok()?)?;
-    crate::cli::extract_sources::parse_jar_meta(&jar_path)
+    crate::gradle_cache::parse_jar_meta(&jar_path)
 }
 
 /// Whether `location` has a package matching one of

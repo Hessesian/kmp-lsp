@@ -110,7 +110,7 @@ async fn rg_symbol_search(
     // this tradeoff avoids a pointless full-workspace scan for names that
     // are almost certainly from `kotlin.*` or `java.lang.*`.
     {
-        use crate::features::text_utils::KOTLIN_BUILTIN_TYPES;
+        use crate::text_utils::KOTLIN_BUILTIN_TYPES;
         if KOTLIN_BUILTIN_TYPES
             .iter()
             .any(|t| t.eq_ignore_ascii_case(&query.name))
@@ -175,7 +175,7 @@ impl WorkspaceSymbolQuery {
             return true;
         }
         // `self.name` and `self.raw` are pre-lowercased; use allocation-free helpers.
-        use crate::features::text_utils::contains_ignore_ascii_case;
+        use crate::text_utils::contains_ignore_ascii_case;
         if let Some(qualifier) = self.qualifier.as_deref() {
             return contains_ignore_ascii_case(&symbol.name, &self.name)
                 && contains_ignore_ascii_case(&symbol.detail, qualifier);

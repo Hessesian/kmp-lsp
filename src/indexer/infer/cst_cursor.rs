@@ -2,7 +2,8 @@ use tower_lsp::lsp_types::{Position, Url};
 use tree_sitter::Point;
 
 use crate::indexer::live_tree::utf16_col_to_byte;
-use crate::indexer::{Indexer, NodeExt};
+use crate::indexer::Indexer;
+use crate::node_ext::NodeExt;
 use crate::queries::{
     KIND_CALL_EXPR, KIND_FORMAL_PARAMS, KIND_FUN_DECL, KIND_FUN_VALUE_PARAMS, KIND_INIT_DECL,
     KIND_LAMBDA_LIT, KIND_LPAREN, KIND_PRIMARY_CTOR, KIND_PROTOCOL_FUNC_DECL, KIND_RPAREN,
@@ -45,8 +46,7 @@ fn cst_call_info_skip(pos: Position, indexer: &Indexer, uri: &Url, skip: u32) ->
         row: line_idx,
         column: byte_col,
     };
-    let start_node =
-        crate::indexer::node_ext::descendant_for_point(doc.tree.root_node(), bytes, point)?;
+    let start_node = crate::node_ext::descendant_for_point(doc.tree.root_node(), bytes, point)?;
 
     let mut cur = start_node;
     let mut skipped = 0u32;

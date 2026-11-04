@@ -2,8 +2,8 @@
 
 use tower_lsp::lsp_types::SymbolKind;
 
+use super::symbol_kw;
 use super::LanguageParser;
-use crate::indexer::lookup::symbol_kw;
 use crate::types::FileData;
 
 pub(crate) struct SwiftParser;

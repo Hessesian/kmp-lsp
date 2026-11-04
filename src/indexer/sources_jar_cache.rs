@@ -109,7 +109,7 @@ pub(crate) fn prune_deleted_jars(entries: &mut HashMap<String, SourcesJarEntry>)
 fn cache_file_path(cache_dir: Option<&Path>) -> PathBuf {
     let base = match cache_dir {
         Some(dir) => dir.to_owned(),
-        None => super::cache::xdg_cache_base().join("kmp-lsp"),
+        None => crate::util::xdg_cache_base().join("kmp-lsp"),
     };
     base.join(format!(
         "sources-jar-v{SOURCES_JAR_CACHE_VERSION}-c{}.bin",

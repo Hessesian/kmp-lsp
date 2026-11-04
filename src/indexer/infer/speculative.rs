@@ -19,7 +19,8 @@ use tower_lsp::lsp_types::Url;
 use tree_sitter::{InputEdit, Parser, Point};
 
 use crate::indexer::live_tree::{lang_for_path, parse_live, utf16_col_to_byte, LiveDoc};
-use crate::indexer::{Indexer, NodeExt};
+use crate::indexer::Indexer;
+use crate::node_ext::NodeExt;
 use crate::queries::{KIND_LAMBDA_LIT, KIND_NAV_EXPR, KIND_NAV_SUFFIX};
 use crate::types::CursorPos;
 

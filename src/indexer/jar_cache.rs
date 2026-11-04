@@ -91,7 +91,7 @@ pub(crate) struct JarCacheEntry {
 }
 
 fn cache_path() -> std::path::PathBuf {
-    super::cache::xdg_cache_base()
+    crate::util::xdg_cache_base()
         .join("kmp-lsp")
         .join(format!("jar-symbols-v{JAR_CACHE_VERSION}.bin"))
 }
@@ -394,7 +394,7 @@ pub(crate) fn write_versioned_cache_for_test(
     version: u32,
     entries: &HashMap<String, JarCacheEntry>,
 ) {
-    let path = super::cache::xdg_cache_base()
+    let path = crate::util::xdg_cache_base()
         .join("kmp-lsp")
         .join(format!("jar-symbols-v{version}.bin"));
     let parent = path

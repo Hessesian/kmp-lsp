@@ -8,7 +8,8 @@
 use tower_lsp::lsp_types::*;
 
 use crate::indexer::live_tree::{utf16_col_to_byte, LiveDoc};
-use crate::indexer::{CstQuery, Indexer, NodeExt};
+use crate::indexer::{CstQuery, Indexer};
+use crate::node_ext::NodeExt;
 use crate::queries::{
     KIND_BOOLEAN_LITERAL, KIND_ELSE, KIND_LBRACE, KIND_NAV_EXPR, KIND_NAV_SUFFIX, KIND_RBRACE,
     KIND_SIMPLE_IDENT, KIND_TYPE_IDENT, KIND_TYPE_TEST, KIND_USER_TYPE, KIND_WHEN_CONDITION,

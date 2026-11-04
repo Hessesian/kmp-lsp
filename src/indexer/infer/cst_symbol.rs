@@ -9,9 +9,8 @@
 
 use tree_sitter::Node;
 
-use crate::indexer::{
-    CallShape, CstQuery, Indexer, NodeExt, Resolution, ResolvedType, ShapeFiltered,
-};
+use crate::indexer::{CallShape, CstQuery, Indexer, Resolution, ResolvedType, ShapeFiltered};
+use crate::node_ext::NodeExt;
 use crate::queries::{
     KIND_ANONYMOUS_INITIALIZER, KIND_BINDING_PATTERN_KIND, KIND_CALL_EXPR, KIND_CATCH_BLOCK,
     KIND_CLASS_BODY, KIND_CLASS_DECL, KIND_CLASS_PARAM, KIND_COMPANION_OBJ,
@@ -1245,9 +1244,8 @@ fn node_to_location(uri: &Url, node: Node<'_>, full_text: &str) -> Option<Locati
     let start_byte_column = node.start_position().column;
     let end_byte_column = node.end_position().column;
     let line_text = full_text.lines().nth(row)?;
-    let start_character =
-        crate::features::text_utils::utf16_column(&line_text[..start_byte_column]);
-    let end_character = crate::features::text_utils::utf16_column(&line_text[..end_byte_column]);
+    let start_character = crate::text_utils::utf16_column(&line_text[..start_byte_column]);
+    let end_character = crate::text_utils::utf16_column(&line_text[..end_byte_column]);
     Some(Location {
         uri: uri.clone(),
         range: tower_lsp::lsp_types::Range::new(

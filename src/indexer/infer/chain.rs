@@ -2,7 +2,7 @@
 
 use tower_lsp::lsp_types::Url;
 
-use crate::indexer::NodeExt;
+use crate::node_ext::NodeExt;
 use crate::queries::{
     KIND_CALL_EXPR, KIND_CALL_SUFFIX, KIND_CLASS_DECL, KIND_LAMBDA_LIT, KIND_NAV_EXPR,
     KIND_NAV_SUFFIX, KIND_OBJECT_DECL, KIND_SIMPLE_IDENT, KIND_STATEMENTS, KIND_THIS_EXPR,

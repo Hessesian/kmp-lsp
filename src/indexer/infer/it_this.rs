@@ -12,7 +12,7 @@ use tower_lsp::lsp_types::Url;
 
 use crate::indexer::Indexer;
 #[cfg(test)]
-use crate::indexer::NodeExt;
+use crate::node_ext::NodeExt;
 use crate::types::CursorPos;
 use crate::StrExt;
 

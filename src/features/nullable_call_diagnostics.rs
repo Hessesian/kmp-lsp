@@ -20,7 +20,8 @@
 
 use tower_lsp::lsp_types::*;
 
-use crate::indexer::{live_tree::LiveDoc, Indexer, NodeExt};
+use crate::indexer::{live_tree::LiveDoc, Indexer};
+use crate::node_ext::NodeExt;
 use crate::queries::{KIND_NAV_EXPR, KIND_SIMPLE_IDENT};
 use crate::resolver::{ReceiverKind, ReceiverType, Resolver};
 

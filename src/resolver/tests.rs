@@ -426,17 +426,17 @@ fn module_scoped_narrowing_survives_into_import_package_tie_break() {
     // are real dependencies, B is NOT.
     let mut dependencies_by_content_root: std::collections::HashMap<
         std::path::PathBuf,
-        std::collections::HashSet<crate::cli::extract_sources::GradleMeta>,
+        std::collections::HashSet<crate::gradle_cache::GradleMeta>,
     > = std::collections::HashMap::new();
     dependencies_by_content_root.insert(
         std::path::PathBuf::from("/test"),
         std::collections::HashSet::from([
-            crate::cli::extract_sources::GradleMeta {
+            crate::gradle_cache::GradleMeta {
                 group: "com.example.a".to_owned(),
                 artifact: "a-lib".to_owned(),
                 version: "1.0.0".to_owned(),
             },
-            crate::cli::extract_sources::GradleMeta {
+            crate::gradle_cache::GradleMeta {
                 group: "com.example.c".to_owned(),
                 artifact: "c-lib".to_owned(),
                 version: "1.0.0".to_owned(),
@@ -516,17 +516,17 @@ fn module_scoped_narrowing_lets_import_package_tie_break_reach_a_correct_unique_
 
     let mut dependencies_by_content_root: std::collections::HashMap<
         std::path::PathBuf,
-        std::collections::HashSet<crate::cli::extract_sources::GradleMeta>,
+        std::collections::HashSet<crate::gradle_cache::GradleMeta>,
     > = std::collections::HashMap::new();
     dependencies_by_content_root.insert(
         std::path::PathBuf::from("/test"),
         std::collections::HashSet::from([
-            crate::cli::extract_sources::GradleMeta {
+            crate::gradle_cache::GradleMeta {
                 group: "com.example.a".to_owned(),
                 artifact: "a-lib".to_owned(),
                 version: "1.0.0".to_owned(),
             },
-            crate::cli::extract_sources::GradleMeta {
+            crate::gradle_cache::GradleMeta {
                 group: "com.example.c".to_owned(),
                 artifact: "c-lib".to_owned(),
                 version: "1.0.0".to_owned(),
@@ -616,17 +616,17 @@ fn module_scoped_narrowing_survives_into_default_kotlin_import_tie_break() {
     // are real dependencies, A is NOT.
     let mut dependencies_by_content_root: std::collections::HashMap<
         std::path::PathBuf,
-        std::collections::HashSet<crate::cli::extract_sources::GradleMeta>,
+        std::collections::HashSet<crate::gradle_cache::GradleMeta>,
     > = std::collections::HashMap::new();
     dependencies_by_content_root.insert(
         std::path::PathBuf::from("/test"),
         std::collections::HashSet::from([
-            crate::cli::extract_sources::GradleMeta {
+            crate::gradle_cache::GradleMeta {
                 group: "com.example.b".to_owned(),
                 artifact: "b-lib".to_owned(),
                 version: "1.0.0".to_owned(),
             },
-            crate::cli::extract_sources::GradleMeta {
+            crate::gradle_cache::GradleMeta {
                 group: "com.example.c".to_owned(),
                 artifact: "c-lib".to_owned(),
                 version: "1.0.0".to_owned(),
@@ -1837,11 +1837,11 @@ fn resolve_qualified_supertype_extension_fallback_threads_the_real_origin_uri() 
     // `com.example:seq-lib` artifact.
     let mut dependencies_by_content_root: std::collections::HashMap<
         std::path::PathBuf,
-        std::collections::HashSet<crate::cli::extract_sources::GradleMeta>,
+        std::collections::HashSet<crate::gradle_cache::GradleMeta>,
     > = std::collections::HashMap::new();
     dependencies_by_content_root.insert(
         std::path::PathBuf::from("/test/app"),
-        std::collections::HashSet::from([crate::cli::extract_sources::GradleMeta {
+        std::collections::HashSet::from([crate::gradle_cache::GradleMeta {
             group: "com.example".to_owned(),
             artifact: "seq-lib".to_owned(),
             version: "2.0.0".to_owned(),
@@ -1952,11 +1952,11 @@ fn resolve_qualified_inherited_member_lookup_threads_the_real_origin_uri() {
 
     let mut dependencies_by_content_root: std::collections::HashMap<
         std::path::PathBuf,
-        std::collections::HashSet<crate::cli::extract_sources::GradleMeta>,
+        std::collections::HashSet<crate::gradle_cache::GradleMeta>,
     > = std::collections::HashMap::new();
     dependencies_by_content_root.insert(
         std::path::PathBuf::from("/test/app"),
-        std::collections::HashSet::from([crate::cli::extract_sources::GradleMeta {
+        std::collections::HashSet::from([crate::gradle_cache::GradleMeta {
             group: "com.example".to_owned(),
             artifact: "seq-lib".to_owned(),
             version: "2.0.0".to_owned(),

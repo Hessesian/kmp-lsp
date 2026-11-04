@@ -3,7 +3,7 @@ use super::{
     receiver_type_agreement, supertype_chain_contains, supertype_targets, walk_hierarchy,
     ReceiverTypeAgreement, MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK,
 };
-use crate::cli::extract_sources::GradleMeta;
+use crate::gradle_cache::GradleMeta;
 use crate::indexer::Indexer;
 use crate::types::{CallerContext, FileData};
 use std::collections::{HashMap, HashSet};

@@ -97,7 +97,7 @@ fn pick_corpus_dir() -> Option<(PathBuf, u64)> {
         let size = std::fs::metadata(&p).ok()?.len();
         return Some((p, size));
     }
-    let base = super::cache::xdg_cache_base().join("kmp-lsp");
+    let base = crate::util::xdg_cache_base().join("kmp-lsp");
     let mut best: Option<(PathBuf, u64)> = None;
     for entry in std::fs::read_dir(&base).ok()? {
         let Ok(entry) = entry else { continue };
@@ -946,7 +946,7 @@ fn memory_retainer_profile() {
 /// `~/.cache/kmp-lsp` (or `$XDG_CACHE_HOME/kmp-lsp`) — the directory both global
 /// library caches live in.
 fn kmp_lsp_cache_base() -> PathBuf {
-    super::cache::xdg_cache_base().join("kmp-lsp")
+    crate::util::xdg_cache_base().join("kmp-lsp")
 }
 
 /// Total on-disk bytes of every cache file whose name matches `prefix`/`suffix`

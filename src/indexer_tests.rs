@@ -3842,7 +3842,7 @@ fn every_builtin_type_names_a_type_in_scope() {
     let idx = Indexer::new();
     let caller = uri("/app/Caller.kt");
     idx.index_content(&caller, "package app\n");
-    for builtin in crate::features::text_utils::KOTLIN_BUILTIN_TYPES {
+    for builtin in crate::text_utils::KOTLIN_BUILTIN_TYPES {
         assert!(
             idx.names_type_in_scope(builtin, &caller),
             "{builtin} is a builtin type"

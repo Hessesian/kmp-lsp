@@ -1,6 +1,7 @@
 use tower_lsp::lsp_types::{Location, Position, SymbolKind, Url};
 
-use crate::indexer::{infer_local_type_at, BindingType, Indexer, InferDeps, NodeExt};
+use crate::indexer::{infer_local_type_at, BindingType, Indexer, InferDeps};
+use crate::node_ext::NodeExt;
 use crate::types::FileData;
 use crate::LinesExt;
 use crate::StrExt;
@@ -1844,8 +1845,7 @@ fn infer_undeclared_return_type(
         row: declaration_line as usize,
         column: function.selection_range.start.character as usize,
     };
-    let mut node =
-        crate::indexer::node_ext::descendant_for_point(doc.tree.root_node(), bytes, start_point)?;
+    let mut node = crate::node_ext::descendant_for_point(doc.tree.root_node(), bytes, start_point)?;
     while node.kind() != KIND_FUN_DECL {
         node = node.parent()?;
     }

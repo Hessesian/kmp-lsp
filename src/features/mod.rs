@@ -31,7 +31,6 @@ pub(crate) mod references_verify;
 pub(crate) mod rename;
 pub(crate) mod signature_help;
 pub(crate) mod symbols;
-pub(crate) mod text_utils;
 pub(crate) mod traits;
 mod traits_impl;
 pub(crate) mod unresolved_symbol_diagnostics;

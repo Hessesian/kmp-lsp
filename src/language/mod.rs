@@ -39,3 +39,20 @@ pub(crate) trait LanguageParser: Send + Sync {
 #[cfg(test)]
 #[path = "mod_tests.rs"]
 mod tests;
+
+/// Keyword that introduces a declaration of `kind` in Kotlin-flavoured syntax.
+pub(crate) fn symbol_kw(kind: SymbolKind) -> &'static str {
+    match kind {
+        SymbolKind::CLASS => "class",
+        SymbolKind::INTERFACE => "interface",
+        SymbolKind::FUNCTION => "fun",
+        SymbolKind::METHOD => "fun",
+        SymbolKind::VARIABLE => "var",
+        SymbolKind::CONSTANT => "val",
+        SymbolKind::OBJECT => "object",
+        SymbolKind::TYPE_PARAMETER => "typealias",
+        SymbolKind::ENUM => "enum class",
+        SymbolKind::FIELD => "field",
+        _ => "symbol",
+    }
+}

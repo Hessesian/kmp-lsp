@@ -455,22 +455,6 @@ impl Indexer {
     }
 }
 
-pub(crate) fn symbol_kw(kind: SymbolKind) -> &'static str {
-    match kind {
-        SymbolKind::CLASS => "class",
-        SymbolKind::INTERFACE => "interface",
-        SymbolKind::FUNCTION => "fun",
-        SymbolKind::METHOD => "fun",
-        SymbolKind::VARIABLE => "var",
-        SymbolKind::CONSTANT => "val",
-        SymbolKind::OBJECT => "object",
-        SymbolKind::TYPE_PARAMETER => "typealias",
-        SymbolKind::ENUM => "enum class",
-        SymbolKind::FIELD => "field",
-        _ => "symbol",
-    }
-}
-
 pub(crate) fn symbol_kw_for_lang(kind: SymbolKind, lang: &str) -> &'static str {
     // Resolve to a Language and delegate to its provider so keyword logic stays
     // in one place. Unknown lang strings fall back to Kotlin (default path).

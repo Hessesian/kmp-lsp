@@ -68,7 +68,6 @@ pub(crate) use self::infer::{CstQuery, Resolution, ResolvedType};
 
 mod cache;
 pub(crate) use self::cache::workspace_cache_path;
-pub(crate) use self::cache::xdg_cache_base;
 
 pub(crate) mod enrich;
 pub(crate) use self::enrich::EnrichmentHandle;
@@ -110,12 +109,8 @@ pub(crate) use self::apply::stale_keys_for;
 pub(crate) mod lookup;
 pub(crate) use lookup::apply_type_subst;
 
-pub(crate) mod node_ext;
-pub(crate) use node_ext::NodeExt;
-
 mod scope;
 pub(crate) use scope::find_enclosing_call_name;
-pub(crate) use scope::is_id_char;
 pub(crate) use scope::last_ident_in;
 
 pub(crate) mod live_tree;
@@ -288,9 +283,8 @@ pub(crate) struct Indexer {
     /// available) whenever no real `workspace.json` is present. Written once
     /// per workspace-scan by [`crate::workspace::Actor`]; read-paths elsewhere
     /// (`resolver::resolve::ambiguity_safe_tail_with_denylist`) observe it.
-    pub(crate) module_dependencies: RwLock<
-        HashMap<PathBuf, std::collections::HashSet<crate::cli::extract_sources::GradleMeta>>,
-    >,
+    pub(crate) module_dependencies:
+        RwLock<HashMap<PathBuf, std::collections::HashSet<crate::gradle_cache::GradleMeta>>>,
     /// URIs of files indexed from `sourcePaths` that lie outside the workspace root.
     /// These are treated as library sources: available for hover/definition/autocomplete
     /// but excluded from findReferences and rename.
@@ -738,8 +732,7 @@ impl InferDeps for Indexer {
         let Some(type_path) = crate::StrExt::bare_type_name(type_text) else {
             return false;
         };
-        let is_builtin =
-            crate::features::text_utils::KOTLIN_BUILTIN_TYPES.contains(&type_path.as_str());
+        let is_builtin = crate::text_utils::KOTLIN_BUILTIN_TYPES.contains(&type_path.as_str());
         if is_builtin {
             return true;
         }
@@ -779,8 +772,7 @@ impl InferDeps for Indexer {
                 && !crate::resolver::resolve_symbol_scoped_only(self, root, uri).is_empty()
         };
         type_paths_in(type_text).into_iter().all(|type_path| {
-            let is_builtin =
-                crate::features::text_utils::KOTLIN_BUILTIN_TYPES.contains(&type_path.as_str());
+            let is_builtin = crate::text_utils::KOTLIN_BUILTIN_TYPES.contains(&type_path.as_str());
             let builtin_is_shadowed =
                 shadows_in_scope(&type_path, first_uri) || shadows_in_scope(&type_path, second_uri);
             if is_builtin && !builtin_is_shadowed {

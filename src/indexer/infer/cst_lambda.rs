@@ -2,7 +2,8 @@
 
 use tower_lsp::lsp_types::Url;
 
-use crate::indexer::{Indexer, NodeExt};
+use crate::indexer::Indexer;
+use crate::node_ext::NodeExt;
 use crate::queries::{KIND_CALL_SUFFIX, KIND_LAMBDA_LIT, KIND_VALUE_ARG};
 use crate::types::CursorPos;
 use crate::StrExt;
@@ -381,7 +382,7 @@ pub(crate) fn cursor_node_at(
         row,
         column: byte_col,
     };
-    crate::indexer::node_ext::descendant_for_point(doc.tree.root_node(), &doc.bytes, point)
+    crate::node_ext::descendant_for_point(doc.tree.root_node(), &doc.bytes, point)
 }
 
 /// If `lambda` is part of an enclosing call (trailing or named-argument —
