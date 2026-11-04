@@ -613,7 +613,7 @@ fn local_type_at(source: &str, name: &str, occurrence: usize) -> Option<String> 
 }
 
 #[test]
-fn local_type_at_keeps_nullability_and_type_arguments() {
+fn local_type_at_keeps_nullability_with_type_arguments() {
     let source = "class Apple\n\
                   fun use(item: Apple?, items: List<Apple>) { item; items }\n";
     assert_eq!(local_type_at(source, "item", 1).as_deref(), Some("Apple?"));
@@ -702,7 +702,7 @@ fn elvis_with_a_default_of_other_type_arguments_is_unknown() {
 }
 
 #[test]
-fn elvis_initializer_keeps_type_arguments_and_drops_nullability() {
+fn elvis_initializer_keeps_type_arguments_without_nullability() {
     let source = "class Apple\n\
                   fun first(copy: Apple) {}\n\
                   fun use(items: List<Apple>?) { val copy = items ?: return; copy }\n";
@@ -1044,7 +1044,7 @@ fn delegate_state_takes_the_named_value_argument() {
 
 /// An explicit type argument is the declared value type.
 #[test]
-fn delegate_state_and_lazy_honor_explicit_type_arguments() {
+fn delegate_state_with_lazy_honor_explicit_type_arguments() {
     let state = format!(
         "{POLICY_DECLARATIONS}\
          fun second() {{\n\
@@ -1680,7 +1680,7 @@ fn destructured_triple_components_are_its_type_arguments() {
 }
 
 #[test]
-fn destructured_map_entry_in_a_for_loop_is_key_and_value() {
+fn destructured_map_entry_in_a_for_loop_is_key_value_pair() {
     let source = "class Apple\n\
                   class Banana\n\
                   fun sibling(key: Banana, value: Banana) = key\n\

@@ -302,7 +302,7 @@ pub(crate) fn has_trailing_lambda(call_node: &tree_sitter::Node) -> bool {
         // ERROR node starting with `{` — likely an incomplete lambda
         if kind == "ERROR" {
             if let Some(first_child) = next.child(0) {
-                if first_child.kind() == "{" {
+                if first_child.kind() == crate::queries::KIND_LBRACE {
                     return true;
                 }
             }
