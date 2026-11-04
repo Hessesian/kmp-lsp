@@ -11,6 +11,8 @@ pub(crate) mod find;
 mod hierarchy;
 mod import_edit;
 mod imports;
+pub(crate) mod index_read;
+pub(crate) mod indexer_queries;
 pub(crate) mod infer;
 pub(crate) mod infer_deps;
 pub(crate) mod infer_lines;

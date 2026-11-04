@@ -802,56 +802,6 @@ impl Indexer {
         locs
     }
 
-    /// Apply `f` to each *workspace* (non-library) definition location of `name`,
-    /// returning the first `Some`. The single chokepoint for **receiver-less,
-    /// best-effort by-name inference lookups** (return/field/callable/signature
-    /// resolution that has no import or receiver scope).
-    ///
-    /// Ubiquitous names like `create`/`build` resolve to thousands of source-JAR
-    /// definitions once those are indexed; scanning them all per lookup stalled
-    /// inlay/hover for seconds. Library definitions are skipped (their metadata comes
-    /// from indexed symbol detail / the JAR index) and the scan is capped — without a
-    /// receiver type the exact overload can't be picked anyway.
-    ///
-    /// The (≤ [`MAX_BY_NAME_DEFS`]) candidate locations are snapshotted and the
-    /// `definitions` read guard is dropped before `f` runs, so `f` may freely resolve
-    /// other names (re-enter `definitions`) without risking a reader/writer deadlock
-    /// on the shard.
-    /// Whether a JAR-declared `name` at `loc` sits in a package the caller
-    /// could have reached — same package, or covered by one of its imports.
-    ///
-    /// The workspace equivalent lives in `resolver::infer`, but reads
-    /// `self.files`; JAR symbols live in `jar_files`, so the lookup differs even
-    /// though the package/import rule is the same.
-    ///
-    /// Answers `false` when the JAR file's package is unknown, which only
-    /// deprioritises the candidate: callers try unreachable ones afterwards
-    /// rather than discarding them.
-    pub(crate) fn jar_candidate_is_reachable(
-        &self,
-        loc: &Location,
-        name: &str,
-        caller_file_data: Option<&crate::types::FileData>,
-    ) -> bool {
-        let Some(jar_file_data) = self.jar_files.get(loc.uri.as_str()) else {
-            return false;
-        };
-        // Receiver-less by-name fallback over ALL JAR definitions sharing
-        // `name`, not an `ExtensionEntry`-scoped lookup, so there is no
-        // per-symbol container available here. `None` preserves the existing
-        // package/import check unchanged for this path; the visibility/
-        // same-file arguments are inert whenever `entry_container` is `None`,
-        // since the member-extension branch that reads them never runs.
-        crate::resolver::infer::extension_is_in_scope(
-            jar_file_data.package.as_ref(),
-            name,
-            None,
-            crate::types::Visibility::Public,
-            false,
-            caller_file_data,
-        )
-    }
-
     pub(crate) fn find_in_workspace_defs<T>(
         &self,
         name: &str,
