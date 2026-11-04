@@ -462,14 +462,14 @@ impl InferDeps for Indexer {
         class_name: &str,
         method_name: &str,
         uri: &Url,
-    ) -> crate::resolver::ReturnNullability {
+    ) -> crate::detail_text::ReturnNullability {
         crate::resolver::Resolver::method_return_type_declared(
             self,
             class_name,
             method_name,
             Some(uri),
         )
-        .map_or(crate::resolver::ReturnNullability::Unknown, |declared| {
+        .map_or(crate::detail_text::ReturnNullability::Unknown, |declared| {
             declared.nullability
         })
     }
@@ -477,9 +477,9 @@ impl InferDeps for Indexer {
         &self,
         fn_name: &str,
         uri: &Url,
-    ) -> crate::resolver::ReturnNullability {
+    ) -> crate::detail_text::ReturnNullability {
         crate::resolver::infer::find_fun_return_type_reachable_declared(self, fn_name, uri)
-            .map_or(crate::resolver::ReturnNullability::Unknown, |declared| {
+            .map_or(crate::detail_text::ReturnNullability::Unknown, |declared| {
                 declared.nullability
             })
     }
@@ -838,19 +838,17 @@ fn type_paths_in(type_text: &str) -> Vec<String> {
 /// that is truncated, its source signature.
 fn declared_return_type(
     declaration: &crate::resolver::ExtensionDeclaration,
-) -> Option<(String, crate::resolver::ReturnNullability)> {
+) -> Option<(String, crate::detail_text::ReturnNullability)> {
     let symbol = declaration.symbol()?;
-    let from_detail = crate::resolver::extract_return_type_from_detail(&symbol.detail);
+    let from_detail = crate::detail_text::extract_return_type_from_detail(&symbol.detail);
     if let Some(type_name) = from_detail {
-        let nullability = crate::resolver::extract_return_nullability_from_detail(&symbol.detail);
+        let nullability =
+            crate::detail_text::extract_return_nullability_from_detail(&symbol.detail);
         return Some((type_name, nullability));
     }
-    use crate::lines_ext::LinesExt as _;
-    let signature = declaration
-        .lines()?
-        .collect_signature(symbol.selection_start() as usize);
-    let type_name = crate::resolver::extract_return_type_from_detail(&signature)?;
-    let nullability = crate::resolver::extract_return_nullability_from_detail(&signature);
+    let signature = collect_signature(declaration.lines()?, symbol.selection_start() as usize);
+    let type_name = crate::detail_text::extract_return_type_from_detail(&signature)?;
+    let nullability = crate::detail_text::extract_return_nullability_from_detail(&signature);
     Some((type_name, nullability))
 }
 
@@ -1599,17 +1597,6 @@ impl Indexer {
                 }
             }
         }
-    }
-
-    /// Uses `live_lines` (updated synchronously on every keystroke) for the
-    /// current file's line text, falling back to indexed lines or disk.
-    pub(crate) fn completions(
-        &self,
-        uri: &Url,
-        position: Position,
-        snippets: bool,
-    ) -> (Vec<CompletionItem>, bool) {
-        crate::features::completion::run_completions(self, uri, position, snippets)
     }
 }
 

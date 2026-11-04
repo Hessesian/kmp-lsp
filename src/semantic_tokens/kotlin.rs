@@ -15,9 +15,10 @@ use crate::queries::{
 use super::helpers::{
     child_ident, find_annotation_ident, first_child_of_kind, has_deprecated_annotation,
     has_keyword_child, has_modifier, is_in_companion_body, is_inside_class_body, is_top_level,
-    push_token, push_token_at_byte_range, value_arg_label,
+    push_token, push_token_at_byte_range,
 };
 use super::{modifier_bit, type_index, RawToken, Source};
+use crate::node_ext::value_arg_label;
 
 pub(super) fn walk_kotlin(node: Node<'_>, src: &Source<'_>, out: &mut Vec<RawToken>) {
     for node in crate::indexer::walk::descendants(node) {

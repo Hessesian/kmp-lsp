@@ -10,6 +10,7 @@
 use tree_sitter::Node;
 
 use crate::indexer::{CallShape, CstQuery, Indexer, Resolution, ResolvedType, ShapeFiltered};
+use crate::node_ext::is_named_argument_label;
 use crate::node_ext::NodeExt;
 use crate::queries::{
     KIND_ANONYMOUS_INITIALIZER, KIND_BINDING_PATTERN_KIND, KIND_CALL_EXPR, KIND_CATCH_BLOCK,
@@ -24,7 +25,6 @@ use crate::queries::{
     KIND_WHEN_CONDITION, KIND_WHEN_ENTRY, KIND_WHEN_EXPR, KIND_WHEN_SUBJECT,
 };
 use crate::resolver::api::Definitions;
-use crate::semantic_tokens::is_named_argument_label;
 use crate::types::CursorPos;
 use tower_lsp::lsp_types::{Location, Position, Url};
 

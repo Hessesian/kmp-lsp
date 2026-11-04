@@ -287,25 +287,6 @@ fn visit_tree_at(node: Node<'_>, f: &mut impl FnMut(Node<'_>), depth: usize) {
     }
 }
 
-pub(super) fn value_arg_label(node: Node<'_>) -> Option<Node<'_>> {
-    let first = node.named_child(0)?;
-    if first.kind() != KIND_SIMPLE_IDENT {
-        return None;
-    }
-    first
-        .next_sibling()
-        .is_some_and(|s| s.kind() == crate::queries::KIND_EQ)
-        .then_some(first)
-}
-
-pub(crate) fn is_named_argument_label(node: Node<'_>) -> bool {
-    let Some(parent) = node.parent() else {
-        return false;
-    };
-    parent.kind() == crate::queries::KIND_VALUE_ARG
-        && value_arg_label(parent).is_some_and(|l| l.id() == node.id())
-}
-
 // ─── Token type helpers ─────────────────────────────────────────────────────
 
 pub(super) fn is_inside_lambda_parameters(node: Node<'_>) -> bool {

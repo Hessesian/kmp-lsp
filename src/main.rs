@@ -5,13 +5,13 @@
 static ALLOC: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
 mod backend;
 mod cli;
+mod detail_text;
 mod features;
 mod gradle_cache;
 mod indexer;
 mod inlay_hints;
 mod jar_extract;
 mod language;
-mod lines_ext;
 mod node_ext;
 mod parser;
 mod path_util;
@@ -33,7 +33,6 @@ mod util;
 mod workspace;
 mod workspace_json;
 
-pub(crate) use lines_ext::LinesExt;
 pub(crate) use str_ext::StrExt;
 pub(crate) use types::Language;
 

@@ -737,6 +737,132 @@ fn collect_user_type_segments(node: Node<'_>, bytes: &[u8], segments: &mut Vec<S
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
+// ─── call and argument shape helpers ────────────────────────────────────────
+
+/// Check if the call has a trailing lambda (lambda as last argument outside parens).
+/// CST patterns:
+/// - `foo { }` → call_suffix → annotated_lambda → lambda_literal
+/// - `foo(a) { }` → outer call_expression wraps inner call_expression + call_suffix(lambda)
+/// - Incomplete `foo(a) {` → tree-sitter error recovery may place `{` as a sibling
+///
+/// Tree-sitter splits `foo(a) { }` into nested call_expressions:
+///   call_expression (outer)
+///     call_expression (inner) → foo(a)
+///     call_suffix → annotated_lambda → lambda_literal
+/// We check both the node itself AND its parent for the lambda suffix.
+pub(crate) fn has_trailing_lambda(call_node: &tree_sitter::Node) -> bool {
+    if check_lambda_in_children(call_node) {
+        return true;
+    }
+
+    // Nested call_expression: the lambda lives on the parent call_expression
+    if let Some(parent) = call_node.parent() {
+        if parent.kind() == crate::queries::KIND_CALL_EXPR && check_lambda_in_children(&parent) {
+            return true;
+        }
+    }
+
+    // Incomplete code: tree-sitter may place the `{` as a next sibling
+    // outside the call_expression (e.g. `withContext(x) {` with no closing `}`).
+    if let Some(next) = call_node.next_sibling() {
+        let kind = next.kind();
+        if kind == "{" || kind == crate::queries::KIND_LAMBDA_LIT {
+            return true;
+        }
+        if kind == crate::queries::KIND_CALL_SUFFIX && contains_lambda(&next) {
+            return true;
+        }
+        // ERROR node starting with `{` — likely an incomplete lambda
+        if kind == "ERROR" {
+            if let Some(first_child) = next.child(0) {
+                if first_child.kind() == crate::queries::KIND_LBRACE {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
+fn check_lambda_in_children(node: &tree_sitter::Node) -> bool {
+    let mut cursor = node.walk();
+    if cursor.goto_first_child() {
+        loop {
+            let child = cursor.node();
+            if child.kind() == crate::queries::KIND_LAMBDA_LIT {
+                return true;
+            }
+            if child.kind() == crate::queries::KIND_CALL_SUFFIX && contains_lambda(&child) {
+                return true;
+            }
+            if !cursor.goto_next_sibling() {
+                break;
+            }
+        }
+    }
+    false
+}
+
+/// Recursively check if a node contains a lambda_literal (up to 3 levels deep).
+fn contains_lambda(node: &tree_sitter::Node) -> bool {
+    let mut cursor = node.walk();
+    if cursor.goto_first_child() {
+        loop {
+            let child = cursor.node();
+            if child.kind() == crate::queries::KIND_LAMBDA_LIT {
+                return true;
+            }
+
+            let mut gc_cursor = child.walk();
+            if gc_cursor.goto_first_child() {
+                loop {
+                    if gc_cursor.node().kind() == crate::queries::KIND_LAMBDA_LIT {
+                        return true;
+                    }
+                    if !gc_cursor.goto_next_sibling() {
+                        break;
+                    }
+                }
+            }
+
+            if !cursor.goto_next_sibling() {
+                break;
+            }
+        }
+    }
+    false
+}
+
+/// Count `value_argument` children inside a `value_arguments` node.
+pub(crate) fn count_provided_args(
+    value_arguments: Option<&tree_sitter::Node>,
+    _bytes: &[u8],
+) -> usize {
+    let Some(va) = value_arguments else {
+        return 0;
+    };
+    va.children_of_kind(crate::queries::KIND_VALUE_ARG).len()
+}
+
+pub(crate) fn value_arg_label(node: Node<'_>) -> Option<Node<'_>> {
+    let first = node.named_child(0)?;
+    if first.kind() != crate::queries::KIND_SIMPLE_IDENT {
+        return None;
+    }
+    first
+        .next_sibling()
+        .is_some_and(|s| s.kind() == crate::queries::KIND_EQ)
+        .then_some(first)
+}
+
+pub(crate) fn is_named_argument_label(node: Node<'_>) -> bool {
+    let Some(parent) = node.parent() else {
+        return false;
+    };
+    parent.kind() == crate::queries::KIND_VALUE_ARG
+        && value_arg_label(parent).is_some_and(|l| l.id() == node.id())
+}
+
 #[cfg(test)]
 #[path = "node_ext_tests.rs"]
 mod tests;

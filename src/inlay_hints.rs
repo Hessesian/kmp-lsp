@@ -24,6 +24,7 @@ use crate::queries::{
     KIND_LAMBDA_PARAMS, KIND_PROP_DECL, KIND_SIMPLE_IDENT, KIND_THIS_EXPR, KIND_VAR_DECL,
 };
 use crate::resolver::ReceiverType;
+use crate::text_utils::ts_byte_col_to_utf16;
 use crate::StrExt;
 
 pub(crate) fn compute_inlay_hints(idx: &Arc<Indexer>, uri: &Url, range: Range) -> Vec<InlayHint> {
@@ -470,30 +471,6 @@ fn ts_pos_to_lsp(pos: tree_sitter::Point, starts: &[usize], bytes: &[u8]) -> Pos
         pos.row as u32,
         ts_byte_col_to_utf16(bytes, starts, pos.row, pos.column) as u32,
     )
-}
-
-/// Count the UTF-16 code units from the start of `row` up to `byte_col`.
-///
-/// `starts` must have been produced by `line_starts(bytes)` — it is used to
-/// jump directly to the line without rescanning the whole file (O(1) lookup
-/// instead of O(file_size)).
-pub(crate) fn ts_byte_col_to_utf16(
-    bytes: &[u8],
-    starts: &[usize],
-    row: usize,
-    byte_col: usize,
-) -> usize {
-    let line_start = starts.get(row).copied().unwrap_or_else(|| {
-        bytes
-            .split(|&b| b == b'\n')
-            .take(row)
-            .map(|l| l.len() + 1)
-            .sum()
-    });
-    let end = (line_start + byte_col).min(bytes.len());
-    std::str::from_utf8(&bytes[line_start..end])
-        .map(|s| s.chars().map(|c| c.len_utf16()).sum())
-        .unwrap_or(byte_col)
 }
 
 // ─── tests ───────────────────────────────────────────────────────────────────

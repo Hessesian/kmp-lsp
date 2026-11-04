@@ -131,7 +131,7 @@ impl CompletionIndex for Indexer {
         position: Position,
         snippets: bool,
     ) -> (Vec<CompletionItem>, bool) {
-        self.completions(uri, position, snippets)
+        crate::features::completion::run_completions(self, uri, position, snippets)
     }
 
     fn is_indexing_in_progress(&self) -> bool {

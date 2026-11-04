@@ -170,7 +170,12 @@ async fn live_added_nested_val_reaches_member_completion() {
     // `is Loading -> state.` is line 8 (0-based) in `after`, col after the dot.
     let line = 8u32;
     let col = "        is Loading -> state.".len() as u32;
-    let (items, _) = indexer.completions(&uri, Position::new(line, col), false);
+    let (items, _) = crate::features::completion::run_completions(
+        &indexer,
+        &uri,
+        Position::new(line, col),
+        false,
+    );
     let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
     assert!(labels.contains(&"zload"), "zload missing: {labels:?}");
 }

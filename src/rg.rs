@@ -72,6 +72,7 @@ pub(crate) fn try_acquire_rg_slot() -> Option<RgActiveGuard> {
     }
 }
 
+use crate::text_utils::{is_declaration_of, REFERENCE_DECLARATION_KEYWORDS};
 use crate::StrExt;
 
 // ─── Ignore pattern matcher ───────────────────────────────────────────────────
@@ -651,23 +652,6 @@ impl<'a> RgSearchRequest<'a> {
         self
     }
 }
-
-const REFERENCE_DECLARATION_KEYWORDS: &[&str] = &[
-    "class ",
-    "interface ",
-    "object ",
-    "fun ",
-    "val ",
-    "var ",
-    "typealias ",
-    "enum class ",
-    "enum ",
-    "struct ",
-    "protocol ",
-    "func ",
-    "let ",
-    "extension ",
-];
 
 fn build_rg_patterns(request: &RgSearchRequest<'_>) -> Vec<String> {
     let safe_name = regex_escape(request.name);
@@ -1350,7 +1334,7 @@ pub(crate) fn is_unusable_producer_name(name: &str) -> bool {
 /// from, rather than re-deriving the declaration shape by sniffing the string:
 ///
 /// - [`SymbolKind::FUNCTION`] (Kotlin `fun`) — delegates to
-///   [`crate::resolver::extract_return_type_from_detail`], the same parser
+///   [`crate::detail_text::extract_return_type_from_detail`], the same parser
 ///   the `Resolver` trait's `function_return_type`/`method_return_type`
 ///   already run on this exact string shape elsewhere in the codebase (this
 ///   function used to hand-roll a second, independent parser for the same
@@ -1361,7 +1345,7 @@ pub(crate) fn is_unusable_producer_name(name: &str) -> bool {
 ///   here did not, silently missing that producer).
 /// - [`SymbolKind::PROPERTY`] / [`SymbolKind::VARIABLE`] (Kotlin `val`/`var` —
 ///   `var` is indexed as `VARIABLE`, not `PROPERTY`) — delegates to
-///   [`crate::resolver::extract_property_type_from_detail`] (same reasoning;
+///   [`crate::detail_text::extract_property_type_from_detail`] (same reasoning;
 ///   it additionally handles a leading visibility modifier and an extension
 ///   receiver, which the prior hand-rolled version here did not).
 /// - [`SymbolKind::METHOD`]: a Kotlin member function nested inside a
@@ -1378,7 +1362,7 @@ pub(crate) fn is_unusable_producer_name(name: &str) -> bool {
 /// - Anything else (class, constructor, field, …) → `None`.
 pub(crate) fn declared_type_from_detail(detail: &str, kind: SymbolKind) -> Option<String> {
     match kind {
-        SymbolKind::FUNCTION => crate::resolver::extract_return_type_from_detail(detail),
+        SymbolKind::FUNCTION => crate::detail_text::extract_return_type_from_detail(detail),
         SymbolKind::PROPERTY | SymbolKind::VARIABLE => {
             // `extract_property_type_from_detail` only strips a leading
             // visibility modifier before expecting `val `/`var ` — it does
@@ -1389,7 +1373,7 @@ pub(crate) fn declared_type_from_detail(detail: &str, kind: SymbolKind) -> Optio
             // same strategy `extract_return_type_from_detail`'s `fun `
             // anchor uses — so whatever precedes it never matters here.
             let property_start = detail.find("val ").or_else(|| detail.find("var "))?;
-            crate::resolver::extract_property_type_from_detail(&detail[property_start..])
+            crate::detail_text::extract_property_type_from_detail(&detail[property_start..])
         }
         // `METHOD` covers TWO different shapes: a Kotlin member function
         // nested inside a class/interface/object (nesting demotes its
@@ -1405,7 +1389,7 @@ pub(crate) fn declared_type_from_detail(detail: &str, kind: SymbolKind) -> Optio
         // unlikely in practice.
         SymbolKind::METHOD => {
             if detail.starts_with("fun ") || detail.contains(" fun ") {
-                crate::resolver::extract_return_type_from_detail(detail)
+                crate::detail_text::extract_return_type_from_detail(detail)
             } else {
                 java_method_return_type(detail).map(str::to_owned)
             }
@@ -1944,33 +1928,6 @@ pub(crate) fn is_java_field_declaration_at(content: &str, name: &str, col: u32) 
         after.as_bytes().first(),
         Some(b';') | Some(b'=') | Some(b',')
     )
-}
-
-/// Returns `true` if `content` declares `name` specifically (e.g. `fun create()`),
-/// as opposed to a line that merely calls `name` inside a different declaration
-/// (e.g. `fun build() = factory.create()` or `fun createWidget() = factory.create()`).
-///
-/// Requires a word boundary *after* `name` to avoid matching declarations of
-/// longer identifiers that share a prefix — e.g. `fun createWidget` must not be
-/// treated as a declaration of `create`.
-///
-/// Used by [`owner_scoped_reference_locations`] to filter out sibling
-/// declarations of the same method name that appear in files which also reference
-/// the outer class.
-pub(crate) fn is_declaration_of(content: &str, name: &str) -> bool {
-    REFERENCE_DECLARATION_KEYWORDS.iter().any(|kw| {
-        let prefix = format!("{kw}{name}");
-        if let Some(idx) = content.find(&prefix) {
-            let end = idx + prefix.len();
-            // Word-boundary check: name must not be followed by more identifier chars.
-            content
-                .as_bytes()
-                .get(end)
-                .is_none_or(|&b| !b.is_ascii_alphanumeric() && b != b'_')
-        } else {
-            false
-        }
-    })
 }
 
 /// Run `rg` to find all *usages* of `name` in the project.

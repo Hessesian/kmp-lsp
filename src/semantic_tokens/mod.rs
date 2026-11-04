@@ -19,8 +19,6 @@ mod kotlin;
 mod params;
 mod resolve;
 
-pub(crate) use helpers::is_named_argument_label;
-
 use tower_lsp::lsp_types::{
     Range, SemanticToken, SemanticTokenModifier, SemanticTokenType, SemanticTokens,
     SemanticTokensLegend, Url,
@@ -115,8 +113,7 @@ impl<'a> Source<'a> {
     }
 
     fn col_utf16(&self, row: usize, byte_col: usize) -> u32 {
-        crate::inlay_hints::ts_byte_col_to_utf16(self.bytes, &self.line_starts, row, byte_col)
-            as u32
+        crate::text_utils::ts_byte_col_to_utf16(self.bytes, &self.line_starts, row, byte_col) as u32
     }
 
     /// Row and in-line byte column for an absolute byte offset — for tokens

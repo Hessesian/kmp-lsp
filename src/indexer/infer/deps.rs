@@ -41,7 +41,7 @@ pub(crate) struct ExtensionCallable {
     /// The return type as written in the declaration.
     pub(crate) return_type: String,
     /// Whether that return type is nullable (`return_type` never carries the `?`).
-    pub(crate) return_nullability: crate::resolver::ReturnNullability,
+    pub(crate) return_nullability: crate::detail_text::ReturnNullability,
     /// The file the declaration, and so its return type's names, was written in.
     pub(crate) declared_in: Url,
 }
@@ -278,8 +278,8 @@ pub(crate) trait InferDeps {
         _class_name: &str,
         _method_name: &str,
         _uri: &Url,
-    ) -> crate::resolver::ReturnNullability {
-        crate::resolver::ReturnNullability::Unknown
+    ) -> crate::detail_text::ReturnNullability {
+        crate::detail_text::ReturnNullability::Unknown
     }
 
     /// Whether the top-level function `fn_name` reaches from `uri` declares a
@@ -290,8 +290,8 @@ pub(crate) trait InferDeps {
         &self,
         _fn_name: &str,
         _uri: &Url,
-    ) -> crate::resolver::ReturnNullability {
-        crate::resolver::ReturnNullability::Unknown
+    ) -> crate::detail_text::ReturnNullability {
+        crate::detail_text::ReturnNullability::Unknown
     }
 
     /// [`Self::find_fun_return_type_reachable`] together with the file the return

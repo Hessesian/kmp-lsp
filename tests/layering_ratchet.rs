@@ -5,9 +5,9 @@
 //! 5  workspace  backend  cli                     entry points, protocol, actor
 //! 4  features  semantic_tokens  inlay_hints      one LSP feature each
 //! 3  resolver                                    names -> declarations
-//! 2  indexer (index store + CST inference)       what the workspace declares
-//! 1  parser  rg  jar_extract                     syntax and text extraction
-//! 0  util  path_util  str_ext  lines_ext  queries  stdlib  stdlib_tail
+//! 2  indexer (index store + CST inference)  jar_extract   what the workspace declares
+//! 1  parser  rg                                  syntax and text extraction
+//! 0  util  path_util  str_ext   queries  stdlib  stdlib_tail
 //!    task_runner  sidecar  language  types  workspace_json  gradle_cache
 //!    node_ext  text_utils   vocabulary
 //! ```
@@ -31,7 +31,6 @@ const LAYERS: &[(&str, u8)] = &[
     ("util", 0),
     ("path_util", 0),
     ("str_ext", 0),
-    ("lines_ext", 0),
     ("queries", 0),
     ("stdlib", 0),
     ("stdlib_tail", 0),
@@ -42,11 +41,12 @@ const LAYERS: &[(&str, u8)] = &[
     ("workspace_json", 0),
     ("gradle_cache", 0),
     ("node_ext", 0),
+    ("detail_text", 0),
     ("text_utils", 0),
     ("parser", 1),
     ("rg", 1),
-    ("jar_extract", 1),
     ("indexer", 2),
+    ("jar_extract", 2),
     ("resolver", 3),
     ("features", 4),
     ("semantic_tokens", 4),
@@ -58,19 +58,9 @@ const LAYERS: &[(&str, u8)] = &[
 
 /// Upward edges that still exist: `((from, to), mentions)`.
 const UPWARD_EDGES: &[((&str, &str), usize)] = &[
-    (("indexer", "resolver"), 53),
-    (("indexer", "features"), 3),
-    (("lines_ext", "resolver"), 6),
-    (("lines_ext", "parser"), 4),
-    (("rg", "resolver"), 3),
-    (("indexer", "inlay_hints"), 3),
+    (("indexer", "resolver"), 38),
     (("features", "backend"), 3),
     (("language", "parser"), 3),
-    (("jar_extract", "indexer"), 1),
-    (("types", "rg"), 1),
-    (("lines_ext", "indexer"), 1),
-    (("indexer", "workspace"), 1),
-    (("indexer", "semantic_tokens"), 1),
 ];
 
 fn layer_of(module: &str) -> Option<u8> {

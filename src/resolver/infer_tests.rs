@@ -1,6 +1,5 @@
-use super::super::infer_lines::{
-    extract_property_type_from_detail, extract_return_type_from_detail, has_dot_after_first_call,
-};
+use super::super::infer_lines::has_dot_after_first_call;
+use crate::detail_text::{extract_property_type_from_detail, extract_return_type_from_detail};
 
 // Regression (Copilot review on PR #268): `subject_segments` checked a bare
 // node's *children* before the node itself, so a caller passing a
@@ -2174,7 +2173,7 @@ fn a_signature_whose_parameter_list_never_closes_has_an_unknown_body_kind() {
 /// annotation read as "no declared type".
 #[test]
 fn return_type_extraction_accepts_a_package_qualified_type() {
-    use super::super::infer_lines::extract_return_type_from_detail as extract;
+    use crate::detail_text::extract_return_type_from_detail as extract;
 
     assert_eq!(
         extract("fun make(): types.Payload = TODO()").as_deref(),

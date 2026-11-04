@@ -60,7 +60,7 @@ impl Language {
     ///   on the *preceding* line and is not visible in a single-line rg result.
     /// - **Swift**: always false (not supported).
     pub(crate) fn is_override_declaration(self, line: &str, method_name: &str) -> bool {
-        use crate::rg::is_declaration_of;
+        use crate::text_utils::is_declaration_of;
         match self {
             Language::Kotlin => {
                 line.contains("override")
