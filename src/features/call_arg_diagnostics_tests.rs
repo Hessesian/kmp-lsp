@@ -1767,3 +1767,100 @@ fn extension_self_shadow_does_not_produce_a_false_diagnostic() {
         "must not diagnose the self-shadowed call, got: {diags:?}"
     );
 }
+
+/// Register a compiled-JAR (sidecar) class symbol the way the sidecar emits it:
+/// the class itself, with no parameter list — its constructors are not indexed.
+fn insert_compiled_jar_class(idx: &Indexer, jar_uri: &str, class_name: &str) {
+    let jar_uri = Url::parse(jar_uri).unwrap();
+    let class_symbol = crate::types::SymbolEntry {
+        name: class_name.to_owned(),
+        kind: tower_lsp::lsp_types::SymbolKind::CLASS,
+        visibility: crate::types::Visibility::Public,
+        range: Default::default(),
+        selection_range: Default::default(),
+        detail: format!("class {class_name}"),
+        params: String::new(),
+        param_counts: (0, 0),
+        cold: crate::types::pack_cold_fields(vec![], String::new(), String::new(), String::new()),
+        container: None,
+        trailing_lambda: false,
+        deprecated: false,
+    };
+    let jar_file_data = std::sync::Arc::new(crate::types::FileData {
+        symbols: vec![class_symbol],
+        source_set: crate::types::SourceSet::Library,
+        ..Default::default()
+    });
+    idx.jar_files.insert(jar_uri.to_string(), jar_file_data);
+    idx.jar_definitions
+        .entry(class_name.to_owned())
+        .or_default()
+        .push(tower_lsp::lsp_types::Location {
+            uri: jar_uri,
+            range: Default::default(),
+        });
+}
+
+#[test]
+fn compiled_jar_class_constructor_call_no_false_positive() {
+    // `java.io.File("a", "b")` / `TextStyle(fontSize = …)`: the sidecar indexes the
+    // class but not its constructors, so its arity is unknown — not zero. Before the
+    // fix every such call warned "expected at most 0 argument(s)".
+    let usage_src = concat!(
+        "package app\n",
+        "import java.io.File\n",
+        "fun test() {\n",
+        "    val file = File(\n",
+        "        \"a\",\n",
+        "        \"b\",\n",
+        "    )\n",
+        "}\n",
+    );
+    let (uri, idx, src) = setup(&[("/a.kt", usage_src)]);
+    insert_compiled_jar_class(&idx, "jar:file:///rt.jar!/java/io/File.class", "File");
+
+    let diagnostics = run_diagnostics(&idx, &uri, &src);
+    assert!(
+        diagnostics.is_empty(),
+        "constructor call of a compiled-JAR class must not be flagged; got: {diagnostics:?}"
+    );
+}
+
+#[test]
+fn compiled_jar_class_does_not_shadow_composable() {
+    // The case from the field: `Text(line, style = …)` where an unrelated compiled-JAR
+    // class `Text` (e.g. `org.jdom2.Text`) was the only candidate the index offered.
+    let usage_src = concat!(
+        "package app\n",
+        "fun show(line: String) {\n",
+        "    Text(\n",
+        "        line,\n",
+        "        maxLines = 1,\n",
+        "    )\n",
+        "}\n",
+    );
+    let (uri, idx, src) = setup(&[("/a.kt", usage_src)]);
+    insert_compiled_jar_class(&idx, "jar:file:///jdom2.jar!/org/jdom2/Text.class", "Text");
+
+    let diagnostics = run_diagnostics(&idx, &uri, &src);
+    assert!(
+        diagnostics.is_empty(),
+        "an unrelated compiled-JAR class must not produce an arity warning; got: {diagnostics:?}"
+    );
+}
+
+#[test]
+fn workspace_class_constructor_arity_still_checked() {
+    // Source classes carry their primary constructor, so a real arity error is still reported.
+    let (uri, idx, src) = setup(&[(
+        "/a.kt",
+        concat!(
+            "class Point(val x: Int, val y: Int)\n",
+            "fun test() {\n",
+            "    Point(1, 2, 3)\n",
+            "}\n",
+        ),
+    )]);
+    let diagnostics = run_diagnostics(&idx, &uri, &src);
+    assert_eq!(diagnostics.len(), 1, "got: {diagnostics:?}");
+}

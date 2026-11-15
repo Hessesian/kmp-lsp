@@ -573,15 +573,23 @@ pub(crate) fn strip_trailing_call_args(s: &str) -> &str {
 
 // ─── Receiver-aware signature lookup ─────────────────────────────────────────
 
+/// Arity envelope of a compiled-JAR class used as a constructor call: the
+/// sidecar indexes the class but not its constructors, so how many arguments
+/// it takes is unknown — any count is admissible, none is an error.
+const UNKNOWN_CONSTRUCTOR_ARITY: (u8, u8) = (0, u8::MAX);
+
 /// `(required, total)` counts of a declaration. Compiled-JAR (sidecar)
 /// symbols carry parameter types but no default-value markers, so their
 /// `required` is not trusted and clamps to 0; sources-JAR and workspace files
-/// are parsed and carry real defaults.
+/// are parsed and carry real defaults. A compiled-JAR class carries no
+/// constructor at all, so its envelope is [`UNKNOWN_CONSTRUCTOR_ARITY`] rather
+/// than the empty parameter list of the class symbol itself.
 pub(crate) fn trusted_param_counts(symbol: &SymbolEntry, is_compiled_jar: bool) -> (u8, u8) {
-    if is_compiled_jar {
-        (0, symbol.param_counts.1)
-    } else {
-        symbol.param_counts
+    let is_class_symbol = matches!(symbol.kind, SymbolKind::CLASS | SymbolKind::STRUCT);
+    match (is_compiled_jar, is_class_symbol) {
+        (true, true) => UNKNOWN_CONSTRUCTOR_ARITY,
+        (true, false) => (0, symbol.param_counts.1),
+        (false, _) => symbol.param_counts,
     }
 }
 
