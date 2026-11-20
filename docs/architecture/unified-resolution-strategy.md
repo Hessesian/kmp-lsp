@@ -216,3 +216,43 @@ mean the migration plan above should not assume "the parts we haven't unified ye
 old code we haven't gotten to" — some of them are old code a design doc *deliberately*
 routed around, and that routing decision is exactly where a structurally-identical bug will
 keep re-appearing until the boundary itself is revisited, not just patched from outside it.
+
+## String-path cardinality (2026-11-20): expiry for the "later" boundary
+
+The CST unification spec chose one outcome enum for every resolution result
+(`Resolution<T> { Resolved, Ambiguous, Unresolved }`, "never empty-`Vec`/`None`
+overloading"), but only the CST catalogue and `sig.rs` adopted it. The string path still
+returns a bare `Vec<Location>`. Empty means "not found" and more than one entry means
+"ambiguous", by convention only, so each caller decides for itself what two entries mean
+(definition and hover return them all, diagnostics skip, some callers take `.first()`).
+The `.resolved()` bridges fold `Ambiguous` and `ShapeFiltered::RuledOut` back into an empty
+result for callers that are not ambiguity-aware yet.
+
+This is a separate track from the structured `ResolvedType` work
+(`docs/superpowers/specs/2026-11-03-structured-resolved-type-design.md`). That spec fixes the
+*shape* of a type and leaves `Resolution` unchanged on purpose. This track fixes how many
+candidates a lookup reports. Start it after structured `ResolvedType` slice S3.
+
+**Ratchet:** `tests/ambiguity_ratchet.rs` pins two counts that may only go down:
+`.resolved()` bridge calls anywhere in `src`, and `-> Vec<Location>` signatures under
+`src/resolver`, `src/indexer` and `src/indexer.rs`. Baseline at introduction: 6 bridges,
+68 signatures.
+
+**Migration, one function at a time, benchmark recall as the safety net:**
+
+1. For each `Vec<Location>` resolver, apply the addendum's checklist: does the signature
+   promise many results, and does the body ever produce many? First-match narrowing inside a
+   plural signature (the extension-tier bug) is a bug, not a migration step.
+2. Decide what the function returns. A lookup that answers "which declaration does this name
+   bind to?" returns `Resolution<Definitions>`: a tie the tie-breaks cannot settle becomes
+   `Ambiguous`, and overloads of one callable stay `Resolved` with every overload listed.
+   A function that returns occurrences (`rg.rs`, references) is not a resolution and stays
+   out of scope.
+3. Migrate callers to match `Ambiguous` explicitly, and delete their `.resolved()` bridge.
+4. Lower the ratchet baselines in the same change.
+
+Order: `resolver/tie_break.rs` first (it is where ties are decided, so it can first report
+one), then `resolve.rs` public entry points, then `qualified.rs` and `extension.rs`.
+Open question: whether `Ambiguous` carries the candidate FQNs (the CST spec proposed
+`Ambiguous(Vec<Fqn>)`; structured `ResolvedType` decision 6 deferred it). Diagnostics and the
+missing-import code action need them; decide before step 2 of the first migrated function.
