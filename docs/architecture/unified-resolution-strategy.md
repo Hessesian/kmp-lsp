@@ -216,3 +216,72 @@ mean the migration plan above should not assume "the parts we haven't unified ye
 old code we haven't gotten to" — some of them are old code a design doc *deliberately*
 routed around, and that routing decision is exactly where a structurally-identical bug will
 keep re-appearing until the boundary itself is revisited, not just patched from outside it.
+
+## String-path cardinality (2026-11-20): expiry for the "later" boundary
+
+The CST unification spec chose one outcome enum for every resolution result
+(`Resolution<T> { Resolved, Ambiguous, Unresolved }`, "never empty-`Vec`/`None`
+overloading"), but only the CST catalogue and `sig.rs` adopted it. The string path still
+returns a bare `Vec<Location>`. Empty means "not found" and more than one entry means
+"ambiguous", by convention only, so each caller decides for itself what two entries mean
+(definition returns them all; qualified-member hover renders one only when the shape filter
+or a shared call signature settles it and otherwise declines; diagnostics skip; some callers
+take `.first()`).
+The `.resolved()` bridges fold `Ambiguous` and `ShapeFiltered::RuledOut` back into an empty
+result for callers that are not ambiguity-aware yet.
+
+This is a separate track from the structured `ResolvedType` work
+(`docs/superpowers/specs/2026-11-03-structured-resolved-type-design.md`). That spec fixes the
+*shape* of a type and leaves `Resolution` unchanged on purpose. This track fixes how many
+candidates a lookup reports. Start it after structured `ResolvedType` slice S3.
+
+**Ratchet:** `tests/ambiguity_ratchet.rs` pins two counts that may only go down:
+`.resolved()` bridge calls anywhere in `src`, and `-> Vec<Location>` signatures under
+`src/resolver`, `src/indexer` and `src/indexer.rs`. Baseline at introduction: 6 bridges,
+68 signatures.
+
+**Migration, one function at a time, benchmark recall as the safety net:**
+
+1. For each `Vec<Location>` resolver, apply the addendum's checklist: does the signature
+   promise many results, and does the body ever produce many? First-match narrowing inside a
+   plural signature (the extension-tier bug) is a bug, not a migration step.
+2. Decide what the function returns. A lookup that answers "which declaration does this name
+   bind to?" returns `Resolution<T>`: a tie the tie-breaks cannot settle becomes `Ambiguous`
+   carrying the candidates (see the payload decision below). A function that returns
+   occurrences (`rg.rs`, references) is not a resolution and stays out of scope.
+3. Migrate callers to match `Ambiguous` explicitly, and delete their `.resolved()` bridge.
+   Each caller keeps its own ambiguity policy: definition offers every candidate, hover keeps
+   its "render only if settled, else decline" rule, diagnostics skip.
+4. Lower the ratchet baselines in the same change.
+
+Order: `resolver/tie_break.rs` first (it is where ties are decided, so it can first report
+one), then `resolve.rs` public entry points, then `qualified.rs` and `extension.rs`.
+
+**Payload decision (2026-11-25): `Ambiguous` carries its candidates.** The CST spec proposed
+`Ambiguous(Vec<Fqn>)`; structured `ResolvedType` decision 6 only scoped it out. Two findings
+in `sig.rs` change the shape:
+
+- Candidates are not always FQNs. `build_result` reports arity overloads of one callable as
+  ambiguous; they share an FQN and differ in signature. So the payload is the same `T` as
+  `Resolved(T)`.
+- Some ambiguity is decided without enumerating. `resolve_cross_file` and the phase above it
+  return `Ambiguous` once a name exceeds `MAX_BY_NAME_DEFS`, skipping the scan on the
+  diagnostics hot path. A list there would either restore the stall or be silently
+  incomplete, so that case gets its own variant.
+
+```rust
+enum Resolution<T> {
+    Resolved(T),
+    Ambiguous(Candidates<T>),
+    Unresolved,
+}
+
+enum Candidates<T> {
+    Listed(Vec<T>),
+    /// More than `MAX_BY_NAME_DEFS`; not enumerated, to keep the hot path cheap.
+    TooMany,
+}
+```
+
+Whether overloads count as ambiguous is the consumer's call (call-arg diagnostics: yes,
+definition: no), which is why the resolver hands back candidates instead of deciding.
