@@ -224,7 +224,9 @@ The CST unification spec chose one outcome enum for every resolution result
 overloading"), but only the CST catalogue and `sig.rs` adopted it. The string path still
 returns a bare `Vec<Location>`. Empty means "not found" and more than one entry means
 "ambiguous", by convention only, so each caller decides for itself what two entries mean
-(definition and hover return them all, diagnostics skip, some callers take `.first()`).
+(definition returns them all; qualified-member hover renders one only when the shape filter
+or a shared call signature settles it and otherwise declines; diagnostics skip; some callers
+take `.first()`).
 The `.resolved()` bridges fold `Ambiguous` and `ShapeFiltered::RuledOut` back into an empty
 result for callers that are not ambiguity-aware yet.
 
@@ -244,15 +246,42 @@ candidates a lookup reports. Start it after structured `ResolvedType` slice S3.
    promise many results, and does the body ever produce many? First-match narrowing inside a
    plural signature (the extension-tier bug) is a bug, not a migration step.
 2. Decide what the function returns. A lookup that answers "which declaration does this name
-   bind to?" returns `Resolution<Definitions>`: a tie the tie-breaks cannot settle becomes
-   `Ambiguous`, and overloads of one callable stay `Resolved` with every overload listed.
-   A function that returns occurrences (`rg.rs`, references) is not a resolution and stays
-   out of scope.
+   bind to?" returns `Resolution<T>`: a tie the tie-breaks cannot settle becomes `Ambiguous`
+   carrying the candidates (see the payload decision below). A function that returns
+   occurrences (`rg.rs`, references) is not a resolution and stays out of scope.
 3. Migrate callers to match `Ambiguous` explicitly, and delete their `.resolved()` bridge.
+   Each caller keeps its own ambiguity policy: definition offers every candidate, hover keeps
+   its "render only if settled, else decline" rule, diagnostics skip.
 4. Lower the ratchet baselines in the same change.
 
 Order: `resolver/tie_break.rs` first (it is where ties are decided, so it can first report
 one), then `resolve.rs` public entry points, then `qualified.rs` and `extension.rs`.
-Open question: whether `Ambiguous` carries the candidate FQNs (the CST spec proposed
-`Ambiguous(Vec<Fqn>)`; structured `ResolvedType` decision 6 deferred it). Diagnostics and the
-missing-import code action need them; decide before step 2 of the first migrated function.
+
+**Payload decision (2026-11-25): `Ambiguous` carries its candidates.** The CST spec proposed
+`Ambiguous(Vec<Fqn>)`; structured `ResolvedType` decision 6 only scoped it out. Two findings
+in `sig.rs` change the shape:
+
+- Candidates are not always FQNs. `build_result` reports arity overloads of one callable as
+  ambiguous; they share an FQN and differ in signature. So the payload is the same `T` as
+  `Resolved(T)`.
+- Some ambiguity is decided without enumerating. `resolve_cross_file` and the phase above it
+  return `Ambiguous` once a name exceeds `MAX_BY_NAME_DEFS`, skipping the scan on the
+  diagnostics hot path. A list there would either restore the stall or be silently
+  incomplete, so that case gets its own variant.
+
+```rust
+enum Resolution<T> {
+    Resolved(T),
+    Ambiguous(Candidates<T>),
+    Unresolved,
+}
+
+enum Candidates<T> {
+    Listed(Vec<T>),
+    /// More than `MAX_BY_NAME_DEFS`; not enumerated, to keep the hot path cheap.
+    TooMany,
+}
+```
+
+Whether overloads count as ambiguous is the consumer's call (call-arg diagnostics: yes,
+definition: no), which is why the resolver hands back candidates instead of deciding.
