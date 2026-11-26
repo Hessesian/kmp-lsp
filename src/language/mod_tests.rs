@@ -35,7 +35,7 @@ fn language_parser_via_enum_dispatches_correctly() {
 
 #[test]
 fn parse_by_extension_routes_through_provider() {
-    // Sanity: parse_by_extension now delegates to Language::parser().parse().
+    // Sanity: parse_by_extension dispatches on the file's language.
     let kotlin_data = crate::parser::parse_by_extension("Foo.kt", "class Foo");
     assert!(kotlin_data.symbols.iter().any(|s| s.name == "Foo"));
 

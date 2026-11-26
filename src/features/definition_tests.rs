@@ -2,7 +2,7 @@
 
 use tower_lsp::lsp_types::{GotoDefinitionResponse, Position, Url};
 
-use crate::backend::cursor::CursorContext;
+use crate::features::cursor::CursorContext;
 use crate::features::definition::find_definition;
 use crate::indexer::Indexer;
 

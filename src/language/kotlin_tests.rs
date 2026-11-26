@@ -17,13 +17,13 @@ fn extensions_include_kt_and_kts() {
 
 #[test]
 fn parse_extracts_class_symbol() {
-    let data = KotlinParser.parse("class Foo");
+    let data = crate::parser::parse_by_extension("Foo.kt", "class Foo");
     assert!(data.symbols.iter().any(|s| s.name == "Foo"));
 }
 
 #[test]
 fn parse_extracts_function_symbol() {
-    let data = KotlinParser.parse("fun bar() {}");
+    let data = crate::parser::parse_by_extension("Foo.kt", "fun bar() {}");
     assert!(data.symbols.iter().any(|s| s.name == "bar"));
 }
 

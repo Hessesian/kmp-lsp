@@ -1,5 +1,5 @@
-use super::cursor::CursorContext;
 use super::Backend;
+use crate::features::cursor::CursorContext;
 use crate::inlay_hints::compute_inlay_hints;
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::*;

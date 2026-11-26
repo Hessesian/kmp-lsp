@@ -14,8 +14,6 @@ use crate::workspace::Event;
 pub(crate) mod actions;
 pub(crate) mod capabilities;
 pub(crate) mod commands;
-pub(crate) mod cursor;
-pub(crate) mod format;
 pub(crate) mod git_watcher;
 pub(crate) mod handlers;
 pub(crate) mod helpers;

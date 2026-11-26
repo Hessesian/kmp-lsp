@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
-use super::cursor::CursorContext;
 use super::Backend;
+use crate::features::cursor::CursorContext;
 use crate::features::definition as def;
 use crate::features::implementation as imp;
 use tower_lsp::jsonrpc::Result;

@@ -4,7 +4,6 @@ use tower_lsp::lsp_types::SymbolKind;
 
 use super::symbol_kw;
 use super::LanguageParser;
-use crate::types::FileData;
 
 pub(crate) struct SwiftParser;
 
@@ -15,10 +14,6 @@ impl LanguageParser for SwiftParser {
 
     fn file_extensions(&self) -> &[&'static str] {
         &["swift"]
-    }
-
-    fn parse(&self, source: &str) -> FileData {
-        crate::parser::parse_swift(source)
     }
 
     fn symbol_keyword(&self, kind: SymbolKind) -> &'static str {

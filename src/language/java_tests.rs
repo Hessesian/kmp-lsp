@@ -15,7 +15,7 @@ fn extensions_include_java() {
 
 #[test]
 fn parse_extracts_class_symbol() {
-    let data = JavaParser.parse("public class Bar {}");
+    let data = crate::parser::parse_by_extension("Bar.java", "public class Bar {}");
     assert!(data.symbols.iter().any(|s| s.name == "Bar"));
 }
 
